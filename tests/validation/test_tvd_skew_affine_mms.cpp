@@ -1,5 +1,7 @@
 // Multidimensional TVD affine-skew MMS and matrix/face-flux identity.
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/physics/nonlinear_multisecant_acceleration.h"
+#include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "common/test_harness.h"
@@ -124,9 +126,15 @@ int main() {
     if (max_gradient_error>1e-11)
         throw std::runtime_error("manufactured gradient is not affine exact");
 
+    // Pairwise TVD limiters are bounded but NOT affine exact on skew faces.
+    // The multidimensional MUSCL correction is the affine-exact alternative;
+    // never mistake a test of the original TVD method for evidence that it
+    // also achieves that stronger property. All schemes must remain
+    // assembly/face-flux consistent regardless of their truncation error.
     for (const auto scheme : {ConvectionScheme::TVD,
                               ConvectionScheme::TVD_VANLEER,
-                              ConvectionScheme::TVD_VANALBADA}) {
+                              ConvectionScheme::TVD_VANALBADA,
+                              ConvectionScheme::MUSCL_CELL_LIMITED}) {
         const auto transported=reconstruct_scalar_transport_flux(
             m,g,flux,phi,0.0,{},true,scheme,&bcs);
         double face_error=0.0;
@@ -134,8 +142,8 @@ int main() {
             if (m.ownership().neighbour(f)>=0)
                 face_error=std::max(face_error,
                     std::abs(transported(f)-g.face_centres[f].y));
-        if (face_error>1e-11)
-            throw std::runtime_error("TVD lost affine exactness on a conforming skew mesh");
+        if (scheme == ConvectionScheme::MUSCL_CELL_LIMITED && face_error>1e-11)
+            throw std::runtime_error("multidimensional MUSCL lost affine exactness on a skew mesh");
 
         const std::vector<double> extra_diag(m.n_cells(),10.0);
         const auto eq=assemble_scalar_equation(
@@ -170,6 +178,218 @@ int main() {
                  <<" face_Linf="<<face_error
                  <<" matrix_flux_Linf="<<equation_error<<"\n";
     }
+    // Directional Jacobian-vector product of the COMPLETE nonlinear TVD
+    // momentum/transport discretization (limiter gradients, all face fluxes,
+    // bounded convection term), here at frozen pressure and mass flux.
+    // Compare the production A(u)u-b(u) to an INDEPENDENT face-divergence
+    // evaluator at the two perturbed states; a frozen UPWIND derivative must
+    // NOT pass this test merely because the CSR matrix is solved accurately.
+    {
+        const std::size_t n=m.n_cells();
+        std::vector<double> state(n), direction(n);
+        for (std::size_t c=0;c<n;++c) {
+            state[c]=0.42+0.21*std::sin(0.73*static_cast<double>(c))+
+                     0.017*static_cast<double>(c);
+            direction[c]=0.15*std::cos(0.61*static_cast<double>(c))+
+                         0.018*static_cast<double>(c);
+        }
+        const std::vector<double> diag(n,4.0);
+        const auto matrix_residual=[&](const std::vector<double>& values,
+                                      ConvectionScheme scheme) {
+            Field<double,Location::CELL> u(n,"directional_u","",1);
+            for(std::size_t c=0;c<n;++c) u(c)=values[c];
+            const auto eq=assemble_scalar_equation(
+                m,g,flux,0.0,zero,zero,{},true,nullptr,
+                &diag,nullptr,nullptr,scheme,&u,&bcs,false);
+            std::vector<double> res(n);
+            for(std::size_t row=0;row<n;++row) {
+                double value=-eq.rhs(row);
+                for(auto k=eq.matrix.row_offsets_data()[row];
+                    k<eq.matrix.row_offsets_data()[row+1];++k)
+                    value+=eq.matrix.values_data()[k]*
+                        values[eq.matrix.columns_data()[k]];
+                res[row]=value;
+            }
+            return res;
+        };
+        const auto face_residual=[&](const std::vector<double>& values,
+                                    ConvectionScheme scheme) {
+            Field<double,Location::CELL> u(n,"directional_u","",1);
+            for(std::size_t c=0;c<n;++c) u(c)=values[c];
+            const auto transported=reconstruct_scalar_transport_flux(
+                m,g,flux,u,0.0,{},true,scheme,&bcs);
+            std::vector<double> r(n,0.0), div_mass(n,0.0);
+            for(std::size_t f=0;f<m.n_faces();++f) {
+                const auto o=m.ownership().owner(f);
+                r[o]+=transported(f);
+                div_mass[o]+=flux(f);
+                const auto nb=m.ownership().neighbour(f);
+                if(nb>=0) {
+                    const auto j=static_cast<std::size_t>(nb);
+                    r[j]-=transported(f);
+                    div_mass[j]-=flux(f);
+                }
+            }
+            for(std::size_t c=0;c<n;++c)
+                r[c]+=diag[c]*values[c]-values[c]*div_mass[c];
+            return r;
+        };
+        for(auto scheme : {ConvectionScheme::TVD,
+                            ConvectionScheme::TVD_VANLEER,
+                            ConvectionScheme::TVD_VANALBADA}) {
+            const auto matrix_jv=nonlinear_directional_jvp(
+                [&](const auto& u){return matrix_residual(u,scheme);},
+                state,direction);
+            const auto face_jv=nonlinear_directional_jvp(
+                [&](const auto& u){return face_residual(u,scheme);},
+                state,direction);
+            double error=0.0;
+            for(std::size_t c=0;c<n;++c)
+                error=std::max(error,std::abs(matrix_jv[c]-face_jv[c]));
+            if(error>2e-8)
+                throw std::runtime_error(
+                    "full TVD direction Jv disagrees with independent face flux");
+            const auto upwind=nonlinear_directional_jvp(
+                [&](const auto& u){return matrix_residual(u,ConvectionScheme::UPWIND);},
+                state,direction);
+            double difference=0.0;
+            for(std::size_t c=0;c<n;++c)
+                difference=std::max(difference,std::abs(matrix_jv[c]-upwind[c]));
+            if (difference<1e-5)
+                throw std::runtime_error(
+                    "TVD directional test is vacuous: equal to frozen UPWIND");
+            std::cout<<"TVD_DIRECTIONAL_JV scheme="<<static_cast<int>(scheme)
+                     <<" CSR_vs_faces="<<error
+                     <<" nonlinear_vs_upwind="<<difference<<"\n";
+        }
+        // Directional Newton demonstration on the ACTUAL nonlinearly
+        // reassembled TVD finite-volume operator (frozen mass flux and
+        // pressure). This is deliberately not a claim of coupled NACA Newton.
+        // Columns J*e_j come from directional reassemblies, NOT an UPWIND
+        // matrix. A pivoted small dense solve is used only on this 18-cell
+        // manufactured problem; production would need matrix-free GMRES.
+        const auto residual=[&](const std::vector<double>& u) {
+            return face_residual(u,ConvectionScheme::TVD);
+        };
+        const auto initial=residual(state);
+        const auto infinity_norm=[](const auto& values) {
+            double value=0;
+            for(double x:values)value=std::max(value,std::abs(x));
+            return value;
+        };
+        const double start=infinity_norm(initial);
+        std::vector<std::vector<double>> J(n,std::vector<double>(n,0.0));
+        for(std::size_t column=0;column<n;++column) {
+            std::vector<double> direction_e(n,0.0);
+            direction_e[column]=1.0;
+            const auto product=nonlinear_directional_jvp(
+                residual,state,direction_e);
+            for(std::size_t row=0;row<n;++row) J[row][column]=product[row];
+        }
+        std::vector<double> delta(n);
+        for(std::size_t i=0;i<n;++i)delta[i]=-initial[i];
+        for(std::size_t j=0;j<n;++j) {
+            std::size_t pivot=j;
+            for(std::size_t i=j+1;i<n;++i)
+                if(std::abs(J[i][j])>std::abs(J[pivot][j]))pivot=i;
+            if(std::abs(J[pivot][j])<1e-12)
+                throw std::runtime_error("directional TVD Jacobian is singular in MMS");
+            std::swap(J[j],J[pivot]);std::swap(delta[j],delta[pivot]);
+            for(std::size_t i=j+1;i<n;++i) {
+                const double ratio=J[i][j]/J[j][j];
+                for(std::size_t k=j;k<n;++k)
+                    J[i][k]-=ratio*J[j][k];
+                delta[i]-=ratio*delta[j];
+            }
+        }
+        for(std::size_t rev=0;rev<n;++rev) {
+            const std::size_t i=n-1-rev;
+            for(std::size_t j=i+1;j<n;++j)delta[i]-=J[i][j]*delta[j];
+            delta[i]/=J[i][i];
+        }
+        double after=std::numeric_limits<double>::infinity();
+        double accepted_step=0.0;
+        for(double alpha : {1.0,0.5,0.25,0.125,0.0625,0.03125}) {
+            auto candidate=state;
+            for(std::size_t i=0;i<n;++i)candidate[i]+=alpha*delta[i];
+            const double candidate_norm=infinity_norm(residual(candidate));
+            if(std::isfinite(candidate_norm) &&
+               candidate_norm<start*(1.0-1e-4*alpha)) {
+                accepted_step=alpha;
+                after=candidate_norm;
+                break;
+            }
+        }
+        if(!(after<start) || accepted_step<=0.0)
+            throw std::runtime_error("directional TVD Newton failed to decrease true residual");
+        std::cout<<"TVD_DIRECTIONAL_NEWTON_MMS initial="<<start
+                 <<" final="<<after<<" step="<<accepted_step<<"\n";
+    }
+    // NACA-forensic operator identity: TWO independently assembled paths:
+    //   (1) signed face residual C + D + P - B - u div(phi) + dt term
+    //   (2) production CSR Picard row A(U) U - b(U).
+    // Exercise TVD on skew geometry, diffusion, pressure, force and
+    // non-solenoidal authoritative mass flux. No convergence tolerances change.
+    Field<double,Location::CELL> gradp(m.n_cells(),"gradp_y","Pa/m",1);
+    Field<double,Location::CELL> body(m.n_cells(),"body_y","N/m3",1);
+    Field<double,Location::CELL> source(m.n_cells(),"source_momentum","N/m3",1);
+    std::vector<double> mu(m.n_cells());
+    for (std::size_t c=0;c<m.n_cells();++c) {
+        gradp(c)=0.27+0.02*static_cast<double>(c);
+        body(c)=0.04;
+        source(c)=body(c)-gradp(c);
+        mu[c]=0.04+0.002*static_cast<double>(c);
+    }
+    ScalarBoundaryConditions momentum_bcs;
+    momentum_bcs["wall"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+    for (auto scheme : {ConvectionScheme::TVD, ConvectionScheme::TVD_VANLEER,
+                        ConvectionScheme::TVD_VANALBADA}) {
+        const auto equation=assemble_scalar_equation(
+            m,g,flux,0.0,source,zero,momentum_bcs,true,nullptr,
+            nullptr,nullptr,&mu,scheme,&phi,nullptr,true);
+        auto budget=diagnose_momentum_face_budget(
+            m,g,flux,phi,gradp,body,mu,momentum_bcs,
+            scheme,1.0,true);
+        reconcile_momentum_budget_with_matrix(budget,equation,phi);
+        if (!momentum_matrix_face_closure_consistent(budget))
+            throw std::runtime_error("TVD accepted face budget does not match CSR operator");
+        if (budget.matrix_closure_linf>3e-10)
+            throw std::runtime_error("TVD matrix/face closure has a significant error");
+        std::cout << "MOMENTUM_MATRIX_FACE_CLOSURE scheme=" << static_cast<int>(scheme)
+                  << " linf=" << budget.matrix_closure_linf
+                  << " relative=" << budget.matrix_closure_relative_linf << "\n";
+        // A corrupted CELL away from the worst one MUST fail even when
+        // the reported global worst physical residual remains unchanged.
+        auto altered = budget;
+        const std::size_t altered_cell=altered.worst_cell==0 ? 1 : 0;
+        altered.cells[altered_cell].bounded_operator_residual += 0.02;
+        reconcile_momentum_budget_with_matrix(altered,equation,phi);
+        if (momentum_matrix_face_closure_consistent(altered))
+            throw std::runtime_error("cellwise oracle missed displaced residual defect");
+    }
+    // A physical BE time derivative belongs in the face budget and in A*U-b.
+    // A pseudo time diagonal must not be silently inserted in either physical
+    // balance. This test inserts one real BE step and checks the sign.
+    {
+        std::vector<double> mass_diag(m.n_cells());
+        std::vector<double> mass_rhs(m.n_cells());
+        Field<double,Location::CELL> neg_accum(m.n_cells(),"minus_dUdt","N",1);
+        for (std::size_t c=0;c<m.n_cells();++c) {
+            mass_diag[c]=1.5*g.cell_volumes[c]/0.25;
+            mass_rhs[c]=mass_diag[c]*(phi(c)-0.03);
+            neg_accum(c)=-(mass_diag[c]*phi(c)-mass_rhs[c]);
+        }
+        const auto eq=assemble_scalar_equation(
+            m,g,flux,0.0,source,zero,momentum_bcs,true,nullptr,
+            &mass_diag,&mass_rhs,&mu,ConvectionScheme::TVD,&phi,nullptr,true);
+        auto budget=diagnose_momentum_face_budget(
+            m,g,flux,phi,gradp,body,mu,momentum_bcs,
+            ConvectionScheme::TVD,1.0,true,nullptr,nullptr,nullptr,&neg_accum);
+        reconcile_momentum_budget_with_matrix(budget,eq,phi);
+        if (!momentum_matrix_face_closure_consistent(budget))
+            throw std::runtime_error("time derivative signs disagree with A*U-b");
+    }
+    std::cout << "MOMENTUM_MATRIX_FACE_CLOSURE: PASS\n";
     // No artificially enlarged extrema: even with a skew face, the result
     // must remain within the neighbouring one-ring cell/boundary envelope.
     Field<double,Location::CELL> step(m.n_cells(),"step","1",1);
@@ -235,6 +455,9 @@ int main() {
                   << certificate.relaxed_true_relative
                   << " original=" << certificate.original_operator_relative << "\n";
     }
+    // Boundary convective flux is zero in this MMS. The scalar boundary
+    // map is intentionally empty; test face values are supplied through
+    // bcs above, while the same-state oracle uses this patch-level map.
     // At the exact SAME flux/pressure/predictor state, TVD-UPWIND must
     // equal the signed deferred convection and the Rhie-Chow decomposition
     // must be facewise closed. This is a diagnostic identity, not a proof

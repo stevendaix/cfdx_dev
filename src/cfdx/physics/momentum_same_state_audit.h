@@ -134,6 +134,7 @@ inline MomentumPicardTvdTrace audit_momentum_picard_tvd_faces(
         record.upwind_flux=upwind(f);
         record.selected_flux=selected(f);
         record.deferred_tvd_flux=selected(f)-upwind(f);
+        record.effective_deferred_flux=record.deferred_tvd_flux;
         if (!std::isfinite(record.mass_flux_old) ||
             !std::isfinite(record.deferred_tvd_flux))
             throw std::domain_error("Picard TVD trace: nonfinite flux");

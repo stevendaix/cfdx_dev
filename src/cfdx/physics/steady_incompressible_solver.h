@@ -19,6 +19,7 @@
 #include "cfdx/physics/picard_physical_globalization.h"
 #include "cfdx/physics/tvd_deferred_defect_memory.h"
 #include "cfdx/physics/tvd_secant_implicit_correction.h"
+#include "cfdx/physics/nonlinear_multisecant_acceleration.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
@@ -64,6 +65,11 @@ struct VelocityBoundaryCondition {
 };
 
 using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
+// Resolved from the authoritative preceding-iterate phi. The same three
+// component BCs are shared by the momentum matrix, face transport oracle and
+// the Rhie-Chow H/A predictor. A per-patch zero-gradient approximation is NOT
+// sufficient when a nominal outlet has local inflow.
+using VelocityFaceConditions = std::array<ScalarBoundaryFaceConditions, 3>;
 
 // A Dirichlet entry removes the pressure nullspace only when it is actually
 // attached to a non-impermeable boundary face. An unused/misspelled entry (or
@@ -325,6 +331,13 @@ struct IncompressibleSolverControls {
     double initial_momentum_residual_reference = 0.0;
     double initial_nonlinear_metric_reference = 0.0;
     std::size_t initial_accepted_iteration = 0;
+    // Explicit opt-in for a physical free-stream backflow policy. The listed
+    // patches use zeroGradient U on outward flux and the specified U on inward
+    // flux, decided from the PREVIOUS accepted Rhie-Chow phi. This remains a
+    // Picard-frozen BC, and the final residual is evaluated with fresh signs.
+    // Limited to laminar segregated steady calculations until SST/COUPLED and
+    // pressure-mixed interface contracts have independent qualifications.
+    std::map<std::string, cfdx::core::Vec3> inlet_outlet_velocity_patches;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
     // Optional cellwise body force per unit mass (m/s^2). Replaces the
     // uniform controls.body_force vector when supplied (Boussinesq
@@ -396,6 +409,8 @@ struct IncompressibleSolverControls {
     PicardPhysicalGlobalizationControls picard_physical_globalization;
     TvdDeferredDefectMemoryControls tvd_deferred_memory;
     TvdSecantImplicitControls tvd_secant_implicit;
+    // Opt-in Anderson/NGMRES predictor; the accelerated candidate is never accepted without SIMPLE reprojection.
+    NonlinearMultisecantControls nonlinear_multisecant;
     std::vector<IncompressiblePointProbe> probes;
     // Optional quantities of interest gated by the convergence monitor. Each
     // gate must name a configured probe; a gate that names nothing is a
@@ -532,6 +547,10 @@ struct IncompressibleIteration {
     double continuity_l1 = std::numeric_limits<double>::infinity();
     double continuity_linf = std::numeric_limits<double>::infinity();
     double continuity_normalized = std::numeric_limits<double>::infinity();
+    bool multisecant_proposed = false;
+    bool multisecant_accepted = false;
+    double multisecant_relative_step = 0.0;
+    double multisecant_estimated_objective = 0.0;
     // Explicit normalization evidence: raw residual / max(abs(momentum RHS))
     // and raw residual / first-iteration raw residual are different metrics.
     double momentum_rhs_scale = std::numeric_limits<double>::infinity();
@@ -784,9 +803,37 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    // V4 checkpoints contain U, p, phi and norm references, not the
+    // committed deferred-TVD history or a full nonmonotone merit window.
+    // Such a restart would not reproduce the nonlinear iteration map.
+    if (c.initial_face_mass_flux_from_paired_checkpoint &&
+        (c.tvd_deferred_memory.enabled || c.tvd_secant_implicit.enabled ||
+         c.picard_physical_globalization.enabled ||
+         c.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF))
+        throw std::invalid_argument(
+            "paired restart cannot restore TVD/Picard/multisecant nonlinear history");
     validate_picard_physical_globalization(c.picard_physical_globalization);
     validate_tvd_deferred_defect_memory(c.tvd_deferred_memory);
     validate_tvd_secant_implicit(c.tvd_secant_implicit);
+    if (c.tvd_secant_implicit.enabled && c.tvd_deferred_memory.enabled)
+        throw std::invalid_argument(
+            "TVD secant and deferred memory require a qualified combined scheme");
+    validate_nonlinear_multisecant(c.nonlinear_multisecant);
+    if (c.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         c.transient.enabled || c.sst_runtime ||
+         c.pseudo_momentum.enabled || c.convection_continuation.enabled ||
+         c.picard_physical_globalization.enabled ||
+         c.tvd_deferred_memory.enabled || c.tvd_secant_implicit.enabled ||
+         c.adaptive_relaxation.enabled ||
+         c.pressure_continuity_line_search.enabled ||
+         c.v19_full_pressure_flux_step ||
+         (c.convection_scheme != ConvectionScheme::TVD &&
+          c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
+          c.convection_scheme != ConvectionScheme::TVD_VANALBADA)))
+        throw std::invalid_argument(
+            "nonlinear multisecant requires steady SIMPLE with full TVD, "
+            "no transient/SST/ramp, and no simultaneous experimental acceleration");
     if (c.tvd_secant_implicit.enabled &&
         (c.algorithm != PressureVelocityAlgorithm::SIMPLE || c.transient.enabled ||
          c.sst_runtime || c.pseudo_momentum.enabled ||
@@ -1260,6 +1307,62 @@ inline double pressure_face_neighbour_weight(
         &geometry.cell_centres[neighbour]);
 }
 
+inline VelocityFaceConditions resolve_inlet_outlet_velocity_faces(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& previous_phi,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const std::map<std::string, cfdx::core::Vec3>& inflow_values)
+{
+    using namespace cfdx::core;
+    if (previous_phi.size() != mesh.n_faces() || previous_phi.dimension() != 1 ||
+        geometry.face_patch.size() != mesh.n_faces())
+        throw std::invalid_argument("inlet/outlet face BC: invalid flux/geometry size");
+    VelocityFaceConditions resolved{ScalarBoundaryFaceConditions(mesh.n_faces()),
+                                    ScalarBoundaryFaceConditions(mesh.n_faces()),
+                                    ScalarBoundaryFaceConditions(mesh.n_faces())};
+    for (const auto& [name, value] : inflow_values) {
+        const std::size_t patch_id = mesh.boundary().find(name);
+        if (patch_id >= mesh.boundary().n_patches() ||
+            mesh.boundary().patch(patch_id).empty() ||
+            mesh.boundary().patch(patch_id).type == PatchType::EMPTY ||
+            mesh.boundary().patch(patch_id).type == PatchType::SYMMETRY)
+            throw std::invalid_argument("inlet/outlet face BC: missing or impermeable patch: " + name);
+        const auto bc = velocity_bcs.find(name);
+        if (bc == velocity_bcs.end() ||
+            bc->second.type != VelocityBoundaryCondition::Type::ZERO_GRADIENT)
+            throw std::invalid_argument("inlet/outlet face BC: patch must have base U zeroGradient: " + name);
+        if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
+            throw std::invalid_argument("inlet/outlet face BC: non-finite inflow velocity");
+    }
+    for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+        if (mesh.ownership().neighbour(face) >= 0) continue;
+        const auto patch_id = geometry.face_patch[face];
+        if (patch_id >= mesh.boundary().n_patches()) continue;
+        const auto& patch = mesh.boundary().patch(patch_id);
+        if (patch.type == PatchType::EMPTY || patch.type == PatchType::SYMMETRY)
+            continue;
+        const auto bc = velocity_bcs.find(patch.name);
+        if (bc == velocity_bcs.end())
+            throw std::invalid_argument("inlet/outlet face BC: velocity BC missing: " + patch.name);
+        const double f = previous_phi(face);
+        if (!std::isfinite(f))
+            throw std::invalid_argument("inlet/outlet face BC: non-finite authoritative flux");
+        const auto inflow = inflow_values.find(patch.name);
+        const bool mixed_inflow = inflow != inflow_values.end() && f < 0.0;
+        const bool fixed = mixed_inflow || bc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE;
+        const Vec3 value = mixed_inflow ? inflow->second : bc->second.value;
+        const std::array<double, 3> components{value.x, value.y, value.z};
+        for (std::size_t d=0;d<3;++d) {
+            resolved[d].specified[face] = 1;
+            resolved[d].conditions[face] = {
+                fixed ? ScalarBoundaryFaceCondition::Type::FIXED_VALUE
+                      : ScalarBoundaryFaceCondition::Type::FIXED_GRADIENT,
+                fixed ? components[d] : 0.0};
+        }
+    }
+    return resolved;
+}
+
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
 make_mass_flux(
     const cfdx::core::Mesh& mesh,
@@ -1268,7 +1371,8 @@ make_mass_flux(
     double rho,
     const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs = {},
-    bool projected_face_interpolation = false)
+    bool projected_face_interpolation = false,
+    const VelocityFaceConditions* face_velocity_conditions = nullptr)
 {
     using namespace cfdx::core;
     (void)pressure_bcs;
@@ -1309,6 +1413,16 @@ make_mass_flux(
                     Uf=it->second.value;
             }
         }
+        if (own.neighbour(f) < 0 && face_velocity_conditions)
+            for (std::size_t d=0;d<3;++d)
+                if ((*face_velocity_conditions)[d].has(f) &&
+                    (*face_velocity_conditions)[d].conditions[f].type ==
+                        ScalarBoundaryFaceCondition::Type::FIXED_VALUE) {
+                    const double value = (*face_velocity_conditions)[d].conditions[f].value;
+                    if (d==0) Uf.x=value;
+                    else if (d==1) Uf.y=value;
+                    else Uf.z=value;
+                }
         flux(f)=rho*Uf.dot(geometry.face_area_vectors[f]);
     }
     return flux;
@@ -1451,7 +1565,8 @@ make_rhie_chow_mass_flux(
     RhieChowVelocityContract velocity_contract =
         RhieChowVelocityContract::HBYA_PREDICTOR,
     bool skew_correct_gradient = false,
-    bool projected_face_interpolation = false)
+    bool projected_face_interpolation = false,
+    const VelocityFaceConditions* face_velocity_conditions = nullptr)
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -1481,7 +1596,8 @@ make_rhie_chow_mass_flux(
     const ScalarBoundaryConditions& pressure_bcs,
     RhieChowVelocityContract velocity_contract,
     bool skew_correct_gradient,
-    bool projected_face_interpolation)
+    bool projected_face_interpolation,
+    const VelocityFaceConditions* face_velocity_conditions)
 {
     using namespace cfdx::core;
     const bool coupled_physical_velocity =
@@ -1569,6 +1685,16 @@ make_rhie_chow_mass_flux(
                 if (ubc != bcs.end() &&
                     ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
                     Hf = ubc->second.value;
+                if (face_velocity_conditions)
+                    for (std::size_t d=0;d<3;++d)
+                        if ((*face_velocity_conditions)[d].has(f) &&
+                            (*face_velocity_conditions)[d].conditions[f].type ==
+                                ScalarBoundaryFaceCondition::Type::FIXED_VALUE) {
+                            const double value = (*face_velocity_conditions)[d].conditions[f].value;
+                            if (d==0) Hf.x=value;
+                            else if (d==1) Hf.y=value;
+                            else Hf.z=value;
+                        }
 
                 const auto pbc = pressure_bcs.find(name);
                 if (pbc != pressure_bcs.end() &&
@@ -2218,7 +2344,8 @@ inline ScalarEquation assemble_momentum_component(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
     const std::vector<double>* extra_rhs = nullptr,
     double molecular_wall_mu = -1.0,
-    double high_order_fraction = 1.0)
+    double high_order_fraction = 1.0,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
 {
     const std::size_t nc = mesh.n_cells();
     if (extra_rhs != nullptr && extra_rhs->size() != nc)
@@ -2257,7 +2384,7 @@ inline ScalarEquation assemble_momentum_component(
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
         nullptr, nullptr, extra_rhs, &cell_effective_dynamic_viscosity,
-        convection_scheme, convected_field, nullptr, true,
+        convection_scheme, convected_field, face_conditions, true,
         face_mu.empty() ? nullptr : &face_mu, high_order_fraction);
 }
 
@@ -4397,6 +4524,37 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // the carrier fields. Derived SST quantities must be refreshed only after
     // initialization/restart has established the actual velocity field.
     const FvGeometry geometry = build_fv_geometry(mesh);
+    if (!controls.inlet_outlet_velocity_patches.empty()) {
+        if (controls.tvd_deferred_memory.enabled ||
+            controls.tvd_secant_implicit.enabled ||
+            controls.momentum_same_state_face_callback ||
+            controls.momentum_picard_tvd_face_callback)
+            throw std::invalid_argument(
+                "mixed inlet/outlet is not qualified with legacy TVD defect or same-state face audit");
+
+        if (controls.algorithm == PressureVelocityAlgorithm::COUPLED ||
+            controls.sst_runtime || controls.transient.enabled ||
+            controls.pressure_continuity_line_search.enabled ||
+            controls.v18_sparse_flux_pressure_jacobian ||
+            controls.v18_full_flux_pressure_oracle ||
+            controls.pressure_projected_face_interpolation ||
+            controls.convection_continuation.enabled)
+            throw std::invalid_argument(
+                "inlet/outlet mixed velocity is currently segregated steady laminar SIMPLE/SIMPLEC only");
+        for (const auto& [name, velocity] : controls.inlet_outlet_velocity_patches) {
+            const auto it = pressure_bcs.find(name);
+            if (it == pressure_bcs.end() || it->second.type != ScalarBoundaryType::FIXED_VALUE)
+                throw std::invalid_argument(
+                    "inlet/outlet mixed velocity requires fixed pressure at outlet: " + name);
+        }
+    }
+    auto mixed_velocity_faces = [&](const Field<double,Location::FACE>& flux)
+        -> std::optional<VelocityFaceConditions> {
+        if (controls.inlet_outlet_velocity_patches.empty()) return std::nullopt;
+        return resolve_inlet_outlet_velocity_faces(
+            mesh, geometry, flux, velocity_bcs,
+            controls.inlet_outlet_velocity_patches);
+    };
     if (controls.sst_runtime) {
         validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
         const auto& runtime = *controls.sst_runtime;
@@ -4717,6 +4875,45 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::CELL> frozen_grad_p;
     bool frozen_state_valid = false;
 
+    // All multi-secant samples are committed only after an accepted full
+    // SIMPLE iteration, never from a rejected nonlinear trial. The predictor
+    // vector has [Ux,Uy,Uz,p,phi] in that order; phi is an INDEPENDENT,
+    // conservative state variable and is not silently replaced by interp(U).
+    NonlinearMultisecantHistory multisecant_history(controls.nonlinear_multisecant);
+    const std::size_t nc_multisecant = mesh.n_cells();
+    const std::size_t nf_multisecant = mesh.n_faces();
+    const auto pack_nonlinear_state = [&](const auto& velocity, const auto& pressure,
+                                           const auto& face_flux) {
+        std::vector<double> flat(4 * nc_multisecant + nf_multisecant);
+        for (std::size_t d = 0; d < 3; ++d)
+            for (std::size_t cell = 0; cell < nc_multisecant; ++cell)
+                flat[d*nc_multisecant+cell]=velocity.component_data(d)[cell];
+        for (std::size_t cell = 0; cell < nc_multisecant; ++cell)
+            flat[3*nc_multisecant+cell]=pressure(cell);
+        for (std::size_t face = 0; face < nf_multisecant; ++face)
+            flat[4*nc_multisecant+face]=face_flux(face);
+        return flat;
+    };
+    const auto restore_nonlinear_state = [&](const std::vector<double>& flat) {
+        if (flat.size() != 4 * nc_multisecant + nf_multisecant)
+            throw std::invalid_argument("multisecant: incompatible state size");
+        for (const double x : flat)
+            if (!std::isfinite(x))
+                throw std::invalid_argument("multisecant: nonfinite proposed field");
+        for (std::size_t d = 0; d < 3; ++d)
+            for (std::size_t cell = 0; cell < nc_multisecant; ++cell)
+                U.component_data(d)[cell]=flat[d*nc_multisecant+cell];
+        for (std::size_t cell = 0; cell < nc_multisecant; ++cell)
+            p(cell)=flat[3*nc_multisecant+cell];
+        for (std::size_t face = 0; face < nf_multisecant; ++face)
+            mass_flux(face)=flat[4*nc_multisecant+face];
+    };
+    // Freeze *physical* normalization once, so NGMRES cannot obtain a false
+    // reduction by changing the RHS scale from one iteration to the next.
+    std::array<double,3> multisecant_rhs_reference{1.0,1.0,1.0};
+    double multisecant_flux_reference=1.0;
+    bool multisecant_scales_valid=false;
+
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
     std::size_t adaptive_u_improvement_streak = 0;
@@ -4778,6 +4975,48 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     snapshot_sst_production_state(*controls.sst_runtime->state))
                 : std::nullopt;
             try {
+        bool multisecant_trial_used = false;
+        MultisecantProposal multisecant_proposal;
+        if (controls.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF &&
+            iter >= controls.nonlinear_multisecant.start_iteration &&
+            retry_controller.retries() == 0 && full_order_eligible &&
+            same_convection_operator_as_previous) {
+            multisecant_proposal = multisecant_history.propose();
+            if (multisecant_proposal.available) {
+                // The extrapolated state is a *predictor*, not an accepted
+                // Rhie-Chow state. Every attempted SIMPLE step completely
+                // rebuilds H/A, pressure and its conservative face flux.
+                // Check the discrete divergence before using any blended
+                // flux; each previously committed member was conservative.
+                std::vector<double> blended_divergence(nc_multisecant,0.0);
+                for (std::size_t f=0;f<nf_multisecant;++f) {
+                    const double phi = multisecant_proposal.state[4*nc_multisecant+f];
+                    const auto o=mesh.ownership().owner(f);
+                    blended_divergence[o]+=phi;
+                    const auto n=mesh.ownership().neighbour(f);
+                    if (n>=0) blended_divergence[static_cast<std::size_t>(n)]-=phi;
+                }
+                double div_l1=0.0, phi_l1=0.0;
+                for (const double v:blended_divergence) div_l1+=std::abs(v);
+                for (std::size_t f=0;f<nf_multisecant;++f)
+                    phi_l1+=std::abs(multisecant_proposal.state[4*nc_multisecant+f]);
+                const double prev_cont = result.history.empty() ? 0.0 :
+                    result.history.back().continuity_normalized;
+                if (std::isfinite(div_l1) && std::isfinite(phi_l1) &&
+                    phi_l1>0.0 && div_l1/phi_l1 <=
+                       std::max(10.0*controls.convergence.continuity_tolerance,
+                                2.0*prev_cont)) {
+                    restore_nonlinear_state(multisecant_proposal.state);
+                    multisecant_trial_used=true;
+                } else {
+                    multisecant_proposal.reason =
+                        "candidate conservative flux divergence exceeds previous state";
+                }
+            }
+        }
+        const std::vector<double> multisecant_input =
+            controls.nonlinear_multisecant.method == NonlinearMultisecantMethod::OFF
+            ? std::vector<double>{} : pack_nonlinear_state(U,p,mass_flux);
         double linear_tolerance = controls.linear_tolerance;
         if (controls.acceleration.adaptive_linear_tolerance) {
             const auto& forcing = controls.acceleration.linear_forcing;
@@ -4943,6 +5182,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                            bc.value.z, 0.0};
         }
 
+        // Picard-freeze the flux sign from the preceding accepted RC face
+        // flux. Every momentum matrix and H/A flux uses these same signs.
+        const auto face_velocity_conditions = mixed_velocity_faces(mass_flux);
         // Momentum predictor uses the conservative corrected flux from the
         // previous outer iteration. This preserves the SIMPLE phi state.
 
@@ -4972,17 +5214,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme,
             &u_x_field, nullptr, sst_molecular_wall_mu,
-            outer_high_order_fraction);
+            outer_high_order_fraction,
+            face_velocity_conditions ? &(*face_velocity_conditions)[0] : nullptr);
         auto ey = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
             controls.use_bounded_convection, controls.convection_scheme,
             &u_y_field, nullptr, sst_molecular_wall_mu,
-            outer_high_order_fraction);
+            outer_high_order_fraction,
+            face_velocity_conditions ? &(*face_velocity_conditions)[1] : nullptr);
         auto ez = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme,
             &u_z_field, nullptr, sst_molecular_wall_mu,
-            outer_high_order_fraction);
+            outer_high_order_fraction,
+            face_velocity_conditions ? &(*face_velocity_conditions)[2] : nullptr);
         if (controls.tvd_deferred_memory.enabled ||
             controls.tvd_secant_implicit.enabled) {
             const std::array<
@@ -5499,7 +5744,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto v19_flux_pressure_state = p;
         auto phiHbyA = make_mass_flux(
             mesh, geometry, HbyA, controls.density, velocity_bcs,
-            {}, controls.pressure_projected_face_interpolation);
+            {}, controls.pressure_projected_face_interpolation,
+            face_velocity_conditions ? &*face_velocity_conditions : nullptr);
 
         if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
@@ -6715,7 +6961,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.density, velocity_bcs, pressure_bcs,
                 RhieChowVelocityContract::HBYA_PREDICTOR,
                 controls.pressure_skew_corrected_gradient,
-                controls.pressure_projected_face_interpolation);
+                controls.pressure_projected_face_interpolation,
+                face_velocity_conditions ? &*face_velocity_conditions : nullptr);
 
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(mass_flux);
@@ -6728,7 +6975,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     velocity_bcs,pressure_bcs,
                     RhieChowVelocityContract::HBYA_PREDICTOR,
                     controls.pressure_skew_corrected_gradient,
-                    controls.pressure_projected_face_interpolation);
+                    controls.pressure_projected_face_interpolation,
+                    face_velocity_conditions ? &*face_velocity_conditions : nullptr);
                 double l1_delta=0.0, linf_delta=0.0;
                 for(std::size_t f=0;f<mesh.n_faces();++f) {
                     const double delta=std::abs(mass_flux(f)-relaxed_flux(f));
@@ -6809,7 +7057,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const auto old_predictor_flux = phiHbyA;
                 phiHbyA = make_mass_flux(
                     mesh, geometry, HbyA, controls.density, velocity_bcs,
-                    {}, controls.pressure_projected_face_interpolation);
+                    {}, controls.pressure_projected_face_interpolation,
+                    face_velocity_conditions ? &*face_velocity_conditions : nullptr);
                 double predictor_delta_linf = 0.0;
                 for (std::size_t f = 0; f < mesh.n_faces(); ++f)
                     predictor_delta_linf = std::max(
@@ -6840,7 +7089,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.density, velocity_bcs, pressure_bcs,
                 RhieChowVelocityContract::HBYA_PREDICTOR,
                 controls.pressure_skew_corrected_gradient,
-                controls.pressure_projected_face_interpolation);
+                controls.pressure_projected_face_interpolation,
+                face_velocity_conditions ? &*face_velocity_conditions : nullptr);
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(rederived_flux);
             for (std::size_t f = 0; f < mesh.n_faces(); ++f)
@@ -6936,21 +7186,35 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 body_z(cell) += final_transpose_force(cell,2)-transpose_force(cell,2);
             }
         }
+        const auto final_face_velocity_conditions = mixed_velocity_faces(mass_flux);
+        bool mixed_modes_stable = true;
+        if (face_velocity_conditions && final_face_velocity_conditions) {
+            for (const auto& [name, value] : controls.inlet_outlet_velocity_patches) {
+                const auto& patch = mesh.boundary().patch(mesh.boundary().find(name));
+                for (const auto face : patch.face_ids)
+                    if ((*face_velocity_conditions)[0].conditions[face].type !=
+                        (*final_face_velocity_conditions)[0].conditions[face].type)
+                        mixed_modes_stable = false;
+            }
+        }
         auto final_ex = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme,
             &final_ux_field, nullptr, sst_molecular_wall_mu,
-            outer_high_order_fraction);
+            outer_high_order_fraction,
+            final_face_velocity_conditions ? &(*final_face_velocity_conditions)[0] : nullptr);
         auto final_ey = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y, 1,
             controls.use_bounded_convection, controls.convection_scheme,
             &final_uy_field, nullptr, sst_molecular_wall_mu,
-            outer_high_order_fraction);
+            outer_high_order_fraction,
+            final_face_velocity_conditions ? &(*final_face_velocity_conditions)[1] : nullptr);
         auto final_ez = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme,
             &final_uz_field, nullptr, sst_molecular_wall_mu,
-            outer_high_order_fraction);
+            outer_high_order_fraction,
+            final_face_velocity_conditions ? &(*final_face_velocity_conditions)[2] : nullptr);
 
         // The final nonlinear acceptance residual must represent the same
         // production equation that was solved. For transient runs the
@@ -7503,7 +7767,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool per_criterion_gates_ok =
             momentum_residual_gate && momentum_equation_residual_gate &&
             pressure_residual_gate && velocity_change_gate && pressure_change_gate &&
-            tvd_memory_consistency_gate;
+            mixed_modes_stable && tvd_memory_consistency_gate;
 
         // Reject nonfinite accepted-state physical metrics, even during a
         // continuation ramp where previous-operator ratios cannot be used.
@@ -7513,6 +7777,51 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             !std::isfinite(h.continuity_normalized))
             throw NonlinearRetryableFailure(
                 "solve_steady_incompressible: nonfinite nonlinear physical residual");
+
+        // Multisecant candidates are only accepted after a complete SIMPLE
+        // momentum/pressure/flux update, the full TVD residual reassembly and
+        // independent continuity audit above. A poor predictor retries this
+        // same outer iteration without mixing; rejected samples NEVER enter
+        // the history or the final force certificate.
+        if (multisecant_trial_used && !result.history.empty()) {
+            const auto& previous=result.history.back();
+            const double cap=controls.nonlinear_multisecant.maximum_physical_growth;
+            const double mom_floor=10.0*controls.convergence.relative_tolerance;
+            const double cont_floor=10.0*controls.convergence.continuity_tolerance;
+            if (h.momentum_equation_residual_rhs_active_component_max >
+                    cap*std::max(previous.momentum_equation_residual_rhs_active_component_max,
+                                 mom_floor) ||
+                h.continuity_normalized >
+                    cap*std::max(previous.continuity_normalized,cont_floor)) {
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "MULTISECANT_REJECT iteration=" << iter
+                              << " momentum=" << h.momentum_equation_residual_rhs_active_component_max
+                              << " prior=" << previous.momentum_equation_residual_rhs_active_component_max
+                              << " continuity=" << h.continuity_normalized
+                              << " prior_continuity=" << previous.continuity_normalized << '\n';
+                // Keep the SAME alpha_u and alpha_p on the fallback. This
+                // isolates the predictor effect, rather than double changing
+                // the fixed-point map and masking the mechanism.
+                transaction.reject();
+                mass_flux=mass_flux_snapshot;
+                convergence_monitor=convergence_monitor_snapshot;
+                result.history.resize(result_history_size);
+                result.probe_samples.resize(probe_samples_size);
+                result.converged=previous_result_converged;
+                result.convergence_status=previous_result_status;
+                result.convergence_reason=previous_result_reason;
+                result.iterations=previous_result_iterations;
+                retry_controller.retry_without_relaxation();
+                continue;
+            }
+        }
+        h.multisecant_proposed=multisecant_proposal.available;
+        h.multisecant_accepted=multisecant_trial_used;
+        if (multisecant_trial_used) {
+            h.multisecant_relative_step=multisecant_proposal.relative_step;
+            h.multisecant_estimated_objective=
+                multisecant_proposal.estimated_objective;
+        }
 
         // Segregated SIMPLE only: an opt-in physical-residual globalization
         // guard. The catch below restores U, p, mass_flux, monitor and SST
@@ -8296,7 +8605,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 auto flux = reconstruct_scalar_transport_flux(
                     mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
                     controls.use_bounded_convection, controls.convection_scheme,
-                    nullptr, &mu_eff, nullptr,
+                    final_face_velocity_conditions ? &(*final_face_velocity_conditions)[d] : nullptr,
+                    &mu_eff, nullptr,
                     wall_face_mu.empty() ? nullptr : &wall_face_mu,
                     outer_high_order_fraction);
                 // Transport flux is convection minus viscous stress. Rebuild
@@ -8349,7 +8659,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const auto collocated = make_mass_flux(
                         mesh, geometry, U, controls.density, velocity_bcs,
                         pressure_bcs,
-                        controls.pressure_projected_face_interpolation);
+                        controls.pressure_projected_face_interpolation,
+                        final_face_velocity_conditions ? &*final_face_velocity_conditions : nullptr);
                     cfdx::core::Field<double, cfdx::core::Location::CELL>
                         pressure_component(mesh.n_cells(), "gradp_d", "Pa/m", 1);
                     cfdx::core::Field<double, cfdx::core::Location::CELL>
@@ -8372,14 +8683,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             transpose_component(f) = audit_transpose_flux(f,d);
                         transpose_ptr = &transpose_component;
                     }
-                    const auto budget = diagnose_momentum_face_budget(
+                    auto budget = diagnose_momentum_face_budget(
                         mesh, geometry, mass_flux, component,
                         pressure_component, momentum_body, mu_eff, scalar_bcs,
                         controls.convection_scheme, outer_high_order_fraction,
                         controls.use_bounded_convection, &collocated,
                         transpose_ptr,
                         wall_face_mu.empty() ? nullptr : &wall_face_mu,
-                        time_accumulation);
+                        time_accumulation,
+                        final_face_velocity_conditions ? &(*final_face_velocity_conditions)[d] : nullptr);
+                    // The independent face residual must match the freshly
+                    // reassembled nonlinear Picard operator for EACH cell.
+                    // Comparing maxima alone cannot detect displaced errors.
+                    const ScalarEquation* final_equations[] = {
+                        &final_ex, &final_ey, &final_ez};
+                    reconcile_momentum_budget_with_matrix(
+                        budget, *final_equations[d], component);
+                    if (!momentum_matrix_face_closure_consistent(budget))
+                        throw std::runtime_error(
+                            "momentum face/CSR operator disagrees cellwise at cell " +
+                            std::to_string(budget.matrix_closure_worst_cell));
                     // The budget and the independent face certificate have
                     // to agree: missing pressure/viscous terms must fail.
                     const double agreement = std::abs(
@@ -8516,6 +8839,70 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 committed_tvd_deferred_valid = true;
             }
             transaction.commit();
+            if (controls.nonlinear_multisecant.method !=
+                NonlinearMultisecantMethod::OFF) {
+                const auto output=pack_nonlinear_state(U,p,mass_flux);
+                std::vector<double> physical;
+                physical.reserve(4*nc_multisecant);
+                const std::array<const ScalarEquation*,3> equations{
+                    &final_ex,&final_ey,&final_ez};
+                const std::array<const Vector*,3> solutions{
+                    &final_ux,&final_uy,&final_uz};
+                if (!multisecant_scales_valid) {
+                    multisecant_rhs_reference=h.momentum_rhs_scale_components;
+                    multisecant_flux_reference=
+                        std::max(h.conservative_face_flux_l1,1e-30);
+                    multisecant_scales_valid=true;
+                }
+                for (std::size_t d=0;d<3;++d) {
+                    const auto& matrix=equations[d]->matrix;
+                    for (std::size_t cell=0;cell<nc_multisecant;++cell) {
+                        double signed_res=-equations[d]->rhs(cell);
+                        for (auto k=matrix.row_offsets_data()[cell];
+                             k<matrix.row_offsets_data()[cell+1];++k)
+                            signed_res+=matrix.values_data()[k]*
+                                (*solutions[d])(matrix.columns_data()[k]);
+                        physical.push_back(signed_res /
+                            std::max(multisecant_rhs_reference[d],1e-30));
+                    }
+                }
+                std::vector<double> div(nc_multisecant,0.0);
+                for (std::size_t f=0;f<nf_multisecant;++f) {
+                    const auto o=mesh.ownership().owner(f);
+                    div[o]+=mass_flux(f);
+                    const auto n=mesh.ownership().neighbour(f);
+                    if (n>=0) div[static_cast<std::size_t>(n)]-=mass_flux(f);
+                }
+                for (const double r:div)
+                    physical.push_back(r/multisecant_flux_reference);
+                double u_scale=1.0, p_scale=1e-6;
+                for (std::size_t j=0;j<3*nc_multisecant;++j)
+                    u_scale=std::max(u_scale,std::abs(output[j]));
+                for (std::size_t j=3*nc_multisecant;j<4*nc_multisecant;++j)
+                    p_scale=std::max(p_scale,std::abs(output[j]));
+                const double rho_scale=controls.density*u_scale*u_scale;
+                p_scale=std::max(p_scale,rho_scale);
+                double phi_scale=std::max(1e-12,
+                    h.conservative_face_flux_l1 / static_cast<double>(std::max<std::size_t>(1,nf_multisecant)));
+                std::vector<double> scales(output.size(),u_scale);
+                for (std::size_t j=3*nc_multisecant;j<4*nc_multisecant;++j)
+                    scales[j]=p_scale;
+                for (std::size_t j=4*nc_multisecant;j<output.size();++j)
+                    scales[j]=phi_scale;
+                multisecant_history.append(
+                    MultisecantSample{multisecant_input,output,std::move(physical)},
+                    scales);
+                if (controls.diagnostics.iteration_trace &&
+                    (multisecant_trial_used || iter%25==0))
+                    std::cerr << "MULTISECANT_PREDICTOR iteration=" << iter
+                              << " method=" << (controls.nonlinear_multisecant.method==
+                                  NonlinearMultisecantMethod::ANDERSON?"ANDERSON":"NGMRES")
+                              << " applied=" << multisecant_trial_used
+                              << " history=" << multisecant_history.size()
+                              << " predictor_step=" << multisecant_proposal.relative_step
+                              << " physical_momentum=" << h.momentum_equation_residual_rhs_active_component_max
+                              << " continuity=" << h.continuity_normalized << '\n';
+            }
             if (controls.sst_runtime) {
                 for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
                     mu_eff[cell] = controls.density *

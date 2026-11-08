@@ -661,6 +661,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_picard_physical_globalization tests/unit/test_picard_physical_globalization.cpp)
     add_cfdx_test(test_tvd_deferred_defect_memory tests/unit/test_tvd_deferred_defect_memory.cpp)
     add_cfdx_test(test_tvd_secant_implicit tests/unit/test_tvd_secant_implicit.cpp)
+    add_cfdx_test(test_nonlinear_multisecant tests/unit/test_nonlinear_multisecant.cpp)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
     add_cfdx_test(test_matrix_characteristics tests/unit/test_matrix_characteristics.cpp)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
@@ -1164,6 +1165,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)
     add_cfdx_test(test_naca_paired_restart tests/validation/test_naca_paired_restart.cpp)
     add_cfdx_test(test_naca_farfield_flux_contract tests/validation/test_naca_farfield_flux_contract.cpp)
+    add_cfdx_test(test_inlet_outlet_velocity_faces tests/validation/test_inlet_outlet_velocity_faces.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_naca_wall_pressure_grid_audit
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_pressure_grid_audit.py)
@@ -1325,6 +1327,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
             LABELS "qualification;validation")
+        # Keep the evidence verifier's mutation tests: a physically unproved
+        # NACA result must not be promoted only because its executable exits 0.
         add_test(NAME test_cfdx_qualification_evidence_selftest
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_qualification_evidence_gate.py)
@@ -1782,6 +1786,12 @@ if(CFDX_BUILD_TESTS)
         tests/validation/test_production_boundary_wls_v6.cpp)
     set_tests_properties(test_production_boundary_wls_v6 PROPERTIES
         LABELS "verification;gradient;diffusion;pressure;geometry")
+    # Verify the physical Neumann (normal-gradient) face flux on skew meshes:
+    # never add a deferred non-orthogonal flux to a prescribed normal flux.
+    add_cfdx_test(test_neumann_skew_flux_equation
+        tests/validation/test_neumann_skew_flux_equation.cpp)
+    set_tests_properties(test_neumann_skew_flux_equation PROPERTIES
+        LABELS "verification;diffusion;boundary;geometry")
 endif()
 
 # TH-03 V9: opt-in pressure equilibration must not bypass the reusable

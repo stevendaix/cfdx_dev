@@ -721,6 +721,20 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
             active = active || gamma > 0.0;
         }
     }
+    // An explicitly prescribed boundary-face conductivity may be positive
+    // even when the bulk coefficient (and every cell coefficient) is zero.
+    // Such Dirichlet faces still need their non-orthogonal flux correction.
+    if (boundary_face_diffusion) {
+        const auto& own = mesh.ownership();
+        for (std::size_t face = 0; face < nf; ++face) {
+            const double gamma = (*boundary_face_diffusion)[face];
+            if (!(gamma >= 0.0) || !std::isfinite(gamma))
+                throw std::invalid_argument(
+                    "compute_nonorthogonal_diffusion_face_fluxes: invalid boundary diffusion");
+            if (own.neighbour(face) < 0)
+                active = active || gamma > 0.0;
+        }
+    }
     std::vector<double> flux(nf, 0.0);
     if (!active) return flux;
 
@@ -740,7 +754,9 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
                 continue;
             const auto bc = resolve_scalar_boundary_condition(
                 mesh, geometry, face, boundary_conditions, face_values, face_conditions);
-            if (bc.type == ScalarBoundaryType::ZERO_GRADIENT)
+            // Neumann already fixes the entire physical normal flux. The
+            // deferred non-orthogonal correction is only for Dirichlet faces.
+            if (bc.type != ScalarBoundaryType::FIXED_VALUE)
                 continue;
         }
 
@@ -941,6 +957,13 @@ inline ScalarEquation assemble_scalar_equation(
             diffusion_active = diffusion_active || gamma > 0.0;
         }
     }
+    // Boundary-face diffusion is an independent physical coefficient. Do
+    // not skip its skew correction merely because the bulk gamma is zero.
+    if (boundary_face_diffusion)
+        for (std::size_t face = 0; face < nf; ++face)
+            if (own.neighbour(face) < 0)
+                diffusion_active = diffusion_active ||
+                    (*boundary_face_diffusion)[face] > 0.0;
     bool needs_nonorthogonal_gradient = false;
     if (apply_nonorthogonal_correction && diffusion_active) {
         for (std::size_t face = 0; face < nf; ++face) {
@@ -953,7 +976,9 @@ inline ScalarEquation assemble_scalar_equation(
                 const auto bc = resolve_scalar_boundary_condition(
                     mesh, geometry, face, boundary_conditions,
                     face_values, face_conditions);
-                if (bc.type == ScalarBoundaryType::ZERO_GRADIENT)
+                // Do not reconstruct a prescribed Neumann normal flux: its
+                // non-orthogonal correction would violate the BC.
+                if (bc.type != ScalarBoundaryType::FIXED_VALUE)
                     continue;
             }
             const std::size_t owner = own.owner(face);

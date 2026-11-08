@@ -42,6 +42,7 @@ static Forces run(const std::string& path,std::size_t level,
         "CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST",
         "CFDX_NACA_EXPORT_CONVERGED_STATE_CSV",
         "CFDX_NACA_FACE_PROFILES_CSV",
+        "CFDX_NACA_RAW_WALL_FACES_CSV",
         "CFDX_NACA_FACE_TRACTION_RAW_CSV",
         "CFDX_NACA_PHYSICAL_HISTORY_CSV",
         "CFDX_NACA_MOMENTUM_BUDGET_CSV",
@@ -96,6 +97,18 @@ static Forces run(const std::string& path,std::size_t level,
     }();
     if (farfield_pressure_neumann && split_farfield)
         throw std::invalid_argument("farfield p-Neumann A/B only for unsplit patch");
+    // Experimental full face-resolved inletOutlet U on the split downstream
+    // patch; the condition is selected from previous accepted RC phi. No
+    // automatic qualification, especially not for N256 or the GCI.
+    const bool mixed_outlet = [] {
+        const char* raw = std::getenv("CFDX_NACA_MIXED_OUTLET");
+        if (!raw) return false;
+        if (std::string(raw) != "1")
+            throw std::invalid_argument("CFDX_NACA_MIXED_OUTLET expects 1");
+        return true;
+    }();
+    if (mixed_outlet && !split_farfield)
+        throw std::invalid_argument("mixed NACA inletOutlet requires split farfield mesh");
     VelocityBoundaryConditions ubc;
     if (split_farfield) {
         ubc["farfield_inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
@@ -157,6 +170,8 @@ static Forces run(const std::string& path,std::size_t level,
         c.pseudo_momentum.maximum_diagonal_fraction = fraction;
     }
     c.density=rho; c.kinematic_viscosity=nu;
+    if (mixed_outlet)
+        c.inlet_outlet_velocity_patches["farfield_outlet"] = {Uinf, 0.0, 0.0};
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
     // Precision-only A/B knob. Tightening the algebraic solve can expose a
     // nonlinear residual floor without changing ANY physical stop criterion.
@@ -219,6 +234,57 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("PICARD_GROWTH must be in [1,1.25]");
         c.picard_physical_globalization.maximum_window_growth = factor;
     }
+    // Experimental comparative study: multi-secant predictor on accepted
+    // (U,p,conservative Rhie-Chow face flux) states. Never a certificate.
+    if (const char* method=std::getenv("CFDX_NACA_MULTISECANT")) {
+        const std::string value(method);
+        if (value=="anderson")
+            c.nonlinear_multisecant.method=NonlinearMultisecantMethod::ANDERSON;
+        else if (value=="ngmres")
+            c.nonlinear_multisecant.method=NonlinearMultisecantMethod::NGMRES;
+        else
+            throw std::invalid_argument("CFDX_NACA_MULTISECANT requires anderson or ngmres");
+    }
+    if (const char* depth=std::getenv("CFDX_NACA_MULTISECANT_DEPTH")) {
+        if (c.nonlinear_multisecant.method==NonlinearMultisecantMethod::OFF)
+            throw std::invalid_argument("MULTISECANT_DEPTH requires MULTISECANT");
+        std::size_t used=0;
+        const auto value=std::stoul(depth,&used);
+        if (used!=std::string(depth).size() || value<2 || value>10)
+            throw std::invalid_argument("MULTISECANT_DEPTH expects integer 2..10");
+        c.nonlinear_multisecant.depth=value;
+    }
+    if (const char* start=std::getenv("CFDX_NACA_MULTISECANT_START")) {
+        if (c.nonlinear_multisecant.method==NonlinearMultisecantMethod::OFF)
+            throw std::invalid_argument("MULTISECANT_START requires MULTISECANT");
+        std::size_t used=0;
+        const auto value=std::stoul(start,&used);
+        if (used!=std::string(start).size() || value<3 || value>100000)
+            throw std::invalid_argument("MULTISECANT_START expects integer >=3");
+        c.nonlinear_multisecant.start_iteration=value;
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_MULTISECANT_MIXING")) {
+        if (c.nonlinear_multisecant.method==NonlinearMultisecantMethod::OFF)
+            throw std::invalid_argument("MULTISECANT_MIXING requires MULTISECANT");
+        std::size_t used=0;
+        const double value=std::stod(raw,&used);
+        if (used!=std::string(raw).size() || !std::isfinite(value) ||
+            !(value>0 && value<=1))
+            throw std::invalid_argument("MULTISECANT_MIXING expects (0,1]");
+        c.nonlinear_multisecant.mixing=value;
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_MULTISECANT_STEP_CAP")) {
+        if (c.nonlinear_multisecant.method==NonlinearMultisecantMethod::OFF)
+            throw std::invalid_argument("MULTISECANT_STEP_CAP requires MULTISECANT");
+        std::size_t used=0;
+        const double value=std::stod(raw,&used);
+        if (used!=std::string(raw).size() || !std::isfinite(value) ||
+            value<0.1 || value>20.0)
+            throw std::invalid_argument("MULTISECANT_STEP_CAP expects [0.1,20]");
+        c.nonlinear_multisecant.maximum_step_multiplier=value;
+    }
+    validate_nonlinear_multisecant(c.nonlinear_multisecant);
+
     if (const char* raw = std::getenv("CFDX_NACA_TVD_DEFECT_MEMORY")) {
         const std::string value(raw);
         std::size_t count = 0;
@@ -255,16 +321,16 @@ static Forces run(const std::string& path,std::size_t level,
         std::size_t used=0;
         const std::string value(raw);
         const double tol=std::stod(value,&used);
-        if (used!=value.size() || !std::isfinite(tol) || tol<1e-14 || tol>1e-6)
-            throw std::invalid_argument("NACA AB linear tolerance must be in [1e-14,1e-6]");
+        if (used!=value.size() || !std::isfinite(tol) || tol<1e-14 || tol>1e-10)
+            throw std::invalid_argument("NACA AB linear tolerance must be in [1e-14,1e-10]");
         c.linear_tolerance=tol;
     }
     if (const char* raw=std::getenv("CFDX_NACA_AB_PRESSURE_LINEAR_TOLERANCE")) {
         std::size_t used=0;
         const std::string value(raw);
         const double tol=std::stod(value,&used);
-        if (used!=value.size() || !std::isfinite(tol) || tol<1e-14 || tol>1e-6)
-            throw std::invalid_argument("NACA AB pressure linear tolerance must be in [1e-14,1e-6]");
+        if (used!=value.size() || !std::isfinite(tol) || tol<1e-14 || tol>1e-10)
+            throw std::invalid_argument("NACA AB pressure linear tolerance must be in [1e-14,1e-10]");
         c.pressure_linear_tolerance=tol;
     }
     c.convergence.max_iterations=max_iterations;
@@ -377,6 +443,31 @@ static Forces run(const std::string& path,std::size_t level,
                   << '|' << c.pseudo_momentum.enabled
                   << '|' << c.pseudo_momentum.maximum_diagonal_fraction
                   << '|' << c.v19_full_pressure_flux_step;
+    // Preserve checkpoint compatibility when the experimental mode is OFF.
+    // Only opt-in to a different physical case identity when it is enabled.
+    if (mixed_outlet) case_contract << "|mixed_outlet=1";
+    if (c.picard_physical_globalization.enabled)
+        case_contract << "|picard_globalization=1:"
+                      << c.picard_physical_globalization.sufficient_decrease << ':'
+                      << c.picard_physical_globalization.nonmonotone_window << ':'
+                      << c.picard_physical_globalization.maximum_window_growth;
+    if (c.tvd_deferred_memory.enabled)
+        case_contract << "|tvd_memory=1:"
+                      << c.tvd_deferred_memory.previous_weight << ':'
+                      << c.tvd_deferred_memory.oscillation_only << ':'
+                      << c.tvd_deferred_memory.recursive;
+    if (c.tvd_secant_implicit.enabled)
+        case_contract << "|tvd_secant=1:"
+                      << c.tvd_secant_implicit.spectral_radius_cap;
+    if (c.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF) {
+        const auto& m = c.nonlinear_multisecant;
+        case_contract << "|multisecant=" << static_cast<int>(m.method)
+                      << ':' << m.depth << ':' << m.start_iteration
+                      << ':' << m.regularization << ':' << m.mixing
+                      << ':' << m.maximum_coefficient
+                      << ':' << m.maximum_step_multiplier
+                      << ':' << m.maximum_physical_growth;
+    }
     for (const char* patch_name : {"farfield", "farfield_inlet", "farfield_outlet",
                                   "airfoil", "front", "back"}) {
         const auto ub = ubc.find(patch_name);
@@ -604,7 +695,8 @@ static Forces run(const std::string& path,std::size_t level,
         face_budget_output << "iteration,component,rank,cell,x,y,z,"
             "convection,viscous,transpose_viscous,pressure,body_force,"
             "bounded_divergence,mass_divergence,collocated_difference,"
-            "physical_residual,bounded_operator_residual,worst_residual\n";
+            "physical_residual,bounded_operator_residual,worst_residual,"
+            "temporal,algebraic_residual,matrix_face_difference,matrix_face_scale\n";
         std::size_t all_cells = 0;
         if (const char* selection = std::getenv("CFDX_NACA_MOMENTUM_BUDGET_ALL_CELLS")) {
             if (std::string(selection) != "1")
@@ -640,7 +732,10 @@ static Forces run(const std::string& path,std::size_t level,
                     << ',' << b.collocated_difference
                     << ',' << b.physical_residual
                     << ',' << b.bounded_operator_residual
-                    << ',' << budget.worst_absolute_residual << '\n';
+                    << ',' << budget.worst_absolute_residual
+                    << ',' << b.temporal << ',' << b.algebraic_residual
+                    << ',' << b.matrix_face_difference
+                    << ',' << b.matrix_face_scale << '\n';
             }
             face_budget_output.flush();
             if (!face_budget_output)
@@ -783,7 +878,9 @@ static Forces run(const std::string& path,std::size_t level,
                "momentum_z_rhs_relative,momentum_component_max,"
                "velocity_change_inf,pressure_change_inf,pressure_residual,"
                "alpha_u,alpha_p,pseudo_cfl,nonlinear_metric,"
-               "algorithm,pseudo_capped_cells\n";
+               "algorithm,pseudo_capped_cells,"
+               "multisecant_method,multisecant_proposed,multisecant_accepted,"
+               "multisecant_relative_step,multisecant_estimated_objective\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -819,7 +916,13 @@ static Forces run(const std::string& path,std::size_t level,
                 << h.nonlinear_convergence_metric << ','
                 << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
                         ? "SIMPLEC" : "SIMPLE") << ','
-                << h.v17_pseudo_capped_cells << '\n';
+                << h.v17_pseudo_capped_cells << ','
+                << (c.nonlinear_multisecant.method==NonlinearMultisecantMethod::ANDERSON
+                    ? "ANDERSON" : c.nonlinear_multisecant.method==NonlinearMultisecantMethod::NGMRES
+                    ? "NGMRES" : "OFF") << ','
+                << h.multisecant_proposed << ',' << h.multisecant_accepted << ','
+                << h.multisecant_relative_step << ','
+                << h.multisecant_estimated_objective << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };
@@ -976,6 +1079,20 @@ static Forces run(const std::string& path,std::size_t level,
         face_profiles << std::setprecision(17);
         face_profiles << "face,x_over_c,y_over_c,Cp,Cf_tangent,Cd_pressure_face,Cd_viscous_face\n";
     }
+    // Raw wall traction values: an independent Python integration can audit
+    // the C++ force sum and its pressure/viscous decomposition face by face.
+    // This is exported ONLY after a physically accepted solve.
+    std::ofstream raw_wall_faces;
+    if (const char* output = std::getenv("CFDX_NACA_RAW_WALL_FACES_CSV")) {
+        if (!face_traction || std::string(output).empty())
+            throw std::invalid_argument("raw wall-face evidence requires face traction and a path");
+        raw_wall_faces.open(output);
+        if (!raw_wall_faces)
+            throw std::runtime_error("cannot open raw NACA wall-face evidence CSV");
+        raw_wall_faces << std::setprecision(std::numeric_limits<double>::max_digits10);
+        raw_wall_faces << "face,x,y,z,nx,ny,nz,area,pressure,tau_n_x,tau_n_y,tau_n_z,"
+                          "dynamic_pressure,reference_area,reference_chord,x_ref,y_ref\n";
+    }
     std::ofstream face_traction_raw;
     if (const char* output = std::getenv("CFDX_NACA_FACE_TRACTION_RAW_CSV")) {
         if (!face_traction || std::string(output).empty())
@@ -1022,6 +1139,15 @@ static Forces run(const std::string& path,std::size_t level,
             // the returned traction is the physically authoritative vector.
             const double face_txv = wall.viscous_on_fluid_normal.x;
             const double face_tyv = wall.viscous_on_fluid_normal.y;
+            if (raw_wall_faces)
+                raw_wall_faces << f << ',' << geometry.face_centres[f].x << ','
+                               << geometry.face_centres[f].y << ','
+                               << geometry.face_centres[f].z << ','
+                               << n.x << ',' << n.y << ',' << n.z << ','
+                               << Sf.mag() << ',' << pp << ','
+                               << face_txv << ',' << face_tyv << ",0,"
+                               << q << ',' << chord << ',' << chord
+                               << ",0.25,0\n";
             const double tx = (pp*n.x-face_txv)*Sf.mag();
             const double ty = (pp*n.y-face_tyv)*Sf.mag();
             Fx += tx; Fy += ty;
@@ -1071,6 +1197,11 @@ static Forces run(const std::string& path,std::size_t level,
         Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
         Mz+=r.x*ty-r.y*tx;
+    }
+    if (raw_wall_faces) {
+        raw_wall_faces.flush();
+        if (!raw_wall_faces)
+            throw std::runtime_error("failed writing raw wall-face evidence");
     }
     // Independent, experimental two-depth wall-shear diagnostic. Does not
     // change the qualified force coefficient or hide missing near-wall cells.
