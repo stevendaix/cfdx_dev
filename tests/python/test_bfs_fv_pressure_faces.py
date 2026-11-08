@@ -93,6 +93,7 @@ def test_zero_refinement_reports_both_gates_and_no_physics():
 
 def test_native_capture_checksum_is_recomputed_not_trusted(tmp_path):
     import struct
+
     from audit_bfs_fv_pressure_faces import verify_capture_checksum
     from seed_bfs_pressure_from_capture import read_capture
 
