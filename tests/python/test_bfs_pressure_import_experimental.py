@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from pathlib import Path
 
 import h5py
 import numpy as np
@@ -68,7 +67,7 @@ def run(root, case_path, extra=()):
 
 
 def variant(case, tmp_path, kind):
-    root, original = case
+    _root, original = case
     target = tmp_path / "seeded.cfdx.h5"
     shutil.copy2(original, target)
     with h5py.File(target, "r+") as file:
