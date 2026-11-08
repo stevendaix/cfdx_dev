@@ -143,6 +143,8 @@ def test_full_synthetic_three_grid_chain_exercises_cross_family_gci(tmp_path):
                 "mesh": str(mesh.resolve()), "scheme": "TVD_VANLEER",
                 "linear_tolerance": 1e-12, "wall_traction": "FACE_WLS",
                 "nonlinear_tolerance": 1e-8, "exit_code": 0,
+                "pressure_boundary_policy": "ZERO_NORMAL_GRADIENT",
+                "kinematic_face_flux_certified": True,
             }))
             with (run / "force.csv").open("w", newline="") as file:
                 writer = csv.DictWriter(file, fieldnames=(
@@ -193,3 +195,39 @@ def test_face_flux_restart_pair_is_fail_closed(tmp_path):
         run_case(mesh, tmp_path / "result", Path(sys.executable), 10, 10,
                  initial_state=state,
                  initial_face_flux=tmp_path / "nonexistent.csv")
+
+
+def test_pressure_bc_policy_must_be_explicit_and_flux_certified(tmp_path):
+    """Direct run-metadata preflight protects against silent mixing at GCI entry."""
+    name = "quasi_isotropic"
+    folder = tmp_path / "families" / name
+    folder.mkdir(parents=True)
+    rows = quality_rows()
+    (folder / "quality.json").write_text(json.dumps(rows))
+    for n in (64, 128, 256):
+        location = tmp_path / "runs" / name / f"n{n}"
+        location.mkdir(parents=True)
+        (location / "run_summary.json").write_text(json.dumps({
+            "mesh": str((folder / f"naca0012_{name}_n{n}.h5").resolve()),
+            "scheme": "TVD_VANLEER", "linear_tolerance": 1e-12,
+            "wall_traction": "FACE_WLS", "nonlinear_tolerance": 1e-8,
+            "exit_code": 0, "kinematic_face_flux_certified": True,
+            "pressure_boundary_policy": "ZERO_NORMAL_GRADIENT",
+        }))
+    # No force/history fixtures needed: a different boundary contract should
+    # be rejected before any physical certificate is inspected.
+    target = tmp_path / "runs" / name / "n128" / "run_summary.json"
+    base = json.loads(target.read_text())
+    for mutation in (
+        {"pressure_boundary_policy": "DIRICHLET_ZERO"},
+        {"pressure_boundary_policy": None},
+        {"kinematic_face_flux_certified": False},
+    ):
+        altered = {**base, **mutation}
+        target.write_text(json.dumps(altered))
+        result = GCI.inspect_family(name, folder, tmp_path / "runs",
+                                    Path(sys.executable))
+        assert result["status"] == "BLOCKED"
+        assert any("N128:" in reason for reason in result["reasons"]) or (
+            "mixed farfield pressure policies across N64/N128/N256"
+            in result["reasons"])

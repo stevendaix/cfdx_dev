@@ -7,6 +7,7 @@
 #include "cfdx/physics/wall_shear_quadratic_fit.h"
 #include "naca_qualification_state_io.h"
 #include "naca_paired_restart.h"
+#include "naca_farfield_flux_contract.h"
 #include <cstdlib>
 #include <cstdio>
 #include <cerrno>
@@ -84,6 +85,17 @@ static Forces run(const std::string& path,std::size_t level,
                                 mesh.boundary().n_patches() &&
                                 mesh.boundary().find("farfield_outlet") <
                                 mesh.boundary().n_patches();
+    // A/B only: retain a prescribed velocity with pressure zero normal
+    // derivative at all farfield faces (pressure gauge sets the constant).
+    const bool farfield_pressure_neumann = [] {
+        const char* raw = std::getenv("CFDX_NACA_FARFIELD_PRESSURE_NEUMANN");
+        if (!raw) return false;
+        if (std::string(raw) != "1")
+            throw std::invalid_argument("CFDX_NACA_FARFIELD_PRESSURE_NEUMANN expects 1");
+        return true;
+    }();
+    if (farfield_pressure_neumann && split_farfield)
+        throw std::invalid_argument("farfield p-Neumann A/B only for unsplit patch");
     VelocityBoundaryConditions ubc;
     if (split_farfield) {
         ubc["farfield_inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
@@ -101,7 +113,8 @@ static Forces run(const std::string& path,std::size_t level,
         pbc["farfield_inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
         pbc["farfield_outlet"]={ScalarBoundaryType::FIXED_VALUE,0,0};
     } else {
-        pbc["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+        pbc["farfield"]={farfield_pressure_neumann
+            ? ScalarBoundaryType::ZERO_GRADIENT : ScalarBoundaryType::FIXED_VALUE,0,0};
     }
     pbc["airfoil"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
     pbc["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
@@ -270,6 +283,42 @@ static Forces run(const std::string& path,std::size_t level,
     c.diagnostics.iteration_trace_frequency=growth_guard ? 10 : 200;
 
     const auto geometry=build_fv_geometry(mesh);
+    // Fingerprint the BCs and numerical policy. This prevents a same-mesh
+    // accepted U,p,phi snapshot from being misused under a different farfield
+    // or transport/pressure scheme. The checkpoint is not a convergence gate.
+    std::ostringstream case_contract;
+    case_contract << std::setprecision(17)
+                  << "CFDX_NACA_RE1000_A0_POLICY_V3|" << rho << '|' << nu
+                  << '|' << static_cast<int>(c.algorithm)
+                  << '|' << static_cast<int>(c.convection_scheme)
+                  << '|' << c.use_bounded_convection
+                  << '|' << c.convection_continuation.enabled
+                  << '|' << c.linear_tolerance
+                  << '|' << c.coupling.alpha_u << '|' << c.coupling.alpha_p
+                  << '|' << c.pressure_reference_cell << '|' << c.pressure_reference_value
+                  << '|' << c.pressure_skew_corrected_gradient
+                  << '|' << c.pressure_projected_face_interpolation
+                  << '|' << c.pressure_continuity_line_search.enabled
+                  << '|' << c.pseudo_momentum.enabled
+                  << '|' << c.pseudo_momentum.maximum_diagonal_fraction
+                  << '|' << c.v19_full_pressure_flux_step;
+    for (const char* patch_name : {"farfield", "farfield_inlet", "farfield_outlet",
+                                  "airfoil", "front", "back"}) {
+        const auto ub = ubc.find(patch_name);
+        if (ub != ubc.end()) {
+            const auto& b = ub->second;
+            case_contract << "|U:" << patch_name << ':' << static_cast<int>(b.type)
+                          << ':' << b.value.x << ':' << b.value.y << ':' << b.value.z;
+        }
+        const auto pb = pbc.find(patch_name);
+        if (pb != pbc.end()) {
+            const auto& b = pb->second;
+            case_contract << "|p:" << patch_name << ':' << static_cast<int>(b.type)
+                          << ':' << b.value << ':' << b.gradient;
+        }
+    }
+    const std::string case_identity = cfdx::validation::naca_stable_case_id(
+        case_contract.str());
     // Optional accepted-state, cell-targeted per-face TVD/RC/HbyA trace.
     std::ofstream same_state_output;
     if (const char* path=std::getenv("CFDX_NACA_SAME_STATE_FACE_CSV")) {
@@ -423,7 +472,7 @@ static Forces run(const std::string& path,std::size_t level,
         if (n_read!=raw.size() || interval < 10 || interval > 10000)
             throw std::invalid_argument("NACA paired checkpoint frequency out of [10,10000]");
         c.accepted_iteration_callback = [manifest_path=std::string(manifest),
-                                         interval, &geometry](
+                                         interval, &geometry, case_identity](
             std::size_t iteration, const Mesh& accepted_mesh,
             const auto& velocity, const auto& pressure, const auto& phi,
             double momentum_reference, double nonlinear_reference) {
@@ -436,7 +485,7 @@ static Forces run(const std::string& path,std::size_t level,
                                   velocity.component_data(1)[i],pressure(i)});
             cfdx::validation::naca_write_paired_checkpoint_atomic(
                 manifest_path,iteration,cells,accepted_mesh,geometry,phi,
-                momentum_reference,nonlinear_reference);
+                momentum_reference,nonlinear_reference,case_identity);
             std::cout << "NACA_PAIRED_CHECKPOINT iteration=" << iteration
                       << " status=ACCEPTED_NOT_PHYSICALLY_QUALIFIED"
                       << " faces=" << phi.size() << "\n";
@@ -532,8 +581,21 @@ static Forces run(const std::string& path,std::size_t level,
         if (std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV") ||
             std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV"))
             throw std::invalid_argument("NACA paired restart is mutually exclusive with legacy inputs");
+        const bool allow_legacy = [] {
+            const char* raw = std::getenv("CFDX_NACA_ALLOW_LEGACY_PAIRED_V2");
+            if (!raw) return false;
+            if (std::string(raw) != "1")
+                throw std::invalid_argument("legacy checkpoint admission expects 1");
+            return true;
+        }();
+        if (allow_legacy && farfield_pressure_neumann)
+            throw std::invalid_argument(
+                "cannot replay an untagged legacy checkpoint under changed farfield BC");
         const auto snapshot=cfdx::validation::naca_read_paired_checkpoint(
-            manifest,mesh,geometry);
+            manifest,mesh,geometry,case_identity,allow_legacy);
+        if (snapshot.physics_identity.empty())
+            std::cerr << "NACA_LEGACY_RESTART: PHYSICS_UNVERIFIED explicit opt-in; "
+                         "do not claim exact replay across configurations\n";
         for (std::size_t i=0;i<snapshot.cells.size();++i) {
             U.component_data(0)[i]=snapshot.cells[i].ux;
             U.component_data(1)[i]=snapshot.cells[i].uy;
@@ -590,8 +652,11 @@ static Forces run(const std::string& path,std::size_t level,
         cfdx::validation::add_pressure_neumann(strict_bc, "farfield_inlet", 0.0);
     }
     cfdx::validation::add_velocity_dirichlet(strict_bc, "airfoil", {0.0, 0.0, 0.0});
-    cfdx::validation::add_pressure_dirichlet(
-        strict_bc, split_farfield ? "farfield_outlet" : "farfield", 0.0);
+    if (farfield_pressure_neumann)
+        cfdx::validation::add_pressure_neumann(strict_bc, "farfield", 0.0);
+    else
+        cfdx::validation::add_pressure_dirichlet(
+            strict_bc, split_farfield ? "farfield_outlet" : "farfield", 0.0);
     cfdx::validation::add_pressure_neumann(strict_bc, "airfoil", 0.0);
     const auto validation_flux = cfdx::validation::make_validation_face_flux(mesh, geometry, U);
     cfdx::validation::exercise_new_velocity_bc_contract(
@@ -675,6 +740,39 @@ static Forces run(const std::string& path,std::size_t level,
               << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
                      ? "SIMPLEC" : "SIMPLE")
               << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
+    }
+
+    // Independent boundary kinematic contract. Evaluate directly on the
+    // accepted authoritative Rhie-Chow flux, not on a U-derived proxy.
+    // Leave default qualification unchanged; opt-in rejects previously
+    // misleading total-force certificates when face fluxes contradict a
+    // prescribed-velocity farfield patch.
+    if (!split_farfield) {
+        const auto flux_audit=cfdx::validation::audit_naca_fixed_velocity_farfield(
+            mesh, geometry, solve.authoritative_mass_flux,
+            "farfield", {Uinf,0.0,0.0}, rho);
+        const bool matched=cfdx::validation::naca_kinematic_face_flux_matches(
+            flux_audit);
+        std::cout << std::setprecision(17)
+                  << "NACA_FARFIELD_FLUX_AUDIT"
+                  << " faces=" << flux_audit.inspected_faces
+                  << " signed_mismatch=" << flux_audit.mismatch_signed
+                  << " mismatch_l1=" << flux_audit.mismatch_l1
+                  << " mismatch_linf=" << flux_audit.mismatch_linf
+                  << " relative_l1=" << flux_audit.relative_l1()
+                  << " worst_face=" << flux_audit.worst_face
+                  << " kinematic_match=" << matched
+                  << " physically_converged=" << solve.converged << '\n';
+        const char* strict=std::getenv("CFDX_NACA_REQUIRE_KINEMATIC_FACE_FLUX");
+        if (strict && std::string(strict)!="1")
+            throw std::invalid_argument(
+                "CFDX_NACA_REQUIRE_KINEMATIC_FACE_FLUX expects 1");
+        // At a Neumann-pressure / fixed-velocity farfield this identity is
+        // mandatory; with the old double Dirichlet BC the strict gate is
+        // intentionally opt-in so its failure can be diagnosed A/B.
+        if ((farfield_pressure_neumann || strict) && !matched)
+            throw std::runtime_error(
+                "NACA prescribed-velocity face flux does not match the physical boundary condition");
     }
 
     if(!solve.converged) {

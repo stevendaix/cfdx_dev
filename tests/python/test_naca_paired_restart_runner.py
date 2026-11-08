@@ -117,3 +117,20 @@ def test_comparator_rejects_extra_rows_even_with_valid_checksums(tmp_path):
     b = make_checkpoint(tmp_path / "b", extra=True)
     with pytest.raises(ValueError, match="row-count mismatch"):
         compare(a, b)
+
+
+def test_runner_refuses_success_without_positive_flux_audit(tmp_path, monkeypatch):
+    mesh = tmp_path / "mesh.h5"
+    mesh.touch()
+    exe = tmp_path / "binary"
+    exe.touch()
+    monkeypatch.setattr(RUNNER.subprocess, "run",
+                         lambda argv, **kwargs: SimpleNamespace(returncode=0))
+    output = tmp_path / "result"
+    status = run_case(mesh, output, exe, 10, 10, farfield_pressure_neumann=True)
+    assert status == 2
+    summary = json.loads((output / "run_summary.json").read_text())
+    assert summary["pressure_boundary_policy"] == "ZERO_NORMAL_GRADIENT"
+    assert summary["exit_code"] == 2
+    assert summary["kinematic_face_flux_certified"] is False
+    assert "FAIL missing positive" in (output / "run.log").read_text()

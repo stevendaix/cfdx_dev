@@ -17,7 +17,9 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
              export_converged_face_flux: Path | None = None,
              initial_paired_checkpoint: Path | None = None,
              checkpoint_every: int = 300,
-             stagnation_diagnostic_only: bool = False):
+             stagnation_diagnostic_only: bool = False,
+             farfield_pressure_neumann: bool = False,
+             require_kinematic_face_flux: bool = False):
     if checkpoint_every < 10 or checkpoint_every > 10000:
         raise ValueError("checkpoint interval must be in [10,10000]")
     if initial_paired_checkpoint is not None and (
@@ -57,6 +59,15 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
     })
     if stagnation_diagnostic_only:
         env["CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY"] = "1"
+    # The qualification contract owns these toggles. Do not inherit an
+    # ambient BC mode unnoticed from the terminal/CI runner environment.
+    env.pop("CFDX_NACA_FARFIELD_PRESSURE_NEUMANN", None)
+    env.pop("CFDX_NACA_REQUIRE_KINEMATIC_FACE_FLUX", None)
+    if farfield_pressure_neumann:
+        env["CFDX_NACA_FARFIELD_PRESSURE_NEUMANN"] = "1"
+        env["CFDX_NACA_REQUIRE_KINEMATIC_FACE_FLUX"] = "1"
+    elif require_kinematic_face_flux:
+        env["CFDX_NACA_REQUIRE_KINEMATIC_FACE_FLUX"] = "1"
     if initial_paired_checkpoint is not None:
         env["CFDX_NACA_IMPORT_PAIRED_MANIFEST"] = str(
             initial_paired_checkpoint.resolve())
@@ -82,14 +93,40 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
             check=False,
         )
     elapsed = time.monotonic() - start
+    # A subprocess exit 0 cannot by itself certify a boundary contract.
+    # Demand the actual independent face-flux audit emitted by the NACA solver,
+    # on the same run that reported physical convergence.
+    audit_confirmed = False
+    if proc.returncode == 0:
+        with (output / "run.log").open(encoding="utf-8",
+                                       errors="replace") as audit_log:
+            audit_confirmed = any(
+                line.startswith("NACA_FARFIELD_FLUX_AUDIT ") and
+                "kinematic_match=1" in line.split() and
+                "physically_converged=1" in line.split()
+                for line in audit_log
+            )
+    verified_exit_code = proc.returncode
+    if (farfield_pressure_neumann or require_kinematic_face_flux) and (
+            proc.returncode == 0 and not audit_confirmed):
+        verified_exit_code = 2
+        with (output / "run.log").open("a", encoding="utf-8") as log:
+            log.write("NACA_RUNNER: FAIL missing positive independent kinematic"
+                      " face-flux audit\n")
     (output / "run_summary.json").write_text(
         json.dumps({
             "mesh": str(mesh), "scheme": "TVD_VANLEER",
             "linear_tolerance": 1e-12, "wall_traction": "FACE_WLS",
             "stagnation_diagnostic_only": stagnation_diagnostic_only,
             "nonlinear_tolerance": 1e-8, "max_iter": maxit,
+            "pressure_boundary_policy": ("ZERO_NORMAL_GRADIENT"
+                                         if farfield_pressure_neumann
+                                         else "DIRICHLET_ZERO"),
+            "kinematic_face_flux_certified": bool(
+                farfield_pressure_neumann or require_kinematic_face_flux
+            ) and audit_confirmed,
             "runtime_seconds": round(elapsed, 2),
-            "exit_code": proc.returncode,
+            "exit_code": verified_exit_code,
             "certificate_present": (output / "force.csv").exists(),
             "history_present": (output / "history.csv").exists(),
             "restart_state_used_as_initial_guess": (
@@ -112,9 +149,9 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
                 export_converged_face_flux
                 and export_converged_face_flux.is_file()),
         }, indent=2) + "\n")
-    print(f"{mesh.stem} exit={proc.returncode} runtime={elapsed:.2f}s "
+    print(f"{mesh.stem} exit={verified_exit_code} runtime={elapsed:.2f}s "
           f"certificate={(output / 'force.csv').exists()}", flush=True)
-    return proc.returncode
+    return verified_exit_code
 
 
 if __name__ == "__main__":
@@ -136,6 +173,14 @@ if __name__ == "__main__":
         "--stagnation-diagnostic-only", action="store_true",
         help="do not stop at stagnation; final physical criteria unchanged")
     parser.add_argument(
+        "--farfield-pressure-neumann", action="store_true",
+        help="experimental prescribed U, zero normal p gradient"
+             " (strict flux gate)")
+    parser.add_argument(
+        "--require-kinematic-face-flux", action="store_true",
+        help="fail closed unless every prescribed-velocity face flux"
+             " matches U BC")
+    parser.add_argument(
         "--initial-face-flux", type=Path,
         help="same-mesh conservative face flux paired with --initial-state")
     parser.add_argument(
@@ -147,4 +192,5 @@ if __name__ == "__main__":
         args.initial_state, args.export_converged_state,
         args.initial_face_flux, args.export_converged_face_flux,
         args.initial_paired_checkpoint, args.checkpoint_every,
-        args.stagnation_diagnostic_only))
+        args.stagnation_diagnostic_only,
+        args.farfield_pressure_neumann, args.require_kinematic_face_flux))

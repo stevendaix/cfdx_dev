@@ -949,6 +949,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     target_compile_options(test_naca0012_qualification PRIVATE -O1)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_farfield_face_flux_audit
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_farfield_face_flux.py)
+        set_tests_properties(test_naca_farfield_face_flux_audit PROPERTIES
+            LABELS "boundary;momentum;diagnostic;regression" TIMEOUT 30)
         add_test(NAME test_naca_mesh_similarity_gate
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)
@@ -1155,6 +1160,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_wall_shear_quadratic_fit tests/validation/test_wall_shear_quadratic_fit.cpp)
     add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)
     add_cfdx_test(test_naca_paired_restart tests/validation/test_naca_paired_restart.cpp)
+    add_cfdx_test(test_naca_farfield_flux_contract tests/validation/test_naca_farfield_flux_contract.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_naca_wall_pressure_grid_audit
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_pressure_grid_audit.py)

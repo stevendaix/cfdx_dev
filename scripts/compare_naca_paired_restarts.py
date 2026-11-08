@@ -20,11 +20,17 @@ def fnv64(path: Path) -> str:
 
 def load_manifest(path: Path) -> dict:
     lines = path.read_text().splitlines()
-    if len(lines) != 2 or lines[0] != "CFDX_NACA_PAIRED_V2":
+    if len(lines) != 2 or lines[0] not in (
+            "CFDX_NACA_PAIRED_V2", "CFDX_NACA_PAIRED_V3"):
         raise ValueError("invalid NACA paired-checkpoint manifest")
+    v3 = lines[0] == "CFDX_NACA_PAIRED_V3"
     fields = lines[1].split(",")
-    if len(fields) != 9:
+    if len(fields) != (10 if v3 else 9):
         raise ValueError("invalid paired manifest column count")
+    physics_identity = fields[9] if v3 else None
+    if v3 and (len(physics_identity) != 16 or
+               any(c not in "0123456789abcdef" for c in physics_identity)):
+        raise ValueError("invalid V3 physics identity")
     step, cells, faces = (int(t) for t in fields[:3])
     momentum_reference, monitor_reference = map(float, fields[3:5])
     if step <= 0 or cells <= 0 or faces <= 0 or not all(
@@ -35,12 +41,13 @@ def load_manifest(path: Path) -> dict:
         if not filename or ".." in filename or Path(filename).name != filename:
             raise ValueError("unsafe payload path")
     paths = [path.parent / fields[5], path.parent / fields[6]]
-    for fp, expected in zip(paths, fields[7:]):
+    for fp, expected in zip(paths, fields[7:9]):
         if fnv64(fp) != expected:
             raise ValueError(f"checkpoint checksum mismatch: {fp}")
     return dict(iteration=step, n_cells=cells, n_faces=faces,
                 momentum_reference=momentum_reference,
-                nonlinear_reference=monitor_reference, files=paths)
+                nonlinear_reference=monitor_reference, files=paths,
+                physics_identity=physics_identity)
 
 
 def compare(a: Path, b: Path, *, tolerance: float = 1e-12) -> dict:
@@ -49,7 +56,7 @@ def compare(a: Path, b: Path, *, tolerance: float = 1e-12) -> dict:
     left, right = load_manifest(a), load_manifest(b)
     if any(left[k] != right[k] for k in (
             "iteration", "n_cells", "n_faces", "momentum_reference",
-            "nonlinear_reference")):
+            "nonlinear_reference", "physics_identity")):
         raise ValueError(
             "different iteration, mesh count, or convergence normalization")
     results = {}

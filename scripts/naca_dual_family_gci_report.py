@@ -31,7 +31,7 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def physical_setup(exe: Path) -> dict:
+def physical_setup(exe: Path, pressure_boundary_policy: str) -> dict:
     return {
         "airfoil": "NACA0012_finite_thickness_TE",
         "reynolds": 1000.0,
@@ -39,7 +39,7 @@ def physical_setup(exe: Path) -> dict:
         "chord": 1.0,
         "farfield_radius_chords": 20.0,
         "velocity_boundary": "Dirichlet_Uinf_farfield_no_slip_airfoil",
-        "pressure_boundary": "farfield_p_zero_airfoil_dp_dn_zero",
+        "pressure_boundary": pressure_boundary_policy,
         "convection_scheme": "TVD_VANLEER",
         "wall_shear_method": "FACE_WLS",
         "solver_revision": "bin-sha256:" + sha256(exe),
@@ -124,6 +124,8 @@ def inspect_family(family: str, family_dir: Path, runs: Path,
         result["reasons"].append("geometry: " + str(exc))
     certs = {}
     histories = {}
+    verified_pressure_policies = set()
+    policies_by_level = {}
     for n in LEVELS:
         location = runs / family / f"n{n}"
         meta = location / "run_summary.json"
@@ -140,6 +142,15 @@ def inspect_family(family: str, family_dir: Path, runs: Path,
                         or m.get("nonlinear_tolerance") != 1e-8):
                     raise ValueError(
                         "solver failed or changed numerical contract")
+                policy = m.get("pressure_boundary_policy")
+                if policy not in ("DIRICHLET_ZERO", "ZERO_NORMAL_GRADIENT"):
+                    raise ValueError(
+                        "missing/unknown explicit farfield pressure policy")
+                if m.get("kinematic_face_flux_certified") is not True:
+                    raise ValueError(
+                        "missing strict per-face kinematic flux proof")
+                verified_pressure_policies.add(policy)
+                policies_by_level[n] = policy
                 expected = family_dir / f"naca0012_{family}_n{n}.h5"
                 if Path(m["mesh"]).resolve() != expected.resolve():
                     raise ValueError("solver mesh does not match family")
@@ -164,7 +175,16 @@ def inspect_family(family: str, family_dir: Path, runs: Path,
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 result["reasons"].append(f"N{n}: {exc}")
         result["observations"].append(row)
-    if all(row["converged"] for row in result["observations"][:2]):
+    if len(verified_pressure_policies) > 1:
+        result["reasons"].append(
+            "mixed farfield pressure policies across N64/N128/N256")
+    result["pressure_boundary_policy"] = (
+        next(iter(verified_pressure_policies))
+        if len(verified_pressure_policies) == 1 else "UNVERIFIED_OR_MIXED")
+    if (all(row["converged"] for row in result["observations"][:2])
+            and policies_by_level.get(64) == policies_by_level.get(128)
+            and policies_by_level.get(64) in ("DIRICHLET_ZERO",
+                                              "ZERO_NORMAL_GRADIENT")):
         result["two_grid_assumed_order_only"] = assumed_order_two_grid(
             result["observations"][0], result["observations"][1])
     if len(certs) != 3 or result["reasons"]:
@@ -194,7 +214,8 @@ def inspect_family(family: str, family_dir: Path, runs: Path,
         return result
     result["status"] = "GCI_CANDIDATE"
     result["gci"] = certificate["gci"]["result"]["quantities"]
-    result["physical_setup"] = physical_setup(exe)
+    result["physical_setup"] = physical_setup(
+        exe, result["pressure_boundary_policy"])
     return result
 
 
@@ -227,6 +248,10 @@ def analyze(families: Path, runs: Path, exe: Path,
         else "SAME_WALL_PARAMETERIZATION_NON_IDENTICAL_NODES_NOT_VERIFIED"
     )
     result["causal_anisotropy_isolated"] = wall_nodes_identical
+    if a.get("pressure_boundary_policy") != b.get("pressure_boundary_policy"):
+        result["reasons"].append(
+            "incompatible pressure BC policy across mesh families")
+        return result
     if a["status"] != "GCI_CANDIDATE" or b["status"] != "GCI_CANDIDATE":
         result["reasons"].append(
             "two complete physically converged three-grid GCI candidates required")

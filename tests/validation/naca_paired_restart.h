@@ -4,8 +4,10 @@
 // a publication barrier. A crash cannot replace the last complete checkpoint
 // with a half-new U,p or face-flux file. Not a physical-convergence certificate.
 #include "naca_qualification_state_io.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <string>
 #include <cstdint>
 #include <filesystem>
 #include <iterator>
@@ -18,6 +20,7 @@ struct NacaPairedCheckpoint {
     double nonlinear_monitor_reference = 0.0;
     std::vector<NacaStateRow> cells;
     std::vector<double> mass_flux;
+    std::string physics_identity; // Empty only for explicitly admitted legacy V2.
 };
 
 inline std::string naca_file_fnv64(const std::filesystem::path& path) {
@@ -38,6 +41,20 @@ inline std::string naca_file_fnv64(const std::filesystem::path& path) {
     return out.str();
 }
 
+inline std::string naca_stable_case_id(const std::string& contract) {
+    // Unlike std::hash, FNV-1a is deterministic across library processes and
+    // compilers. This is a policy identity, NOT a cryptographic authentication.
+    std::uint64_t hash = UINT64_C(14695981039346656037);
+    for (char byte : contract) {
+        const auto c=static_cast<unsigned char>(byte);
+        hash ^= c;
+        hash *= UINT64_C(1099511628211);
+    }
+    std::ostringstream out;
+    out << std::hex << std::setw(16) << std::setfill('0') << hash;
+    return out.str();
+}
+
 inline bool naca_checkpoint_safe_name(const std::string& name) {
     if (name.empty() || name == "." || name == ".." || name.find("..") != std::string::npos)
         return false;
@@ -52,7 +69,8 @@ inline void naca_write_paired_checkpoint_atomic(
     const std::vector<NacaStateRow>& cells,
     const cfdx::core::Mesh& mesh, const cfdx::physics::FvGeometry& geometry,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
-    double momentum_reference, double nonlinear_monitor_reference) {
+    double momentum_reference, double nonlinear_monitor_reference,
+    const std::string& physics_identity = "") {
     namespace fs=std::filesystem;
     if (manifest_path.empty() || accepted_iteration == 0 ||
         cells.size() != mesh.n_cells() || mass_flux.size() != mesh.n_faces() ||
@@ -60,6 +78,12 @@ inline void naca_write_paired_checkpoint_atomic(
         !std::isfinite(nonlinear_monitor_reference) ||
         !(nonlinear_monitor_reference > 0.0))
         throw std::invalid_argument("NACA paired checkpoint: invalid shapes/iteration/path");
+    if (!physics_identity.empty() &&
+        (physics_identity.size() != 16 ||
+         !std::all_of(physics_identity.begin(), physics_identity.end(), [](char c) {
+             return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+         })))
+        throw std::invalid_argument("NACA paired checkpoint: invalid physics identity");
     const fs::path manifest(manifest_path);
     static std::atomic<std::uint64_t> generation{0};
     const auto nonce = std::to_string(
@@ -81,11 +105,14 @@ inline void naca_write_paired_checkpoint_atomic(
         std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
         if (!out) throw std::runtime_error("NACA checkpoint: cannot create manifest");
         out << std::setprecision(std::numeric_limits<double>::max_digits10)
-            << "CFDX_NACA_PAIRED_V2\n"
+            << (physics_identity.empty() ? "CFDX_NACA_PAIRED_V2\n"
+                                         : "CFDX_NACA_PAIRED_V3\n")
             << accepted_iteration << ',' << mesh.n_cells() << ',' << mesh.n_faces()
             << ',' << momentum_reference << ',' << nonlinear_monitor_reference
             << ',' << state_name << ',' << flux_name << ',' << state_hash
-            << ',' << flux_hash << '\n';
+            << ',' << flux_hash;
+        if (!physics_identity.empty()) out << ',' << physics_identity;
+        out << '\n';
         out.flush();
         if (!out) throw std::runtime_error("NACA checkpoint: cannot write manifest");
     }
@@ -95,16 +122,30 @@ inline void naca_write_paired_checkpoint_atomic(
 
 inline NacaPairedCheckpoint naca_read_paired_checkpoint(
     const std::string& manifest_path, const cfdx::core::Mesh& mesh,
-    const cfdx::physics::FvGeometry& geometry) {
+    const cfdx::physics::FvGeometry& geometry,
+    const std::string& expected_physics_identity = "",
+    bool explicitly_allow_legacy_v2 = false) {
     namespace fs=std::filesystem;
     std::ifstream in(manifest_path, std::ios::binary);
     if (!in) throw std::runtime_error("NACA paired checkpoint: manifest missing");
     std::string magic, line, extra;
-    if (!std::getline(in,magic) || magic != "CFDX_NACA_PAIRED_V2" ||
+    if (!std::getline(in,magic) ||
+        (magic != "CFDX_NACA_PAIRED_V2" && magic != "CFDX_NACA_PAIRED_V3") ||
         !std::getline(in,line) || std::getline(in,extra))
         throw std::invalid_argument("NACA paired checkpoint: invalid manifest schema");
     const auto parts=naca_csv_fields(line);
-    if (parts.size()!=9) throw std::invalid_argument("NACA checkpoint: invalid manifest fields");
+    const bool v3 = magic == "CFDX_NACA_PAIRED_V3";
+    if (parts.size() != (v3 ? 10 : 9))
+        throw std::invalid_argument("NACA checkpoint: invalid manifest fields");
+    if (v3) {
+        if (expected_physics_identity.empty() ||
+            parts[9] != expected_physics_identity)
+            throw std::invalid_argument(
+                "NACA checkpoint: physics/BC contract mismatch or not supplied");
+    } else if (!expected_physics_identity.empty() && !explicitly_allow_legacy_v2) {
+        throw std::invalid_argument(
+            "NACA checkpoint: legacy V2 does not certify boundary or solver physics");
+    }
     const auto strict_number=[](const std::string& value) {
         std::size_t consumed=0;
         const auto parsed=std::stoull(value, &consumed);
@@ -131,6 +172,7 @@ inline NacaPairedCheckpoint naca_read_paired_checkpoint(
     result.accepted_iteration=static_cast<std::size_t>(iteration);
     result.momentum_reference=momentum_reference;
     result.nonlinear_monitor_reference=nonlinear_reference;
+    result.physics_identity = v3 ? parts[9] : std::string{};
     result.cells=naca_read_state_csv(state_path.string(),geometry.cell_centres);
     result.mass_flux=naca_read_face_flux_csv(flux_path.string(),mesh,geometry);
     return result;

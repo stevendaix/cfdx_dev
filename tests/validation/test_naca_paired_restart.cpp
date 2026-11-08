@@ -60,6 +60,19 @@ int main() {
         // A new complete manifest atomically restores loadability.
         naca_write_paired_checkpoint_atomic(manifest,30,state,mesh,geom,phi,0.42,0.99);
         check(naca_read_paired_checkpoint(manifest,mesh,geom).accepted_iteration==30);
+        // V3 must bind the SAME boundary/numerical policy to each accepted
+        // checkpoint; a matching mesh alone cannot certify identical physics.
+        const auto id=naca_stable_case_id("fixed-U-p-Neumann|TVD-VANLEER|Re1000");
+        check(id.size()==16);
+        naca_write_paired_checkpoint_atomic(manifest,40,state,mesh,geom,phi,0.42,0.99,id);
+        const auto v3=naca_read_paired_checkpoint(manifest,mesh,geom,id);
+        check(v3.accepted_iteration==40 && v3.physics_identity==id);
+        check(rejects([&]{(void)naca_read_paired_checkpoint(manifest,mesh,geom); }));
+        check(rejects([&]{(void)naca_read_paired_checkpoint(
+            manifest,mesh,geom,naca_stable_case_id("fixed-U-p-Dirichlet|Re1000")); }));
+        naca_write_paired_checkpoint_atomic(manifest,50,state,mesh,geom,phi,0.42,0.99);
+        check(rejects([&]{(void)naca_read_paired_checkpoint(manifest,mesh,geom,id); }));
+        check(naca_read_paired_checkpoint(manifest,mesh,geom,id,true).physics_identity.empty());
         // Attack: a manifest pointing outside the directory is rejected.
         { std::ofstream out(manifest); out << "CFDX_NACA_PAIRED_V2\n30,1,6,0.42,0.99,../escape.csv,foo.csv,000,000\n"; }
         check(rejects([&]{(void)naca_read_paired_checkpoint(manifest,mesh,geom);}));
