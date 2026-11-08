@@ -1,0 +1,40 @@
+{
+  "lot": "CFDX Workbench 4: editor setup, mesh health, native convergence evidence",
+  "date": "2026-11-08",
+  "source_user_archive": "cfdx_dev-master (2)(2).zip",
+  "base_archive": "CFDX_Workbench_lot3_noir_moderne.zip",
+  "source_sha256": "c3a0d40206829596dca61871c10f6079724c6d0e11bbf63a47d4e894e914e62c",
+  "base_sha256": "726e799d807e08ed6fffcf9fbcc0d4128496f53c7af8b798252dbdeef8093efa",
+  "changed_files_from_lot3": [
+    ".github/workflows/cfdx-gui.yml",
+    "CFDX_LOT4_DELIVERY_MANIFEST.json",
+    "docs/gui/LOT4_BC_MESH_CONVERGENCE_EVIDENCE.md",
+    "src/cfdx/python/cfdx/application/run_center.py",
+    "src/cfdx/python/cfdx/boundary_editor.py",
+    "src/cfdx/python/cfdx/boundary_matrix.py",
+    "src/cfdx/python/cfdx/case_file_panel.py",
+    "src/cfdx/python/cfdx/convergence_evidence.py",
+    "src/cfdx/python/cfdx/execution.py",
+    "src/cfdx/python/cfdx/mesh_health.py",
+    "src/cfdx/python/cfdx/run_center_panel.py",
+    "src/cfdx/python/cfdx/setup_panel.py",
+    "src/cfdx/python/cfdx/volume_skewness_view.py",
+    "tests/python/test_application_e2e.py",
+    "tests/python/test_execution.py",
+    "tests/python/test_workbench_lot4_boundary_matrix.py",
+    "tests/python/test_workbench_lot4_evidence.py",
+    "tests/python/test_workbench_lot4_gui.py",
+    "tests/python/test_workbench_lot4_mesh_health.py"
+  ],
+  "tests": {
+    "selected_python_regression": "228 passed, 39 skipped",
+    "new_lot4_plus_application_e2e": "49 passed, 3 skipped",
+    "gui_qt": "not executed locally: PySide6/PyVistaQt absent",
+    "native_solver": "not built or physically qualified in this lot",
+    "github_ci": "workflow modified, not executed or pushed"
+  },
+  "native_boundary_bridge": "not complete; Python /case/config and C++ case_setup_json require a certified mapping",
+  "external_physical_qualification": "not executed; no benchmarks promoted",
+  "documentation": "docs/gui/LOT4_BC_MESH_CONVERGENCE_EVIDENCE.md",
+  "patch_contract": "Two full cumulative patches supplied: original user master and exact lot3; both apply-verified on clean extractions."
+}

@@ -1,0 +1,30 @@
+{
+  "package": "CFDX Workbench moderne incremental source and research, 2026-11-08",
+  "provenance": "User-provided cfdx_dev-master (2)(2).zip; no GitHub push or remote CI claimed",
+  "files_changed": [
+    ".github/workflows/cfdx-gui.yml",
+    "docs/gui/WORKBENCH_MODERNE_BIBLIO_2026-11-08.md",
+    "scripts/cfdx_qualification_status.py",
+    "src/cfdx/python/cfdx/capabilities.py",
+    "src/cfdx/python/cfdx/gui_3d.py",
+    "src/cfdx/python/cfdx/qualification_center.py",
+    "src/cfdx/python/cfdx/qualification_panel.py",
+    "src/cfdx/python/cfdx/visualization_pipeline.py",
+    "src/cfdx/python/cfdx/workbench.py",
+    "tests/python/test_capabilities.py",
+    "tests/python/test_qualification_center.py",
+    "tests/python/test_visualization_pipeline.py",
+    "tests/python/test_visualization_renderer_transaction.py"
+  ],
+  "tests": {
+    "group_a": "81 passed, 20 skipped",
+    "group_b": "48 passed, 10 skipped",
+    "patch_smoke": "53 passed, 4 skipped",
+    "gui_native": "not run: GUI Python deps unavailable",
+    "full_python_suite": "not certified: meshio missing; extended run exceeded local time budget",
+    "solver_scientific": "not run: no validation evidence attached for current HEAD"
+  },
+  "doc": "docs/gui/WORKBENCH_MODERNE_BIBLIO_2026-11-08.md",
+  "cli": "scripts/cfdx_qualification_status.py",
+  "patch_sha256": "920ad98070f1d4f4eca3e127ea41136a541e29cc442626ec3a404b50c3ba2dde"
+}
