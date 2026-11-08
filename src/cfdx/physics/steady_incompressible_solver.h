@@ -24,6 +24,7 @@
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
+#include "cfdx/physics/pressure_compensated_assembly.h"
 #include "cfdx/physics/pcd_fp_equilibration.h"
 #include "cfdx/physics/pcd_fp_capture.h"
 #include "cfdx/physics/pressure_velocity_system.h"
@@ -315,6 +316,13 @@ struct IncompressibleSolverControls {
     // The nonlinear mass and momentum conservation gates are unaffected.
     double pressure_linear_tolerance = 0.0;
     std::size_t pressure_linear_max_iterations = 0;
+    // Experimental CPU-side assembly: accumulate the same orthogonal face
+    // coefficients and RHS contributions in extended precision, then round
+    // each final CSR diagonal/RHS once. OFF by default. This changes neither
+    // FV equations nor linear/nonlinear convergence gates, but may change
+    // rounding and thus requires independent NACA/BFS qualification.
+    // It does NOT carry a two-part pressure field into Rhie-Chow fluxes.
+    bool pressure_compensated_assembly = false;
     ConvergenceAccelerationControls acceleration;
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
@@ -6099,6 +6107,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::vector<std::map<std::size_t, double>> rows(nc);
             std::vector<double> diag(nc, 0.0);
             std::vector<double> continuity(nc, 0.0);
+            // The legacy path uses exactly its original double reductions;
+            // only an explicit opt-in constructs extended accumulators.
+            const bool compensated_assembly = controls.pressure_compensated_assembly;
+            std::unique_ptr<PressureFaceAssemblyAccumulator> pressure_accumulator;
+            if (compensated_assembly)
+                pressure_accumulator = std::make_unique<PressureFaceAssemblyAccumulator>(nc);
+            const auto add_continuity = [&](std::size_t cell, double value) {
+                if (compensated_assembly)
+                    pressure_accumulator->add_continuity(cell, value);
+                else
+                    continuity[cell] += value;
+            };
             const auto current_grad_p =
                 gauss_gradient_with_boundary(
             p, mesh, geometry, pressure_bcs,
@@ -6112,16 +6132,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const Offset count = cell_offsets[c + 1] - off;
                 for (Offset k = 0; k < count; ++k) {
                     const std::size_t f = cell_faces[off+k];
-                    continuity[c] += mesh.ownership().owner(f) == c
-                        ? phiHbyA(f) : -phiHbyA(f);
+                    add_continuity(c, mesh.ownership().owner(f) == c
+                        ? phiHbyA(f) : -phiHbyA(f));
                     if (mesh.ownership().neighbour(f) >= 0) {
                         const double phi_nonorth = rhie_chow_pressure_flux_internal(
                             mesh, geometry, f, p, current_grad_p,
                             controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                             controls.density,
                             controls.pressure_projected_face_interpolation);
-                        continuity[c] += mesh.ownership().owner(f) == c
-                            ? -phi_nonorth : phi_nonorth;
+                        add_continuity(c, mesh.ownership().owner(f) == c
+                            ? -phi_nonorth : phi_nonorth);
                     }
                 }
             }
@@ -6137,15 +6157,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
                 const double coeff = controls.density * directional_face_coefficient(
                     pressure_coeff, f, o, n, Sf, dvec);
-                diag[o] += coeff;
-                diag[n] += coeff;
+                if (compensated_assembly)
+                    pressure_accumulator->add_internal_pair(o, n, coeff);
+                else {
+                    diag[o] += coeff;
+                    diag[n] += coeff;
+                }
                 rows[o][n] -= coeff;
                 rows[n][o] -= coeff;
             }
 
             for (std::size_t c = 0; c < nc; ++c) {
-                rows[c][c] += diag[c];
-                b(c) = -continuity[c];
+                if (!compensated_assembly) {
+                    rows[c][c] += diag[c];
+                    b(c) = -continuity[c];
+                }
             }
 
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
@@ -6167,7 +6193,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     geometry.cell_volumes[o] * pressure_coeff[2][o]};
                 const double boundary_coeff = pressure_face_orthogonal_coefficient(
                     Sf, dvec, dAU_boundary);
-                rows[o][o] += controls.density * boundary_coeff;
+                if (!compensated_assembly)
+                    rows[o][o] += controls.density * boundary_coeff;
                 // Explicit pressure flux at fixed-pressure boundaries (#894):
                 // the half-Dirichlet diagonal term above is only consistent
                 // when the boundary mass flux is reconstructed as
@@ -6182,9 +6209,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     current_grad_p.component_data(2)[o]};
                 const double deferred_boundary = pressure_face_nonorthogonal_flux(
                     Sf, dvec, dAU_boundary, gp_boundary);
-                b(o) += controls.density * (
+                const double boundary_source = controls.density * (
                     boundary_coeff * (it->second.value - p(o)) +
                     deferred_boundary);
+                if (compensated_assembly)
+                    pressure_accumulator->add_pressure_boundary(
+                        o, controls.density * boundary_coeff, boundary_source);
+                else
+                    b(o) += boundary_source;
+            }
+            if (compensated_assembly) {
+                for (std::size_t c = 0; c < nc; ++c) {
+                    rows[c][c] += pressure_accumulator->diagonal(c);
+                    b(c) = pressure_accumulator->rhs(c);
+                }
             }
 
             // Read-only decomposition of the exact pressure RHS. The
