@@ -2,6 +2,7 @@
 // CFDX original CSR capture. This never certifies Rhie-Chow/FV face fluxes.
 #include "cfdx/core/linalg/linear_system_capture.h"
 #include "cfdx/core/linalg/compensated_pressure_balance.h"
+#include "cfdx/core/linalg/pressure_roundoff_leakage.h"
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -62,6 +63,15 @@ int main(int argc, char** argv) {
             << " internal_pair_net=" << p.global_internal_pair_defect
             << " fv_face_certified=" << p.physical_face_flux_certified
             << " tolerance=" << capture.tolerance << '\n';
+        const auto leakage = diagnose_pressure_roundoff_leakage(
+            capture.matrix, capture.rhs, high);
+        std::cout << std::scientific << std::setprecision(17)
+            << "CFDX_ROUNDOFF_ROW_SUM_DIAGNOSTIC"
+            << " anchor_rows=" << leakage.pressure_anchor_rows
+            << " negligible_rows=" << leakage.negligible_roundoff_rows
+            << " spurious_relative=" << leakage.spurious_leakage_relative_l2
+            << " worst_row=" << leakage.worst_row
+            << " fv_face_certified=0\n";
         const bool accepted = p.valid && p.symmetric_m_matrix &&
             p.original_relative_l2 <= capture.tolerance &&
             p.algebraic_face_relative_l2 <= capture.tolerance;

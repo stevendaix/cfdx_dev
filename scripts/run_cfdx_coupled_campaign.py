@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -21,7 +22,7 @@ import time
 from pathlib import Path
 
 SCHUR_MODELS = ("pcd", "block_local", "lsc", "bfbt", "simple", "simplec")
-N9_MODELS = ("pcd", "lsc", "bfbt", "simple", "simplec")
+N9_MODELS = SCHUR_MODELS
 CTESTS = {
     "bfs": ("test_bfs_quick",),
     "sst_thermal": (
@@ -30,6 +31,17 @@ CTESTS = {
         "test_radiation_vv", "test_s2s_radiation_vv",
     ),
 }
+
+
+def verify_n9_shard(content: str, schur_model: str, exit_code: int) -> dict:
+    """Reuse the strict physical oracle; an EXIT_ZERO is never enough."""
+    script = Path(__file__).resolve().with_name("qualify_coupled_matrix.py")
+    spec = importlib.util.spec_from_file_location("cfdx_n9_physical_gate", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("N9 physical certificate implementation missing")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.summarize_n9_physical_shard(content, schur_model, exit_code)
 
 
 def sha256(path: Path) -> str:
@@ -78,8 +90,21 @@ def execute(tag: str, cmd: list[str], env: dict[str, str],
             result["execution"] = "FAILED_TO_START"
             result["reason"] = str(exc)
     result["wall_seconds"] = time.monotonic() - start
-    # A CTest success / NACA driver exit 0 is never an independent physical
-    # validation. Detailed evidence protocol still requires 3 grids/oracles.
+    # Independently parse only current execution output. A historical log and
+    # EXIT_ZERO with missing stages must not become qualification evidence.
+    if tag.startswith("n9_") and result["exit_code"] is not None:
+        with logfile.open(encoding="utf-8", errors="replace") as stream:
+            current_log = stream.read()
+        selected_model = tag.removeprefix("n9_")
+        physical = verify_n9_shard(current_log, selected_model, result["exit_code"])
+        result["n9_independent_shard_gate"] = physical
+        result["physical_certificate"] = (
+            "N9_FOUR_CASE_STRICT_GATE_PASSED_EXTERNAL_QUALIFICATION_STILL_REQUIRED"
+            if physical["physical_shard_gate_complete"]
+            else "NOT_QUALIFIED"
+        )
+        if result["execution"] == "EXIT_ZERO" and not physical["physical_shard_gate_complete"]:
+            result["execution"] = "EXIT_ZERO_BUT_N9_PHYSICAL_EVIDENCE_INVALID"
     return result
 
 
@@ -121,10 +146,13 @@ def build_commands(args: argparse.Namespace):
         for model in args.n9_models:
             tag = f"n9_{model}"
             env = os.environ.copy()
+            for key in list(env):
+                if key.startswith("CFDX_NACA_") or key.startswith("CFDX_PCD_FP_CAPTURE_"):
+                    env.pop(key)
             env["CFDX_PCD_FP_CAPTURE_PREFIX"] = str(args.out.resolve() / (tag + "_Fp"))
             env["CFDX_PCD_FP_CAPTURE_DIFFICULT_PREFIX"] = str(args.out.resolve() / (tag + "_difficult_Fp"))
             yield tag, [str(build / "test_n9_physical_matrix"),
-                        "--schur-model", model], env
+                        "--schur-model", model, "--require-independent-face"], env
     for group in ("bfs", "sst_thermal"):
         if args.only not in (group, "all"):
             continue

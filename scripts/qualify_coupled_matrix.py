@@ -183,9 +183,15 @@ def summarize_n9_physical_shard(content: str, selected_model: str, exit_code: in
             errors.append(f"unknown or duplicate case {case}")
             continue
         try:
-            raw = dict(item.split("=", 1) for item in rest)
+            parsed = [item.split("=", 1) for item in rest]
+            if any(len(pair) != 2 for pair in parsed):
+                raise ValueError("malformed physical metric")
+            names = [pair[0] for pair in parsed]
+            if len(names) != len(set(names)):
+                raise ValueError("duplicated physical metric field")
+            raw = dict(parsed)
             if set(raw) != set(fields):
-                raise ValueError("missing, extra or duplicated fields")
+                raise ValueError("missing or unexpected physical metric fields")
             data = {k: float(v) for k, v in raw.items()}
             if any(not math.isfinite(v) or v < 0 for v in data.values()):
                 raise ValueError("nonfinite or negative physical metric")
