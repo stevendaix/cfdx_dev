@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -77,6 +78,7 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
+    bool initial_pressure_field = false;
     bool initial_sst_fields = false;
     bool initial_face_mass_flux = false;
     bool experimental_momentum_first_continuation = false;
@@ -697,6 +699,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
+        else if (arg == "--initial-pressure-field") o.initial_pressure_field = true;
         else if (arg == "--initial-sst-fields") o.initial_sst_fields = true;
         else if (arg == "--initial-face-mass-flux") o.initial_face_mass_flux = true;
         else if (arg == "--experimental-momentum-first-continuation")
@@ -716,6 +719,7 @@ Options parse(int argc, char** argv)
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
+                         "  [--initial-pressure-field] (initialize p from /fields/scalar/p; requires imported U)\n"
                          "  [--initial-sst-fields] (initial k and omega from /fields/scalar)\n"
                          "  [--initial-face-mass-flux] (projected /fields/face/mdot; requires initial velocity)\n"
                          "  [--experimental-momentum-first-continuation] (momentum-only then strict SST; NOT qualified)\n"
@@ -832,6 +836,10 @@ int main(int argc, char** argv)
                     "only); use a compressible solver for this case");
         }
 
+        if (options.initial_pressure_field && (!options.initial_velocity_field ||
+            !options.restart.empty() || !is_case_hdf5))
+            throw std::invalid_argument(
+                "--initial-pressure-field requires --initial-velocity-field, HDF5, and no DAT restart");
         if (options.initial_sst_fields && (!options.experimental_sst ||
             !options.restart.empty() || !is_case_hdf5))
             throw std::invalid_argument(
@@ -926,6 +934,44 @@ int main(int argc, char** argv)
         }
         if (options.initial_velocity_field && !case_setup.has_initial_condition)
             initialization.mode = InitializationMode::Provided;
+
+        // A nonuniform pressure seed is useful for high-aspect-ratio BFS
+        // meshes whose first segregated pressure correction is very large.
+        // Import it only on explicit request, after uniform initialization
+        // has been established. The solver still reassembles its own FV
+        // equations and uses every original residual/conservation gate.
+        if (options.initial_pressure_field) {
+            std::vector<std::pair<std::string, ScalarCellField>> scalars;
+            if (!read_scalar_fields_hdf5(mesh_path, scalars))
+                throw std::invalid_argument(
+                    "initial pressure fields cannot be read from case HDF5");
+            const ScalarCellField* imported_p = nullptr;
+            for (const auto& [name, field] : scalars) {
+                if (name != "p") continue;
+                if (imported_p)
+                    throw std::invalid_argument("duplicate imported pressure field");
+                imported_p = &field;
+            }
+            if (!imported_p)
+                throw std::invalid_argument(
+                    "--initial-pressure-field requested but scalar field 'p' is absent");
+            if (imported_p->size() != mesh.n_cells() || imported_p->dimension() != 1)
+                throw std::invalid_argument("imported pressure field shape mismatch");
+            double pmin = std::numeric_limits<double>::infinity();
+            double pmax = -std::numeric_limits<double>::infinity();
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                const double value = (*imported_p)(cell);
+                if (!std::isfinite(value))
+                    throw std::invalid_argument("imported pressure field is not finite");
+                p(cell) = value;
+                pmin = std::min(pmin, value);
+                pmax = std::max(pmax, value);
+            }
+            std::cout << "INITIAL_PRESSURE_FIELD_IMPORTED cells=" << mesh.n_cells()
+                      << " min=" << std::setprecision(17) << pmin
+                      << " max=" << pmax
+                      << " (initial guess only; NOT a convergence certificate)\n";
+        }
 
         if (is_case_hdf5)
             validate_production_boundary_unique_names(case_setup);
@@ -1097,6 +1143,17 @@ int main(int argc, char** argv)
                 controls.coupling.pcd_pressure_inflow_dirichlet_experimental = true;
                 std::cout << "PCD auxiliary pressure-inflow Dirichlet: experimental "
                           << "(physical BCs and convergence gates unchanged)\n";
+            }
+            const auto schur_guard = case_setup.numerics.raw_settings.find(
+                "schur_action_growth_guard_experimental");
+            if (schur_guard != case_setup.numerics.raw_settings.end()) {
+                if (schur_guard->second != "1" ||
+                    controls.algorithm != PressureVelocityAlgorithm::COUPLED)
+                    throw std::invalid_argument(
+                        "schur_action_growth_guard_experimental=1 requires COUPLED");
+                controls.coupling.schur_action_growth_guard_experimental = true;
+                std::cout << "COUPLED six-Schur true-matrix action guard: "
+                          << "1e10 (experimental; no fallback)\n";
             }
             const auto scaling = case_setup.numerics.raw_settings.find(
                 "pressure_linear_scaling");

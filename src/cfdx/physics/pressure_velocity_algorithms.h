@@ -94,6 +94,9 @@ struct CouplingControls {
     // momentum/continuity BCs and the Schur matrix A are NOT modified.
     // Off by default until NACA/N9/BFS full physical A/B qualification.
     bool pcd_pressure_inflow_dirichlet_experimental = false;
+    // Shared diagnostic across BlockLocal, PCD, LSC, BFBt, SIMPLE and
+    // SIMPLEC Schur. Off by default; no silent substitution on rejection.
+    bool schur_action_growth_guard_experimental = false;
     // Serial, small-subdomain, experimental RAS/weighted Schwarz for COUPLED
     // with BlockLocal Schur. Explicit opt-in; setup failure is fatal rather
     // than silently replaced by AMG. No MPI / coarse-space scaling claim.

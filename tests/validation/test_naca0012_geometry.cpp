@@ -141,6 +141,14 @@ static Forces run(const std::string& path,std::size_t level,
         std::getenv("CFDX_NACA_ALGORITHM"), std::getenv("CFDX_NACA_COUPLED_SCHUR"));
     c.algorithm = naca_selection.algorithm;
     c.coupling.schur_model = naca_selection.schur_model;
+    // Explicit comparative guard, identical for PCD/BlockLocal/LSC/BFBt/
+    // SIMPLE-Schur/SIMPLEC-Schur. Disabled for production-like baseline runs.
+    if (const char* raw=std::getenv("CFDX_NACA_SCHUR_ACTION_GUARD")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED)
+            throw std::invalid_argument(
+                "CFDX_NACA_SCHUR_ACTION_GUARD requires COUPLED and 1");
+        c.coupling.schur_action_growth_guard_experimental=true;
+    }
     // Diagnostic-only block/PCD traces; never changes solver coefficients.
     if (const char* raw=std::getenv("CFDX_NACA_COUPLED_MATRIX_SUMMARY")) {
         if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED)
