@@ -425,6 +425,12 @@ static Forces run(const std::string& path,std::size_t level,
     c.convergence.continuity_tolerance=1e-8;
     // Force/GCI output is forbidden until the independent face-transport
     // momentum residual reaches the same strict nonlinear tolerance.
+    if (const char* option = std::getenv("CFDX_NACA_COMPENSATED_PRESSURE_ASSEMBLY")) {
+        if (std::string(option) != "1")
+            throw std::invalid_argument(
+                "CFDX_NACA_COMPENSATED_PRESSURE_ASSEMBLY expects 1");
+        c.pressure_compensated_assembly = true;
+    }
     c.require_independent_face_residual_for_convergence = true;
     c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
