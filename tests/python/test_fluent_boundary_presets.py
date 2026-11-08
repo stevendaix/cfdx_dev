@@ -1,7 +1,6 @@
 """Physical BC presets should preserve the native C++ wire contract."""
 
 import pytest
-
 from cfdx.fluent_boundary_presets import (
     SIMPLE_BOUNDARY_CHOICES,
     UNSUPPORTED_CHOICE_REASONS,
