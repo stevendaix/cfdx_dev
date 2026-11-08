@@ -1146,6 +1146,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_pressure_flux_split tests/validation/test_pressure_flux_split.cpp)
     add_cfdx_test(test_pressure_continuity_line_search tests/validation/test_pressure_continuity_line_search.cpp)
     add_cfdx_test(test_pressure_affine_flux_trials tests/validation/test_pressure_affine_flux_trials.cpp)
+    add_cfdx_test(test_tvd_skew_affine_mms tests/validation/test_tvd_skew_affine_mms.cpp)
+    set_tests_properties(test_tvd_skew_affine_mms PROPERTIES
+        LABELS "convection;skew;affine;mms;qualification" TIMEOUT 20)
     add_cfdx_test(test_wall_face_traction_mms tests/validation/test_wall_face_traction_mms.cpp)
     add_cfdx_test(test_wall_shear_quadratic_fit tests/validation/test_wall_shear_quadratic_fit.cpp)
     add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)

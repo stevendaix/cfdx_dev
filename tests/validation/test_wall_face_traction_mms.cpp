@@ -23,6 +23,20 @@ int main() {
             "Couette wall shear is incorrect");
     require(std::abs(exact.viscous_on_fluid_normal.y) < 1e-12,
             "Couette generated spurious normal traction");
+    // An off-axis wall with a known tangential derivative must only change
+    // the wall-NORMAL part of a reconstructed gradient to satisfy no slip.
+    // Manufactured velocity: Ux=3*x+4*y, owner at (0,0), face at
+    // (0.2,-0.5), so Ux_wall=-1.4. The cell estimate preserves dUx/dx=3
+    // but starts with dUx/dy=0. Enforcing the wall condition must recover
+    // the exact dUx/dy=4 while leaving dUx/dx=3 unchanged.
+    const auto skew_wall = reconstruct_wall_face_traction(
+        d,n,1.0,{0,0,0},{0,0,0},{-1.4,0,0},
+        {{{3,0,0},{0,0,0},{0,0,0}}},0.5);
+    const double skew_exact_tau_x = -2.0;
+    std::cerr << "SKEW_WALL_SHEAR actual=" << skew_wall.viscous_on_fluid_normal.x
+              << " expected=" << skew_exact_tau_x << "\n";
+    require(std::abs(skew_wall.viscous_on_fluid_normal.x - skew_exact_tau_x) < 1e-12,
+            "skew wall correction changed tangential gradient and biased shear");
     // Independent affine oracle with a NONZERO normal pressure derivative:
     // p(x,y) = 1 + 3*x + 4*y; at d=(0.2,-0.5), p_wall=-0.4.
     // A forced homogeneous-Neumann extrapolation would yield +1.6 instead.
@@ -43,6 +57,13 @@ int main() {
             {{{0,0,0},{0,0,0},{0,0,0}}},0.5);
     } catch (const std::invalid_argument&) { refused = true; }
     require(refused, "accepted degenerate face distance");
+    refused = false;
+    try {
+        (void)reconstruct_wall_face_traction(
+            {1,0,0},n,1.0,{0,0,0},{0,0,0},{0,0,0},
+            {{{0,0,0},{0,0,0},{0,0,0}}},0.5);
+    } catch (const std::invalid_argument&) { refused = true; }
+    require(refused, "accepted face without positive wall-normal distance");
     refused = false;
     try {
         (void)reconstruct_wall_face_traction(

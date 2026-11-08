@@ -34,7 +34,9 @@ inline WallFaceTraction reconstruct_wall_face_traction(
     const Vec3& n = fluid_outward_unit_normal;
     const double d2 = d.dot(d);
     const double n2 = n.dot(n);
+    const double d_normal = d.dot(n);
     if (!(d2 > 0.0) || !std::isfinite(d2) ||
+        !(d_normal > 0.0) || !std::isfinite(d_normal) ||
         !(std::abs(n2-1.0) <= 1e-10) || !std::isfinite(n2) ||
         !(dynamic_viscosity >= 0.0) || !std::isfinite(dynamic_viscosity) ||
         !std::isfinite(cell_pressure) ||
@@ -59,14 +61,17 @@ inline WallFaceTraction reconstruct_wall_face_traction(
     const double p_face = cell_pressure + cell_pressure_gradient.dot(d_tangent)
                           + prescribed_wall_pressure_normal_derivative * d.dot(n);
 
-    // Affine-exact correction: G_face * d == U_wall - U_owner. This enforces
-    // the actual wall Dirichlet value without replacing the tangent gradients.
+    // Dirichlet correction: G_face * d == U_wall - U_owner. Only the
+    // wall-NORMAL derivative is adjusted; a skewed owner-to-face vector must
+    // not overwrite the reconstructed TANGENTIAL derivatives. The old
+    // minimum-norm correction along d biased wall shear on nonorthogonal
+    // faces. A strictly positive projected normal distance is required.
     std::array<Vec3, 3> corrected = cell_velocity_gradients;
     const double cell_u[3] = {cell_velocity.x, cell_velocity.y, cell_velocity.z};
     const double wall_u[3] = {wall_velocity.x, wall_velocity.y, wall_velocity.z};
     for (std::size_t i = 0; i < 3; ++i) {
         const double defect = wall_u[i] - cell_u[i] - corrected[i].dot(d);
-        corrected[i] += d * (defect/d2);
+        corrected[i] += n * (defect/d_normal);
     }
     const Vec3 t{
         dynamic_viscosity * (2.0*corrected[0].x*n.x +

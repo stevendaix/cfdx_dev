@@ -380,6 +380,97 @@ inline double muscl_cell_limited_face_value(
     return reconstructed;
 }
 
+// One-ring multidimensional extrema for limited convection. On a non-affine
+// or skewed grid the true face centroid can lie outside the two endpoint
+// cell values even for a LINEAR field. A two-cell clamp then destroys affine
+// exactness. The local stencil includes the two cell neighbours and actual
+// fixed-value boundary data; it does not use an arbitrary global field range.
+using ScalarCellStencilBounds = std::vector<std::pair<double, double>>;
+
+inline ScalarCellStencilBounds compute_scalar_tvd_stencil_bounds(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const ScalarBoundaryConditions& boundary_conditions,
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+{
+    const std::size_t nc = mesh.n_cells();
+    if (field.size() != nc || field.dimension() != 1)
+        throw std::invalid_argument("TVD stencil: invalid scalar field");
+    if (geometry.face_patch.size() != mesh.n_faces() ||
+        geometry.cell_centres.size() != nc ||
+        geometry.face_centres.size() != mesh.n_faces())
+        throw std::invalid_argument("TVD stencil: geometry/mesh size mismatch");
+    if (face_conditions != nullptr &&
+        (face_conditions->specified.size() != mesh.n_faces() ||
+         face_conditions->conditions.size() != mesh.n_faces()))
+        throw std::invalid_argument("TVD stencil: face conditions/mesh size mismatch");
+    ScalarCellStencilBounds bounds(nc);
+    const auto& ownership = mesh.ownership();
+    for (std::size_t cell = 0; cell < nc; ++cell) {
+        const double value = field(cell);
+        if (!std::isfinite(value))
+            throw std::invalid_argument("TVD stencil: non-finite scalar state");
+        double minimum = value, maximum = value;
+        for (auto k = mesh.cells().offsets_data()[cell];
+             k < mesh.cells().offsets_data()[cell+1]; ++k) {
+            const std::size_t face = mesh.cells().faces_data()[k];
+            const auto neighbour_raw = ownership.neighbour(face);
+            if (neighbour_raw >= 0) {
+                const std::size_t other = ownership.owner(face) == cell
+                    ? static_cast<std::size_t>(neighbour_raw)
+                    : ownership.owner(face);
+                if (other >= nc || !std::isfinite(field(other)))
+                    throw std::invalid_argument("TVD stencil: invalid neighbour");
+                minimum = std::min(minimum, field(other));
+                maximum = std::max(maximum, field(other));
+            } else {
+                const std::size_t patch = geometry.face_patch[face];
+                if (patch < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type == cfdx::core::PatchType::EMPTY)
+                    continue;
+                const auto bc = resolve_scalar_boundary_condition(
+                    mesh, geometry, face, boundary_conditions,
+                    face_values, face_conditions);
+                if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                    minimum = std::min(minimum, bc.value);
+                    maximum = std::max(maximum, bc.value);
+                }
+            }
+        }
+        bounds[cell] = {minimum, maximum};
+    }
+    return bounds;
+}
+
+inline double bound_tvd_internal_face_value(
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const ScalarCellStencilBounds& bounds,
+    std::size_t face, std::size_t owner, std::size_t neighbour,
+    double candidate)
+{
+    using cfdx::core::Vec3;
+    const double endpoint_low = std::min(field(owner), field(neighbour));
+    const double endpoint_high = std::max(field(owner), field(neighbour));
+    const Vec3 d = geometry.cell_centres[neighbour] - geometry.cell_centres[owner];
+    const double d2 = d.mag2();
+    if (!(d2 > 0.0) || !std::isfinite(d2) || !std::isfinite(candidate))
+        throw std::invalid_argument("TVD face: invalid geometry or candidate");
+    const Vec3 offset = geometry.face_centres[face] - geometry.cell_centres[owner];
+    const Vec3 skew = offset - d * (offset.dot(d) / d2);
+    // With zero skew, retain the established 1-D TVD endpoint envelope.
+    // Otherwise limit against the multidimensional one-ring extrema. This
+    // still forbids new local extrema and restores affine exactness when the
+    // real face value lies in the surrounding physical stencil envelope.
+    if (skew.mag2() <= 1e-24 * d2)
+        return std::clamp(candidate, endpoint_low, endpoint_high);
+    const double local_low = std::min(bounds[owner].first, bounds[neighbour].first);
+    const double local_high = std::max(bounds[owner].second, bounds[neighbour].second);
+    return std::clamp(candidate, local_low, local_high);
+}
+
 // Boundary-aware scalar gradient shared by transport and diffusion-flux
 // reconstruction. Face-specific values/conditions take precedence over patch
 // conditions so the gradient uses the same boundary state as the assembly.
@@ -830,6 +921,14 @@ inline ScalarEquation assemble_scalar_equation(
     }
 
     const auto& own = mesh.ownership();
+    const auto tvd_bounds =
+        (convection_scheme == ConvectionScheme::TVD ||
+         convection_scheme == ConvectionScheme::TVD_VANLEER ||
+         convection_scheme == ConvectionScheme::TVD_VANALBADA)
+        ? compute_scalar_tvd_stencil_bounds(
+            mesh, geometry, *convected_field, boundary_conditions,
+            face_values, face_conditions)
+        : ScalarCellStencilBounds{};
     const double* phi = face_flux.component_data(0);
 
     bool diffusion_active = diffusion_coefficient > 0.0;
@@ -1021,7 +1120,7 @@ inline ScalarEquation assemble_scalar_equation(
                         gz[upwind] * (C_down.z - C_up.z);
                     const double ratio = std::abs(delta_down) > 1e-14
                         ? (2.0 * delta_upwind_to_down - delta_down) / delta_down
-                        : 0.0;
+                        : (std::abs(delta_upwind_to_down) <= 1e-14 ? 1.0 : 0.0);
                     const double limiter = std::max(0.0,
                         cfdx::core::limiter_psi(ratio,
                             convection_scheme == ConvectionScheme::TVD_VANALBADA
@@ -1030,8 +1129,9 @@ inline ScalarEquation assemble_scalar_equation(
                                 ? cfdx::core::LimiterType::VANLEER
                                 : cfdx::core::LimiterType::MINMOD));
                     phi_high = phi_up + limiter * high_increment;
-                    phi_high = std::clamp(
-                        phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                    phi_high = bound_tvd_internal_face_value(
+                        geometry, *convected_field, tvd_bounds, f,
+                        o, n, phi_high);
                 } else {
                     // Central, blended and quadratic schemes are explicit
                     // deferred corrections around the conservative upwind
@@ -1248,6 +1348,14 @@ reconstruct_scalar_transport_flux(
     }
 
     const auto& own = mesh.ownership();
+    const auto tvd_bounds =
+        (convection_scheme == ConvectionScheme::TVD ||
+         convection_scheme == ConvectionScheme::TVD_VANLEER ||
+         convection_scheme == ConvectionScheme::TVD_VANALBADA)
+        ? compute_scalar_tvd_stencil_bounds(
+            mesh, geometry, field, boundary_conditions,
+            face_values, face_conditions)
+        : ScalarCellStencilBounds{};
     for (std::size_t f = 0; f < nf; ++f) {
         const double F = face_flux(f);
         if (!std::isfinite(F))
@@ -1321,7 +1429,9 @@ reconstruct_scalar_transport_flux(
                         const auto& Cd=geometry.cell_centres[dcell];
                         const double delta=field(dcell)-field(u);
                         const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
-                        const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
+                        const double ratio=std::abs(delta)>1e-14
+                            ? (2.0*full-delta)/delta
+                            : (std::abs(full)<=1e-14 ? 1.0 : 0.0);
                         high=field(u)+std::max(0.0, limiter_psi(ratio,
                             convection_scheme == ConvectionScheme::TVD_VANALBADA
                             ? LimiterType::VAN_ALBADA
@@ -1331,9 +1441,12 @@ reconstruct_scalar_transport_flux(
                     // SOU and both TVD face states are bounded by
                     // scheme contract, independently of bounded_convection.
                     // That option controls a separate bounded-divergence term.
-                    psi_face = std::clamp(
-                        high, std::min(field(u), field(dcell)),
-                        std::max(field(u), field(dcell)));
+                    psi_face = convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND
+                        ? std::clamp(high,
+                            std::min(field(u), field(dcell)),
+                            std::max(field(u), field(dcell)))
+                        : bound_tvd_internal_face_value(
+                            geometry, field, tvd_bounds, f, o, n, high);
                 } else {
                     psi_face = reconstructed_face(f);
                 }
