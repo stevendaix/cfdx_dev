@@ -88,6 +88,7 @@ class CTestShardTests(unittest.TestCase):
                 )
 
                 import re
+
                 self.assertTrue(re.fullmatch(regex, name))
                 self.assertFalse(re.fullmatch(regex, "testaaaa"))
 
