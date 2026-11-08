@@ -353,9 +353,11 @@ def markdown_report(report: dict, previous: dict | None = None) -> str:
             f"**{summary['registered_cases']} cas enregistrés ; {summary['unregistered_backlog']} "
             "campagnes supplémentaires à inscrire.** "
         ),
-        f"Preuves physiques vérifiables dans le dossier fourni : **{summary['physical_evidence_gates_pass']}/{summary['registered_cases']}**. "
-        f"Manifest CTest : **{summary['ctest_inventory_size'] if summary['ctest_inventory_size'] is not None else 'non fourni'}** tests, "
-        f"JUnit importés : **{summary['provided_junit_test_results']}**.",
+        (
+            f"Preuves physiques vérifiables dans le dossier fourni : **{summary['physical_evidence_gates_pass']}/{summary['registered_cases']}**. "
+            f"Manifest CTest : **{summary['ctest_inventory_size'] if summary['ctest_inventory_size'] is not None else 'non fourni'}** tests, "
+            f"JUnit importés : **{summary['provided_junit_test_results']}**."
+        ),
         "",
         (
             "> `PASS` de la colonne registre = historique. `PASS` de test = résultat JUnit. "
