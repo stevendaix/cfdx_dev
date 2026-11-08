@@ -51,6 +51,8 @@ inline SolverResult solve_gmres(
         !std::isfinite(controls.target_reduction_per_cycle) ||
         controls.target_reduction_per_cycle <= 0.0 ||
         controls.target_reduction_per_cycle >= 1.0 ||
+        !std::isfinite(controls.residual_replacement_gap_ratio) ||
+        controls.residual_replacement_gap_ratio < 1.0 ||
         controls.reduction.local_begin > controls.reduction.end_for(op.size)) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
@@ -234,6 +236,7 @@ inline SolverResult solve_gmres(
         std::size_t used = 0;
         double estimated_residual = beta;
         bool arnoldi_breakdown = false;
+        bool reliable_restart = false;
 
         for (std::size_t j = 0; j < static_cast<std::size_t>(current_restart) && iterations < max_iter; ++j) {
             if (preconditioner) {
@@ -348,27 +351,6 @@ inline SolverResult solve_gmres(
             ++used;
             estimated_residual = std::abs(w.g[static_cast<std::size_t>(j + 1)]);
 
-            if (controls.residual_replacement &&
-                controls.residual_replacement_period > 0 &&
-                iterations % controls.residual_replacement_period == 0) {
-                const double exact = true_residual();
-                if (!std::isfinite(exact)) {
-                    x = best_x;
-                    result.status = SolverStatus::DIVERGED;
-                    result.iterations = iterations;
-                    result.residual = best_residual;
-                    result.residual_relative = best_residual / rhs_scale;
-                    return result;
-                }
-                if (exact <= tol) {
-                    result.status = SolverStatus::CONVERGED;
-                    result.iterations = iterations;
-                    result.residual = exact;
-                    result.residual_relative = exact / rhs_scale;
-                    return result;
-                }
-            }
-
             // Preserve the Arnoldi-breakdown classification even when
             // the Givens residual estimate reaches zero. For a singular
             // inconsistent system, the projected least-squares residual can
@@ -391,6 +373,74 @@ inline SolverResult solve_gmres(
             }
             if (estimated_residual <= tol)
                 break;
+            // A periodic residual check must evaluate the UPDATED candidate,
+            // not the old x. Assemble the projected x + Z*y on a scratch
+            // vector, then test the original FP64 operator. Do NOT commit it
+            // or restart merely because a period elapsed: on the highly
+            // anisotropic BFS pressure matrix this gratuitous restart harms
+            // convergence. Restart only if the Givens estimate has drifted
+            // materially below the true residual (loss of Krylov reliability).
+            // This is valid for variable right-preconditioners: the stored Z
+            // basis supplies the exact candidate for this Arnoldi cycle.
+            if (controls.residual_replacement &&
+                controls.residual_replacement_period > 0 &&
+                iterations % controls.residual_replacement_period == 0) {
+                std::vector<double> coefficients(used, 0.0);
+                bool usable = true;
+                for (std::size_t i = used; i-- > 0;) {
+                    double sum = w.g[i];
+                    for (std::size_t k = i + 1; k < used; ++k)
+                        sum -= w.H(i, k) * coefficients[k];
+                    const double diagonal = w.H(i, i);
+                    if (!std::isfinite(sum) || !std::isfinite(diagonal) ||
+                        std::abs(diagonal) <=
+                            128.0 * std::numeric_limits<double>::epsilon() *
+                                std::max(arnoldi_action_norm, 1e-300)) {
+                        usable = false;
+                        break;
+                    }
+                    coefficients[i] = sum / diagonal;
+                }
+                if (usable) {
+                    Vector trial = x;
+                    for (std::size_t k = 0; k < used; ++k) {
+                        const double* zk = w.zv(k);
+                        for (std::size_t i = 0; i < n; ++i)
+                            trial(i) += coefficients[k] * zk[i];
+                    }
+                    Vector ax(n, 0.0), r_trial(n, 0.0);
+                    if (op.apply_fp64) op.apply_fp64(trial, ax);
+                    else op.apply(trial, ax);
+                    for (std::size_t i = 0; i < n; ++i)
+                        r_trial(i) = b(i) - ax(i);
+                    const double verified = krylov_norm2(
+                        r_trial, SolverPrecision::FP64, controls.reduction);
+                    if (std::isfinite(verified)) {
+                        result.max_true_residual =
+                            std::max(result.max_true_residual, verified);
+                        result.min_true_residual =
+                            std::min(result.min_true_residual, verified);
+                        const double ratio = verified /
+                            std::max(estimated_residual, 1e-300);
+                        result.max_true_recursive_ratio =
+                            std::max(result.max_true_recursive_ratio, ratio);
+                        result.min_true_recursive_ratio =
+                            std::min(result.min_true_recursive_ratio, ratio);
+                        result.max_true_recursive_gap =
+                            std::max(result.max_true_recursive_gap,
+                                     std::abs(verified - estimated_residual));
+                        if (ratio > controls.residual_replacement_gap_ratio) {
+                            reliable_restart = true;
+                            break;
+                        }
+                    } else {
+                        // A nonfinite candidate cannot be certified. End the
+                        // cycle through the usual true-residual failure path.
+                        reliable_restart = true;
+                        break;
+                    }
+                }
+            }
         }
 
         if (used == 0) break;
@@ -451,6 +501,29 @@ inline SolverResult solve_gmres(
         }
 
         beta = true_residual();
+        if (reliable_restart && std::isfinite(beta)) {
+            ++result.residual_replacements;
+            if (result.first_residual_replacement == 0)
+                result.first_residual_replacement = iterations;
+            result.last_residual_replacement = iterations;
+            const double ratio = beta / std::max(estimated_residual, 1e-300);
+            result.min_true_recursive_ratio =
+                std::min(result.min_true_recursive_ratio, ratio);
+            result.max_true_recursive_ratio =
+                std::max(result.max_true_recursive_ratio, ratio);
+            result.max_true_recursive_gap =
+                std::max(result.max_true_recursive_gap,
+                         std::abs(beta - estimated_residual));
+            result.min_true_residual =
+                std::min(result.min_true_residual, beta);
+            result.max_true_residual =
+                std::max(result.max_true_residual, beta);
+            if (krylov_diagnostics_enabled())
+                std::cerr << "KRYLOV_RELIABLE_RESTART"
+                          << " iterations=" << iterations
+                          << " projected=" << estimated_residual
+                          << " true=" << beta << "\n";
+        }
         if (!std::isfinite(beta)) {
             x = best_x;
             result.status = SolverStatus::DIVERGED;

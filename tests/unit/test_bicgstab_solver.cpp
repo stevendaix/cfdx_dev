@@ -21,6 +21,30 @@ SparseMatrix make_non_symmetric(std::size_t n) {
     return A;
 }
 
+// Intentionally fails on the second application, after a first successful
+// preconditioned direction. The returned failure must carry b-A*x, never an
+// apparently converged all-zero diagnostic.
+class RejectSecondAction final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix&) override { return true; }
+    bool apply(const Vector& r, Vector& z) const override {
+        ++calls;
+        if (calls == 2) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) z(i) = r(i);
+        return true;
+    }
+    const char* name() const override { return "RejectSecondAction"; }
+    mutable int calls = 0;
+};
+
+class RejectSetupAction final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix&) override { ++setups; return false; }
+    bool apply(const Vector&, Vector&) const override { return false; }
+    const char* name() const override { return "RejectSetupAction"; }
+    int setups = 0;
+};
+
 int main() {
     run_case("bicgstab_homogeneous_system_uses_initial_residual_scale", []() {
         const auto A = make_non_symmetric(5);
@@ -199,6 +223,38 @@ int main() {
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(independent_residual <= 1e-12);
         EXPECT_NEAR(result.residual, independent_residual, 1e-14);
+    });
+
+
+    run_case("bicgstab_preconditioner_apply_failure_reports_true_residual", []() {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 2.0);
+        A.push_back(1, 1, 3.0);
+        A.push_back(2, 2, 5.0);
+        A.finalize();
+        Vector b(3, 1.0), x(3, 0.0);
+        RejectSecondAction pc;
+        const auto result = solve_bicgstab(A, b, x, 100, 1e-12, &pc);
+        EXPECT_TRUE(pc.calls == 2);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.residual_relative > 0.0);
+        const auto ax = A.matvec(x);
+        double r2 = 0.0;
+        for (std::size_t i = 0; i < 3; ++i) r2 += (b(i) - ax[i]) * (b(i) - ax[i]);
+        EXPECT_NEAR(result.residual_relative, std::sqrt(r2 / 3.0), 1e-14);
+    });
+    run_case("bicgstab_setup_failure_and_already_converged_state", []() {
+        const auto A = make_non_symmetric(5);
+        Vector b(5, 1.0), x(5, 0.0);
+        RejectSetupAction pc;
+        const auto result = solve_bicgstab(A, b, x, 50, 1e-12, &pc);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+        EXPECT_TRUE(pc.setups == 1);
+        Vector already(5, 0.0), zero(5, 0.0);
+        const auto solved = solve_bicgstab(A, zero, already, 50, 1e-12, &pc);
+        EXPECT_TRUE(solved.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(pc.setups == 1);
     });
 
     return run_all();

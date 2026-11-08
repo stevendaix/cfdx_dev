@@ -13,6 +13,11 @@ struct KrylovControls {
     bool adaptive_restart = true;
     std::size_t residual_replacement_period = 50;
     bool residual_replacement = true;
+    // Re-evaluate the UPDATED Krylov candidate periodically. Restart only if
+    // the true original-system residual exceeds the Givens projection by this
+    // factor; blindly restarting can degrade very ill-conditioned pressure
+    // systems even when their Arnoldi relation is accurate.
+    double residual_replacement_gap_ratio = 10.0;
     double target_reduction_per_cycle = 0.1;
     // When enabled, reductions are performed over the caller-owned local range
     // and then combined across ranks. This keeps solver math independent of
