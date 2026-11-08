@@ -4,6 +4,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from .native_solver_preflight import (
+    check_native_production_case,
+    is_native_production_solver,
+    native_production_command,
+)
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .output import OutputThrottle
@@ -331,7 +336,16 @@ if QApplication is not None:
                 raise ValueError("execution.solver must be configured before Run")
             if self._case_path is None:
                 raise ValueError("Save the case before Run")
-            command = [solver, str(self._case_path)]
+            if is_native_production_solver(solver):
+                output_dir = (self.session.case.execution.output_dir
+                              or self._case_path.parent / "results")
+                iterations = self.session.case.numerics.get("max_iterations", 500)
+                command = native_production_command(
+                    solver, self._case_path, output_dir=output_dir,
+                    max_iterations=iterations,
+                )
+            else:
+                command = [solver, str(self._case_path)]
             if self._restart_dat is not None:
                 restart_option = self.session.case.execution.restart_option
                 if not restart_option:
@@ -568,10 +582,15 @@ if QApplication is not None:
 
         def _refresh_file_status(self) -> None:
             if self._case_path is None:
-                self.file_status.setText("Unsaved case" + (" • Modified" if self._dirty else ""))
+                self.file_status.setText(
+                    "Unsaved case" + (" • Modified" if self._dirty else "")
+                )
                 return
             restart = f" | DAT: {self._restart_dat.name}" if self._restart_dat else ""
-            self.file_status.setText(f"Case: {self._case_path}{restart}" + (" • Modified" if self._dirty else ""))
+            self.file_status.setText(
+                f"Case: {self._case_path}{restart}"
+                + (" • Modified" if self._dirty else "")
+            )
 
         def _refresh_status(self, state: SimulationState, *_args) -> None:
             self.status.setText(
@@ -606,6 +625,9 @@ if QApplication is not None:
                 mesh = self.mesh_browser.catalog
                 report = validate_case(self.session.case, mesh)
                 if report.ok:
+                    solver = self.session.case.execution.solver
+                    if is_native_production_solver(solver) and self._case_path is not None:
+                        check_native_production_case(self._case_path)
                     message = "Case is valid."
                     if report.warnings:
                         message += "\n\nWarnings:\n" + "\n".join(f"- {d.message}" for d in report.warnings)

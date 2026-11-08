@@ -3,6 +3,7 @@
 #include "qualification_boundary_helpers.h"
 #include "naca_momentum_trace.h"
 #include "naca_relaxation_controls.h"
+#include "naca_coupled_selection.h"
 #include "cfdx/physics/wall_face_traction_reconstruction.h"
 #include "cfdx/physics/wall_shear_quadratic_fit.h"
 #include "naca_qualification_state_io.h"
@@ -134,22 +135,18 @@ static Forces run(const std::string& path,std::size_t level,
     pbc["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
 
     IncompressibleSolverControls c;
-    c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    // Configure the actual existing monolithic COUPLED solver (with an
+    // explicit Schur model), not the experimental Newton-Krylov prototype.
+    const auto naca_selection = cfdx::validation::parse_naca_coupling_selection(
+        std::getenv("CFDX_NACA_ALGORITHM"), std::getenv("CFDX_NACA_COUPLED_SCHUR"));
+    c.algorithm = naca_selection.algorithm;
+    c.coupling.schur_model = naca_selection.schur_model;
     // The stagnation detector is an early-stop heuristic, not a convergence
     // criterion. Long N256 replay can opt into diagnostic-only stagnation.
     if (const char* flag=std::getenv("CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY")) {
         if (std::string(flag)!="1")
             throw std::invalid_argument("NACA diagnostic-only stagnation expects 1");
         c.keep_iterating_after_stagnation=true;
-    }
-    // Isolated A/B only. Both algorithms retain the exact same nonlinear
-    // momentum, continuity and independent-face convergence criteria.
-    if (const char* algorithm=std::getenv("CFDX_NACA_ALGORITHM")) {
-        const std::string requested(algorithm);
-        if (requested == "SIMPLEC")
-            c.algorithm=PressureVelocityAlgorithm::SIMPLEC;
-        else if (requested != "SIMPLE")
-            throw std::invalid_argument("CFDX_NACA_ALGORITHM expects SIMPLE or SIMPLEC");
     }
     // Audit SIMPLEC on the identical momentum/pressure/HbyA face state,
     // independently from the rAtU pressure-correction implementation.
@@ -864,9 +861,21 @@ static Forces run(const std::string& path,std::size_t level,
     std::cout << "NACA_SOLVE_WALL elapsed_seconds=" << solve_elapsed_seconds
               << " accepted_iterations=" << solve.history.size()
               << " converged=" << solve.converged
-              << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
-                     ? "SIMPLEC" : "SIMPLE")
+              << " algorithm=" << cfdx::validation::naca_algorithm_name(c.algorithm)
               << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
+    if (c.algorithm == PressureVelocityAlgorithm::COUPLED) {
+        const bool matched = solve.coupled_schur_model_resolved &&
+            solve.requested_coupled_schur_model == naca_selection.schur_model &&
+            solve.resolved_coupled_schur_model == naca_selection.schur_model;
+        std::cout << "NACA_COUPLED_SCHUR requested="
+                  << cfdx::physics::to_string(naca_selection.schur_model)
+                  << " resolved="
+                  << cfdx::physics::to_string(solve.resolved_coupled_schur_model)
+                  << " exact_selection=" << matched
+                  << " physically_converged=" << solve.converged << '\n';
+        if (!matched)
+            throw std::runtime_error("NACA COUPLED Schur model selection drift");
+    }
     // Save physical nonlinear diagnostics even when the full CFD gate fails.
     // The official force/GCI checks still require solve.converged == true.
     // This opt-in creates no matrix dumps and can be used for long runs.
@@ -922,8 +931,7 @@ static Forces run(const std::string& path,std::size_t level,
                 << h.effective_alpha_u << ',' << h.effective_alpha_p << ','
                 << (c.pseudo_momentum.enabled ? h.v17_pseudo_cfl : 0.0) << ','
                 << h.nonlinear_convergence_metric << ','
-                << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
-                        ? "SIMPLEC" : "SIMPLE") << ','
+                << cfdx::validation::naca_algorithm_name(c.algorithm) << ','
                 << h.v17_pseudo_capped_cells << ','
                 << (c.nonlinear_multisecant.method==NonlinearMultisecantMethod::ANDERSON
                     ? "ANDERSON" : c.nonlinear_multisecant.method==NonlinearMultisecantMethod::NGMRES
@@ -942,8 +950,7 @@ static Forces run(const std::string& path,std::size_t level,
         std::cout << "NACA_PHYSICAL_HISTORY path=" << path
                   << " accepted_iterations=" << solve.history.size()
                   << " converged=" << solve.converged
-              << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
-                     ? "SIMPLEC" : "SIMPLE")
+              << " algorithm=" << cfdx::validation::naca_algorithm_name(c.algorithm)
               << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
     }
 
