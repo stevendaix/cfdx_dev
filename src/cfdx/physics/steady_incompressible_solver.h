@@ -2906,7 +2906,8 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     std::size_t reference_cell,
-    ConvectionScheme /*convection_scheme — unused by design, see comment above*/)
+    ConvectionScheme /*convection_scheme — unused by design, see comment above*/,
+    bool pressure_space_inflow_dirichlet = false)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -2925,18 +2926,46 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     Field<double, Location::FACE> zero_flux(mesh.n_faces(), "pcd_zero_flux", "", 1);
     auto mass_flux = make_mass_flux(mesh, geometry, velocity, rho, velocity_bcs);
 
+    // PCD pressure-space inflow boundaries are NOT necessarily the physical
+    // pressure BCs. The same farfield patch can carry both inflow/outflow:
+    // resolve the actual signed flux on each boundary face. For an incoming
+    // face use homogeneous Dirichlet for the auxiliary Kp and Fp operators;
+    // characteristic/symmetry/solid/empty faces retain their original BCs.
+    // This is an opt-in Schur-preconditioner experiment only. Never rewrite
+    // the coupled FV matrix or pressure solution boundary conditions here.
+    ScalarBoundaryFaceConditions inflow_conditions(mesh.n_faces());
+    if (pressure_space_inflow_dirichlet) {
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            if (mesh.ownership().neighbour(face) >= 0 ||
+                !(mass_flux(face) < 0.0)) continue;
+            const auto patch_index = geometry.face_patch[face];
+            if (patch_index >= mesh.boundary().n_patches()) continue;
+            const auto kind = mesh.boundary().patch(patch_index).type;
+            if (kind == PatchType::WALL || kind == PatchType::EMPTY ||
+                kind == PatchType::SYMMETRY || kind == PatchType::PERIODIC ||
+                kind == PatchType::INTERFACE) continue;
+            inflow_conditions.specified[face] = 1;
+            inflow_conditions.conditions[face] = {
+                ScalarBoundaryFaceCondition::Type::FIXED_VALUE, 0.0};
+        }
+    }
+    const auto* auxiliary_face_bcs = pressure_space_inflow_dirichlet
+        ? &inflow_conditions : nullptr;
+
     Field<double, Location::CELL> zero_source(nc, "pcd_zero_source", "", 1);
     Field<double, Location::CELL> zero_implicit(nc, "pcd_zero_implicit", "", 1);
 
     const auto diffusion = assemble_scalar_equation(
         mesh, geometry, zero_flux, 1.0,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr,
+        auxiliary_face_bcs, false);
 
     const auto convection_diffusion = assemble_scalar_equation(
         mesh, geometry, mass_flux, rho * kinematic_viscosity,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr,
+        auxiliary_face_bcs, false);
 
     // A fixed pressure boundary already removes the constant null mode of
     // the pressure operators, so the gauge reference row is imposed only
@@ -3942,7 +3971,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         auto pcd_ops = std::make_shared<PcdPressureOperators>(
             assemble_pcd_pressure_operators(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
-                reference_cell, ConvectionScheme::UPWIND/* exact matrix for every scheme, see assemble_pcd_pressure_operators */));
+                reference_cell, ConvectionScheme::UPWIND/* exact matrix for every scheme, see assemble_pcd_pressure_operators */,
+                controls.coupling.pcd_pressure_inflow_dirichlet_experimental));
         if (controls.coupling.pcd_consistent_gauge_experimental && !has_fixed_pressure) {
             apply_nested_schur_pressure_gauge(pcd_ops->laplacian, reference_cell);
             apply_nested_schur_pressure_gauge(pcd_ops->convection_diffusion, reference_cell);
@@ -3950,7 +3980,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
         const auto prepare_pcd_solver =
             [](const cfdx::core::SparseMatrix& matrix,
-               const cfdx::core::LinearSolverRequest& request) {
+               const cfdx::core::LinearSolverRequest& request,
+               bool is_fp_operator) {
                 if (request.krylov == cfdx::core::KrylovModel::Auto ||
                     request.preconditioner == cfdx::core::PreconditionerModel::Auto)
                     throw std::invalid_argument(
@@ -3965,6 +3996,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         /*constant_null_space=*/false,
                         /*require_smoother_certificate=*/
                         request.krylov == cfdx::core::KrylovModel::CG);
+                // Apply the anti-stagnation coarsening policy ONLY to the
+                // nonsymmetric nested Fp AMG. Kp/CG and all other AMG users
+                // retain their historical multigrid hierarchy unchanged.
+                if (is_fp_operator &&
+                    request.preconditioner == cfdx::core::PreconditionerModel::NativeAMG &&
+                    request.krylov == cfdx::core::KrylovModel::FGMRES) {
+                    auto* native = dynamic_cast<cfdx::core::NativeAMGPreconditioner*>(
+                        preconditioner.get());
+                    if (!native) throw std::logic_error("PCD Fp AMG type mismatch");
+                    native->configure_max_coarsening_fraction(0.90);
+                    native->configure_bounded_nonsymmetric_action(1e6);
+                }
                 if (!preconditioner || !preconditioner->setup(matrix))
                     throw std::runtime_error(
                         "PCD nested pressure preconditioner setup failed");
@@ -3972,7 +4015,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             };
 
         pcd_ops->laplacian_preconditioner =
-            prepare_pcd_solver(pcd_ops->laplacian, controls.pcd_laplacian_linear_solver);
+            prepare_pcd_solver(pcd_ops->laplacian, controls.pcd_laplacian_linear_solver, false);
         if (controls.coupling.pcd_fp_row_equilibration_experimental)
             pcd_ops->convection_diffusion_equilibrated =
                 std::make_unique<PcdFpEquilibration>(
@@ -3982,7 +4025,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             : pcd_ops->convection_diffusion;
         pcd_ops->convection_diffusion_preconditioner =
             prepare_pcd_solver(
-                fp_solve_matrix, controls.pcd_convection_diffusion_linear_solver);
+                fp_solve_matrix, controls.pcd_convection_diffusion_linear_solver, true);
         if (controls.diagnostics.coupled_matrix_summary) {
             const auto stats = equilibrate_pcd_fp_rows(pcd_ops->convection_diffusion);
             std::cerr << "COUPLED_PCD_FP_MATRIX"
@@ -3993,6 +4036,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                       << " smallest_diagonal_ratio=" << stats.smallest_diagonal_ratio
                       << " largest_diagonal_ratio=" << stats.largest_diagonal_ratio
                       << " equilibrated=" << (pcd_ops->convection_diffusion_equilibrated ? 1 : 0)
+                      << " pressure_inflow_dirichlet=" << (controls.coupling.pcd_pressure_inflow_dirichlet_experimental ? 1 : 0)
                       << " fp_inner_budget=" << controls.pcd_convection_diffusion_max_iterations
                       << " fp_inner_tolerance=" << controls.pcd_convection_diffusion_tolerance
                       << "\n";
