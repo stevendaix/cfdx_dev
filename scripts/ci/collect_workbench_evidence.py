@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Collect evidence without ever inferring physical qualification from CTest PASS."""
 import argparse
 import json

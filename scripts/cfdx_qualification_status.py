@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only cross-case qualification snapshot, with explicit provenance limits.
 
 Example:

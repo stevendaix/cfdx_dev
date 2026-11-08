@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bounded synthetic HDF5 volume tile benchmark (I/O only, not GPU FPS).
 
 The benchmark uses independently defined hexahedral cells, preserves original
