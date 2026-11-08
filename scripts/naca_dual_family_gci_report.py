@@ -20,6 +20,8 @@ from naca_force_mesh_qualification import (
     read_one_certificate,
     verify_physical_history,
 )
+from naca_surface_force_oracle import integrate as integrate_raw_faces
+from naca_surface_force_oracle import read_rows as read_raw_faces
 from qualify_naca_grid import qualify
 
 LEVELS = (64, 128, 256)
@@ -34,7 +36,9 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def physical_setup(exe: Path, pressure_boundary_policy: str) -> dict:
+def physical_setup(
+    exe: Path, pressure_boundary_policy: str, convection_scheme: str
+) -> dict:
     return {
         "airfoil": "NACA0012_finite_thickness_TE",
         "reynolds": 1000.0,
@@ -43,7 +47,8 @@ def physical_setup(exe: Path, pressure_boundary_policy: str) -> dict:
         "farfield_radius_chords": 20.0,
         "velocity_boundary": "Dirichlet_Uinf_farfield_no_slip_airfoil",
         "pressure_boundary": pressure_boundary_policy,
-        "convection_scheme": "TVD_VANLEER",
+        "convection_scheme": convection_scheme,
+        "pressure_velocity_algorithm": "SIMPLE",
         "wall_shear_method": "FACE_WLS",
         "solver_revision": "bin-sha256:" + sha256(exe),
         "linear_tolerance": 1e-12,
@@ -145,8 +150,11 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
         result["reasons"].append("geometry: " + str(exc))
     certs = {}
     histories = {}
+    raw_faces = {}
     verified_pressure_policies = set()
+    verified_schemes = set()
     policies_by_level = {}
+    schemes_by_level = {}
     for n in LEVELS:
         location = runs / family / f"n{n}"
         meta = location / "run_summary.json"
@@ -158,7 +166,8 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
                 m = json.loads(meta.read_text())
                 if (
                     m.get("exit_code") != 0
-                    or m.get("scheme") != "TVD_VANLEER"
+                    or m.get("scheme") not in ("TVD_VANLEER", "MUSCL_CELL_LIMITED")
+                    or m.get("algorithm") != "SIMPLE"
                     or m.get("linear_tolerance") != 1e-12
                     or m.get("wall_traction") != "FACE_WLS"
                     or m.get("nonlinear_tolerance") != 1e-8
@@ -172,14 +181,19 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
                 if m.get("kinematic_face_flux_certified") is not True:
                     raise ValueError("missing strict per-face kinematic flux proof")
                 verified_pressure_policies.add(policy)
+                verified_schemes.add(m["scheme"])
                 policies_by_level[n] = policy
+                schemes_by_level[n] = m["scheme"]
                 expected = family_dir / f"naca0012_{family}_n{n}.h5"
                 if Path(m["mesh"]).resolve() != expected.resolve():
                     raise ValueError("solver mesh does not match family")
                 cp = location / "force.csv"
                 hp = location / "history.csv"
-                if not cp.is_file() or not hp.is_file():
-                    raise ValueError("missing converged force or nonlinear history")
+                rp = location / "raw_wall_faces.csv"
+                if not cp.is_file() or not hp.is_file() or not rp.is_file():
+                    raise ValueError(
+                        "missing converged force, nonlinear history or raw wall faces"
+                    )
                 with cp.open(newline="") as f:
                     rec = list(csv.DictReader(f))
                 if len(rec) != 1:
@@ -188,18 +202,26 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
                 physical = verify_physical_history(hp, n, strict)
                 if physical["convection_scheme"] != m["scheme"]:
                     raise ValueError(
-                        "historical convection scheme disagrees with run metadata"
+                        "historical final convection scheme disagrees with run metadata"
                     )
+                # Even provisional two-grid output must depend on a genuinely
+                # independent face-integral verification, not only C++ totals.
+                integrate_raw_faces(read_raw_faces(rp), strict)
                 row.update({k: float(rec[0][k]) for k in FIELDS})
                 row["converged"] = True
                 certs[n] = cp
                 histories[n] = hp
+                raw_faces[n] = rp
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 result["reasons"].append(f"N{n}: {exc}")
         result["observations"].append(row)
     if len(verified_pressure_policies) > 1:
         result["reasons"].append(
             "mixed farfield pressure policies across N64/N128/N256"
+        )
+    if len(verified_schemes) > 1:
+        result["reasons"].append(
+            "mixed final convection schemes across N64/N128/N256"
         )
     result["pressure_boundary_policy"] = (
         next(iter(verified_pressure_policies))
@@ -210,6 +232,7 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
         all(row["converged"] for row in result["observations"][:2])
         and policies_by_level.get(64) == policies_by_level.get(128)
         and policies_by_level.get(64) in ("DIRICHLET_ZERO", "ZERO_NORMAL_GRADIENT")
+        and schemes_by_level.get(64) == schemes_by_level.get(128)
     ):
         result["two_grid_assumed_order_only"] = assumed_order_two_grid(
             result["observations"][0], result["observations"][1]
@@ -217,7 +240,7 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
     if len(certs) != 3 or result["reasons"]:
         # No extrapolated coefficients or GCI may appear on incomplete runs.
         return result
-    certificate = certify(quality, certs, histories)
+    certificate = certify(quality, certs, histories, raw_faces)
     result["solver_certificate"] = certificate
     physical_cases = {x.get("N"): x for x in certificate.get("cases", [])}
     for row in result["observations"]:
@@ -241,7 +264,9 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
         return result
     result["status"] = "GCI_CANDIDATE"
     result["gci"] = certificate["gci"]["result"]["quantities"]
-    result["physical_setup"] = physical_setup(exe, result["pressure_boundary_policy"])
+    result["physical_setup"] = physical_setup(
+        exe, result["pressure_boundary_policy"], certificate["convection_scheme"]
+    )
     return result
 
 

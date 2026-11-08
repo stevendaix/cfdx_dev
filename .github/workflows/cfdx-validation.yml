@@ -506,6 +506,7 @@ jobs:
     if: always() && needs.prepare.result == 'success'
     needs:
       - prepare
+      - fast-tests
       - long-tests
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -531,6 +532,31 @@ jobs:
         with:
           pattern: cfdx-total-validation-long-evidence-*
           path: long-evidence
+      - uses: actions/download-artifact@v7
+        with:
+          name: cfdx-total-validation-fast-evidence
+          path: fast-evidence
+      - name: Aggregate all 25 qualification cases from fast and long CTest runs
+        # The portfolio is diagnostic, not a replacement for physical proof;
+        # missing/failed shards remain visible as NOT_RUN/FAIL. Full physical
+        # certification is a separate gate and requires case-specific evidence.
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --test-dir "$BUILD_DIR" --show-only=json-v1 \
+            > "$BUILD_DIR/qualification-ctest-manifest.json"
+          junit_args=()
+          while IFS= read -r -d '' file; do
+            junit_args+=(--junit "$file")
+          done < <(find fast-evidence long-evidence -type f \
+            \( -name 'ctest-fast-results.xml' -o -name 'ctest-long-*.xml' \) \
+            -print0 | sort -z)
+          # No XML means NOT_RUN, never a fabricated PASS; the existing shard
+          # coverage and final-gate steps still reject incomplete execution.
+          python3 scripts/qualification_portfolio.py \
+            --ctest-manifest "$BUILD_DIR/qualification-ctest-manifest.json" \
+            "${junit_args[@]}" \
+            --output-dir "$BUILD_DIR/qualification-portfolio" --strict-links
       - name: Verify all four long-validation logs and combine evidence
         # A missing shard is a failure even when the remaining three have
         # passing JUnit XMLs. The report consumes the same physical records,
@@ -585,6 +611,8 @@ jobs:
             ${{ env.BUILD_DIR }}/validation-report/
             ${{ env.BUILD_DIR }}/diagnostic-evidence/
             ${{ env.BUILD_DIR }}/long-shards-coverage.json
+            ${{ env.BUILD_DIR }}/qualification-portfolio/
+            ${{ env.BUILD_DIR }}/qualification-ctest-manifest.json
           if-no-files-found: warn
           retention-days: 30
       - name: Final report gate
