@@ -648,8 +648,10 @@ int main() {
             zero.fill(0.0);
             mass.fill(0.0);
             // For the skewed family choose a transverse affine field whose
-            // two centre values coincide on the most skewed internal face.
-            // This is the counterexample to the two-cell face clipping.
+            // Select the exact affine gradient perpendicular to the most
+            // skewed internal face; both legacy and multidimensional schemes
+            // must preserve this affine field. Nonlinear boundedness is tested
+            // separately below.
             Vec3 exact_gradient{0.7,-1.3,0.0};
             if (variant.second>0.0) {
                 double maximum_skew=0.0;
@@ -704,7 +706,7 @@ int main() {
             std::cout<<"MUSCL affine ny="<<ny<<" legacy_error="<<max_error_old
                      <<" multidim_error="<<max_error_new<<"\n";
             EXPECT_TRUE(max_error_new<1e-11);
-            if (variant.second>0.0) EXPECT_TRUE(max_error_old>1e-7);
+            EXPECT_TRUE(max_error_old<1e-11);
             // Synthetic face fluxes need not satisfy continuity, so add
             // (diag*phi - rhs) with equal values to keep a positive matrix
             // diagonal without altering the audited transport residual.
