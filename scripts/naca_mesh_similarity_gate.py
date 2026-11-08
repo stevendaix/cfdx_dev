@@ -37,6 +37,9 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
                 raise ValueError(f"invalid mesh characteristic {key}")
         if int(row["inverted_or_degenerate_cells"]) != 0:
             diagnostic["reasons"].append("inverted_or_degenerate_cells")
+        te = float(row.get("trailing_edge_regularization", 0.0))
+        if not math.isfinite(te) or not 0.0 <= te <= 0.08:
+            raise ValueError("invalid trailing-edge regularization")
     strategies = {row.get("radial_refinement_strategy", "unspecified") for row in items}
     if len(strategies) != 1:
         diagnostic["reasons"].append("inconsistent_radial_refinement_strategy")
@@ -65,6 +68,14 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
             or abs(float(b["radial_power"]) - float(a["radial_power"])) > 1e-12
         ):
             diagnostic["reasons"].append("different_geometry_or_grading")
+        if (
+            abs(
+                float(b.get("trailing_edge_regularization", 0.0))
+                - float(a.get("trailing_edge_regularization", 0.0))
+            )
+            > 1e-12
+        ):
+            diagnostic["reasons"].append("different_trailing_edge_sampling")
     if not diagnostic["reasons"]:
         diagnostic["status"] = "COMPATIBLE_WITH_SINGLE_RATIO_GCI"
     else:

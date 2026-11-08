@@ -31,6 +31,15 @@ class MeshFamilyTests(unittest.TestCase):
             "COMPATIBLE_WITH_SINGLE_RATIO_GCI",
         )
 
+    def test_different_te_sampling_blocks_a_mixed_mesh_family(self):
+        rows = [row(64, 24, 0.04), row(128, 48, 0.02), row(256, 96, 0.01)]
+        rows[0]["trailing_edge_regularization"] = 0.04
+        rows[1]["trailing_edge_regularization"] = 0.04
+        rows[2]["trailing_edge_regularization"] = 0.0
+        result = MODULE.verify_mesh_family(rows)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("different_trailing_edge_sampling", result["reasons"])
+
     def test_wall_normal_refinement_mismatch_blocks_gci(self):
         report = MODULE.verify_mesh_family(
             [row(64, 24, 0.05), row(128, 48, 0.0155), row(256, 96, 0.0047)]
