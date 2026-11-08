@@ -96,7 +96,12 @@ def write_sst_thermal_case(
                     patch["value_type"] = "fixed"
                     patch["turbulence_intensity"] = 0.05
                     patch["turbulence_length_scale"] = 0.1
-                    patch["velocity_magnitude"] = 1.0
+                    # This is an energy/SST coupling smoke test, not a flow
+                    # qualification. Keep the carrier at rest so the
+                    # independent local face-momentum gate is exact; the
+                    # nonzero k/omega field still exercises turbulent lambda_eff.
+                    patch["velocity_magnitude"] = 0.0
+                    patch["velocity_vector"] = [0.0, 0.0, 0.0]
         del case.attrs["case_setup_json"]
         case.attrs["case_setup_json"] = json.dumps(setup)
 
