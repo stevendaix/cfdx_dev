@@ -48,7 +48,9 @@ class SameStateTraceTests(unittest.TestCase):
                         "pressure_relaxation_split": 0,
                         "simplec_extra_flux": 0,
                         "decomposition_error": 0,
-                        "internal_pressure_operator": pred - mass if face == 5 else "nan",
+                        "internal_pressure_operator": (
+                            pred - mass if face == 5 else "nan"
+                        ),
                         "pressure_operator_error": 0 if face == 5 else "nan",
                     }
                 )
