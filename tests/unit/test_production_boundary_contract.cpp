@@ -22,6 +22,13 @@ int main() {
         outlet.pressure=123.0;
         validate_production_incompressible_boundary(outlet,PatchType::OUTLET);
     });
+    run_case("zero_gradient_inlet_is_supported_as_open_boundary", [] {
+        BoundarySpec inlet;
+        inlet.patch_name="in";
+        inlet.type=BCType::INLET;
+        inlet.value_type=BCValueType::ZERO_GRADIENT;
+        validate_production_incompressible_boundary(inlet,PatchType::INLET);
+    });
     run_case("symmetry_requires_matching_mesh_patch", [] {
         BoundarySpec bc;
         bc.patch_name="symmetry";
