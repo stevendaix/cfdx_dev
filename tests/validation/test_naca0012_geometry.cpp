@@ -6,6 +6,7 @@
 #include "cfdx/physics/wall_face_traction_reconstruction.h"
 #include "cfdx/physics/wall_shear_quadratic_fit.h"
 #include "naca_qualification_state_io.h"
+#include "naca_paired_restart.h"
 #include <cstdlib>
 #include <cstdio>
 #include <cerrno>
@@ -37,6 +38,7 @@ static Forces run(const std::string& path,std::size_t level,
     const char* output_names[] = {
         "CFDX_NACA_CONVERGED_FORCE_CSV",
         "CFDX_NACA_CONVERGED_FACE_FLUX_CSV",
+        "CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST",
         "CFDX_NACA_EXPORT_CONVERGED_STATE_CSV",
         "CFDX_NACA_FACE_PROFILES_CSV",
         "CFDX_NACA_FACE_TRACTION_RAW_CSV",
@@ -52,13 +54,17 @@ static Forces run(const std::string& path,std::size_t level,
              output == std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV")) ||
             (std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV") &&
              output == std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV")) ||
+            (std::getenv("CFDX_NACA_IMPORT_PAIRED_MANIFEST") &&
+             output == std::getenv("CFDX_NACA_IMPORT_PAIRED_MANIFEST")) ||
             std::find(outputs.begin(), outputs.end(), output) != outputs.end()) {
             throw std::invalid_argument(std::string("invalid or conflicting NACA output path: ") + name);
         }
         outputs.push_back(output);
     }
     for (const auto& output : outputs)
-        if (std::remove(output.c_str()) != 0 && errno != ENOENT)
+        if (std::getenv("CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST") &&
+            output == std::getenv("CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST")) continue;
+        else if (std::remove(output.c_str()) != 0 && errno != ENOENT)
             throw std::runtime_error("cannot clear stale NACA diagnostic/certificate");
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -100,6 +106,13 @@ static Forces run(const std::string& path,std::size_t level,
 
     IncompressibleSolverControls c;
     c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    // The stagnation detector is an early-stop heuristic, not a convergence
+    // criterion. Long N256 replay can opt into diagnostic-only stagnation.
+    if (const char* flag=std::getenv("CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY")) {
+        if (std::string(flag)!="1")
+            throw std::invalid_argument("NACA diagnostic-only stagnation expects 1");
+        c.keep_iterating_after_stagnation=true;
+    }
     // Isolated A/B only. Both algorithms retain the exact same nonlinear
     // momentum, continuity and independent-face convergence criteria.
     if (const char* algorithm=std::getenv("CFDX_NACA_ALGORITHM")) {
@@ -263,6 +276,36 @@ static Forces run(const std::string& path,std::size_t level,
             return true;
         };
     }
+    // Exact same-mesh U,p,phi snapshot of the *accepted* iterate only.
+    if (const char* manifest = std::getenv("CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST")) {
+        const char* frequency = std::getenv("CFDX_NACA_CHECKPOINT_EVERY");
+        if (!*manifest || !frequency)
+            throw std::invalid_argument("NACA paired checkpoint requires path and interval");
+        const std::string raw(frequency);
+        std::size_t n_read=0;
+        const auto interval=std::stoull(raw,&n_read);
+        if (n_read!=raw.size() || interval < 10 || interval > 10000)
+            throw std::invalid_argument("NACA paired checkpoint frequency out of [10,10000]");
+        c.accepted_iteration_callback = [manifest_path=std::string(manifest),
+                                         interval, &geometry](
+            std::size_t iteration, const Mesh& accepted_mesh,
+            const auto& velocity, const auto& pressure, const auto& phi,
+            double momentum_reference, double nonlinear_reference) {
+            if (iteration % interval != 0) return;
+            std::vector<cfdx::validation::NacaStateRow> cells;
+            cells.reserve(geometry.cell_centres.size());
+            for (std::size_t i=0;i<geometry.cell_centres.size();++i)
+                cells.push_back({geometry.cell_centres[i],
+                                  velocity.component_data(0)[i],
+                                  velocity.component_data(1)[i],pressure(i)});
+            cfdx::validation::naca_write_paired_checkpoint_atomic(
+                manifest_path,iteration,cells,accepted_mesh,geometry,phi,
+                momentum_reference,nonlinear_reference);
+            std::cout << "NACA_PAIRED_CHECKPOINT iteration=" << iteration
+                      << " status=ACCEPTED_NOT_PHYSICALLY_QUALIFIED"
+                      << " faces=" << phi.size() << "\n";
+        };
+    }
     // Cellwise signed momentum evidence: exported only on a requested
     // iteration, never used by the solve or to promote convergence.
     std::ofstream face_budget_output;
@@ -349,6 +392,28 @@ static Forces run(const std::string& path,std::size_t level,
         U.component_data(0)[i]=Uinf;
     // Experimental coarse-to-fine continuation; strict mesh alignment.
     // The solver still needs to satisfy every ordinary nonlinear/force gate.
+    if (const char* manifest = std::getenv("CFDX_NACA_IMPORT_PAIRED_MANIFEST")) {
+        if (std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV") ||
+            std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV"))
+            throw std::invalid_argument("NACA paired restart is mutually exclusive with legacy inputs");
+        const auto snapshot=cfdx::validation::naca_read_paired_checkpoint(
+            manifest,mesh,geometry);
+        for (std::size_t i=0;i<snapshot.cells.size();++i) {
+            U.component_data(0)[i]=snapshot.cells[i].ux;
+            U.component_data(1)[i]=snapshot.cells[i].uy;
+            U.component_data(2)[i]=0.0;
+            p(i)=snapshot.cells[i].pressure;
+        }
+        c.initial_face_mass_flux=snapshot.mass_flux;
+        c.initial_face_mass_flux_from_paired_checkpoint=true;
+        c.initial_momentum_residual_reference=snapshot.momentum_reference;
+        c.initial_nonlinear_metric_reference=snapshot.nonlinear_monitor_reference;
+        c.initial_accepted_iteration=snapshot.accepted_iteration;
+        std::cout << "NACA_PAIRED_RESTART: ACCEPTED_INITIAL_GUESS_NOT_CONVERGED"
+                  << " saved_iteration=" << snapshot.accepted_iteration
+                  << " cells=" << snapshot.cells.size()
+                  << " faces=" << snapshot.mass_flux.size() << "\n";
+    }
     if (const char* path = std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV")) {
         const auto init = cfdx::validation::naca_read_state_csv(
             path, geometry.cell_centres);

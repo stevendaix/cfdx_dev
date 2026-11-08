@@ -289,6 +289,10 @@ struct IncompressibleSolverControls {
     // declaring nonlinear convergence. Shared by SIMPLE/SIMPLEC/COUPLED;
     // disabled by default to preserve existing solver behaviour.
     bool require_independent_face_residual_for_convergence = false;
+    // Opt-in for a long validation run: STAGNATED remains diagnostic and
+    // MUST NOT count as converged. Divergence, maximum-iteration, component
+    // residual, conservation and true-face momentum gates remain unchanged.
+    bool keep_iterating_after_stagnation = false;
     std::size_t linear_max_iterations = 1000;
     double linear_tolerance = 1e-10;
     // Optional independent pressure linear budget; zero inherits the global one.
@@ -307,6 +311,16 @@ struct IncompressibleSolverControls {
     // The conservative flux is only a startup state; all final residual and
     // physical gates are unchanged. Empty means legacy interpolation.
     std::vector<double> initial_face_mass_flux;
+    // A complete same-mesh checkpoint captured at an accepted iteration may
+    // legitimately contain a NONCONVERGED continuity defect and a Rhie-Chow
+    // boundary pressure correction. This is not a physical convergence waiver:
+    // it only changes the admission test for a verified restart initial guess.
+    bool initial_face_mass_flux_from_paired_checkpoint = false;
+    // Original accepted-run normalization and offset for a verifiable restart.
+    // BOTH references must accompany a same-mesh U,p,phi checkpoint.
+    double initial_momentum_residual_reference = 0.0;
+    double initial_nonlinear_metric_reference = 0.0;
+    std::size_t initial_accepted_iteration = 0;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
     // Optional cellwise body force per unit mass (m/s^2). Replaces the
     // uniform controls.body_force vector when supplied (Boussinesq
@@ -414,6 +428,18 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     IterationOutputCallback iteration_output_callback;
+    // Called only after a nonlinear U,p,phi transaction has committed.
+    // Unlike diagnostic assembly hooks, this cannot expose a rejected candidate.
+    // phi is the authoritative accepted Rhie-Chow face flux (kg/s), not
+    // a reconstruction from U. This hook is for reproducible restart snapshots.
+    using AcceptedIterationCallback = std::function<void(
+        std::size_t,
+        const cfdx::core::Mesh&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::FACE>&,
+        double, double)>;
+    AcceptedIterationCallback accepted_iteration_callback;
     // Evidence hook called after the declared initialization strategy has been
     // applied and before geometry assembly or the first residual is formed.
     // References are valid only for the duration of the callback.
@@ -694,6 +720,21 @@ inline void validate_incompressible_controls(
     const IncompressibleSolverControls& c, std::size_t n_cells)
 {
     validate_initialization_controls(c.initialization);
+    if (c.initial_face_mass_flux_from_paired_checkpoint) {
+        if (c.initial_face_mass_flux.empty() ||
+            !std::isfinite(c.initial_momentum_residual_reference) ||
+            !(c.initial_momentum_residual_reference > 0.0) ||
+            !std::isfinite(c.initial_nonlinear_metric_reference) ||
+            !(c.initial_nonlinear_metric_reference > 0.0) ||
+            c.initial_accepted_iteration == 0 ||
+            c.initial_accepted_iteration > std::numeric_limits<std::size_t>::max() -
+                c.convergence.max_iterations || c.convection_continuation.enabled)
+            throw std::invalid_argument(
+                "verified paired restart requires full reference/iteration contract (no continuation)");
+    } else if (c.initial_momentum_residual_reference != 0.0 ||
+               c.initial_nonlinear_metric_reference != 0.0 ||
+               c.initial_accepted_iteration != 0)
+        throw std::invalid_argument("incomplete initial reference restart contract");
     validate_coupling_controls(c.coupling);
     if (c.coupling.piso_neighbor_correction &&
         c.algorithm != PressureVelocityAlgorithm::PISO &&
@@ -4393,6 +4434,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     monitor_controls.divergence_growth_factor = 10.0;
     monitor_controls.qoi_gates = controls.qoi_gates;
     cfdx::core::ConvergenceMonitor convergence_monitor(monitor_controls);
+    if (controls.initial_face_mass_flux_from_paired_checkpoint)
+        convergence_monitor.restore_initial_reference(
+            controls.initial_nonlinear_metric_reference);
 
     const std::size_t configured_pcorr =
         (controls.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -4407,6 +4451,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             : 1u;
 
     IncompressibleSolveResult result;
+    result.reference_momentum_residual = controls.initial_momentum_residual_reference;
     double v17_pseudo_cfl=controls.pseudo_momentum.initial_cfl;
     result.requested_coupled_schur_model = controls.coupling.schur_model;
     result.resolved_coupled_schur_model = controls.coupling.schur_model;
@@ -4554,7 +4599,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 it->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE) {
                 const double reference = mass_flux(f);
                 const double allowed = 1e-11 * std::max(1.0, std::abs(reference));
-                if (std::abs(mdot - reference) > allowed)
+                // For a pressure-Dirichlet face the production RC operator
+                // adds an implicit + nonorthogonal pressure contribution even
+                // with fixed U. The accepted flux is not equal to U_bc dot Sf.
+                // Only a verified paired restart may replay that difference;
+                // legacy hybrid flux input keeps the stronger existing rule.
+                const auto pbc = pressure_bcs.find(name);
+                const bool pressure_flux_boundary =
+                    pbc != pressure_bcs.end() &&
+                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE;
+                if (std::abs(mdot - reference) > allowed &&
+                    !(controls.initial_face_mass_flux_from_paired_checkpoint &&
+                      pressure_flux_boundary))
                     throw std::invalid_argument(
                         "hybrid flux violates a fixed-velocity boundary face");
                 prescribed_boundary_throughput += std::abs(reference);
@@ -4563,9 +4619,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const auto continuity = initial_face_flux_continuity_report(
             mesh, controls.initial_face_mass_flux,
             prescribed_boundary_throughput);
-        if (!(continuity.normalized <= 1e-7))
+        // A checkpoint represents an accepted iterate, not necessarily a
+        // converged one. Preserve its exact phi and separately audit continuity
+        // during the solve; reject pathological values, never relax the final
+        // nonlinear convergence or independent face-momentum gates.
+        const double admissible =
+            controls.initial_face_mass_flux_from_paired_checkpoint ? 1e-1 : 1e-7;
+        if (!(continuity.normalized <= admissible))
             throw std::invalid_argument(
-                "hybrid initial mass flux fails local continuity gate");
+                "hybrid initial mass flux fails local continuity admission gate");
         for (std::size_t f=0; f<mesh.n_faces(); ++f)
             mass_flux(f)=controls.initial_face_mass_flux[f];
         std::cout << "HYBRID_INITIAL_FACE_FLUX continuity_l1=" << continuity.local_l1
@@ -6927,7 +6989,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.continuity_normalized = l1 / std::max(flux_reference, tiny);
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED)
             h.pressure_residual = h.continuity_normalized;
-        if (iter == 1)
+        if (iter == 1 && !controls.initial_face_mass_flux_from_paired_checkpoint)
             result.reference_momentum_residual =
                 std::max(final_momentum_residual, tiny);
         h.momentum_equation_residual_reference =
@@ -8061,12 +8123,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 IncompressibleProbeSample{probe.name, iter, 0.0, value});
         }
 
-        if (controls.iteration_output_callback &&
-            !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
-            result.iterations = iter;
-            stop_after_iteration = true;
-        }
-
         result.convergence_status = convergence_report.status;
         result.convergence_reason = convergence_report.reason;
         if ((convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED ||
@@ -8126,9 +8182,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             result.convergence_reason =
                 "high-order convection continuation: intermediate-operator plateau";
         }
+        if (convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED &&
+            full_order_eligible && controls.keep_iterating_after_stagnation) {
+            result.convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "stagnation observed; continue for full physical residual gates";
+        }
         if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
             (convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED &&
-             full_order_eligible)) {
+             full_order_eligible && !controls.keep_iterating_after_stagnation)) {
             result.iterations = iter;
             stop_after_iteration = true;
         }
@@ -8185,6 +8247,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 throw;
+            }
+            // Restart observers must never serialize U,p before commit, nor
+            // reconstruct phi from U on a collocated grid. Keep I/O outside the
+            // rollback try/catch: a failed write is not a nonlinear retry.
+            if (iteration_completed && controls.accepted_iteration_callback)
+                controls.accepted_iteration_callback(
+                    iter + controls.initial_accepted_iteration,
+                    mesh, U, p, result.authoritative_mass_flux,
+                    result.reference_momentum_residual,
+                    controls.initial_face_mass_flux_from_paired_checkpoint
+                        ? controls.initial_nonlinear_metric_reference
+                        : result.history.front().nonlinear_convergence_metric);
+            if (iteration_completed && controls.iteration_output_callback &&
+                !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
+                result.iterations = iter;
+                stop_after_iteration = true;
             }
             if (iteration_completed && controls.probe_callback) {
                 for (std::size_t sample_index = probe_samples_size;

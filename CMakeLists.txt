@@ -945,6 +945,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_test(NAME test_bfs_quick COMMAND test_bfs_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/bfs_re200_n16.h5)
     set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
+    # Header-heavy qualification target: keep incremental compile cost tractable.
+    target_compile_options(test_naca0012_qualification PRIVATE -O1)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_naca_mesh_similarity_gate
@@ -1152,6 +1154,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_wall_face_traction_mms tests/validation/test_wall_face_traction_mms.cpp)
     add_cfdx_test(test_wall_shear_quadratic_fit tests/validation/test_wall_shear_quadratic_fit.cpp)
     add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)
+    add_cfdx_test(test_naca_paired_restart tests/validation/test_naca_paired_restart.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_naca_wall_pressure_grid_audit
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_pressure_grid_audit.py)
