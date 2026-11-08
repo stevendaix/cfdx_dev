@@ -1,4 +1,5 @@
 """Physical BC presets should preserve the native C++ wire contract."""
+
 import pytest
 
 from cfdx.fluent_boundary_presets import (
@@ -76,9 +77,7 @@ def test_inlet_rejects_malformed_velocity(data):
 
 def test_parameters_are_not_silently_assigned_to_wrong_bc():
     with pytest.raises(ValueError, match="pression"):
-        make_simple_boundary(
-            "in", "velocity-inlet", velocity=(1, 0, 0), pressure_pa=0
-        )
+        make_simple_boundary("in", "velocity-inlet", velocity=(1, 0, 0), pressure_pa=0)
     with pytest.raises(ValueError, match="vitesse"):
         make_simple_boundary("in", "velocity-inlet")
     with pytest.raises(ValueError, match="kelvins"):
