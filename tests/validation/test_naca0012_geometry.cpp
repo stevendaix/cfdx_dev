@@ -151,6 +151,13 @@ static Forces run(const std::string& path,std::size_t level,
         else if (requested != "SIMPLE")
             throw std::invalid_argument("CFDX_NACA_ALGORITHM expects SIMPLE or SIMPLEC");
     }
+    // Audit SIMPLEC on the identical momentum/pressure/HbyA face state,
+    // independently from the rAtU pressure-correction implementation.
+    if (const char* raw=std::getenv("CFDX_NACA_SIMPLEC_SAME_STATE")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::SIMPLEC)
+            throw std::invalid_argument("CFDX_NACA_SIMPLEC_SAME_STATE requires SIMPLEC and value 1");
+        c.require_simplec_same_state_flux_identity=true;
+    }
     if (const char* pseudo=std::getenv("CFDX_NACA_PSEUDO_MOMENTUM")) {
         if (std::string(pseudo) != "1")
             throw std::invalid_argument("CFDX_NACA_PSEUDO_MOMENTUM must be 1");
@@ -880,7 +887,8 @@ static Forces run(const std::string& path,std::size_t level,
                "alpha_u,alpha_p,pseudo_cfl,nonlinear_metric,"
                "algorithm,pseudo_capped_cells,"
                "multisecant_method,multisecant_proposed,multisecant_accepted,"
-               "multisecant_relative_step,multisecant_estimated_objective\n";
+               "multisecant_relative_step,multisecant_estimated_objective,"
+               "simplec_rau_identity_linf,simplec_rau_worst_face\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -922,7 +930,9 @@ static Forces run(const std::string& path,std::size_t level,
                     ? "NGMRES" : "OFF") << ','
                 << h.multisecant_proposed << ',' << h.multisecant_accepted << ','
                 << h.multisecant_relative_step << ','
-                << h.multisecant_estimated_objective << '\n';
+                << h.multisecant_estimated_objective << ','
+                << h.simplec_plain_rau_flux_gap_linf << ','
+                << h.simplec_plain_rau_worst_face << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };
