@@ -41,14 +41,51 @@ class VolumePartition:
         return len(self.original_cell_ids) / self.total_cells
 
     def as_pyvista(self, pv):
-        """VTK unstructured grid; GPU support depends on the active renderer."""
-        types = np.full(len(self.original_cell_ids), int(pv.CellType.POLYHEDRON), dtype=np.uint8)
-        grid = pv.UnstructuredGrid(self.polyhedron_stream, types, self.points)
-        grid.cell_data["CFDX_original_cell_id"] = self.original_cell_ids
-        grid.point_data["CFDX_original_point_id"] = self.original_point_ids
+        """Build a native VTK polyhedron grid; renderer support is independent."""
+        import vtk
+
+        points = vtk.vtkPoints()
+        points.SetNumberOfPoints(len(self.points))
+        for index, point in enumerate(self.points):
+            points.SetPoint(index, *map(float, point))
+
+        stream = self.polyhedron_stream.tolist()
+        if not stream:
+            raise ValueError("polyhedron face stream is empty")
+        face_count = int(stream[0])
+        cursor = 1
+        faces = vtk.vtkCellArray()
+        for _ in range(face_count):
+            if cursor >= len(stream):
+                raise ValueError("polyhedron face stream is truncated")
+            vertex_count = int(stream[cursor])
+            cursor += 1
+            if vertex_count < 3 or cursor + vertex_count > len(stream):
+                raise ValueError("polyhedron face has an invalid vertex count")
+            vertices = [int(value) for value in stream[cursor : cursor + vertex_count]]
+            cursor += vertex_count
+            faces.InsertNextCell(vertex_count)
+            for vertex in vertices:
+                if vertex < 0 or vertex >= len(self.points):
+                    raise ValueError("polyhedron face references an invalid point")
+                faces.InsertCellPoint(vertex)
+        if cursor != len(stream):
+            raise ValueError("polyhedron face stream contains trailing values")
+
+        grid = vtk.vtkUnstructuredGrid()
+        grid.SetPoints(points)
+        grid.Allocate(len(self.original_cell_ids))
+        point_ids = list(range(len(self.points)))
+        for _ in self.original_cell_ids:
+            grid.InsertNextCell(
+                vtk.VTK_POLYHEDRON, len(point_ids), point_ids, faces
+            )
+        result = pv.wrap(grid)
+        result.cell_data["CFDX_original_cell_id"] = self.original_cell_ids
+        result.point_data["CFDX_original_point_id"] = self.original_point_ids
         if self.field_name is not None:
-            grid.cell_data[self.field_name] = self.field_values
-        return grid
+            result.cell_data[self.field_name] = self.field_values
+        return result
 
 
 def _dataset(h5: h5py.File, name: str, rank: int, kind: str) -> h5py.Dataset:
