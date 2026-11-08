@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import itertools
 import json
 import math
 from collections import defaultdict
@@ -169,8 +168,7 @@ def load_faces(path: Path, independent: bool = True):
             "predictor_pressure",
         )
         match(row["decomposition_error"], 0.0, "predictor_pressure")
-        if neighbour >= 0:
-            if independent:
+        if neighbour >= 0 and independent:
                 match(
                     row["predictor_hbya_flux"] - row["rc_full_flux"],
                     row["internal_pressure_operator"],
