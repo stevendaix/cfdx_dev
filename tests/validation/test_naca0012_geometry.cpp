@@ -175,6 +175,81 @@ static Forces run(const std::string& path,std::size_t level,
                 "CFDX_NACA_LINEAR_TOLERANCE requires [1e-14,1e-10]");
         c.linear_tolerance = tolerance;
     }
+    // Experimental opt-in globalization of the Picard fixed point on the
+    // *reassembled physical* residual, plus conservative TVD defect memory
+    // and a diagonal secant approximation. None of these relaxes a physical
+    // convergence threshold; they only change the retry/damping path.
+    if (const char* globalize = std::getenv("CFDX_NACA_PICARD_GLOBALIZATION")) {
+        if (std::string(globalize) != "1")
+            throw std::invalid_argument("CFDX_NACA_PICARD_GLOBALIZATION must be 1");
+        c.picard_physical_globalization.enabled = true;
+        c.picard_physical_globalization.sufficient_decrease = 1e-4;
+        c.picard_physical_globalization.start_iteration = 55;
+        c.nonlinear_retry.max_retries = 7;
+        c.nonlinear_retry.minimum_alpha_u = 0.015;
+        c.nonlinear_retry.minimum_alpha_p = 0.008;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_PICARD_ARMIJO")) {
+        if (!c.picard_physical_globalization.enabled)
+            throw std::invalid_argument("CFDX_NACA_PICARD_ARMIJO requires PICARD_GLOBALIZATION=1");
+        const std::string value(raw);
+        std::size_t count = 0;
+        const double v = std::stod(value, &count);
+        if (count != value.size() || !std::isfinite(v) || v < 0.0 || v >= 1.0)
+            throw std::invalid_argument("CFDX_NACA_PICARD_ARMIJO must be in [0,1)");
+        c.picard_physical_globalization.sufficient_decrease = v;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_PICARD_WINDOW")) {
+        if (!c.picard_physical_globalization.enabled)
+            throw std::invalid_argument("PICARD_WINDOW requires PICARD_GLOBALIZATION=1");
+        const std::string value(raw);
+        std::size_t used=0;
+        const unsigned long n=std::stoul(value, &used);
+        if (used!=value.size() || n<1 || n>32)
+            throw std::invalid_argument("PICARD_WINDOW must be in [1,32]");
+        c.picard_physical_globalization.nonmonotone_window = n;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_PICARD_GROWTH")) {
+        if (!c.picard_physical_globalization.enabled)
+            throw std::invalid_argument("PICARD_GROWTH requires PICARD_GLOBALIZATION=1");
+        const std::string value(raw);
+        std::size_t used=0;
+        const double factor=std::stod(value, &used);
+        if (used!=value.size() || !std::isfinite(factor) || factor<1.0 || factor>1.25)
+            throw std::invalid_argument("PICARD_GROWTH must be in [1,1.25]");
+        c.picard_physical_globalization.maximum_window_growth = factor;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_TVD_DEFECT_MEMORY")) {
+        const std::string value(raw);
+        std::size_t count = 0;
+        const double weight = std::stod(value, &count);
+        if (count != value.size() || !std::isfinite(weight) ||
+            weight < 0.0 || weight >= 1.0)
+            throw std::invalid_argument("CFDX_NACA_TVD_DEFECT_MEMORY requires weight in [0,1)");
+        c.tvd_deferred_memory.enabled = true;
+        c.tvd_deferred_memory.previous_weight = weight;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_TVD_MEMORY_OSCILLATION")) {
+        if (std::string(raw) != "1" || !c.tvd_deferred_memory.enabled)
+            throw std::invalid_argument(
+                "CFDX_NACA_TVD_MEMORY_OSCILLATION=1 requires TVD defect memory");
+        c.tvd_deferred_memory.oscillation_only = true;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_TVD_MEMORY_RECURSIVE")) {
+        if (std::string(raw) != "1" || !c.tvd_deferred_memory.enabled)
+            throw std::invalid_argument(
+                "CFDX_NACA_TVD_MEMORY_RECURSIVE=1 requires TVD defect memory");
+        c.tvd_deferred_memory.recursive = true;
+    }
+    if (const char* raw = std::getenv("CFDX_NACA_TVD_IMPLICIT_SECANT")) {
+        const std::string value(raw);
+        std::size_t count = 0;
+        const double cap = std::stod(value, &count);
+        if (count != value.size() || !std::isfinite(cap) || cap <= 0.0 || cap > 2.0)
+            throw std::invalid_argument("CFDX_NACA_TVD_IMPLICIT_SECANT must be in (0,2]");
+        c.tvd_secant_implicit.enabled = true;
+        c.tvd_secant_implicit.spectral_radius_cap = cap;
+    }
     // Experimental A/B, no change to the physical acceptance thresholds.
     if (const char* raw=std::getenv("CFDX_NACA_AB_LINEAR_TOLERANCE")) {
         std::size_t used=0;
@@ -319,6 +394,20 @@ static Forces run(const std::string& path,std::size_t level,
     }
     const std::string case_identity = cfdx::validation::naca_stable_case_id(
         case_contract.str());
+    // Optional late-iteration per-face Rhie-Chow microscope. It is disabled
+    // by default; the selection affects logging only, never the solve.
+    if (const char* microscope = std::getenv("CFDX_NACA_DEBUG_CELL")) {
+        const std::string raw(microscope);
+        std::size_t parsed = 0;
+        if (raw.empty() || !std::all_of(raw.begin(), raw.end(),
+                                       [](unsigned char c) { return c >= '0' && c <= '9'; }))
+            throw std::invalid_argument("CFDX_NACA_DEBUG_CELL expects a nonnegative integer");
+        const auto cell = std::stoull(raw, &parsed);
+        if (parsed != raw.size() || cell >= mesh.n_cells() ||
+            cell > static_cast<unsigned long long>(std::numeric_limits<long>::max()))
+            throw std::invalid_argument("CFDX_NACA_DEBUG_CELL is outside mesh cells");
+        c.diagnostics.debug_cell = static_cast<long>(cell);
+    }
     // Optional accepted-state, cell-targeted per-face TVD/RC/HbyA trace.
     std::ofstream same_state_output;
     if (const char* path=std::getenv("CFDX_NACA_SAME_STATE_FACE_CSV")) {
@@ -395,7 +484,8 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::runtime_error("cannot open Picard TVD face CSV");
         picard_face_output<<std::setprecision(17);
         picard_face_output<<"iteration,face,owner,neighbour,high_order_fraction,"
-            "assembly_mass_flux,upwind_flux,selected_flux,deferred_tvd_flux\n";
+            "assembly_mass_flux,upwind_flux,selected_flux,deferred_tvd_flux,"
+            "effective_deferred_flux,memory_filter_delta\n";
         c.momentum_picard_tvd_face_callback=
             [&picard_face_output,selected_cells=std::move(selected_cells)](
                 std::size_t iteration,const MomentumPicardTvdTrace& trace) {
@@ -408,7 +498,9 @@ static Forces run(const std::string& path,std::size_t level,
                     picard_face_output<<iteration<<','<<f.face<<','<<f.owner<<','<<f.neighbour
                         <<','<<trace.high_order_fraction<<','<<f.mass_flux_old
                         <<','<<f.upwind_flux<<','<<f.selected_flux
-                        <<','<<f.deferred_tvd_flux<<'\n';
+                        <<','<<f.deferred_tvd_flux
+                        <<','<<f.effective_deferred_flux
+                        <<','<<f.memory_filter_delta<<'\n';
                 }
             };
     }

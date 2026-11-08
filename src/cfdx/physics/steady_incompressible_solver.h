@@ -16,6 +16,9 @@
 #include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/physics/initial_face_flux_contract.h"
 #include "cfdx/physics/advanced_convergence.h"
+#include "cfdx/physics/picard_physical_globalization.h"
+#include "cfdx/physics/tvd_deferred_defect_memory.h"
+#include "cfdx/physics/tvd_secant_implicit_correction.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
@@ -388,6 +391,11 @@ struct IncompressibleSolverControls {
     ConvectionContinuationControls convection_continuation;
     DiagnosticsControls diagnostics;
     NonlinearRetryControls nonlinear_retry;
+    // Opt-in nonlinear globalization/damping aids. Each is validated below and
+    // disabled by default; none can relax a physical convergence threshold.
+    PicardPhysicalGlobalizationControls picard_physical_globalization;
+    TvdDeferredDefectMemoryControls tvd_deferred_memory;
+    TvdSecantImplicitControls tvd_secant_implicit;
     std::vector<IncompressiblePointProbe> probes;
     // Optional quantities of interest gated by the convergence monitor. Each
     // gate must name a configured probe; a gate that names nothing is a
@@ -538,6 +546,12 @@ struct IncompressibleIteration {
         std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::infinity()};
+    // Conservative (accepted Rhie-Chow) flux throughput and the globalization
+    // merit/backtrack counters, filled only for iterations actually accepted.
+    double conservative_face_flux_l1 = std::numeric_limits<double>::infinity();
+    double globalization_merit = std::numeric_limits<double>::quiet_NaN();
+    std::size_t globalization_backtracks = 0;
+    double tvd_memory_source_relative = 0.0;
     double momentum_equation_residual = std::numeric_limits<double>::infinity();
     double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
@@ -770,6 +784,34 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    validate_picard_physical_globalization(c.picard_physical_globalization);
+    validate_tvd_deferred_defect_memory(c.tvd_deferred_memory);
+    validate_tvd_secant_implicit(c.tvd_secant_implicit);
+    if (c.tvd_secant_implicit.enabled &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE || c.transient.enabled ||
+         c.sst_runtime || c.pseudo_momentum.enabled ||
+         c.convection_continuation.enabled ||
+         (c.convection_scheme != ConvectionScheme::TVD &&
+          c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
+          c.convection_scheme != ConvectionScheme::TVD_VANALBADA)))
+        throw std::invalid_argument(
+            "TVD implicit secant requires steady SIMPLE and the complete TVD operator");
+    if (c.tvd_deferred_memory.enabled &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE || c.transient.enabled ||
+         c.sst_runtime || c.pseudo_momentum.enabled ||
+         c.convection_continuation.enabled ||
+         (c.convection_scheme != ConvectionScheme::TVD &&
+          c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
+          c.convection_scheme != ConvectionScheme::TVD_VANALBADA)))
+        throw std::invalid_argument(
+            "TVD defect memory requires steady SIMPLE, full TVD and no transient/SST/pseudo/ramp");
+    if (c.picard_physical_globalization.enabled &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE || c.transient.enabled ||
+         c.sst_runtime != nullptr || c.pseudo_momentum.enabled ||
+         c.v19_full_pressure_flux_step || c.adaptive_relaxation.enabled))
+        throw std::invalid_argument(
+            "Picard physical globalization requires steady SIMPLE, no SST/pseudo, "
+            "no split V19 flux and no simultaneous adaptive relaxation");
     validate_convection_continuation(c.convection_continuation,
                                      c.convergence.max_iterations);
     if (c.convection_continuation.enabled &&
@@ -4684,6 +4726,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t adaptive_u_recovery_cooldown = 0;
     std::size_t adaptive_p_recovery_cooldown = 0;
 
+    // Only the last COMMITTED effective TVD source is cached. This is an
+    // exponentially filtered nonlinear fixed-point variable, not an extra
+    // source added to the final accepted-state physics. Retrying the same nonlinear
+    // iteration must never reuse a deferred flux from a rejected attempt.
+    std::array<std::vector<double>,3> committed_tvd_deferred;
+    std::array<std::vector<double>,3> committed_tvd_raw;
+    std::array<std::vector<double>,3> committed_tvd_two_steps_ago;
+    bool committed_tvd_two_steps_valid = false;
+    std::array<std::vector<double>,3> committed_tvd_input_velocity;
+    bool committed_tvd_deferred_valid = false;
+
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const double outer_high_order_fraction =
             convection_high_order_fraction(controls.convection_continuation, iter);
@@ -4705,6 +4758,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             transaction.begin();
             std::optional<MomentumSameStateTrace> pending_same_state_trace;
             std::optional<MomentumPicardTvdTrace> pending_picard_tvd_trace;
+            std::array<std::vector<double>,3> pending_effective_tvd_deferred;
+            std::array<std::vector<double>,3> pending_raw_tvd_deferred;
+            std::array<std::vector<double>,3> pending_tvd_input_velocity;
+            std::array<double,3> pending_memory_source_linf{0.0,0.0,0.0};
             std::array<std::optional<MomentumLinearRelaxationEvidence>,3>
                 pending_linear_relaxation;
             const double pending_linear_tolerance = controls.linear_tolerance;
@@ -4926,7 +4983,63 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.use_bounded_convection, controls.convection_scheme,
             &u_z_field, nullptr, sst_molecular_wall_mu,
             outer_high_order_fraction);
-        if (controls.momentum_picard_tvd_face_callback) {
+        if (controls.tvd_deferred_memory.enabled ||
+            controls.tvd_secant_implicit.enabled) {
+            const std::array<
+                const Field<double, Location::CELL>*,3> components{
+                    &u_x_field, &u_y_field, &u_z_field};
+            const std::array<const ScalarBoundaryConditions*,3> boundaries{
+                &ubc_x, &ubc_y, &ubc_z};
+            const std::array<ScalarEquation*,3> equations{&ex,&ey,&ez};
+            for (std::size_t d = 0; d < 3; ++d) {
+                auto raw_trace = audit_momentum_picard_tvd_faces(
+                    mesh, geometry, mass_flux, *components[d], *boundaries[d],
+                    controls.convection_scheme, outer_high_order_fraction);
+                std::vector<double> raw(mesh.n_faces(), 0.0);
+                for (const auto& record : raw_trace.faces)
+                    raw[record.face] = record.deferred_tvd_flux;
+                std::vector<double> u_input(mesh.n_cells(),0.0);
+                for (std::size_t cell=0;cell<mesh.n_cells();++cell)
+                    u_input[cell]=(*components[d])(cell);
+                const auto applied = apply_tvd_deferred_defect_memory(
+                    mesh, *equations[d], raw,
+                    controls.tvd_deferred_memory.enabled && committed_tvd_deferred_valid
+                        ? &committed_tvd_deferred[d] : nullptr,
+                    controls.tvd_deferred_memory.enabled
+                        ? controls.tvd_deferred_memory.previous_weight : 0.0,
+                    controls.tvd_deferred_memory.oscillation_only &&
+                        committed_tvd_two_steps_valid
+                        ? &committed_tvd_two_steps_ago[d] : nullptr,
+                    controls.tvd_deferred_memory.oscillation_only &&
+                        committed_tvd_two_steps_valid);
+                if (controls.tvd_secant_implicit.enabled && committed_tvd_deferred_valid) {
+                    const auto regularization = add_tvd_secant_implicit_diagonal(
+                        mesh, *equations[d], raw, committed_tvd_raw[d],
+                        u_input, committed_tvd_input_velocity[d], mass_flux,
+                        controls.tvd_secant_implicit);
+                    if (controls.diagnostics.iteration_trace && d==1)
+                        std::cerr << "TVD_SECANT_IMPLICIT iteration=" << iter
+                                  << " regularized_cells=" << regularization.regularized_cells
+                                  << " max_diagonal=" << regularization.max_diagonal_added
+                                  << " max_spectral_fraction="
+                                  << regularization.max_ratio_to_face_flux << '\n';
+                }
+                pending_effective_tvd_deferred[d] = applied.used;
+                pending_raw_tvd_deferred[d] = raw;
+                pending_tvd_input_velocity[d] = std::move(u_input);
+                pending_memory_source_linf[d] = applied.max_cell_source_difference;
+                if (d == 1 && controls.momentum_picard_tvd_face_callback) {
+                    // Report both physical raw and effective lag-filtered flux
+                    // rather than falsely labelling the raw value as assembled.
+                    for (auto& record : raw_trace.faces) {
+                        record.effective_deferred_flux = applied.used[record.face];
+                        record.memory_filter_delta =
+                            record.effective_deferred_flux - record.deferred_tvd_flux;
+                    }
+                    pending_picard_tvd_trace = std::move(raw_trace);
+                }
+            }
+        } else if (controls.momentum_picard_tvd_face_callback) {
             // This is the same U_y and phi passed to assemble_momentum_component
             // above, including the iteration's continuation fraction. It is
             // intentionally distinct from the accepted-state reconstruction.
@@ -7078,10 +7191,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.convergence.relative_tolerance);
         h.momentum_equation_residual_rhs_active_component_max =
             momentum_component_certificate.max_active_component_relative;
+        if (controls.tvd_deferred_memory.enabled) {
+            for (std::size_t d=0; d<3; ++d)
+                h.tvd_memory_source_relative = std::max(
+                    h.tvd_memory_source_relative,
+                    pending_memory_source_linf[d] /
+                        std::max(momentum_rhs_scale_components[d], 1e-30));
+            if (controls.diagnostics.iteration_trace)
+                std::cerr << "TVD_DEFECT_MEMORY iteration=" << iter
+                          << " previous_valid=" << committed_tvd_deferred_valid
+                          << " weight=" << controls.tvd_deferred_memory.previous_weight
+                          << " source_relative=" << h.tvd_memory_source_relative << '\n';
+        }
         double flux_reference = 0.0;
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             flux_reference += std::abs(mass_flux(f));
         h.continuity_normalized = l1 / std::max(flux_reference, tiny);
+        h.conservative_face_flux_l1 = flux_reference;
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED)
             h.pressure_residual = h.continuity_normalized;
         if (iter == 1 && !controls.initial_face_mass_flux_from_paired_checkpoint)
@@ -7367,9 +7493,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.velocity_change_inf <= controls.convergence.relative_tolerance;
         const bool pressure_change_gate =
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
+        // The convergence residual is always the RAW TVD flux defect; with the
+        // defect memory enabled, its lag-filtered source must also have
+        // vanished before the iteration may be declared converged.
+        const bool tvd_memory_consistency_gate =
+            !controls.tvd_deferred_memory.enabled ||
+            !controls.tvd_deferred_memory.require_source_consistency ||
+            h.tvd_memory_source_relative <= controls.convergence.relative_tolerance;
         const bool per_criterion_gates_ok =
             momentum_residual_gate && momentum_equation_residual_gate &&
-            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
+            pressure_residual_gate && velocity_change_gate && pressure_change_gate &&
+            tvd_memory_consistency_gate;
 
         // Reject nonfinite accepted-state physical metrics, even during a
         // continuation ramp where previous-operator ratios cannot be used.
@@ -7411,6 +7545,78 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                        << "->" << h.continuity_normalized;
                 throw NonlinearRetryableFailure(reason.str());
             }
+        }
+        // Fail-closed globalization of the real *unrelaxed* physical operator.
+        // The candidate above is fully reassembled with its current TVD face
+        // reconstruction and its authoritative conservative Rhie-Chow flux.
+        // Rejecting retries the SAME outer step with smaller momentum and
+        // pressure equation relaxations, recomputing H/A and phi together.
+        // Never interpolate phi independently of H/A and never accept a ramped
+        // equation as a final-order convergence certificate.
+        if (controls.picard_physical_globalization.enabled &&
+            !result.history.empty() && same_convection_operator_as_previous &&
+            iter >= controls.picard_physical_globalization.start_iteration &&
+            full_order_eligible) {
+            const auto& previous = result.history.back();
+            const auto sample_of = [](const IncompressibleIteration& item) {
+                PicardPhysicalSample sample;
+                for (std::size_t d = 0; d < 3; ++d) {
+                    sample.momentum_rhs_scale[d] = item.momentum_rhs_scale_components[d];
+                    sample.momentum_absolute[d] =
+                        item.momentum_equation_residual_rhs_relative_components[d] *
+                        item.momentum_rhs_scale_components[d];
+                }
+                sample.continuity_l1 = item.continuity_l1;
+                sample.conservative_face_flux_l1 = item.conservative_face_flux_l1;
+                return sample;
+            };
+            const auto baseline = sample_of(previous);
+            const auto current = sample_of(h);
+            const auto after = picard_physical_merit(
+                current, baseline, controls.convergence.relative_tolerance,
+                controls.convergence.continuity_tolerance);
+            PicardPhysicalMerit before;
+            const std::size_t accepted_count = result.history.size();
+            const std::size_t begin = accepted_count >
+                controls.picard_physical_globalization.nonmonotone_window
+                ? accepted_count - controls.picard_physical_globalization.nonmonotone_window : 0;
+            for (std::size_t j = begin; j < accepted_count; ++j) {
+                // Never combine residuals from two different discrete PDEs.
+                if (result.history[j].high_order_fraction !=
+                    previous.high_order_fraction) continue;
+                const auto historic = picard_physical_merit(
+                    sample_of(result.history[j]), baseline,
+                    controls.convergence.relative_tolerance,
+                    controls.convergence.continuity_tolerance);
+                before.momentum = std::max(before.momentum, historic.momentum);
+                before.continuity = std::max(before.continuity, historic.continuity);
+                before.combined = std::max(before.combined, historic.combined);
+            }
+            if (!(before.combined > 0.0))
+                throw std::runtime_error(
+                    "Picard globalization: no comparable historical physical merit");
+            const double step_scale = std::min(
+                retry_controller.alpha_u(effective_alpha_u)/effective_alpha_u,
+                retry_controller.alpha_p(effective_alpha_p)/effective_alpha_p);
+            h.globalization_merit = after.combined;
+            h.globalization_backtracks = retry_controller.retries();
+            const bool accepted = picard_physical_accept(
+                before, after, step_scale, controls.picard_physical_globalization);
+            if (controls.diagnostics.iteration_trace || !accepted)
+                std::cerr << "PICARD_PHYSICAL_GLOBALIZATION iteration=" << iter
+                          << " trial=" << retry_controller.retries()
+                          << " scale=" << step_scale
+                          << " before=" << before.combined
+                          << " after=" << after.combined
+                          << " momentum_before=" << before.momentum
+                          << " momentum_after=" << after.momentum
+                          << " continuity_before=" << before.continuity
+                          << " continuity_after=" << after.continuity
+                          << " decision=" << (accepted ? "ACCEPT" : "REJECT") << '\n';
+            if (!accepted)
+                throw NonlinearRetryableFailure(
+                    "Picard physical globalization: candidate increases or fails to "
+                    "decrease the reassembled full-order residual");
         }
         // Reject severe adaptive overshoots before they reach the convergence
         // monitor. A retry is the same nonlinear iteration, so convergence
@@ -8290,6 +8496,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             stop_after_iteration = true;
         }
         result.iterations = iter;
+            // A retry must never reuse a deferred TVD flux from a rejected
+            // attempt: the filtered memory is only promoted on commit.
+            if (controls.tvd_deferred_memory.enabled || controls.tvd_secant_implicit.enabled) {
+                if (committed_tvd_deferred_valid) {
+                    committed_tvd_two_steps_ago = std::move(committed_tvd_raw);
+                    committed_tvd_two_steps_valid = true;
+                }
+                committed_tvd_raw = std::move(pending_raw_tvd_deferred);
+                // Raw-memory mode stabilizes the two-cycle without creating
+                // an extra recursive time scale. The recursive variant is
+                // retained for A/B diagnostics, never silently selected.
+                if (controls.tvd_deferred_memory.enabled &&
+                    controls.tvd_deferred_memory.recursive)
+                    committed_tvd_deferred = std::move(pending_effective_tvd_deferred);
+                else
+                    committed_tvd_deferred = committed_tvd_raw;
+                committed_tvd_input_velocity = std::move(pending_tvd_input_velocity);
+                committed_tvd_deferred_valid = true;
+            }
             transaction.commit();
             if (controls.sst_runtime) {
                 for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)

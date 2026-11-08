@@ -94,6 +94,10 @@ struct MomentumPicardTvdFace {
     double upwind_flux = 0.0;
     double selected_flux = 0.0;
     double deferred_tvd_flux = 0.0;
+    // Effective (memory-filtered) deferred flux actually assembled this step;
+    // identical to deferred_tvd_flux whenever the TVD defect memory is off.
+    double effective_deferred_flux = 0.0;
+    double memory_filter_delta = 0.0;
 };
 struct MomentumPicardTvdTrace {
     double high_order_fraction = 0.0;
