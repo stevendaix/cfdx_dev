@@ -37,7 +37,7 @@ shear_interior_rings = GENERATOR.shear_interior_rings
 def test_sheared_mesh_retains_exact_wall_and_farfield_nodes(n):
     generator = load_generator()
     original_surface = generator.naca0012_surface
-    generator.naca0012_surface = lambda level: arc_length_surface(
+    generator.naca0012_surface = lambda level, _regularization=None: arc_length_surface(
         level, original_surface
     )
     nradial = 24 * n // 64
