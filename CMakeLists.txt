@@ -745,7 +745,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_test(NAME test_n7_adaptive_relaxation_re400
              COMMAND test_n7_adaptive_relaxation_re400)
     set_tests_properties(test_n7_adaptive_relaxation_re400 PROPERTIES
-        LABELS "n7;qualification;validation;sanitizer-slow"
+        LABELS "n7;qualification;validation;sanitizer-slow;long"
         TIMEOUT 1800)
     add_cfdx_test(test_n7_causal_overshoot_regression tests/unit/test_n7_causal_overshoot_regression.cpp)
     set_tests_properties(test_n7_causal_overshoot_regression PROPERTIES
@@ -826,7 +826,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # workflow. The 32/64/128 campaign stays behind CFDX_ENABLE_LONG_VALIDATION.
     add_test(NAME test_ghia_cavity_order COMMAND test_ghia_cavity --gate)
     set_tests_properties(test_ghia_cavity_order PROPERTIES
-        LABELS "phase13;validation;campaign"
+        LABELS "phase13;validation;campaign;long"
         TIMEOUT 900)
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_ghia_cavity COMMAND test_ghia_cavity)
@@ -875,12 +875,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
     add_cfdx_test(test_wall_distance_transport_implicit tests/unit/test_wall_distance_transport_implicit.cpp)
     set_tests_properties(test_wall_distance_transport_implicit PROPERTIES LABELS "wall-distance;transport;nonlinear" TIMEOUT 90)
-    # Long 65^3 numerical regression remains a hard gate in Release. The
-    # DebugSanitizers fast suite excludes only the explicit sanitizer-slow
-    # label; the short 33^3 transport check still runs under sanitizers.
+    # The 65^3 stress case is kept in full/weekly Release validation (long).
+    # The 33^3 transport check remains in the PR Release + sanitizer suites.
     add_cfdx_test(test_wall_distance_transport_stress65 tests/unit/test_wall_distance_transport_stress65.cpp)
     set_tests_properties(test_wall_distance_transport_stress65 PROPERTIES
-        LABELS "wall-distance;transport;nonlinear;sanitizer-slow" TIMEOUT 600)
+        LABELS "wall-distance;transport;nonlinear;sanitizer-slow;long" TIMEOUT 600)
 
     add_cfdx_test(test_wall_distance_scale_and_poisson tests/unit/test_wall_distance_scale_and_poisson.cpp)
     set_tests_properties(test_wall_distance_scale_and_poisson PROPERTIES LABELS "wall-distance;precision;scale;poisson" TIMEOUT 60)
@@ -1262,11 +1261,10 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         PROPERTIES LABELS "validation;qualification;n10")
     # The Poisson solution-convergence assembly is a black-box indicator
     # campaign (hundreds of production operator applications per level);
-    # keep it out of the DebugSanitizers pass like the other
-    # sanitizer-slow qualification tests. Release coverage stays
-    # merge-gated.
+    # keep it in the long/weekly Release qualification, not in the fast
+    # PR or DebugSanitizers pass. All accuracy tolerances stay unchanged.
     set_tests_properties(test_polyhedral_poisson_convergence PROPERTIES
-        LABELS "n10;qualification;validation;sanitizer-slow"
+        LABELS "n10;qualification;validation;sanitizer-slow;long"
         TIMEOUT 1800)
     add_cfdx_test(test_convection_polyhedral_campaign tests/validation/test_convection_polyhedral_campaign.cpp)
     add_cfdx_test(test_convection_solver_qualification tests/validation/test_convection_solver_qualification.cpp)
@@ -1456,7 +1454,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         RUN_SERIAL TRUE)
     add_cfdx_test(test_n9_negative_diagnostics tests/validation/test_n9_negative_diagnostics.cpp)
     set_tests_properties(test_n9_negative_diagnostics PROPERTIES
-        LABELS "n9;qualification;validation;validation-total"
+        LABELS "n9;qualification;validation;validation-total;long"
         TIMEOUT 600
         RUN_SERIAL TRUE)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
@@ -1681,7 +1679,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_n9_poiseuille_body_force_production.py)
         set_tests_properties(test_n9_poiseuille_body_force_production PROPERTIES
-            LABELS "n9;qualification;integration;validation;validation-total"
+            LABELS "n9;qualification;integration;validation;validation-total;long"
             ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             TIMEOUT 900)

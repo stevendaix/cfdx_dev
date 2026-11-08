@@ -1,18 +1,17 @@
-name: N9 physical validation
+name: N9 Schur diagnostics (manual)
 
-# Heavy N9-S7 pressure-velocity qualification is opt-in.
-# It runs only for pull requests carrying the `validation-total` label.
-# The numerical test itself keeps its own physical gates and 30 min CTest timeout.
+# Focused manual Schur-model diagnostics on a selected ref.
+# The exact same five models are already in the full validation workflow;
+# automatic PR triggers here would duplicate their compilation and runs.
 
 on:
-  pull_request:
-    types: [labeled, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: n9-physical-validation-${{ github.event.pull_request.number }}
+  group: n9-physical-validation-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -20,8 +19,8 @@ env:
 
 jobs:
   n9-physical-validation:
-    name: N9 Physical Validation (${{ matrix.schur_model }})
-    if: contains(github.event.pull_request.labels.*.name, 'validation-total')
+    name: Manual Schur diagnosis (${{ matrix.schur_model }})
+    # Manual reproducer; the same Schur models are in total-validation.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -30,7 +29,7 @@ jobs:
         schur_model: [pcd, lsc, bfbt, simple, simplec]
 
     steps:
-      - name: Checkout PR
+      - name: Checkout requested commit
         uses: actions/checkout@v7
 
       - name: Install build dependencies
@@ -72,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: n9-s7-physical-validation-${{ matrix.schur_model }}-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: n9-s7-diagnostic-${{ matrix.schur_model }}-${{ github.sha }}
           path: |
             ${{ env.BUILD_DIR }}/n9-physical-validation.log
             ${{ env.BUILD_DIR }}/Testing/

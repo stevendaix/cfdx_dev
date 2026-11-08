@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "profiles": [
+    {
+      "id": "smoke",
+      "label": "qualification:smoke",
+      "description": "Contrats numeriques sentinelles, sans campagne physique longue",
+      "quick": [
+        "test_convection_continuation",
+        "test_n12_momentum_mms",
+        "test_naca_mesh_similarity_gate",
+        "test_galerkin_numeric_workspace_smoke"
+      ],
+      "quick_targets": [
+        "test_convection_continuation",
+        "test_n12_momentum_mms",
+        "cfdx_benchmark_galerkin_workspace"
+      ],
+      "extended_regex": "^(test_convection_continuation|test_n12_momentum_mms|test_naca_mesh_similarity_gate|test_galerkin_numeric_workspace_smoke)$",
+      "required_extended": []
+    },
+    {
+      "id": "naca",
+      "label": "qualification:naca",
+      "description": "NACA 2D/3D, reconstruction de paroi, forces et GCI (contrats + campagne)",
+      "quick": [
+        "test_naca_mesh_similarity_gate",
+        "test_naca_force_mesh_qualification",
+        "test_naca_force_certificate_fail_closed",
+        "test_naca_relaxation_controls",
+        "test_naca0012_quick",
+        "test_naca0012_wall_shear_audit_quick",
+        "test_naca_ab_qualification_contract"
+      ],
+      "quick_targets": [
+        "test_naca_relaxation_controls",
+        "test_naca0012_qualification",
+        "test_naca0012_wall_shear_audit"
+      ],
+      "extended_regex": "^(test_naca|test_compare_naca|test_analyze_naca|test_n9_s8_naca)",
+      "required_extended": [
+        "test_naca0012_qualification",
+        "test_naca0012_wall_shear_audit",
+        "test_naca_trailing_edge_gradient_mms"
+      ]
+    },
+    {
+      "id": "momentum",
+      "label": "qualification:momentum",
+      "description": "Couplage pression-vitesse, momentum, Rhie-Chow et MMS",
+      "quick": [
+        "test_n12_momentum_mms",
+        "test_n12_pressure_continuity_mms",
+        "test_pressure_velocity_jacobian_certificate",
+        "test_momentum_residual_certification_v11",
+        "test_pressure_anisotropic_affine_flux"
+      ],
+      "quick_targets": [
+        "test_n12_momentum_mms",
+        "test_n12_pressure_continuity_mms",
+        "test_pressure_velocity_jacobian_certificate",
+        "test_momentum_residual_certification_v11",
+        "test_pressure_anisotropic_affine_flux"
+      ],
+      "extended_regex": "^(test_phase9_acceptance$|test_.*(momentum|rhie_chow|pressure|coupled|simple|flux))",
+      "required_extended": [
+        "test_n9_s9_rhie_chow_consistency",
+        "test_phase9_acceptance"
+      ]
+    },
+    {
+      "id": "sst",
+      "label": "qualification:sst",
+      "description": "Transport k-omega SST, positivite, limites et contrats turbulents",
+      "quick": [
+        "test_sst_closure_input_contract",
+        "test_phase10_sst_limiter",
+        "test_turbulence_qualification_equations",
+        "test_turbulence_qualification_matrix",
+        "test_sst_relative_convergence_v11"
+      ],
+      "quick_targets": [
+        "test_sst_closure_input_contract",
+        "test_phase10_sst_limiter",
+        "test_turbulence_qualification_equations",
+        "test_sst_relative_convergence_v11"
+      ],
+      "extended_regex": "^test_.*(sst|turbulence|vmfl036)",
+      "required_extended": [
+        "test_sst_persisted_cli_restart_e2e"
+      ]
+    },
+    {
+      "id": "thermal",
+      "label": "qualification:thermal",
+      "description": "Conduction, CHT, convection, energie, P1/S2S et rayonnement",
+      "quick": [
+        "test_thermal_driver_vv",
+        "test_phase12_radiation_vv",
+        "test_thermal_radiation_regression",
+        "test_audit_cht_time"
+      ],
+      "quick_targets": [
+        "test_thermal_driver_vv",
+        "test_phase12_radiation_vv",
+        "test_thermal_radiation_regression",
+        "test_audit_cht_time"
+      ],
+      "extended_regex": "^test_.*(thermal|radiation|convection|s2s|cht|buoyancy|vahl_davis|conduction|t2_)",
+      "required_extended": [
+        "test_natural_convection_de_vahl_davis",
+        "test_thermal_radiation_model_matrix"
+      ]
+    },
+    {
+      "id": "wall-distance",
+      "label": "qualification:wall-distance",
+      "description": "Distances paroi analytiques, transport implicite et stress CTest 65^3",
+      "quick": [
+        "test_wall_distance_scale_and_poisson",
+        "test_wall_distance_precision",
+        "test_wall_distance_invalid_results"
+      ],
+      "quick_targets": [
+        "test_wall_distance_scale_and_poisson",
+        "test_wall_distance_precision",
+        "test_wall_distance_invalid_results"
+      ],
+      "extended_regex": "^(test_wall_distance|benchmark_wall_distance)",
+      "required_extended": [
+        "test_wall_distance_transport_stress65"
+      ]
+    },
+    {
+      "id": "linalg",
+      "label": "qualification:linalg",
+      "description": "CG/GMRES, AMG, anisotropie, Schur et verite des residus",
+      "quick": [
+        "test_amg_dispatch_certificate",
+        "test_galerkin_numeric_workspace_smoke",
+        "test_anisotropic_line_integrity",
+        "test_reusable_scaled_pressure_cg_v9"
+      ],
+      "quick_targets": [
+        "test_amg_dispatch_certificate",
+        "cfdx_benchmark_galerkin_workspace",
+        "test_anisotropic_line_integrity",
+        "test_reusable_scaled_pressure_cg_v9"
+      ],
+      "extended_regex": "^test_.*(amg|krylov|anisotrop|schur|galerkin|linear|pcd)",
+      "required_extended": [
+        "test_anisotropic_krylov_matrix",
+        "test_amg_preconditioner_qualification"
+      ]
+    },
+    {
+      "id": "n9",
+      "label": "qualification:n9",
+      "description": "Contrats N9 et matrice physique SIMPLE/SIMPLEC/COUPLED",
+      "quick": [
+        "test_n9_schur_oracle",
+        "test_n9_common_schur_qualification",
+        "test_n9_s8_naca0012_contract"
+      ],
+      "quick_targets": [
+        "test_n9_schur_oracle",
+        "test_n9_common_schur_qualification"
+      ],
+      "extended_regex": "^test_n9_",
+      "required_extended": [
+        "test_n9_physical_matrix",
+        "test_n9_negative_diagnostics",
+        "test_n9_s9_rhie_chow_consistency"
+      ]
+    },
+    {
+      "id": "ghia",
+      "label": "qualification:ghia",
+      "description": "Cavite Ghia, pression et etude de convergence spatiale",
+      "quick": [
+        "test_ghia_cavity_quick",
+        "test_ghia_cavity_pressure_line_search"
+      ],
+      "quick_targets": [
+        "test_ghia_cavity"
+      ],
+      "extended_regex": "^test_ghia_cavity",
+      "required_extended": [
+        "test_ghia_cavity_order",
+        "test_ghia_cavity_profile_study"
+      ]
+    }
+  ]
+}

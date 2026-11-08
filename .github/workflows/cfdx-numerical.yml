@@ -112,8 +112,9 @@ jobs:
           - { level: N4, regex: '^test_(convection_scheme_verification|convection_3d_verification|convection_blending|convection_polyhedral_campaign|convection_solver_qualification)' }
           - { level: N5, regex: '^test_(temporal_physics|temporal_history|temporal_order_matrix|transient_mms|transient_mms_closure)' }
           - { level: N6, regex: '^test_(adaptive_cfl|timestep_control|local_time_stepping)' }
-          - { level: N7-core, regex: '^test_(solver_control|convergence_monitor|simulation_controller|newton_field|initialization|continuation|n7_causal_overshoot_regression)' }
-          - { level: N7-qualification, regex: '^test_n7_(convergence_qualification|adaptive_relaxation_re400)' }
+          - { level: N7-core, regex: '^test_(solver_control|convergence_monitor|simulation_controller|newton_field|initialization|continuation|n7_causal_overshoot_regression|n7_convergence_qualification)' }
+          # N7 core stays in PR CI; the 1800-second Re400 qualification is
+          # moved to cfdx-validation long shards and remains a full gate.
           - { level: N8, regex: '^test_(cg_solver|bicgstab_solver|gmres_solver|krylov_preconditioning|amg_chebyshev|amg_preconditioner_qualification|advanced_preconditioners|schur_preconditioner|schur_infrastructure|exact_schur|simplerc_schur|mgr_preconditioner|coupled_block_schur_amg|n8_schur_production_benchmark|n8_amg_anisotropy_scaling)' }
           - { level: N9, regex: '^test_(n9_schur_oracle|steady_incompressible_solver|phase9_acceptance|couette_quick|level_c_coupled_verification|m2_m4_solver_validation)' }
           - { level: N10, regex: '^test_(mesh_quality|mesh_family_volumes|geometry_invariants|nonorthogonal_skew_campaign|convection_polyhedral_campaign)' }
