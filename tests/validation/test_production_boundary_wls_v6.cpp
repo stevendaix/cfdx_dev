@@ -555,5 +555,70 @@ int main() {
             EXPECT_NEAR(gr(c,2),0.0,1.e-12);
         }
     });
+    run_case("isotropic_vs_anisotropic_skewed_affine_boundary_diffusion", [] {
+        // A linear manufactured solution has exact face-integrated diffusion
+        // flux on every face, independent of the orthogonal/anisotropic mesh.
+        const Vec3 exact_gradient{2.0, -1.3, 0.0};
+        for (const auto& variant : {std::pair<std::size_t, double>{8, 0.0},
+                                   std::pair<std::size_t, double>{16, 0.65}}) {
+            const std::size_t ny=variant.first;
+            auto mesh=grid(8, ny, 1, variant.second, true, true);
+            if (variant.second > 0.0) {
+                // Smooth interior skew, preserving the physical domain and
+                // wall locations, not a globally affine parallelogram grid.
+                const double pi=std::acos(-1.0);
+                for (std::size_t k=0;k<=1;++k)
+                    for (std::size_t j=0;j<=ny;++j)
+                        for (std::size_t i=0;i<=8;++i) {
+                            const auto v=(k*(ny+1)+j)*9+i;
+                            const double warp=std::sin(pi*static_cast<double>(i)/8.0)*
+                                std::sin(pi*static_cast<double>(j)/static_cast<double>(ny));
+                            mesh.points().set(v, mesh.points().x(v)+0.023*warp,
+                                mesh.points().y(v)+0.012*warp,mesh.points().z(v));
+                        }
+            }
+            const auto geometry=build_fv_geometry(mesh);
+            Field<double,Location::CELL> phi(mesh.n_cells(),"phi","1",1);
+            Field<double,Location::FACE> mass(mesh.n_faces(),"mass","kg/s",1);
+            mass.fill(0.0);
+            for (std::size_t c=0;c<mesh.n_cells();++c)
+                phi(c)=1.5+exact_gradient.dot(geometry.cell_centres[c]);
+            ScalarBoundaryFaceConditions bc(mesh.n_faces());
+            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                if (mesh.ownership().neighbour(f)>=0 ||
+                    mesh.boundary().patch(geometry.face_patch[f]).type==PatchType::EMPTY)
+                    continue;
+                bc.specified[f]=1;
+                bc.conditions[f]={ScalarBoundaryFaceCondition::Type::FIXED_VALUE,
+                    1.5+exact_gradient.dot(geometry.face_centres[f])};
+            }
+            BoundaryWlsDiagnostics diagnostics;
+            const auto gradient=compute_boundary_aware_wls_gradient(
+                phi,mesh,geometry,{},nullptr,&bc,&diagnostics,1.e8,true);
+            EXPECT_TRUE(diagnostics.robust_cells==mesh.n_cells());
+            for (std::size_t c=0;c<mesh.n_cells();++c) {
+                EXPECT_NEAR(gradient(c,0),exact_gradient.x,1e-10);
+                EXPECT_NEAR(gradient(c,1),exact_gradient.y,1e-10);
+            }
+            const auto flux=reconstruct_scalar_transport_flux(
+                mesh,geometry,mass,phi,1.0,{},false,ConvectionScheme::UPWIND,&bc);
+            double max_error=0.0;
+            double boundary_error=0.0;
+            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                if (mesh.ownership().neighbour(f)<0 &&
+                    mesh.boundary().patch(geometry.face_patch[f]).type==PatchType::EMPTY)
+                    continue;
+                const double expected=-exact_gradient.dot(geometry.face_area_vectors[f]);
+                const double error=std::abs(flux(f)-expected);
+                max_error=std::max(max_error,error);
+                if (mesh.ownership().neighbour(f)<0)
+                    boundary_error=std::max(boundary_error,error);
+            }
+            std::cout << "MMS face diffusion ny=" << ny << " shear=" << variant.second
+                      << " max_error=" << max_error
+                      << " boundary_max=" << boundary_error << "\n";
+            EXPECT_TRUE(max_error<1e-10);
+        }
+    });
     return run_all();
 }
