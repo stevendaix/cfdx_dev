@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
 SOURCE = ROOT / "scripts" / "naca_wall_radial_comparison.py"
 SPEC = importlib.util.spec_from_file_location("naca_wall_radial_comparison", SOURCE)
 assert SPEC is not None and SPEC.loader is not None
