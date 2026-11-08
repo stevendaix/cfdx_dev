@@ -39,5 +39,4 @@ inline double mixed_precision_true_residual(const SparseMatrix& A, const Vector&
                                             const Vector& x, Vector& r) {
     return mixed_precision_residual(A, b, x, r, SolverPrecision::FP64);
 }
-}
 } // namespace cfdx::core
