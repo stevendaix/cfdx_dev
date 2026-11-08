@@ -133,6 +133,14 @@ def test_real_ascii_poly_mesh_roundtrip_and_patch_semantics(tmp_path: Path):
     with h5py.File(output) as h5:
         setup = json.loads(h5.attrs["case_setup_json"])
         assert setup["turbulence_model"] == "k_omega_sst"
+        # Verify *physical* outlet semantics, not just OpenFOAM patch names.
+        # OUTLET_PRESSURE requires PRESSURE_OUTLET in the production adapter.
+        outlet = next(
+            p for p in setup["boundary_conditions"] if p["patch_name"] == "outlet"
+        )
+        assert outlet["type"] == BCType.PRESSURE_OUTLET.value
+        assert outlet["value_type"] == "outlet_pressure"
+        assert outlet["pressure"] == 0.0
         assert setup["materials"][0]["dynamic_viscosity"] == pytest.approx(b.RHO * b.NU)
         assert {p["patch_name"] for p in setup["boundary_conditions"]} == set(
             b.PATCH_TYPES

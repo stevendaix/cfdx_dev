@@ -35,6 +35,7 @@ struct BenchmarkResult {
     double probe_correction_l2 = 0, probe_A_correction_l2 = 0, probe_cosine = 0;
     bool second_improved = false;
     bool second_attempted = false;
+    std::size_t bounded_action_fallbacks = 0;
     std::string error;
 };
 
@@ -46,7 +47,8 @@ static BenchmarkResult compare_one(const PcdFpCapture& input,
     report.nnz = input.matrix.nnz();
     const bool equil = method == "ilu0_equilibrated" || method == "amg_equilibrated";
     const bool ilu = method == "ilu0" || method == "ilu0_equilibrated";
-    const bool amg = method == "amg" || method == "amg_equilibrated";
+    const bool amg = method == "amg" || method == "amg_equilibrated" ||
+        method == "amg_robust";
     const bool sa = method == "amg_sa";
     const bool lines = method == "amg_lines";
     const bool semicoarsen = method == "amg_semicoarsen";
@@ -69,6 +71,12 @@ static BenchmarkResult compare_one(const PcdFpCapture& input,
         auto preconditioner = make_scalar_preconditioner(
             preconditioner_model, false, false);
         const auto setup_begin = Clock::now();
+        if (method == "amg_robust") {
+            auto* native = dynamic_cast<NativeAMGPreconditioner*>(preconditioner.get());
+            if (!native) throw std::logic_error("native AMG replay type mismatch");
+            native->configure_max_coarsening_fraction(0.90);
+            native->configure_bounded_nonsymmetric_action(1e6);
+        }
         report.setup_ok = preconditioner && preconditioner->setup(A);
         report.setup_seconds = elapsed(setup_begin);
         if (!report.setup_ok) {
@@ -135,6 +143,8 @@ static BenchmarkResult compare_one(const PcdFpCapture& input,
             report.second = report.first;
             report.second_residual = report.first_residual;
         }
+        if (auto* native = dynamic_cast<NativeAMGPreconditioner*>(preconditioner.get()))
+            report.bounded_action_fallbacks = native->bounded_action_fallbacks();
     } catch (const std::exception& exc) {
         report.error = exc.what();
     }
@@ -153,6 +163,7 @@ static void print_json(const BenchmarkResult& r, const std::string& capture) {
         << ",\"preconditioner_probe_ok\":" << (r.preconditioner_probe_ok ? "true" : "false")
         << ",\"probe_correction_l2\":" << safe(r.probe_correction_l2)
         << ",\"probe_A_correction_l2\":" << safe(r.probe_A_correction_l2)
+        << ",\"bounded_action_fallbacks\":" << r.bounded_action_fallbacks
         << ",\"probe_cosine\":" << safe(r.probe_cosine)
         << ",\"first_status\":" << static_cast<int>(r.first.status)
         << ",\"first_iterations\":" << r.first.iterations
@@ -191,18 +202,33 @@ static int self_test() {
     std::filesystem::remove(file);
     if (capture.matrix.nnz() != A.nnz() || capture.rhs(1) != 2)
         return 2;
-    for (auto method : {"ilu0", "ilu0_equilibrated", "amg"}) {
+    for (auto method : {"ilu0", "ilu0_equilibrated", "amg", "amg_robust"}) {
         auto result = compare_one(capture, method, 100, 1e-10);
         if (!result.setup_ok || result.first_residual.relative_rhs > 1e-8)
             return 3;
     }
+    // The experimental policy must never silently change the SPD/CG
+    // default or accept invalid coarsening/safety parameters.
+    NativeBoomerAMGPreconditioner check(false, false);
+    try { check.configure_max_coarsening_fraction(1.1); return 4; }
+    catch (const std::invalid_argument&) {}
+    try { check.configure_bounded_nonsymmetric_action(-2.0); return 5; }
+    catch (const std::invalid_argument&) {}
+    auto baseline = compare_one(capture, "amg", 100, 1e-10);
+    auto guarded = compare_one(capture, "amg_robust", 100, 1e-10);
+    if (guarded.bounded_action_fallbacks != 0 ||
+        std::abs(baseline.first_residual.relative_rhs -
+                 guarded.first_residual.relative_rhs) > 1e-12) return 6;
     std::cout << "PCD_FP_CAPTURE_SELF_TEST_PASS\n";
     return 0;
 }
 
 int main(int argc, char** argv) {
     try {
-        if (argc == 2 && std::string(argv[1]) == "--self-test")
+        // CTest invokes this executable without a captured matrix. Run the
+        // deterministic algebraic self-test instead of a usage-error FAIL.
+        // Explicit capture arguments still run the real replay, unchanged.
+        if (argc == 1 || (argc == 2 && std::string(argv[1]) == "--self-test"))
             return self_test();
         if (argc < 2 || argc > 4)
             throw std::invalid_argument(
@@ -213,7 +239,7 @@ int main(int argc, char** argv) {
         if (budget == 0 || budget > 5000 || !(tolerance >= 1e-14 && tolerance <= 1e-4))
             throw std::invalid_argument("invalid nested benchmark solver budget/tolerance");
         auto capture = read_pcd_fp_capture(file);
-        for (auto method : {"ilu0", "ilu0_equilibrated", "amg", "amg_equilibrated", "amg_sa", "amg_lines", "amg_semicoarsen", "jacobi"})
+        for (auto method : {"ilu0", "ilu0_equilibrated", "amg", "amg_robust", "amg_equilibrated", "amg_sa", "amg_lines", "amg_semicoarsen", "jacobi"})
             print_json(compare_one(capture, method, budget, tolerance), file);
         return 0; // a negative solver result is data, never a fake qualification PASS
     } catch (const std::exception& e) {

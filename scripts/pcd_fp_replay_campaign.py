@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 METHODS = (
-    "ilu0", "ilu0_equilibrated", "amg", "amg_equilibrated",
+    "ilu0", "ilu0_equilibrated", "amg", "amg_robust", "amg_equilibrated",
     "amg_sa", "amg_lines", "amg_semicoarsen", "jacobi",
 )
 
@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
                 "best_true_relative_rhs", "second_attempted", "second_improved",
                 "first_meets_true_tolerance", "two_pass_meets_true_tolerance",
                 "total_seconds_two_passes", "probe_A_correction_l2",
-                "probe_cosine", "error"]
+                "probe_cosine", "bounded_action_fallbacks", "error"]
         with (args.output_dir / "pcd_fp_replay.csv").open("w", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
             writer.writeheader()

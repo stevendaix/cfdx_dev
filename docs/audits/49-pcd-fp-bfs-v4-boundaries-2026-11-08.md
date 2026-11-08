@@ -1,0 +1,135 @@
+# CFDX — Requalification des limites PCD Fp et pression BFS V4
+
+**Date** : 8 novembre 2026. **Base exacte** : ZIP original SHA-256
+`c3a0d40206829596dca61871c10f6079724c6d0e11bbf63a47d4e894e914e62c`.
+**Statut** : correctifs logiciels et preuves partielles ; pas de convergence
+COUPLED NACA, ni de qualification physique BFS. Aucun seuil physique diminué.
+
+## 1. Opérateur auxiliaire PCD Fp
+
+Le sous-solveur PCD agit sur l'équation auxiliaire de pression, dont les
+conditions aux limites ne sont pas obligatoirement identiques à celles du
+champ de pression physique. Le chemin existant assemblait Fp et Kp avec la
+condition p-Neumann du farfield NACA, puis une seule ligne de jauge.
+
+Sur la capture N64 initiale : 3 096 lignes, 15 219 nnz, pivot LU minimal
+~6.006e-16 ; un RHS difficile donne une correction de norme ~1.58e12
+et un résidu direct relatif ~3.2e-4.
+
+L'option `pcd_pressure_inflow_dirichlet_experimental` assemble des
+conditions **homogènes Dirichlet seulement sur les faces d'entrée**
+(déterminées par `mass_flux(face) < 0`, y compris sur un farfield mixte),
+pour Fp et Kp, jamais pour la matrice physique COUPLED. Les faces WALL,
+SYMMETRY, EMPTY, INTERFACE et PERIODIC restent inchangées.
+La valeur par défaut est `false` et le test C++ vérifie l'identité stricte
+du chemin historique.
+
+Sur le N64 modifié, les 65 lignes dont la somme est non nulle correspondent
+à la jauge et aux 64 faces entrantes : pivot minimal ~0.0245037,
+corrections directes modérées et résidu inférieur à 3e-15 sur trois RHS
+capturés. Les applications FGMRES/ILU0 terminent fréquemment en 16–17 pas,
+avec résidus vrais relatifs de l'ordre de 1e-9. Sur un essai
+N64 de 90 s, **1 951 applications Fp sur 1 951** atteignent leur propre
+contrat (maximum mesuré 9.981e-9, médiane 2.203e-9 et médiane 17
+itérations). Ce nombre ne mesure pas les itérations non linéaires.
+Le calcul extérieur NACA
+COUPLED n'a **pas** terminé avant l'arrêt diagnostique de 90 s : ne pas le
+présenter comme convergé. Les résultats ne portent pas encore sur N128/N256
+pour cette nouvelle variante.
+
+Activation expérimentale dans le pilote NACA :
+
+```bash
+CFDX_NACA_ALGORITHM=COUPLED CFDX_NACA_COUPLED_SCHUR=pcd \
+CFDX_NACA_PCD_INFLOW_DIRICHLET=1 \
+CFDX_NACA_CONVECTION_CELL_LIMITED=1 \
+CFDX_NACA_FARFIELD_PRESSURE_NEUMANN=1 \
+CFDX_PCD_FP_CAPTURE_PREFIX=/tmp/cfdx/naca/inflow \
+  build/test_naca0012_qualification --single \
+  build/validation_meshes/naca0012_laminar_n64.h5 0.6 0.25 1
+```
+
+La même option peut être fixée dans les cas de production COUPLED + Schur PCD
+avec `numerics.raw_settings.pcd_pressure_inflow_dirichlet_experimental = "1"`.
+Toute autre utilisation est refusée. La pression physique n'est jamais
+remplacée par ces conditions auxiliaires.
+
+## 2. BFS OpenFOAM V4 conservé
+
+Le générateur six blocs `scripts/generate_th03_openfoam_blockmesh.py`
+conserve 20 540 cellules / 82 493 faces et les huit patches. Une incohérence
+`OUTLET` + `OUTLET_PRESSURE` empêchait le chargement en production ; elle est
+corrigée en `PRESSURE_OUTLET` + `OUTLET_PRESSURE`.
+
+Le fichier complet doit être nommé `*.cfdx.h5`. L'initialisation turbulence
+courante du générateur utilise un ratio d'entrée `nut/nu = 0.009` et
+`omega_in = k / (nu * 0.009) ≈ 7763.53 s^-1`; elle diffère du réglage
+historique 181728 s^-1 et n'est pas prouvée identique au `0.orig` OpenFOAM.
+
+### Reproduction de la vraie matrice pression
+
+```bash
+PYTHONPATH=src/cfdx/python python scripts/generate_th03_openfoam_blockmesh.py \
+  --resolution full --max-iterations 3 \
+  --pressure-linear-tolerance 1e-11 --pressure-gmres-restart 160 \
+  --output build/th03_v4/full.cfdx.h5
+
+build/cfdx_production_solver --mesh build/th03_v4/full.cfdx.h5 \
+  --output-dir build/th03_v4/out --iterations 3 --experimental-sst \
+  --benchmark-export --pressure-replay-prefix build/th03_v4/pressure \
+  --pressure-replay-iterations 1
+
+build/cfdx_linear_replay build/th03_v4/pressure_i1_c0.cfdxlin native ilu0
+```
+
+La capture de production réelle est une matrice symétrique 20 540 × 20 540
+(102 034 coefficients CSR) dont 10 249 lignes sont détectées anisotropes et
+le contraste maximal de couplage hors diagonale vaut 5.37e7.
+
+| Méthode sur la capture (même b, même x0) | Vrai résidu relatif final |
+|---|---:|
+| FGMRES + AMG natif | 2.361583e-10 |
+| FGMRES + AMG directionnel | 2.663351e-10 |
+| FGMRES + ILU0 | 1.705687e-3 |
+| FGMRES + Jacobi | 6.627763e-2 |
+| LU SciPy directe | 3.912932e-10 |
+| Critère exigé | 1.0e-11 |
+
+La LU directe retourne une correction de pression de norme 4.292019e7,
+malgré une norme du second membre 1.820455e-3. Le plancher de résidu
+relatif est donc aussi observé hors CFDX : ce diagnostic doit guider la
+révision du conditionnement des coefficients de bord/du correcteur, et non
+un assouplissement des tolérances.
+
+## 3. Résultats et qualification
+
+Les trois essais sur la configuration BFS corrigée rejettent la première
+itération physique à 5.220932e-10, 5.258521e-10 et 3.500920e-10. Aucune
+SST convergée, distribution y+, Cf, Cp ou position de réattachement n'est
+publiée pour cette grille. Le seul audit `PASS_GEOMETRY_ONLY` ne vaut pas
+qualification : 0 face inversée, angle max ~9.413 degrés, et non-orthogonité
+modérée n'assurent pas un opérateur de pression bien conditionné.
+
+Les vérifications antérieures Couette, Poiseuille, Ghia, N9 et la chaîne
+thermal/RANS ne sont pas automatiquement qualifiées par ces modifications.
+La CI complète, le DebugSanitizers et les calculs longs restent ouverts.
+
+## 4. Risques contrôlés
+
+- Aucun changement de maillage, propriétés physiques ou seuil d'acceptation.
+- Le nouveau comportement auxiliaire PCD n'est jamais implicite.
+- La capture n'est activée que par deux options fournies ensemble ;
+  les retries d'une même itération remplacent le fichier correspondant.
+- Des tests algébriques et maillage/BC vérifient le défaut inchangé,
+  le sens du flux et la conformité HDF5.
+- Un succès Fp ne constitue pas un succès du Krylov monolithique COUPLED.
+
+## 5. Régression CTest de l'outil de rejeu corrigée
+
+`test_pcd_fp_replay` était enregistré en CTest sans argument, donc renvoyait
+une erreur d'utilisation, même lorsque le calcul numérique était correct.
+Il exécute désormais le même autotest déterministe sur un appel sans argument
+ou avec `--self-test`. Le mode normal `capture.cfp [budget] [tol]` et sa
+sortie numérique restent inchangés. Le CTest explicite du mode capture reste
+actif. Les **6 tests CTest** ciblés ont passé, sans marquer un échec comme
+attendu ni le désactiver. Les **48 tests Python** BFS/TH-03 ciblés ont passé.
