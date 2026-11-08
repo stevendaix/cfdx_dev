@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 import h5py
 import pytest
-
 from cfdx.case import Case
 from cfdx.case_io import read_case, save_case
 from cfdx.native_solver_preflight import (
