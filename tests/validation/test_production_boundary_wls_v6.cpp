@@ -620,5 +620,163 @@ int main() {
             EXPECT_TRUE(max_error<1e-10);
         }
     });
+    run_case("multidimensional_muscl_affine_skew_and_conservative_flux", [] {
+        // An exact affine solution is reconstructed at the actual face centre.
+        // The old two-cell clip can return first-order on a skewed face even
+        // if the WLS gradient is exact, especially if the two cell values
+        // happen to be equal but the tangential gradient is not zero.
+        for (const auto& variant : {std::pair<std::size_t,double>{8,0.0},
+                                   std::pair<std::size_t,double>{16,0.65}}) {
+            const std::size_t ny=variant.first;
+            auto mesh=grid(8,ny,1,variant.second,true,true);
+            if (variant.second>0.0) {
+                const double pi=std::acos(-1.0);
+                for (std::size_t k=0;k<=1;++k)
+                    for (std::size_t j=0;j<=ny;++j)
+                        for (std::size_t i=0;i<=8;++i) {
+                            const auto v=(k*(ny+1)+j)*9+i;
+                            const double warp=std::sin(pi*static_cast<double>(i)/8.0)*
+                                std::sin(pi*static_cast<double>(j)/static_cast<double>(ny));
+                            mesh.points().set(v,mesh.points().x(v)+0.023*warp,
+                                mesh.points().y(v)+0.012*warp,mesh.points().z(v));
+                        }
+            }
+            const auto geo=build_fv_geometry(mesh);
+            Field<double,Location::CELL> field(mesh.n_cells(),"affine","1");
+            Field<double,Location::CELL> zero(mesh.n_cells(),"zero","1");
+            Field<double,Location::FACE> mass(mesh.n_faces(),"mass","kg/s");
+            zero.fill(0.0);
+            mass.fill(0.0);
+            // For the skewed family choose a transverse affine field whose
+            // two centre values coincide on the most skewed internal face.
+            // This is the counterexample to the two-cell face clipping.
+            Vec3 exact_gradient{0.7,-1.3,0.0};
+            if (variant.second>0.0) {
+                double maximum_skew=0.0;
+                for (std::size_t f=0;f<mesh.n_faces();++f) {
+                    const auto nr=mesh.ownership().neighbour(f);
+                    if (nr<0) continue;
+                    const auto o=mesh.ownership().owner(f);
+                    const auto n=static_cast<std::size_t>(nr);
+                    const auto D=geo.cell_centres[n]-geo.cell_centres[o];
+                    const double length=std::hypot(D.x,D.y);
+                    if (!(length>0.0)) continue;
+                    const Vec3 perp{-D.y/length,D.x/length,0.0};
+                    const double skew=std::abs(perp.dot(
+                        geo.face_centres[f]-geo.cell_centres[o]));
+                    if (skew>maximum_skew) {
+                        maximum_skew=skew;
+                        exact_gradient=perp;
+                    }
+                }
+                EXPECT_TRUE(maximum_skew>1e-5);
+            }
+            const auto affine=[&](const Vec3& c) {
+                return 2.0+exact_gradient.dot(c);
+            };
+            for (std::size_t c=0;c<mesh.n_cells();++c)
+                field(c)=affine(geo.cell_centres[c]);
+            ScalarBoundaryFaceConditions bc(mesh.n_faces());
+            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                if (mesh.ownership().neighbour(f)>=0) {
+                    mass(f)=f%2==0 ? 0.1 : -0.1;
+                } else if (mesh.boundary().patch(geo.face_patch[f]).type!=PatchType::EMPTY) {
+                    bc.specified[f]=1;
+                    bc.conditions[f]={ScalarBoundaryFaceCondition::Type::FIXED_VALUE,
+                        affine(geo.face_centres[f])};
+                }
+            }
+            const auto gradient=compute_boundary_aware_wls_gradient(
+                field,mesh,geo,{},nullptr,&bc);
+            const auto old_flux=reconstruct_scalar_transport_flux(
+                mesh,geo,mass,field,0.0,{},false,
+                ConvectionScheme::TVD_VANLEER,&bc);
+            const auto new_flux=reconstruct_scalar_transport_flux(
+                mesh,geo,mass,field,0.0,{},false,
+                ConvectionScheme::MUSCL_CELL_LIMITED,&bc);
+            double max_error_old=0.0,max_error_new=0.0;
+            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                if (mesh.ownership().neighbour(f)<0) continue;
+                const double expected=mass(f)*affine(geo.face_centres[f]);
+                max_error_old=std::max(max_error_old,std::abs(old_flux(f)-expected));
+                max_error_new=std::max(max_error_new,std::abs(new_flux(f)-expected));
+            }
+            std::cout<<"MUSCL affine ny="<<ny<<" legacy_error="<<max_error_old
+                     <<" multidim_error="<<max_error_new<<"\n";
+            EXPECT_TRUE(max_error_new<1e-11);
+            if (variant.second>0.0) EXPECT_TRUE(max_error_old>1e-7);
+            // Synthetic face fluxes need not satisfy continuity, so add
+            // (diag*phi - rhs) with equal values to keep a positive matrix
+            // diagonal without altering the audited transport residual.
+            std::vector<double> positive_diagonal(mesh.n_cells(),1.0);
+            std::vector<double> cancellation(mesh.n_cells());
+            for (std::size_t c=0;c<mesh.n_cells();++c)
+                cancellation[c]=positive_diagonal[c]*field(c);
+            const auto equation=assemble_scalar_equation(mesh,geo,mass,0.0,
+                zero,zero,{},false,nullptr,&positive_diagonal,&cancellation,
+                nullptr,ConvectionScheme::MUSCL_CELL_LIMITED,&field,&bc);
+            std::vector<double> div(mesh.n_cells(),0.0);
+            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                const auto n=mesh.ownership().neighbour(f);
+                div[mesh.ownership().owner(f)]+=new_flux(f);
+                if (n>=0) div[static_cast<std::size_t>(n)]-=new_flux(f);
+            }
+            const auto* rows=equation.matrix.row_offsets_data();
+            const auto* cols=equation.matrix.columns_data();
+            const auto* a=equation.matrix.values_data();
+            double domain_sum=0.0;
+            for (std::size_t c=0;c<mesh.n_cells();++c) {
+                double discrete=-equation.rhs(c);
+                for (auto k=rows[c];k<rows[c+1];++k)
+                    discrete+=a[k]*field(cols[k]);
+                EXPECT_NEAR(discrete,div[c],1e-12);
+                domain_sum+=div[c];
+            }
+            EXPECT_NEAR(domain_sum,0.0,1e-12);
+        }
+    });
+    run_case("muscl_cell_limited_nonmonotonic_field_is_stencil_bounded", [] {
+        auto mesh=grid(8,16,1,0.5,true,true);
+        const auto geo=build_fv_geometry(mesh);
+        Field<double,Location::CELL> phi(mesh.n_cells(),"step","1");
+        Field<double,Location::FACE> mass(mesh.n_faces(),"mass","kg/s");
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
+            const auto& x=geo.cell_centres[c];
+            phi(c)=x.x > 0.5 ? 1.0 : 0.0;
+        }
+        for (std::size_t f=0;f<mesh.n_faces();++f)
+            mass(f)=mesh.ownership().neighbour(f)>=0
+                ? (f%2==0 ? 0.4 : -0.3) : 0.0;
+        const auto grad=compute_boundary_aware_wls_gradient(
+            phi,mesh,geo,bc);
+        for (std::size_t f=0;f<mesh.n_faces();++f) {
+            const auto nb=mesh.ownership().neighbour(f);
+            if (nb<0) continue;
+            const std::size_t upwind=mass(f)>=0.0
+                ? mesh.ownership().owner(f) : static_cast<std::size_t>(nb);
+            const double face=muscl_cell_limited_face_value(
+                mesh,geo,phi,grad,f,upwind,bc);
+            double low=phi(upwind),high=low;
+            for (auto k=mesh.cells().offsets_data()[upwind];
+                 k<mesh.cells().offsets_data()[upwind+1];++k) {
+                const auto local_face=mesh.cells().faces_data()[k];
+                const auto neighbour=mesh.ownership().neighbour(local_face);
+                double value=phi(upwind);
+                if (neighbour>=0) {
+                    const auto other=mesh.ownership().owner(local_face)==upwind
+                        ? static_cast<std::size_t>(neighbour)
+                        : mesh.ownership().owner(local_face);
+                    value=phi(other);
+                } else if (mesh.boundary().patch(geo.face_patch[local_face]).type
+                           !=PatchType::EMPTY) value=0.0;
+                low=std::min(low,value);
+                high=std::max(high,value);
+            }
+            EXPECT_TRUE(std::isfinite(face));
+            EXPECT_TRUE(face>=low-1e-13 && face<=high+1e-13);
+        }
+    });
     return run_all();
 }

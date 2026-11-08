@@ -78,18 +78,26 @@ def verify_physical_history(
             "nonfinite_velocities",
             "high_order_fraction",
             "convection_scheme",
+            # Independent checks that the solver itself requires. Refuse an
+            # external/corrupted certificate masking a small-component error.
+            "momentum_x_rhs_relative",
+            "momentum_y_rhs_relative",
+            "momentum_z_rhs_relative",
+            "momentum_component_max",
+            "pressure_residual",
+            "velocity_change_inf",
+            "pressure_change_inf",
         } | independent
         if not needed.issubset(reader.fieldnames or ()):
             raise ValueError(f"N{level}: incomplete physical history schema")
         count = 0
-        previous = 0
         last = None
+        run_scheme = None
         for row in reader:
             count += 1
             iteration = int(row["iteration"])
-            if iteration <= previous:
-                raise ValueError(f"N{level}: nonmonotone history iteration")
-            previous = iteration
+            if iteration != count:
+                raise ValueError(f"N{level}: incomplete or nonconsecutive history iteration")
             for key in needed - {"iteration", "convection_scheme"}:
                 if not math.isfinite(float(row[key])):
                     raise ValueError(f"N{level}: nonfinite history {key}")
@@ -98,18 +106,40 @@ def verify_physical_history(
                 "continuity_normalized",
                 "mass_local_linf",
                 "mass_normalized_imbalance",
+                "momentum_x_rhs_relative",
+                "momentum_y_rhs_relative",
+                "momentum_z_rhs_relative",
+                "momentum_component_max",
+                "pressure_residual",
+                "velocity_change_inf",
+                "pressure_change_inf",
             } | independent:
                 if float(row[key]) < 0:
                     raise ValueError(f"N{level}: negative physical residual norm {key}")
             if not 0.0 <= float(row["high_order_fraction"]) <= 1.0:
                 raise ValueError(f"N{level}: invalid convection fraction")
+            components = [
+                float(row[f"momentum_{axis}_rhs_relative"]) for axis in "xyz"
+            ]
+            if not math.isclose(
+                float(row["momentum_component_max"]),
+                max(components), abs_tol=1e-11, rel_tol=1e-6
+            ):
+                raise ValueError(f"N{level}: inconsistent momentum component maximum")
             # A startup continuation may legitimately use UPWIND. Only the
             # accepted FINAL state must be fully second-order bounded TVD;
             # never reject a valid startup solely for its early scheme.
             if row["convection_scheme"] not in (
-                "UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA"
+                "UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA",
+                "MUSCL_CELL_LIMITED"
             ):
                 raise ValueError(f"N{level}: unknown convection scheme")
+            if run_scheme is None:
+                run_scheme = row["convection_scheme"]
+            elif row["convection_scheme"] != run_scheme:
+                raise ValueError(
+                    f"N{level}: nonlinear history mixes convection schemes"
+                )
             if (
                 int(row["nonfinite_mass_faces"]) != 0
                 or int(row["nonfinite_velocities"]) != 0
@@ -126,11 +156,21 @@ def verify_physical_history(
     mass = max(continuity, mass_imbalance, mass_local)
     if momentum > RELATIVE_GATE or mass > RELATIVE_GATE:
         raise ValueError(f"N{level}: nonlinear history is not physically converged")
+    if any(float(last[key]) > RELATIVE_GATE for key in (
+        "momentum_component_max", "pressure_residual", "velocity_change_inf",
+        "pressure_change_inf",
+    )):
+        raise ValueError(
+            f"N{level}: transverse momentum/linear/change convergence gate not met"
+        )
     if float(last["high_order_fraction"]) != 1.0:
         raise ValueError(f"N{level}: final convection operator is not full order")
-    if last["convection_scheme"] not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA"):
+    if last["convection_scheme"] not in (
+        "TVD", "TVD_VANLEER", "TVD_VANALBADA", "MUSCL_CELL_LIMITED"
+    ):
         raise ValueError(
-            f"N{level}: final qualification requires bounded second-order TVD convection"
+            f"N{level}: final qualification requires bounded "
+            f"second-order TVD or MUSCL convection"
         )
     face_residuals = {
         axis: float(last[f"face_momentum_{axis}_relative"]) for axis in ("x", "y", "z")
@@ -146,11 +186,14 @@ def verify_physical_history(
     return {
         "iterations": count,
         "final_momentum_rhs_relative": momentum,
+        "final_momentum_component_max": float(last["momentum_component_max"]),
         "final_continuity_normalized": continuity,
         "final_mass_local_linf": mass_local,
         "final_mass_normalized_imbalance": mass_imbalance,
         "final_certificate_mass_residual": mass,
         "final_independent_face_momentum_relative": face_residuals,
+        "convection_scheme": run_scheme,
+        "experimental_reconstruction": run_scheme == "MUSCL_CELL_LIMITED",
     }
 
 
@@ -172,6 +215,7 @@ def certify(
         "gci": {"status": "NOT_QUALIFIED", "validation_reference": "NOT_PERFORMED"},
     }
     rows: list[dict[str, str]] = []
+    schemes: set[str] = set()
     if raw_faces is None:
         report["reasons"].append(
             "missing independent raw wall-face traction files for N64/N128/N256"
@@ -180,6 +224,7 @@ def certify(
         try:
             certificate = read_one_certificate(certs[level], level)
             physical = verify_physical_history(histories[level], level, certificate)
+            schemes.add(str(physical["convection_scheme"]))
             # An independent script must recompute the face-area/normal,
             # pressure/viscous and moment integrals from *raw* traction.
             # This still does not validate the underlying wall stress model.
@@ -203,6 +248,17 @@ def certify(
         except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
             report["cases"].append({"N": level, "status": "NOT_QUALIFIED"})
             report["reasons"].append(str(exc))
+    # Richardson/GCI estimates are meaningless when each level discretizes a
+    # different convection operator, even if all three solved to tight norms.
+    if len(schemes) > 1:
+        report["reasons"].append(
+            "three-grid Richardson study mixes different convection schemes"
+        )
+    if len(schemes) == 1:
+        report["convection_scheme"] = next(iter(schemes))
+        report["experimental_reconstruction"] = (
+            report["convection_scheme"] == "MUSCL_CELL_LIMITED"
+        )
     if mesh_report["status"] != "COMPATIBLE_WITH_SINGLE_RATIO_GCI":
         report["reasons"].append(
             "near-wall/tangential grid refinement is not geometrically similar"

@@ -967,6 +967,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_compare_mesh_families.py)
         set_tests_properties(test_naca_compare_mesh_families PROPERTIES
             LABELS "anisotropy;mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_wall_radial_comparison
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_wall_radial_comparison.py)
+        set_tests_properties(test_naca_wall_radial_comparison PROPERTIES
+            LABELS "forces;anisotropy;mesh;regression" TIMEOUT 20)
         add_test(NAME test_naca_force_certificate_fail_closed
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_certificate_fail_closed.py

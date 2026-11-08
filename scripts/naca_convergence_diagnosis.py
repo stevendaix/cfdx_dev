@@ -70,7 +70,10 @@ def read_history(path: Path) -> list[dict[str, float | int | str]]:
                 ("algorithm", ("SIMPLE", "SIMPLEC")),
                 (
                     "convection_scheme",
-                    ("UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA"),
+                    (
+                        "UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA",
+                        "MUSCL_CELL_LIMITED",
+                    ),
                 ),
             ):
                 if row[field] not in options:
@@ -130,12 +133,15 @@ def diagnose(rows: list[dict[str, float | int | str]], tolerance: float = 1e-8) 
         "scheme": last["convection_scheme"],
         "full_order_fraction": float(last["high_order_fraction"]),
         "full_order_scheme": last["convection_scheme"]
-        in ("TVD", "TVD_VANLEER", "TVD_VANALBADA")
+        in ("TVD", "TVD_VANLEER", "TVD_VANALBADA", "MUSCL_CELL_LIMITED")
         and float(last["high_order_fraction"]) == 1.0,
         "momentum_reference_ratio_diagnostic": ratio,
         "momentum_component_max_geometric_ratio": trend,
         "unmet_nonlinear_checks": blockers,
         "physical_tolerance_checks_pass": len(blockers) == 0,
+        "experimental_multidimensional_limiter":
+            last["convection_scheme"] == "MUSCL_CELL_LIMITED",
+        "momentum_reference_exceeds_tolerance": ratio > tolerance,
         "solver_convergence_proven": False,
         "three_grid_gci_proven": False,
     }

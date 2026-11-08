@@ -720,6 +720,7 @@ inline void validate_incompressible_controls(
         ((c.convection_scheme != ConvectionScheme::TVD &&
           c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
           c.convection_scheme != ConvectionScheme::TVD_VANALBADA &&
+          c.convection_scheme != ConvectionScheme::MUSCL_CELL_LIMITED &&
           c.convection_scheme != ConvectionScheme::SECOND_ORDER_UPWIND) ||
          c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
          c.transient.enabled || c.sst_runtime != nullptr))

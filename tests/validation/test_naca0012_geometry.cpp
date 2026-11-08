@@ -129,6 +129,23 @@ static Forces run(const std::string& path,std::size_t level,
     }
     c.density=rho; c.kinematic_viscosity=nu;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
+    // Precision-only A/B knob. Tightening the algebraic solve can expose a
+    // nonlinear residual floor without changing ANY physical stop criterion.
+    // Forbid loosening the baseline linear tolerance in qualifications.
+    if (const char* raw = std::getenv("CFDX_NACA_LINEAR_TOLERANCE")) {
+        const std::string text(raw);
+        std::size_t parsed = 0;
+        double tolerance = 0.0;
+        try { tolerance = std::stod(text, &parsed); }
+        catch (const std::exception&) {
+            throw std::invalid_argument("CFDX_NACA_LINEAR_TOLERANCE invalid number");
+        }
+        if (parsed != text.size() || !std::isfinite(tolerance) ||
+            tolerance < 1e-14 || tolerance > 1e-10)
+            throw std::invalid_argument(
+                "CFDX_NACA_LINEAR_TOLERANCE requires [1e-14,1e-10]");
+        c.linear_tolerance = tolerance;
+    }
     c.convergence.max_iterations=max_iterations;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
@@ -174,11 +191,21 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("NACA van Albada must be exclusive and equal 1");
         c.convection_scheme = ConvectionScheme::TVD_VANALBADA;
     }
+    // Experimental multidimensional face-stencil MUSCL. Not the default TVD
+    // qualification path. Mutual exclusion is intentional for A/B replay.
+    if (const char* limited = std::getenv("CFDX_NACA_CONVECTION_CELL_LIMITED")) {
+        if (std::string(limited) != "1" ||
+            c.convection_scheme != ConvectionScheme::UPWIND)
+            throw std::invalid_argument(
+                "NACA cell-limited MUSCL must be exclusive and equal 1");
+        c.convection_scheme = ConvectionScheme::MUSCL_CELL_LIMITED;
+    }
     if (const char* continuation = std::getenv("CFDX_NACA_TVD_CONTINUATION")) {
         if (std::string(continuation) != "1" ||
             (c.convection_scheme != ConvectionScheme::TVD &&
              c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
-             c.convection_scheme != ConvectionScheme::TVD_VANALBADA))
+             c.convection_scheme != ConvectionScheme::TVD_VANALBADA &&
+             c.convection_scheme != ConvectionScheme::MUSCL_CELL_LIMITED))
             throw std::invalid_argument(
                 "CFDX_NACA_TVD_CONTINUATION requires TVD or van Leer and value 1");
         c.convection_continuation.enabled = true;
@@ -419,6 +446,7 @@ static Forces run(const std::string& path,std::size_t level,
                 << (c.convection_scheme == ConvectionScheme::TVD ? "TVD" :
                     c.convection_scheme == ConvectionScheme::TVD_VANLEER ? "TVD_VANLEER" :
                     c.convection_scheme == ConvectionScheme::TVD_VANALBADA ? "TVD_VANALBADA" :
+                    c.convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED ? "MUSCL_CELL_LIMITED" :
                     c.convection_scheme == ConvectionScheme::UPWIND ? "UPWIND" :
                     "OTHER") << ','
                 << h.momentum_equation_residual_relative << ','
@@ -505,8 +533,18 @@ static Forces run(const std::string& path,std::size_t level,
     gy["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
     Field<double,Location::CELL> ux(mesh.n_cells(),"ux","m/s",1), uy(mesh.n_cells(),"uy","m/s",1);
     for(std::size_t i=0;i<mesh.n_cells();++i){ux(i)=U.component_data(0)[i];uy(i)=U.component_data(1)[i];}
-    const auto gux=gauss_gradient_with_boundary(ux,mesh,geometry,gx);
-    const auto guy=gauss_gradient_with_boundary(uy,mesh,geometry,gy);
+    // Post-processing A/B: wall tractions need gradients at physical faces.
+    // The rank-certified boundary-aware WLS gradient is affine-exact on a
+    // skewed wall stencil; keep the historical Gauss path for comparison.
+    const bool wall_wls = std::getenv("CFDX_NACA_WALL_GRADIENT_WLS") != nullptr;
+    if (wall_wls && std::string(std::getenv("CFDX_NACA_WALL_GRADIENT_WLS")) != "1")
+        throw std::invalid_argument("CFDX_NACA_WALL_GRADIENT_WLS must be 1");
+    const auto gux=wall_wls
+        ? compute_boundary_aware_wls_gradient(ux,mesh,geometry,gx)
+        : gauss_gradient_with_boundary(ux,mesh,geometry,gx);
+    const auto guy=wall_wls
+        ? compute_boundary_aware_wls_gradient(uy,mesh,geometry,gy)
+        : gauss_gradient_with_boundary(uy,mesh,geometry,gy);
     // Optional face-traction A/B; no modification to the historical force
     // gate.  This evaluation remains experimental until MMS + grid studies.
     bool face_traction = false;
@@ -515,6 +553,9 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_WALL_TRACTION_FACE must be 1");
         face_traction = true;
     }
+    if (wall_wls && !face_traction)
+        throw std::invalid_argument(
+            "CFDX_NACA_WALL_GRADIENT_WLS requires face-traction post-processing");
     // A/B diagnostic: the production pressure BC uses dp/dn=0 on the foil.
     // Cell-gradient normal extrapolation is informative, not a trustworthy
     // replacement for a physically derived wall-normal pressure BC.
@@ -528,8 +569,10 @@ static Forces run(const std::string& path,std::size_t level,
     }
     Field<double, Location::CELL> wall_pressure_gradient;
     if (face_traction)
-        wall_pressure_gradient = gauss_gradient_with_boundary(
-            p, mesh, geometry, pbc, c.pressure_skew_corrected_gradient);
+        wall_pressure_gradient = wall_wls
+            ? compute_boundary_aware_wls_gradient(p, mesh, geometry, pbc)
+            : gauss_gradient_with_boundary(
+                p, mesh, geometry, pbc, c.pressure_skew_corrected_gradient);
 
     const auto& patch=mesh.boundary().patch(mesh.boundary().find("airfoil"));
     std::ofstream face_profiles;

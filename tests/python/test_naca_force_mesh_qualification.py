@@ -69,8 +69,13 @@ class NacaForceMeshTests(unittest.TestCase):
                 "high_order_fraction,face_momentum_x_relative,"
                 "face_momentum_y_relative,face_momentum_z_relative,"
                 "face_momentum_x_linf,face_momentum_y_linf,face_momentum_z_linf,"
-                "mass_normalized_imbalance,convection_scheme\n"
-                "1,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,1e-13,TVD\n",
+                "mass_normalized_imbalance,convection_scheme,"
+                "momentum_x_rhs_relative,"
+                "momentum_y_rhs_relative,momentum_z_rhs_relative,"
+                "momentum_component_max,pressure_residual,velocity_change_inf,"
+                "pressure_change_inf\n"
+                "1,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
+                "1e-13,TVD,1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n",
                 encoding="utf-8",
             )
             self.certs[n] = c
@@ -104,6 +109,35 @@ class NacaForceMeshTests(unittest.TestCase):
                         face += 1
             self.raws[n] = raw
 
+    def test_transverse_component_blocks_false_global_convergence(self):
+        path = self.histories[128]
+        contents = path.read_text()
+        path.write_text(
+            contents.replace(
+                ",TVD,1e-11,1e-11,0,1e-11,", ",TVD,1e-11,2e-5,0,2e-5,"
+            )
+        )
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(
+            any(
+                "transverse momentum" in reason for reason in report["reasons"]
+            )
+        )
+
+    def test_missing_iteration_blocks_incomplete_history(self):
+        path = self.histories[128]
+        data = path.read_text()
+        path.write_text(data.replace("\n1,", "\n2,"))
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(
+            any(
+                "incomplete or nonconsecutive" in reason
+                for reason in report["reasons"]
+            )
+        )
+
     def test_valid_evidence_produces_only_richardson_candidate(self):
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "GCI_CANDIDATE")
@@ -133,16 +167,62 @@ class NacaForceMeshTests(unittest.TestCase):
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "GCI_CANDIDATE")
 
-    def test_early_upwind_then_final_tvd_is_allowed(self):
-        # A continuation is legal: only the FINAL accepted operator matters.
+    def test_mixed_high_order_schemes_cannot_claim_gci(self):
+        # All three meshes would individually pass the residual certificate,
+        # but a Richardson ratio across different operators is invalid.
+        path = self.histories[128]
+        path.write_text(path.read_text().replace(",TVD,", ",TVD_VANLEER,"))
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(
+            any(
+                "mixes different convection schemes" in msg
+                for msg in report["reasons"]
+            )
+        )
+
+    def test_muscl_candidate_remains_experimental_and_needs_three_grids(self):
+        for level in m.LEVELS:
+            path = self.histories[level]
+            path.write_text(
+                path.read_text().replace(",TVD,", ",MUSCL_CELL_LIMITED,")
+            )
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "GCI_CANDIDATE")
+        self.assertEqual(report["convection_scheme"], "MUSCL_CELL_LIMITED")
+        self.assertTrue(report["experimental_reconstruction"])
+        self.histories[256].unlink()
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+
+    def test_mixed_scheme_within_one_history_blocks(self):
+        path = self.histories[64]
+        path.write_text(
+            path.read_text()
+            + "2,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
+            "1e-13,TVD_VANLEER,1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n"
+        )
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(
+            any("mixes convection schemes" in msg for msg in report["reasons"])
+        )
+
+    def test_early_upwind_then_final_tvd_is_blocked_by_scheme_consistency(self):
+        # Superseded contract (2026-11-08 lot evidence): a nonlinear history
+        # that mixes convection schemes is refused, even when only the final
+        # accepted operator is used for the certificate.
         path = self.histories[64]
         lines = path.read_text().splitlines()
         earlier = lines[1].replace("1,1e-11,", "1,1e-4,", 1)
-        earlier = earlier.replace(",TVD", ",UPWIND")
+        earlier = earlier.replace(",TVD,", ",UPWIND,")
         final = "2" + lines[1][1:]
         path.write_text("\n".join((lines[0], earlier, final)) + "\n")
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
-        self.assertEqual(report["status"], "GCI_CANDIDATE")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(
+            any("mixes convection schemes" in msg for msg in report["reasons"])
+        )
 
     def test_missing_raw_surface_cannot_promote_solver_forces(self):
         self.raws[64].unlink()
@@ -186,7 +266,12 @@ class NacaForceMeshTests(unittest.TestCase):
 
     def test_mismatched_physical_history_fails(self):
         path = self.histories[64]
-        path.write_text(path.read_text().replace("1e-11,1e-12", "8e-9,1e-12"))
+        original = path.read_text()
+        path.write_text(
+            original.replace("1,1e-11,1e-12", "1,8e-9,1e-12").replace(
+                ",TVD,1e-11,1e-11,0,1e-11,", ",TVD,8e-9,1e-11,0,8e-9,"
+            )
+        )
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(any("stale" in item for item in report["reasons"]))
@@ -247,7 +332,7 @@ class NacaForceMeshTests(unittest.TestCase):
 
     def test_first_order_upwind_cannot_claim_final_high_order_operator(self):
         path = self.histories[64]
-        path.write_text(path.read_text().replace(",TVD\n", ",UPWIND\n"))
+        path.write_text(path.read_text().replace(",TVD,", ",UPWIND,"))
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(

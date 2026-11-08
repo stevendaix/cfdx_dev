@@ -54,7 +54,12 @@ enum class ConvectionScheme {
     // Smooth van Leer limiter for A/B convergence studies; not auto-selected.
     TVD_VANLEER,
     // Smooth TVD limiter, explicit opt-in for stationary convergence studies.
-    TVD_VANALBADA
+    TVD_VANALBADA,
+    // Experimental multidimensional Barth-Jespersen face limiter. Unlike a
+    // two-cell TVD clip, use the upwind cell's full face-adjacent stencil.
+    // Explicit opt-in; unstructured multidimensional monotonicity is not a
+    // proof of 1-D TVD or of physical accuracy.
+    MUSCL_CELL_LIMITED
 };
 
 struct ScalarBoundaryFaceValues {
@@ -296,6 +301,83 @@ inline ScalarBoundaryCondition resolve_scalar_boundary_condition(
         throw std::invalid_argument(
             "resolve_scalar_boundary_condition: non-finite fixed gradient");
     return bc;
+}
+
+// Multidimensional MUSCL reconstruction with a cell-stencil limiter.
+// A face centre can be tangentially skew to the segment joining its two cell
+// centres. Clipping solely to [phi_P, phi_N] then destroys exactness even for
+// an affine field (in particular when phi_P == phi_N). The full face-adjacent
+// stencil, including actual Dirichlet boundary data, supplies a more suitable
+// local monotonicity envelope. This opt-in limiter does NOT claim a TVD proof
+// for general unstructured multidimensional meshes.
+inline double muscl_cell_limited_face_value(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& gradient,
+    std::size_t face,
+    std::size_t upwind,
+    const ScalarBoundaryConditions& boundary_conditions,
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+{
+    using namespace cfdx::core;
+    if (face >= mesh.n_faces() || upwind >= mesh.n_cells() ||
+        field.size() != mesh.n_cells() || field.dimension() != 1 ||
+        gradient.size() != mesh.n_cells() || gradient.dimension() != 3)
+        throw std::invalid_argument("muscl_cell_limited_face_value: invalid shape");
+    const double centre_value = field(upwind);
+    const auto displacement = geometry.face_centres[face] -
+                              geometry.cell_centres[upwind];
+    const double extrapolation = gradient(upwind, 0)*displacement.x +
+                                 gradient(upwind, 1)*displacement.y +
+                                 gradient(upwind, 2)*displacement.z;
+    if (!std::isfinite(centre_value) || !std::isfinite(extrapolation))
+        throw std::runtime_error("muscl_cell_limited_face_value: non-finite state");
+    double local_min = centre_value;
+    double local_max = centre_value;
+    const auto& ownership = mesh.ownership();
+    const auto* offsets = mesh.cells().offsets_data();
+    const auto* faces = mesh.cells().faces_data();
+    for (auto k = offsets[upwind]; k < offsets[upwind+1]; ++k) {
+        const auto incident = static_cast<std::size_t>(faces[k]);
+        const auto owner = ownership.owner(incident);
+        const auto neighbour = ownership.neighbour(incident);
+        double sample = centre_value;
+        if (neighbour >= 0) {
+            const auto opposite = owner == upwind
+                ? static_cast<std::size_t>(neighbour) : owner;
+            if (opposite >= mesh.n_cells())
+                throw std::runtime_error("muscl_cell_limited_face_value: bad neighbour");
+            sample = field(opposite);
+        } else {
+            const auto patch = geometry.face_patch[incident];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+            const auto bc = resolve_scalar_boundary_condition(
+                mesh, geometry, incident, boundary_conditions,
+                face_values, face_conditions);
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE)
+                sample = bc.value;
+            else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT)
+                sample += bc.gradient * boundary_normal_distance(
+                    geometry, incident, upwind);
+        }
+        if (!std::isfinite(sample))
+            throw std::runtime_error("muscl_cell_limited_face_value: non-finite bound");
+        local_min = std::min(local_min, sample);
+        local_max = std::max(local_max, sample);
+    }
+    double theta = 1.0;
+    if (extrapolation > 0.0)
+        theta = std::clamp((local_max-centre_value)/extrapolation, 0.0, 1.0);
+    else if (extrapolation < 0.0)
+        theta = std::clamp((local_min-centre_value)/extrapolation, 0.0, 1.0);
+    const double reconstructed = centre_value + theta*extrapolation;
+    if (!std::isfinite(reconstructed))
+        throw std::runtime_error("muscl_cell_limited_face_value: invalid face state");
+    return reconstructed;
 }
 
 // Boundary-aware scalar gradient shared by transport and diffusion-flux
@@ -723,7 +805,8 @@ inline ScalarEquation assemble_scalar_equation(
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD ||
         convection_scheme == ConvectionScheme::TVD_VANLEER ||
-                convection_scheme == ConvectionScheme::TVD_VANALBADA) {
+        convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED ||
+        convection_scheme == ConvectionScheme::TVD_VANALBADA) {
         // Use the same boundary-aware rank-certified reconstruction as
         // deferred diffusion. Historical raw Gauss ignored physical BCs and
         // can lose affine accuracy on skewed production meshes.
@@ -882,6 +965,7 @@ inline ScalarEquation assemble_scalar_equation(
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                 convection_scheme == ConvectionScheme::TVD ||
                 convection_scheme == ConvectionScheme::TVD_VANLEER ||
+                convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED ||
                 convection_scheme == ConvectionScheme::TVD_VANALBADA ||
                 convection_scheme == ConvectionScheme::CENTRAL ||
                 convection_scheme == ConvectionScheme::BLENDED ||
@@ -893,7 +977,11 @@ inline ScalarEquation assemble_scalar_equation(
                 const double phi_other = (*convected_field)(downwind);
                 double phi_high = phi_up;
 
-                if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+                if (convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED) {
+                    phi_high = muscl_cell_limited_face_value(
+                        mesh, geometry, *convected_field, reconstructed_gradient,
+                        f, upwind, boundary_conditions, face_values, face_conditions);
+                } else if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
                     const auto& C_up = geometry.cell_centres[upwind];
                     const auto& Cf = geometry.face_centres[f];
                     const double* gx = reconstructed_gradient.component_data(0);
@@ -1138,7 +1226,8 @@ reconstruct_scalar_transport_flux(
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD ||
         convection_scheme == ConvectionScheme::TVD_VANLEER ||
-                convection_scheme == ConvectionScheme::TVD_VANALBADA)
+        convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED ||
+        convection_scheme == ConvectionScheme::TVD_VANALBADA)
         // Match assemble_scalar_equation exactly: an independent flux audit
         // must use the SAME boundary-aware gradient and limiter inputs.
         grad = compute_boundary_aware_wls_gradient(
@@ -1203,6 +1292,7 @@ reconstruct_scalar_transport_flux(
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                 convection_scheme == ConvectionScheme::TVD ||
                 convection_scheme == ConvectionScheme::TVD_VANLEER ||
+                convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED ||
                 convection_scheme == ConvectionScheme::TVD_VANALBADA ||
                 convection_scheme == ConvectionScheme::CENTRAL ||
                 convection_scheme == ConvectionScheme::BLENDED ||
@@ -1210,7 +1300,11 @@ reconstruct_scalar_transport_flux(
                 convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t u = F >= 0.0 ? o : n;
                 const std::size_t dcell = F >= 0.0 ? n : o;
-                if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+                if (convection_scheme == ConvectionScheme::MUSCL_CELL_LIMITED) {
+                    psi_face = muscl_cell_limited_face_value(
+                        mesh, geometry, field, grad, f, u, boundary_conditions,
+                        face_values, face_conditions);
+                } else if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                     convection_scheme == ConvectionScheme::TVD ||
                     convection_scheme == ConvectionScheme::TVD_VANLEER ||
                 convection_scheme == ConvectionScheme::TVD_VANALBADA) {
