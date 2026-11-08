@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 import json
 import math
 from pathlib import Path
@@ -67,7 +68,7 @@ def read_profile(path: Path, certificate: Path) -> dict:
         raise ValueError("face forces do not reconstruct drag certificate")
     result = {"force": expected, "bins": [], "n_wall_faces": len(rows)}
     for side, entries in region.items():
-        for start, end in zip(BINS[:-1], BINS[1:]):
+        for start, end in itertools.pairwise(BINS):
             values = [r for r in entries if start <= r["x_over_c"] < end]
             result["bins"].append(
                 {
