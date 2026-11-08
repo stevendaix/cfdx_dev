@@ -75,7 +75,12 @@ int main(int argc, char** argv)
         // well-posed smoke case while still exercising the complete
         // production import -> case serialization -> solver path.
         for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
-            const auto& patch = mesh.boundary().patch(i);
+            auto& patch = mesh.boundary().patch(i);
+            // The public VTK importer supplies generic boundary patches. This
+            // smoke case explicitly declares every exterior patch a stationary
+            // no-slip wall, so make the mesh-patch topology agree with that
+            // declared physical contract before serializing the case.
+            patch.type = cfdx::core::PatchType::WALL;
             BoundarySpec bc;
             bc.patch_name = patch.name;
             bc.type = BCType::WALL;
