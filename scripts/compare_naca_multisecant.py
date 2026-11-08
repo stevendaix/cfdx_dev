@@ -14,6 +14,7 @@ Input manifest:
 Optional per-run expected_hist_sha256, expected_mesh_sha256,
 expected_binary_sha256 and interrupted=true (the latter must not certify).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -61,24 +62,44 @@ def strict_float(row: dict[str, str], key: str) -> float:
 
 
 NUMERIC_FIELDS = (
-    "continuity_normalized", "momentum_rhs_relative", "mass_normalized_imbalance",
-    "mass_local_linf", "face_momentum_x_relative", "face_momentum_y_relative",
-    "momentum_x_rhs_relative", "momentum_y_rhs_relative", "momentum_component_max",
-    "velocity_change_inf", "pressure_change_inf", "pressure_residual",
-    "alpha_u", "alpha_p", "high_order_fraction", "multisecant_relative_step",
-    "multisecant_estimated_objective", "nonfinite_mass_faces", "nonfinite_velocities",
-    "multisecant_proposed", "multisecant_accepted",
+    "continuity_normalized",
+    "momentum_rhs_relative",
+    "mass_normalized_imbalance",
+    "mass_local_linf",
+    "face_momentum_x_relative",
+    "face_momentum_y_relative",
+    "momentum_x_rhs_relative",
+    "momentum_y_rhs_relative",
+    "momentum_component_max",
+    "velocity_change_inf",
+    "pressure_change_inf",
+    "pressure_residual",
+    "alpha_u",
+    "alpha_p",
+    "high_order_fraction",
+    "multisecant_relative_step",
+    "multisecant_estimated_objective",
+    "nonfinite_mass_faces",
+    "nonfinite_velocities",
+    "multisecant_proposed",
+    "multisecant_accepted",
 )
 
 
-def parse_run(root: pathlib.Path, run: dict[str, Any],
-              global_config: dict[str, Any], shared_hashes: dict[str, str]) -> dict[str, Any]:
+def parse_run(
+    root: pathlib.Path,
+    run: dict[str, Any],
+    global_config: dict[str, Any],
+    shared_hashes: dict[str, str],
+) -> dict[str, Any]:
     name = str(run.get("name", ""))
     method = str(run.get("method", ""))
     if not name or method not in {"OFF", "ANDERSON", "NGMRES"}:
         raise EvidenceError("run requires a unique name and method OFF/ANDERSON/NGMRES")
     for k in ("mesh", "binary"):
-        expected = run.get(f"expected_{k}_sha256", global_config.get(f"expected_{k}_sha256"))
+        expected = run.get(
+            f"expected_{k}_sha256", global_config.get(f"expected_{k}_sha256")
+        )
         if expected is not None and expected != shared_hashes[k]:
             raise EvidenceError(f"{name}: {k} sha256 mismatch")
     history_path = (root / str(run.get("history", ""))).resolve()
@@ -93,24 +114,35 @@ def parse_run(root: pathlib.Path, run: dict[str, Any],
         raise EvidenceError(f"{name}: empty CSV")
     for i, row in enumerate(rows, 1):
         if strict_float(row, "iteration") != i:
-            raise EvidenceError(f"{name}: iteration missing, duplicate or shuffled at {i}")
+            raise EvidenceError(
+                f"{name}: iteration missing, duplicate or shuffled at {i}"
+            )
         for k in NUMERIC_FIELDS:
             strict_float(row, k)
-        if row.get("convection_scheme") != "TVD" or \
-           abs(strict_float(row, "high_order_fraction")-1.0) > 1e-12:
-            raise EvidenceError(f"{name}: final second-order TVD operator not used in row {i}")
+        if (
+            row.get("convection_scheme") != "TVD"
+            or abs(strict_float(row, "high_order_fraction") - 1.0) > 1e-12
+        ):
+            raise EvidenceError(
+                f"{name}: final second-order TVD operator not used in row {i}"
+            )
         if row.get("algorithm") != "SIMPLE":
             raise EvidenceError(f"{name}: non-SIMPLE algorithm")
         if row.get("multisecant_method") != method:
             raise EvidenceError(f"{name}: method in CSV does not match manifest")
-        if abs(strict_float(row, "alpha_u")-global_config["alpha_u"]) > 1e-13 or \
-           abs(strict_float(row, "alpha_p")-global_config["alpha_p"]) > 1e-13:
+        if (
+            abs(strict_float(row, "alpha_u") - global_config["alpha_u"]) > 1e-13
+            or abs(strict_float(row, "alpha_p") - global_config["alpha_p"]) > 1e-13
+        ):
             raise EvidenceError(f"{name}: relaxation changed during comparison")
-        if strict_float(row, "nonfinite_mass_faces") != 0 or \
-           strict_float(row, "nonfinite_velocities") != 0:
+        if (
+            strict_float(row, "nonfinite_mass_faces") != 0
+            or strict_float(row, "nonfinite_velocities") != 0
+        ):
             raise EvidenceError(f"{name}: nonfinite flow state")
-        if strict_float(row, "multisecant_accepted") not in {0, 1} or \
-           strict_float(row, "multisecant_proposed") not in {0, 1}:
+        if strict_float(row, "multisecant_accepted") not in {0, 1} or strict_float(
+            row, "multisecant_proposed"
+        ) not in {0, 1}:
             raise EvidenceError(f"{name}: malformed acceleration flags")
         if method == "OFF" and strict_float(row, "multisecant_accepted") != 0:
             raise EvidenceError(f"{name}: OFF run falsely reports acceleration")
@@ -136,10 +168,16 @@ def parse_run(root: pathlib.Path, run: dict[str, Any],
     }
     tol = global_config["tolerance"]
     physics_gates = {
-        "momentum": max(extracted["momentum_x"], extracted["momentum_y"],
-                        extracted["momentum_global"]) <= tol,
-        "independent_face_momentum": max(extracted["face_momentum_x"],
-                                         extracted["face_momentum_y"]) <= tol,
+        "momentum": max(
+            extracted["momentum_x"],
+            extracted["momentum_y"],
+            extracted["momentum_global"],
+        )
+        <= tol,
+        "independent_face_momentum": max(
+            extracted["face_momentum_x"], extracted["face_momentum_y"]
+        )
+        <= tol,
         "continuity": extracted["continuity"] <= tol,
         "mass_imbalance": extracted["mass_imbalance"] <= tol,
         "local_mass": extracted["local_mass"] <= tol,
@@ -147,12 +185,19 @@ def parse_run(root: pathlib.Path, run: dict[str, Any],
     }
     accepted = sum(int(float(row["multisecant_accepted"])) for row in rows)
     return {
-        "name": name, "method": method, "history": str(history_path),
-        "sha256": history_hash, "iterations": len(rows), "budget": total,
-        "complete": complete, "accelerated_accepted": accepted,
-        "last_metrics": extracted, "physics_gates": physics_gates,
+        "name": name,
+        "method": method,
+        "history": str(history_path),
+        "sha256": history_hash,
+        "iterations": len(rows),
+        "budget": total,
+        "complete": complete,
+        "accelerated_accepted": accepted,
+        "last_metrics": extracted,
+        "physics_gates": physics_gates,
         # Deliberate fail-closed: a history has no authoritative certification.
-        "qualification": "NOT_CERTIFIED", "requires_official_certificate": True,
+        "qualification": "NOT_CERTIFIED",
+        "requires_official_certificate": True,
     }
 
 
@@ -194,8 +239,11 @@ def compare(manifest_path: pathlib.Path) -> dict[str, Any]:
         "same_binary_sha256": shared_hashes["binary"],
         "same_mesh_sha256": shared_hashes["mesh"],
         "strict_tolerance": config["tolerance"],
-        "controls": {"alpha_u": config["alpha_u"],
-                     "alpha_p": config["alpha_p"], "iteration_budget": config["iterations"]},
+        "controls": {
+            "alpha_u": config["alpha_u"],
+            "alpha_p": config["alpha_p"],
+            "iteration_budget": config["iterations"],
+        },
         "runs": output,
         "warning": "A physical run is never certified using CSV time histories alone.",
     }

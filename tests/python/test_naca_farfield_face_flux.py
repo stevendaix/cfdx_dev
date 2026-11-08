@@ -29,13 +29,26 @@ def fixture_case(tmp_path: Path, *, matched: bool = False) -> tuple[Path, Path]:
         h.attrs["topology_hash"] = "fixture-topology"
         h.create_dataset("owner", data=np.array([0, 0, 0], dtype=np.int64))
         h.create_dataset("neighbour", data=np.array([-1, -1, -1], dtype=np.int64))
-        h.create_dataset("patch_face_offsets", data=np.array([0, 1, 3], dtype=np.uint64))
+        h.create_dataset(
+            "patch_face_offsets", data=np.array([0, 1, 3], dtype=np.uint64)
+        )
         h.create_dataset("patch_face_ids", data=np.array([0, 1, 2], dtype=np.uint64))
     filename = tmp_path / "flux.csv"
     data = [
         ["0", "0", "-1", "0", "0", "0", "-1", "0", "0", "0"],
         ["1", "0", "-1", "20", "1", "0", "1", "0", "0", "1" if matched else "0.9"],
-        ["2", "0", "-1", "20", "-1", "0", "-0.5", "0", "0", "-0.5" if matched else "-0.4"],
+        [
+            "2",
+            "0",
+            "-1",
+            "20",
+            "-1",
+            "0",
+            "-0.5",
+            "0",
+            "0",
+            "-0.5" if matched else "-0.4",
+        ],
     ]
     with filename.open("w", newline="") as out:
         w = csv.writer(out)
@@ -62,7 +75,10 @@ def test_neumann_like_prescribed_velocity_boundary_is_exact(tmp_path: Path) -> N
     assert result["mismatch_linf"] == 0
 
 
-@pytest.mark.parametrize("altered", ["duplicate", "missing", "extra", "owner", "neighbour", "nonfinite", "columns"])
+@pytest.mark.parametrize(
+    "altered",
+    ["duplicate", "missing", "extra", "owner", "neighbour", "nonfinite", "columns"],
+)
 def test_invalid_face_flux_fails_closed(tmp_path: Path, altered: str) -> None:
     mesh, flux = fixture_case(tmp_path)
     with flux.open(newline="") as stream:

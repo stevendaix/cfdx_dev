@@ -85,7 +85,13 @@ def read_budget(path: Path) -> list[dict]:
                 row[key] = int(data[key])
             if row["iteration"] < 1 or row["component"] not in (0, 1, 2):
                 raise ValueError(f"invalid iteration or component at line {line}")
-            for key in ("x", "y", "z", *TERMS, *(EXTENDED_COLUMNS if has_extended else ())):
+            for key in (
+                "x",
+                "y",
+                "z",
+                *TERMS,
+                *(EXTENDED_COLUMNS if has_extended else ()),
+            ):
                 val = float(data[key])
                 if not math.isfinite(val):
                     raise ValueError(f"nonfinite {key} at line {line}")
@@ -107,8 +113,12 @@ def read_budget(path: Path) -> list[dict]:
                 error = row["matrix_face_difference"]
                 if scale < 0:
                     raise ValueError(f"negative matrix/face scale at line {line}")
-                if not _close(row["algebraic_residual"] - row["bounded_operator_residual"], error):
-                    raise ValueError(f"matrix/face residual difference inconsistent at line {line}")
+                if not _close(
+                    row["algebraic_residual"] - row["bounded_operator_residual"], error
+                ):
+                    raise ValueError(
+                        f"matrix/face residual difference inconsistent at line {line}"
+                    )
                 if abs(error) > 2e-10 * max(scale, 1e-15):
                     raise ValueError(f"matrix/face operator mismatch at line {line}")
             rows.append(row)
@@ -140,8 +150,9 @@ def read_budget(path: Path) -> list[dict]:
     return rows
 
 
-def sampled_sign_alternation(rows: list[dict], component: int, cell: int,
-                             window: int = 8) -> dict:
+def sampled_sign_alternation(
+    rows: list[dict], component: int, cell: int, window: int = 8
+) -> dict:
     """Detect a stable alternating SIGNED residual at a fixed cell.
 
     A unit sampling stride is required before suggesting a period-2 iterate.
@@ -153,8 +164,10 @@ def sampled_sign_alternation(rows: list[dict], component: int, cell: int,
         key=lambda r: r["iteration"],
     )[-window:]
     result = {
-        "component": "xyz"[component], "cell": cell,
-        "samples": len(series), "status": "INSUFFICIENT_EVIDENCE",
+        "component": "xyz"[component],
+        "cell": cell,
+        "samples": len(series),
+        "status": "INSUFFICIENT_EVIDENCE",
     }
     if len(series) < 6:
         return result
@@ -168,18 +181,20 @@ def sampled_sign_alternation(rows: list[dict], component: int, cell: int,
         result["status"] = "TOO_SMALL_TO_IDENTIFY"
         return result
     alternating = all(a * b < 0 for a, b in itertools.pairwise(signed))
-    stable_amplitude = (
-        max(abs(abs(v) - amplitude) for v in signed) <= 0.15 * amplitude
+    stable_amplitude = max(abs(abs(v) - amplitude) for v in signed) <= 0.15 * amplitude
+    result.update(
+        {
+            "stride": steps[0],
+            "first_iteration": series[0]["iteration"],
+            "last_iteration": series[-1]["iteration"],
+            "mean_absolute_residual": amplitude,
+            "signed_residuals": signed,
+        }
     )
-    result.update({
-        "stride": steps[0], "first_iteration": series[0]["iteration"],
-        "last_iteration": series[-1]["iteration"],
-        "mean_absolute_residual": amplitude,
-        "signed_residuals": signed,
-    })
     if alternating and stable_amplitude:
         result["status"] = (
-            "PERIOD_TWO_SIGNATURE" if steps[0] == 1
+            "PERIOD_TWO_SIGNATURE"
+            if steps[0] == 1
             else "ALTERNATING_SAMPLES_PERIOD_UNPROVEN"
         )
     else:
@@ -187,8 +202,9 @@ def sampled_sign_alternation(rows: list[dict], component: int, cell: int,
     return result
 
 
-def period_two_term_decomposition(rows: list[dict], component: int,
-                                  cell: int, window: int = 8) -> dict:
+def period_two_term_decomposition(
+    rows: list[dict], component: int, cell: int, window: int = 8
+) -> dict:
     """Attribute a measured two-step signed residual to face/source contributions.
 
     The split is arithmetic, not causal: changing one term may change every
@@ -210,27 +226,44 @@ def period_two_term_decomposition(rows: list[dict], component: int,
     def mean(entries: list[dict], key: str) -> float:
         return sum(r.get(key, 0.0) for r in entries) / len(entries)
 
-    keys = ("convection", "viscous", "transpose_viscous", "pressure",
-            "body_force", "temporal", "bounded_divergence",
-            "collocated_difference", "physical_residual",
-            "bounded_operator_residual")
+    keys = (
+        "convection",
+        "viscous",
+        "transpose_viscous",
+        "pressure",
+        "body_force",
+        "temporal",
+        "bounded_divergence",
+        "collocated_difference",
+        "physical_residual",
+        "bounded_operator_residual",
+    )
     contributions = {}
     for key in keys:
         pos, neg = mean(positive, key), mean(negative, key)
         contributions[key] = {
             "positive_state_mean": pos,
             "negative_state_mean": neg,
-            "positive_minus_negative": pos-neg,
-            "half_amplitude": (pos-neg)/2.0,
+            "positive_minus_negative": pos - neg,
+            "half_amplitude": (pos - neg) / 2.0,
         }
-    main_terms = ("convection", "viscous", "transpose_viscous", "pressure",
-                  "body_force", "temporal")
+    main_terms = (
+        "convection",
+        "viscous",
+        "transpose_viscous",
+        "pressure",
+        "body_force",
+        "temporal",
+    )
     full_delta = contributions["physical_residual"]["positive_minus_negative"]
     sum_delta = sum(contributions[key]["positive_minus_negative"] for key in main_terms)
     # Signed closure of BOTH halves of the cycle (not of two global maxima).
     closure_error = full_delta - sum_delta
-    scale = max(abs(full_delta), sum(abs(contributions[key]["positive_minus_negative"])
-                                    for key in main_terms), 1e-15)
+    scale = max(
+        abs(full_delta),
+        sum(abs(contributions[key]["positive_minus_negative"]) for key in main_terms),
+        1e-15,
+    )
     if abs(closure_error) > 2e-10 * scale:
         raise ValueError("period-two contribution sum does not close")
     return {
@@ -242,8 +275,11 @@ def period_two_term_decomposition(rows: list[dict], component: int,
         "physical_cycle_delta": full_delta,
         "physical_cycle_half_amplitude": full_delta / 2.0,
         "term_delta_closure_error": closure_error,
-        "terms_by_absolute_cycle_amplitude": sorted(main_terms,
-            key=lambda key: abs(contributions[key]["half_amplitude"]), reverse=True),
+        "terms_by_absolute_cycle_amplitude": sorted(
+            main_terms,
+            key=lambda key: abs(contributions[key]["half_amplitude"]),
+            reverse=True,
+        ),
         "causality_warning": "Term difference is a signed arithmetic attribution, not a unique physical cause. Flux difference against interpolated velocity is not pure Rhie-Chow.",
     }
 
@@ -256,10 +292,20 @@ def diagnose(rows: list[dict]) -> dict:
     summary = []
     for iteration, component in sorted(groups):
         top = min(groups[iteration, component], key=lambda row: row["rank"])
-        terms = {key: top[key] for key in (
-            "convection", "viscous", "transpose_viscous", "pressure",
-            "body_force", "temporal", "bounded_divergence", "collocated_difference"
-        ) if key in top}
+        terms = {
+            key: top[key]
+            for key in (
+                "convection",
+                "viscous",
+                "transpose_viscous",
+                "pressure",
+                "body_force",
+                "temporal",
+                "bounded_divergence",
+                "collocated_difference",
+            )
+            if key in top
+        }
         dominant = sorted(terms, key=lambda key: abs(terms[key]), reverse=True)
         summary.append(
             {
@@ -288,14 +334,17 @@ def diagnose(rows: list[dict]) -> dict:
     hotspot_cell = next((r["cell"] for r in latest_y if r["rank"] == 0), None)
     sampled_oscillation = (
         sampled_sign_alternation(rows, 1, hotspot_cell)
-        if hotspot_cell is not None else None
+        if hotspot_cell is not None
+        else None
     )
     return {
         "status": "DIAGNOSTIC_ONLY_NOT_A_SOLVER_CERTIFICATE",
         "transverse_hotspot_sign_alternation": sampled_oscillation,
         "transverse_hotspot_cycle_terms": (
             period_two_term_decomposition(rows, 1, hotspot_cell)
-            if hotspot_cell is not None else None),
+            if hotspot_cell is not None
+            else None
+        ),
         "latest_sampled_iteration": latest,
         "sampled_cell_rows": len(rows),
         "matrix_face_closure_checked": all(
@@ -303,7 +352,8 @@ def diagnose(rows: list[dict]) -> dict:
         ),
         "max_matrix_face_error": (
             max(abs(row["matrix_face_difference"]) for row in rows)
-            if all("matrix_face_difference" in row for row in rows) else None
+            if all("matrix_face_difference" in row for row in rows)
+            else None
         ),
         "budget_series": summary,
         "solver_convergence_proven": False,

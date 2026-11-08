@@ -16,9 +16,23 @@ import os
 from pathlib import Path
 
 COLUMNS = (
-    "face", "x", "y", "z", "nx", "ny", "nz", "area", "pressure",
-    "tau_n_x", "tau_n_y", "tau_n_z", "dynamic_pressure", "reference_area",
-    "reference_chord", "x_ref", "y_ref",
+    "face",
+    "x",
+    "y",
+    "z",
+    "nx",
+    "ny",
+    "nz",
+    "area",
+    "pressure",
+    "tau_n_x",
+    "tau_n_y",
+    "tau_n_z",
+    "dynamic_pressure",
+    "reference_area",
+    "reference_chord",
+    "x_ref",
+    "y_ref",
 )
 
 
@@ -47,9 +61,10 @@ def read_rows(path: Path) -> list[dict[str, float]]:
             n2 = sum(values[f"n{axis}"] ** 2 for axis in "xyz")
             if not math.isclose(n2, 1.0, abs_tol=1e-10, rel_tol=1e-10):
                 raise ValueError("normal is not a unit vector")
-            if any(values[key] <= 0 for key in (
-                "dynamic_pressure", "reference_area", "reference_chord"
-            )):
+            if any(
+                values[key] <= 0
+                for key in ("dynamic_pressure", "reference_area", "reference_chord")
+            ):
                 raise ValueError("invalid force normalization")
             rows.append(values)
     if len(rows) < 32:
@@ -57,12 +72,19 @@ def read_rows(path: Path) -> list[dict[str, float]]:
     return rows
 
 
-def integrate(rows: list[dict[str, float]],
-              certificate: dict[str, str] | None = None,
-              *, force_tolerance: float = 1e-8,
-              closure_tolerance: float = 1e-8) -> dict:
-    if (not math.isfinite(force_tolerance) or force_tolerance <= 0 or
-        not math.isfinite(closure_tolerance) or closure_tolerance <= 0):
+def integrate(
+    rows: list[dict[str, float]],
+    certificate: dict[str, str] | None = None,
+    *,
+    force_tolerance: float = 1e-8,
+    closure_tolerance: float = 1e-8,
+) -> dict:
+    if (
+        not math.isfinite(force_tolerance)
+        or force_tolerance <= 0
+        or not math.isfinite(closure_tolerance)
+        or closure_tolerance <= 0
+    ):
         raise ValueError("invalid force or geometry tolerance")
     first = rows[0]
     fixed = ("dynamic_pressure", "reference_area", "reference_chord", "x_ref", "y_ref")
@@ -75,22 +97,28 @@ def integrate(rows: list[dict[str, float]],
         if abs(row["nz"]) > 1e-8:
             raise ValueError("NACA wall contains a non-planar surface normal")
     area = math.fsum(row["area"] for row in rows)
-    closure = {axis: math.fsum(row[f"n{axis}"] * row["area"] for row in rows)
-               for axis in "xyz"}
-    normalized_closure = math.sqrt(sum(v*v for v in closure.values())) / area
+    closure = {
+        axis: math.fsum(row[f"n{axis}"] * row["area"] for row in rows) for axis in "xyz"
+    }
+    normalized_closure = math.sqrt(sum(v * v for v in closure.values())) / area
     if normalized_closure > closure_tolerance:
-        raise ValueError(f"incomplete or incorrectly oriented closed surface: {normalized_closure:.5g}")
+        raise ValueError(
+            f"incomplete or incorrectly oriented closed surface: {normalized_closure:.5g}"
+        )
     scale = first["dynamic_pressure"] * first["reference_area"]
     origin_x, origin_y = first["x_ref"], first["y_ref"]
+
     def p_force(row, axis):
         return row["pressure"] * row[f"n{axis}"] * row["area"]
+
     def v_force(row, axis):
         return -row[f"tau_n_{axis}"] * row["area"]
+
     fp = {axis: math.fsum(p_force(r, axis) for r in rows) for axis in "xy"}
     fv = {axis: math.fsum(v_force(r, axis) for r in rows) for axis in "xy"}
     moment = math.fsum(
-        (r["x"] - origin_x) * (p_force(r, "y") + v_force(r, "y")) -
-        (r["y"] - origin_y) * (p_force(r, "x") + v_force(r, "x"))
+        (r["x"] - origin_x) * (p_force(r, "y") + v_force(r, "y"))
+        - (r["y"] - origin_y) * (p_force(r, "x") + v_force(r, "x"))
         for r in rows
     )
     results = {
@@ -100,8 +128,9 @@ def integrate(rows: list[dict[str, float]],
         "cl": (fp["y"] + fv["y"]) / scale,
         "cm": moment / (scale * first["reference_chord"]),
     }
-    if not math.isclose(results["cd"], results["cdp"] + results["cdv"],
-                        rel_tol=1e-12, abs_tol=1e-12):
+    if not math.isclose(
+        results["cd"], results["cdp"] + results["cdv"], rel_tol=1e-12, abs_tol=1e-12
+    ):
         raise ValueError("internal force decomposition inconsistency")
     if certificate is not None:
         for key, actual in results.items():
@@ -109,11 +138,16 @@ def integrate(rows: list[dict[str, float]],
                 claimed = float(certificate[key])
             except (ValueError, KeyError, TypeError) as error:
                 raise ValueError(f"invalid certificate {key}") from error
-            if not math.isfinite(claimed) or abs(actual - claimed) > force_tolerance * max(1.0, abs(actual)):
-                raise ValueError(f"{key}: independent surface integral disagrees with C++ certificate")
+            if not math.isfinite(claimed) or abs(
+                actual - claimed
+            ) > force_tolerance * max(1.0, abs(actual)):
+                raise ValueError(
+                    f"{key}: independent surface integral disagrees with C++ certificate"
+                )
     return {
-        "status": "INDEPENDENT_SURFACE_FORCE_CONSISTENT" if certificate else
-                  "INDEPENDENT_SURFACE_INTEGRAL_ONLY",
+        "status": "INDEPENDENT_SURFACE_FORCE_CONSISTENT"
+        if certificate
+        else "INDEPENDENT_SURFACE_INTEGRAL_ONLY",
         "physical_reference_validation": "NOT_PERFORMED",
         "faces": len(rows),
         "total_area": area,
@@ -130,10 +164,16 @@ def integrate(rows: list[dict[str, float]],
 def read_certificate(path: Path) -> dict[str, str]:
     with path.open(encoding="utf-8", newline="") as stream:
         reader = csv.DictReader(stream)
-        if reader.fieldnames is None or len(set(reader.fieldnames)) != len(reader.fieldnames):
+        if reader.fieldnames is None or len(set(reader.fieldnames)) != len(
+            reader.fieldnames
+        ):
             raise ValueError("invalid force certificate header")
         rows = list(reader)
-    if len(rows) != 1 or rows[0].get("converged", "").lower() not in ("yes", "true", "1"):
+    if len(rows) != 1 or rows[0].get("converged", "").lower() not in (
+        "yes",
+        "true",
+        "1",
+    ):
         raise ValueError("a single converged force certificate is required")
     return rows[0]
 
@@ -141,16 +181,24 @@ def read_certificate(path: Path) -> dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-faces", type=Path, required=True)
-    parser.add_argument("--certificate", type=Path,
-                        help="Compare against the converged C++ coefficients")
+    parser.add_argument(
+        "--certificate",
+        type=Path,
+        help="Compare against the converged C++ coefficients",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        report = integrate(read_rows(args.raw_faces),
-                           read_certificate(args.certificate) if args.certificate else None)
+        report = integrate(
+            read_rows(args.raw_faces),
+            read_certificate(args.certificate) if args.certificate else None,
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         staging = args.output.with_name(args.output.name + ".tmp")
-        staging.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        staging.write_text(
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
         os.replace(staging, args.output)
     except (OSError, ValueError, KeyError, OverflowError) as error:
         args.output.unlink(missing_ok=True)

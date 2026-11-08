@@ -1,4 +1,5 @@
 """The A/B diagnostic must never be mistaken for a qualification."""
+
 import csv
 import importlib.util
 import sys
@@ -16,6 +17,7 @@ spec.loader.exec_module(module)
 
 def create_history(path: Path, momentum: float, scheme: str = "TVD_VANALBADA"):
     from naca_convergence_diagnosis import REQUIRED
+
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=REQUIRED)
         writer.writeheader()
@@ -43,10 +45,9 @@ def test_valid_matching_mesh_history_is_diagnostic_only(tmp_path):
     report = module.compare(cold, warm, mesh, mesh)
     assert report["common_iterations"] == 2
     assert report["seed_independence_proven"] is False
-    assert (
-        report["metrics"]["momentum_rhs_relative"]["cold_over_warm"]
-        == pytest.approx(10 / 3)
-    )
+    assert report["metrics"]["momentum_rhs_relative"][
+        "cold_over_warm"
+    ] == pytest.approx(10 / 3)
 
 
 def test_reject_different_mesh_bytes(tmp_path):

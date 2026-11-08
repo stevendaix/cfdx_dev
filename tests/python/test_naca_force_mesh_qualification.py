@@ -97,15 +97,27 @@ class NacaForceMeshTests(unittest.TestCase):
                             "bottom": (t, -0.5, 0, -1),
                             "top": (t, 0.5, 0, 1),
                         }[wall]
-                        writer.writerow({
-                            "face": face, "x": x, "y": y, "z": 0.5,
-                            "nx": nx, "ny": ny, "nz": 0, "area": 0.125,
-                            "pressure": cd * 0.4 * x,
-                            "tau_n_x": -cd * 0.6 / 4,
-                            "tau_n_y": 0, "tau_n_z": 0,
-                            "dynamic_pressure": 1, "reference_area": 1,
-                            "reference_chord": 1, "x_ref": 0.25, "y_ref": 0,
-                        })
+                        writer.writerow(
+                            {
+                                "face": face,
+                                "x": x,
+                                "y": y,
+                                "z": 0.5,
+                                "nx": nx,
+                                "ny": ny,
+                                "nz": 0,
+                                "area": 0.125,
+                                "pressure": cd * 0.4 * x,
+                                "tau_n_x": -cd * 0.6 / 4,
+                                "tau_n_y": 0,
+                                "tau_n_z": 0,
+                                "dynamic_pressure": 1,
+                                "reference_area": 1,
+                                "reference_chord": 1,
+                                "x_ref": 0.25,
+                                "y_ref": 0,
+                            }
+                        )
                         face += 1
             self.raws[n] = raw
 
@@ -113,16 +125,12 @@ class NacaForceMeshTests(unittest.TestCase):
         path = self.histories[128]
         contents = path.read_text()
         path.write_text(
-            contents.replace(
-                ",TVD,1e-11,1e-11,0,1e-11,", ",TVD,1e-11,2e-5,0,2e-5,"
-            )
+            contents.replace(",TVD,1e-11,1e-11,0,1e-11,", ",TVD,1e-11,2e-5,0,2e-5,")
         )
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
-            any(
-                "transverse momentum" in reason for reason in report["reasons"]
-            )
+            any("transverse momentum" in reason for reason in report["reasons"])
         )
 
     def test_missing_iteration_blocks_incomplete_history(self):
@@ -133,8 +141,7 @@ class NacaForceMeshTests(unittest.TestCase):
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
             any(
-                "incomplete or nonconsecutive" in reason
-                for reason in report["reasons"]
+                "incomplete or nonconsecutive" in reason for reason in report["reasons"]
             )
         )
 
@@ -176,17 +183,14 @@ class NacaForceMeshTests(unittest.TestCase):
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
             any(
-                "mixes different convection schemes" in msg
-                for msg in report["reasons"]
+                "mixes different convection schemes" in msg for msg in report["reasons"]
             )
         )
 
     def test_muscl_candidate_remains_experimental_and_needs_three_grids(self):
         for level in m.LEVELS:
             path = self.histories[level]
-            path.write_text(
-                path.read_text().replace(",TVD,", ",MUSCL_CELL_LIMITED,")
-            )
+            path.write_text(path.read_text().replace(",TVD,", ",MUSCL_CELL_LIMITED,"))
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "GCI_CANDIDATE")
         self.assertEqual(report["convection_scheme"], "MUSCL_CELL_LIMITED")
@@ -198,8 +202,7 @@ class NacaForceMeshTests(unittest.TestCase):
     def test_mixed_scheme_within_one_history_blocks(self):
         path = self.histories[64]
         path.write_text(
-            path.read_text()
-            + "2,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
+            path.read_text() + "2,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
             "1e-13,TVD_VANLEER,1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n"
         )
         report = m.certify(mesh(), self.certs, self.histories, self.raws)

@@ -20,8 +20,10 @@ import qualification_evidence_gate as gate
 
 
 def file_item(path: Path, base: Path) -> dict:
-    return {"path": str(path.relative_to(base)),
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    return {
+        "path": str(path.relative_to(base)),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 
 
 class EvidenceGateTests(unittest.TestCase):
@@ -33,69 +35,117 @@ class EvidenceGateTests(unittest.TestCase):
         self.case = {"id": self.case_id, "status": "PASS", "domain": "Laminaire"}
         self.dir = self.base / self.case_id
         self.dir.mkdir()
-        self.setup = {"model": "laminar", "reynolds": 100.0,
-                      "mach": 0.0, "alpha_degrees": 0.0}
-        self.ref = {"case_id": self.case_id, "setup": dict(self.setup),
-                    "citation": "Exact plane Couette u(y)=y/H",
-                    "independent_of_solver": True,
-                    "quantities": {
-                        key: {"value": ref, "unit": "m/s" if key != "velocity_profile_l2" else "1",
-                              "uncertainty": 0.0, "absolute_tolerance": 0.01,
-                              "relative_tolerance": 0.0}
-                        for key, ref in (("u_mean", 0.5), ("velocity_profile_l2", 0.0),
-                                         ("wall_shear", 1.0))}}
+        self.setup = {
+            "model": "laminar",
+            "reynolds": 100.0,
+            "mach": 0.0,
+            "alpha_degrees": 0.0,
+        }
+        self.ref = {
+            "case_id": self.case_id,
+            "setup": dict(self.setup),
+            "citation": "Exact plane Couette u(y)=y/H",
+            "independent_of_solver": True,
+            "quantities": {
+                key: {
+                    "value": ref,
+                    "unit": "m/s" if key != "velocity_profile_l2" else "1",
+                    "uncertainty": 0.0,
+                    "absolute_tolerance": 0.01,
+                    "relative_tolerance": 0.0,
+                }
+                for key, ref in (
+                    ("u_mean", 0.5),
+                    ("velocity_profile_l2", 0.0),
+                    ("wall_shear", 1.0),
+                )
+            },
+        }
         self._save(self.dir / "reference.json", self.ref)
         artifacts = {}
         for name in ("binary", "configuration", "solver_log", "oracle_source"):
             path = self.dir / f"{name}.txt"
-            path.write_text(f"synthetic {name} fixture (not a solver result)\n", encoding="utf-8")
+            path.write_text(
+                f"synthetic {name} fixture (not a solver result)\n", encoding="utf-8"
+            )
             artifacts[name] = file_item(path, self.dir)
         artifacts["reference"] = file_item(self.dir / "reference.json", self.dir)
         archive = self.dir / "source_archive.zip"
         archive.write_bytes(b"synthetic fixture only; not an actual CFDX ZIP\n")
         artifacts["source_archive"] = file_item(archive, self.dir)
-        self.evidence = {"schema": gate.SCHEMA, "case_id": self.case_id,
-                         "setup": self.setup,
-                         "provenance": {"source_kind": "archive",
-                                        "source_revision": artifacts["source_archive"]["sha256"],
-                                        "artifacts": artifacts},
-                         "meshes": []}
+        self.evidence = {
+            "schema": gate.SCHEMA,
+            "case_id": self.case_id,
+            "setup": self.setup,
+            "provenance": {
+                "source_kind": "archive",
+                "source_revision": artifacts["source_archive"]["sha256"],
+                "artifacts": artifacts,
+            },
+            "meshes": [],
+        }
         for level, h in zip((16, 32, 64), (0.25, 0.125, 0.0625)):
             name = f"N{level}"
-            residuals = {key: 1e-11 for key in
-                         ("momentum", "continuity", "mass_global", "mass_local")}
-            balances = {"mass": {"inward": 1.0, "outward": 1.0,
-                                 "source": 0.0, "storage": 0.0,
-                                 "relative_limit": 1e-8}}
-            values = {"u_mean": 0.5 + 2 * h**2,
-                      "velocity_profile_l2": 2 * h**2,
-                      "wall_shear": 1.0 + 2 * h**2}
-            rec = {"id": name, "status": "CONVERGED", "iterations": 4,
-                   "runtime_seconds": 1.0, "final_scheme": "TVD",
-                   "h": h, "mesh_family": "uniform-couette",
-                   "mesh_quality": {"inverted_cells": 0,
-                                    "minimum_cell_volume": h * h,
-                                    "max_nonorthogonality_degrees": 30.0},
-                   "residuals": residuals,
-                   "residual_limits": {key: 1e-8 for key in residuals},
-                   "independent_residuals": residuals.copy(),
-                   "balances": balances, "quantities": values,
-                   "artifacts": {}}
+            residuals = {
+                key: 1e-11
+                for key in ("momentum", "continuity", "mass_global", "mass_local")
+            }
+            balances = {
+                "mass": {
+                    "inward": 1.0,
+                    "outward": 1.0,
+                    "source": 0.0,
+                    "storage": 0.0,
+                    "relative_limit": 1e-8,
+                }
+            }
+            values = {
+                "u_mean": 0.5 + 2 * h**2,
+                "velocity_profile_l2": 2 * h**2,
+                "wall_shear": 1.0 + 2 * h**2,
+            }
+            rec = {
+                "id": name,
+                "status": "CONVERGED",
+                "iterations": 4,
+                "runtime_seconds": 1.0,
+                "final_scheme": "TVD",
+                "h": h,
+                "mesh_family": "uniform-couette",
+                "mesh_quality": {
+                    "inverted_cells": 0,
+                    "minimum_cell_volume": h * h,
+                    "max_nonorthogonality_degrees": 30.0,
+                },
+                "residuals": residuals,
+                "residual_limits": {key: 1e-8 for key in residuals},
+                "independent_residuals": residuals.copy(),
+                "balances": balances,
+                "quantities": values,
+                "artifacts": {},
+            }
             meshpath = self.dir / f"{name}.mesh"
             meshpath.write_text(f"synthetic mesh {name}\n", encoding="utf-8")
             rec["artifacts"]["mesh"] = file_item(meshpath, self.dir)
             history = self.dir / f"{name}.csv"
             with history.open("w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["iteration", *residuals, *values])
+                writer = csv.DictWriter(
+                    handle, fieldnames=["iteration", *residuals, *values]
+                )
                 writer.writeheader()
-                writer.writerow({"iteration": 1, **{key: 1e-5 for key in residuals}, **values})
+                writer.writerow(
+                    {"iteration": 1, **{key: 1e-5 for key in residuals}, **values}
+                )
                 for iteration in (2, 3, 4):
                     writer.writerow({"iteration": iteration, **residuals, **values})
             rec["artifacts"]["history"] = file_item(history, self.dir)
-            oracle = {"schema": "cfdx-independent-fv-oracle/v1",
-                      "case_id": self.case_id, "mesh_id": name,
-                      "residuals": rec["independent_residuals"],
-                      "balances": balances}
+            oracle = {
+                "schema": "cfdx-independent-fv-oracle/v1",
+                "case_id": self.case_id,
+                "mesh_id": name,
+                "residuals": rec["independent_residuals"],
+                "balances": balances,
+            }
             oraclepath = self.dir / f"{name}.oracle.json"
             self._save(oraclepath, oracle)
             rec["artifacts"]["independent_oracle"] = file_item(oraclepath, self.dir)
@@ -115,7 +165,9 @@ class EvidenceGateTests(unittest.TestCase):
     def assert_blocked(self, check):
         report = self.result()
         self.assertEqual(report["verification_status"], "NOT_QUALIFIED")
-        self.assertIn(check, {x["check"] for x in report["checks"] if x["status"] == "FAIL"})
+        self.assertIn(
+            check, {x["check"] for x in report["checks"] if x["status"] == "FAIL"}
+        )
 
     def test_synthetic_positive_contract_only(self):
         report = self.result()
@@ -123,7 +175,9 @@ class EvidenceGateTests(unittest.TestCase):
         self.assertEqual(set(x["status"] for x in report["checks"]), {"PASS"})
 
     def test_registry_historical_pass_with_no_evidence_is_blocked(self):
-        reg = json.loads((ROOT / "docs/validation/CFDX_QUALIFICATION_REGISTRY.json").read_text())
+        reg = json.loads(
+            (ROOT / "docs/validation/CFDX_QUALIFICATION_REGISTRY.json").read_text()
+        )
         report = gate.evaluate_registry(reg, self.base / "nonexistent")
         self.assertEqual(report["coverage"]["selected"], 25)
         self.assertEqual(report["coverage"]["evidence_pass"], 0)
@@ -165,13 +219,19 @@ class EvidenceGateTests(unittest.TestCase):
         self.assert_blocked("qoi_stability")
 
     def test_domain_thermal_solid_needs_energy_not_artificial_momentum(self):
-        one_mesh = {"id": "S16", "residuals": {"energy": 1e-11},
-                    "residual_limits": {"energy": 1e-8},
-                    "independent_residuals": {"energy": 1e-11},
-                    "final_scheme": "CENTRAL"}
-        report = gate.verify_residuals([one_mesh],
-                    {"id": "T1-SOLID-COND", "domain": "Thermal"})
-        self.assertEqual(report["max_independent_or_solver_residual"], {"energy": 1e-11})
+        one_mesh = {
+            "id": "S16",
+            "residuals": {"energy": 1e-11},
+            "residual_limits": {"energy": 1e-8},
+            "independent_residuals": {"energy": 1e-11},
+            "final_scheme": "CENTRAL",
+        }
+        report = gate.verify_residuals(
+            [one_mesh], {"id": "T1-SOLID-COND", "domain": "Thermal"}
+        )
+        self.assertEqual(
+            report["max_independent_or_solver_residual"], {"energy": 1e-11}
+        )
 
     def test_separation_and_radiation_have_explicit_balances(self):
         flow = {"id": "S16", "balances": {}}
@@ -193,13 +253,17 @@ class EvidenceGateTests(unittest.TestCase):
         self.assert_blocked("raw_evidence")
 
     def test_mismatched_final_residual_in_history_fails(self):
-        (self.dir / "N16.csv").write_text((self.dir / "N16.csv").read_text().replace("1e-11", "1e-3"))
+        (self.dir / "N16.csv").write_text(
+            (self.dir / "N16.csv").read_text().replace("1e-11", "1e-3")
+        )
         self.assert_blocked("raw_evidence")
 
     def test_missing_final_history_iterate_fails(self):
         path = self.dir / "N16.csv"
-        path.write_text("iteration,momentum,continuity,mass_global,mass_local\n"
-                        "1,1e-11,1e-11,1e-11,1e-11\n")
+        path.write_text(
+            "iteration,momentum,continuity,mass_global,mass_local\n"
+            "1,1e-11,1e-11,1e-11,1e-11\n"
+        )
         rec = self.evidence["meshes"][0]
         rec["artifacts"]["history"] = file_item(path, self.dir)
         self.write_evidence()
@@ -208,14 +272,18 @@ class EvidenceGateTests(unittest.TestCase):
     def test_physically_wrong_reference_is_not_passed(self):
         self.ref["quantities"]["u_mean"]["value"] = 0.72
         self._save(self.dir / "reference.json", self.ref)
-        self.evidence["provenance"]["artifacts"]["reference"] = file_item(self.dir / "reference.json", self.dir)
+        self.evidence["provenance"]["artifacts"]["reference"] = file_item(
+            self.dir / "reference.json", self.dir
+        )
         self.write_evidence()
         self.assert_blocked("reference")
 
     def test_reference_parameters_must_match_simulated_regime(self):
         self.ref["setup"]["reynolds"] = 200.0
         self._save(self.dir / "reference.json", self.ref)
-        self.evidence["provenance"]["artifacts"]["reference"] = file_item(self.dir / "reference.json", self.dir)
+        self.evidence["provenance"]["artifacts"]["reference"] = file_item(
+            self.dir / "reference.json", self.dir
+        )
         self.write_evidence()
         self.assert_blocked("case_contract")
 
@@ -240,7 +308,8 @@ class EvidenceGateTests(unittest.TestCase):
             spec["absolute_tolerance"] = 0.008
         self._save(self.dir / "reference.json", self.ref)
         self.evidence["provenance"]["artifacts"]["reference"] = file_item(
-            self.dir / "reference.json", self.dir)
+            self.dir / "reference.json", self.dir
+        )
         self.write_evidence()
         self.assert_blocked("spatial_order")
 
@@ -269,10 +338,20 @@ class EvidenceGateTests(unittest.TestCase):
 
     def test_output_does_not_claim_physics_when_missing(self):
         output = self.base / "result.json"
-        cmd = [sys.executable, str(ROOT / "scripts/qualification_evidence_gate.py"),
-               "--evidence-dir", str(self.base / "none"),
-               "--case", self.case_id, "--require-all", "--output", str(output)]
-        p = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cmd = [
+            sys.executable,
+            str(ROOT / "scripts/qualification_evidence_gate.py"),
+            "--evidence-dir",
+            str(self.base / "none"),
+            "--case",
+            self.case_id,
+            "--require-all",
+            "--output",
+            str(output),
+        ]
+        p = subprocess.run(
+            cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         self.assertEqual(p.returncode, 2)
         self.assertEqual(json.loads(output.read_text())["coverage"]["evidence_pass"], 0)
 

@@ -8,9 +8,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/naca_compare_mesh_families.py"
-spec = importlib.util.spec_from_file_location(
-    "naca_compare_mesh_families", SCRIPT
-)
+spec = importlib.util.spec_from_file_location("naca_compare_mesh_families", SCRIPT)
 m = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 spec.loader.exec_module(m)
@@ -50,10 +48,15 @@ def physical_report(cd=0.119):
 
 def metadata():
     return {
-        "airfoil": "NACA0012", "reynolds": 1000, "angle_deg": 0,
-        "chord": 1, "farfield_radius_chords": 20,
-        "velocity_boundary": "fixed_farfield", "pressure_boundary": "fixed_farfield",
-        "convection_scheme": "TVD_VANLEER", "wall_shear_method": "face_traction",
+        "airfoil": "NACA0012",
+        "reynolds": 1000,
+        "angle_deg": 0,
+        "chord": 1,
+        "farfield_radius_chords": 20,
+        "velocity_boundary": "fixed_farfield",
+        "pressure_boundary": "fixed_farfield",
+        "convection_scheme": "TVD_VANLEER",
+        "wall_shear_method": "face_traction",
         "solver_revision": "checked_commit_hash",
     }
 
@@ -125,6 +128,7 @@ class CompareMeshFamilies(unittest.TestCase):
 
     def test_cli_creates_diagnostic_with_failed_gate(self):
         import subprocess
+
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)
             a, b, output = path / "a.json", path / "b.json", path / "report.json"

@@ -71,7 +71,10 @@ def read_history(path: Path) -> list[dict[str, float | int | str]]:
                 (
                     "convection_scheme",
                     (
-                        "UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA",
+                        "UPWIND",
+                        "TVD",
+                        "TVD_VANLEER",
+                        "TVD_VANALBADA",
                         "MUSCL_CELL_LIMITED",
                     ),
                 ),
@@ -139,8 +142,8 @@ def diagnose(rows: list[dict[str, float | int | str]], tolerance: float = 1e-8) 
         "momentum_component_max_geometric_ratio": trend,
         "unmet_nonlinear_checks": blockers,
         "physical_tolerance_checks_pass": len(blockers) == 0,
-        "experimental_multidimensional_limiter":
-            last["convection_scheme"] == "MUSCL_CELL_LIMITED",
+        "experimental_multidimensional_limiter": last["convection_scheme"]
+        == "MUSCL_CELL_LIMITED",
         "momentum_reference_exceeds_tolerance": ratio > tolerance,
         "solver_convergence_proven": False,
         "three_grid_gci_proven": False,

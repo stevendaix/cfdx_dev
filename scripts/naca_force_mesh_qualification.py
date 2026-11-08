@@ -97,7 +97,9 @@ def verify_physical_history(
             count += 1
             iteration = int(row["iteration"])
             if iteration != count:
-                raise ValueError(f"N{level}: incomplete or nonconsecutive history iteration")
+                raise ValueError(
+                    f"N{level}: incomplete or nonconsecutive history iteration"
+                )
             for key in needed - {"iteration", "convection_scheme"}:
                 if not math.isfinite(float(row[key])):
                     raise ValueError(f"N{level}: nonfinite history {key}")
@@ -118,20 +120,23 @@ def verify_physical_history(
                     raise ValueError(f"N{level}: negative physical residual norm {key}")
             if not 0.0 <= float(row["high_order_fraction"]) <= 1.0:
                 raise ValueError(f"N{level}: invalid convection fraction")
-            components = [
-                float(row[f"momentum_{axis}_rhs_relative"]) for axis in "xyz"
-            ]
+            components = [float(row[f"momentum_{axis}_rhs_relative"]) for axis in "xyz"]
             if not math.isclose(
                 float(row["momentum_component_max"]),
-                max(components), abs_tol=1e-11, rel_tol=1e-6
+                max(components),
+                abs_tol=1e-11,
+                rel_tol=1e-6,
             ):
                 raise ValueError(f"N{level}: inconsistent momentum component maximum")
             # A startup continuation may legitimately use UPWIND. Only the
             # accepted FINAL state must be fully second-order bounded TVD;
             # never reject a valid startup solely for its early scheme.
             if row["convection_scheme"] not in (
-                "UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA",
-                "MUSCL_CELL_LIMITED"
+                "UPWIND",
+                "TVD",
+                "TVD_VANLEER",
+                "TVD_VANALBADA",
+                "MUSCL_CELL_LIMITED",
             ):
                 raise ValueError(f"N{level}: unknown convection scheme")
             if run_scheme is None:
@@ -156,17 +161,25 @@ def verify_physical_history(
     mass = max(continuity, mass_imbalance, mass_local)
     if momentum > RELATIVE_GATE or mass > RELATIVE_GATE:
         raise ValueError(f"N{level}: nonlinear history is not physically converged")
-    if any(float(last[key]) > RELATIVE_GATE for key in (
-        "momentum_component_max", "pressure_residual", "velocity_change_inf",
-        "pressure_change_inf",
-    )):
+    if any(
+        float(last[key]) > RELATIVE_GATE
+        for key in (
+            "momentum_component_max",
+            "pressure_residual",
+            "velocity_change_inf",
+            "pressure_change_inf",
+        )
+    ):
         raise ValueError(
             f"N{level}: transverse momentum/linear/change convergence gate not met"
         )
     if float(last["high_order_fraction"]) != 1.0:
         raise ValueError(f"N{level}: final convection operator is not full order")
     if last["convection_scheme"] not in (
-        "TVD", "TVD_VANLEER", "TVD_VANALBADA", "MUSCL_CELL_LIMITED"
+        "TVD",
+        "TVD_VANLEER",
+        "TVD_VANALBADA",
+        "MUSCL_CELL_LIMITED",
     ):
         raise ValueError(
             f"N{level}: final qualification requires bounded "

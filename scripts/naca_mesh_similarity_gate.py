@@ -24,10 +24,16 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
     items = sorted(rows, key=lambda row: int(row["n_surface"]))
     diagnostic = {"status": "BLOCKED", "pairs": [], "reasons": []}
     keys = (
-        "n_surface", "n_radial", "radius", "radial_power",
-        "minimum_first_layer_spacing", "mean_first_layer_spacing",
-        "maximum_first_layer_spacing", "minimum_absolute_cell_area",
-        "maximum_cell_edge_aspect_ratio", "minimum_radial_growth_ratio",
+        "n_surface",
+        "n_radial",
+        "radius",
+        "radial_power",
+        "minimum_first_layer_spacing",
+        "mean_first_layer_spacing",
+        "maximum_first_layer_spacing",
+        "minimum_absolute_cell_area",
+        "maximum_cell_edge_aspect_ratio",
+        "minimum_radial_growth_ratio",
         "maximum_radial_growth_ratio",
     )
     # A valid one-parameter family must have comparable *distributions*, not
@@ -47,8 +53,11 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
             diagnostic["reasons"].append("inverted_or_degenerate_cells")
         max_angle = float(row["maximum_nonorthogonality_degrees"])
         p95 = float(row["p95_nonorthogonality_degrees"])
-        if not (math.isfinite(max_angle) and math.isfinite(p95) and
-                0 <= p95 <= max_angle < 90):
+        if not (
+            math.isfinite(max_angle)
+            and math.isfinite(p95)
+            and 0 <= p95 <= max_angle < 90
+        ):
             raise ValueError("invalid nonorthogonality distribution")
         if max_angle >= 80:
             diagnostic["reasons"].append("near_degenerate_nonorthogonality")
@@ -57,7 +66,9 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
             raise ValueError("invalid trailing-edge regularization")
     strategies = {row.get("radial_refinement_strategy", "unspecified") for row in items}
     if len(strategies) != 1 or "unspecified" in strategies:
-        diagnostic["reasons"].append("inconsistent_or_missing_radial_refinement_strategy")
+        diagnostic["reasons"].append(
+            "inconsistent_or_missing_radial_refinement_strategy"
+        )
     for a, b in itertools.pairwise(items):
         tangential = float(b["n_surface"]) / float(a["n_surface"])
         radial = float(b["n_radial"]) / float(a["n_radial"])
@@ -66,13 +77,19 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
         )
         mismatch = abs(wall / tangential - 1.0)
         means = float(a["mean_first_layer_spacing"]) / float(
-            b["mean_first_layer_spacing"])
+            b["mean_first_layer_spacing"]
+        )
         maxima = float(a["maximum_first_layer_spacing"]) / float(
-            b["maximum_first_layer_spacing"])
-        max_angle_change = abs(float(b["maximum_nonorthogonality_degrees"]) -
-                               float(a["maximum_nonorthogonality_degrees"]))
-        p95_angle_change = abs(float(b["p95_nonorthogonality_degrees"]) -
-                               float(a["p95_nonorthogonality_degrees"]))
+            b["maximum_first_layer_spacing"]
+        )
+        max_angle_change = abs(
+            float(b["maximum_nonorthogonality_degrees"])
+            - float(a["maximum_nonorthogonality_degrees"])
+        )
+        p95_angle_change = abs(
+            float(b["p95_nonorthogonality_degrees"])
+            - float(a["p95_nonorthogonality_degrees"])
+        )
         pair = {
             "from": int(a["n_surface"]),
             "to": int(b["n_surface"]),
@@ -90,8 +107,10 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
         diagnostic["pairs"].append(pair)
         if tangential <= 1 or abs(radial / tangential - 1.0) > tolerance:
             diagnostic["reasons"].append("different_tangential_and_radial_ratios")
-        if max(mismatch, abs(means / tangential - 1.0),
-               abs(maxima / tangential - 1.0)) > tolerance:
+        if (
+            max(mismatch, abs(means / tangential - 1.0), abs(maxima / tangential - 1.0))
+            > tolerance
+        ):
             diagnostic["reasons"].append("first_layer_distribution_not_similar")
         if max_angle_change > 10.0 or p95_angle_change > 10.0:
             diagnostic["reasons"].append(

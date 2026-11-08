@@ -22,19 +22,34 @@ def square_faces(pressure_offset=0.0):
     index = 0
     for wall in ("left", "right", "bottom", "top"):
         for k in range(8):
-            t = (k + .5) / 8
+            t = (k + 0.5) / 8
             x, y, nx, ny = {
-                "left": (0, t, -1, 0), "right": (1, t, 1, 0),
-                "bottom": (t, 0, 0, -1), "top": (t, 1, 0, 1),
+                "left": (0, t, -1, 0),
+                "right": (1, t, 1, 0),
+                "bottom": (t, 0, 0, -1),
+                "top": (t, 1, 0, 1),
             }[wall]
-            result.append({
-                "face": index, "x": x, "y": y, "z": .5,
-                "nx": nx, "ny": ny, "nz": 0, "area": .125,
-                "pressure": x + pressure_offset,
-                "tau_n_x": -.1, "tau_n_y": 0, "tau_n_z": 0,
-                "dynamic_pressure": 1, "reference_area": 1,
-                "reference_chord": 1, "x_ref": .25, "y_ref": 0,
-            })
+            result.append(
+                {
+                    "face": index,
+                    "x": x,
+                    "y": y,
+                    "z": 0.5,
+                    "nx": nx,
+                    "ny": ny,
+                    "nz": 0,
+                    "area": 0.125,
+                    "pressure": x + pressure_offset,
+                    "tau_n_x": -0.1,
+                    "tau_n_y": 0,
+                    "tau_n_z": 0,
+                    "dynamic_pressure": 1,
+                    "reference_area": 1,
+                    "reference_chord": 1,
+                    "x_ref": 0.25,
+                    "y_ref": 0,
+                }
+            )
             index += 1
     return result
 
@@ -44,10 +59,10 @@ class NacaSurfaceOracleTests(unittest.TestCase):
         result = oracle.integrate(square_faces())
         self.assertEqual(result["status"], "INDEPENDENT_SURFACE_INTEGRAL_ONLY")
         self.assertAlmostEqual(result["coefficients"]["cdp"], 1.0, places=12)
-        self.assertAlmostEqual(result["coefficients"]["cdv"], .4, places=12)
+        self.assertAlmostEqual(result["coefficients"]["cdv"], 0.4, places=12)
         self.assertAlmostEqual(result["coefficients"]["cd"], 1.4, places=12)
         self.assertAlmostEqual(result["coefficients"]["cl"], 0, places=12)
-        self.assertAlmostEqual(result["coefficients"]["cm"], -.7, places=12)
+        self.assertAlmostEqual(result["coefficients"]["cm"], -0.7, places=12)
 
     def test_uniform_pressure_gauge_cannot_change_force(self):
         before = oracle.integrate(square_faces())["coefficients"]
@@ -57,12 +72,17 @@ class NacaSurfaceOracleTests(unittest.TestCase):
 
     def test_closed_face_sum_agrees_with_certificate(self):
         cert = {"cd": "1.4", "cdp": "1", "cdv": ".4", "cl": "0", "cm": "-.7"}
-        self.assertEqual(oracle.integrate(square_faces(), cert)["status"],
-                         "INDEPENDENT_SURFACE_FORCE_CONSISTENT")
+        self.assertEqual(
+            oracle.integrate(square_faces(), cert)["status"],
+            "INDEPENDENT_SURFACE_FORCE_CONSISTENT",
+        )
 
     def test_wrong_certificate_drag_is_detected(self):
         with self.assertRaisesRegex(ValueError, "cd: independent surface integral"):
-            oracle.integrate(square_faces(), {"cd": "0.9", "cdp": "1", "cdv": ".4", "cl": "0", "cm": "-.7"})
+            oracle.integrate(
+                square_faces(),
+                {"cd": "0.9", "cdp": "1", "cdv": ".4", "cl": "0", "cm": "-.7"},
+            )
 
     def test_missing_wall_face_detects_geometric_nonclosure(self):
         with self.assertRaisesRegex(ValueError, "incomplete or incorrectly oriented"):
@@ -116,8 +136,14 @@ class NacaSurfaceOracleTests(unittest.TestCase):
             self.write_csv(raw, square_faces())
             output.write_text('{"status":"PASS"}\n')
             raw.write_text("bad,header\n1,2\n")
-            cmd = [sys.executable, str(ROOT / "scripts/naca_surface_force_oracle.py"),
-                   "--raw-faces", str(raw), "--output", str(output)]
+            cmd = [
+                sys.executable,
+                str(ROOT / "scripts/naca_surface_force_oracle.py"),
+                "--raw-faces",
+                str(raw),
+                "--output",
+                str(output),
+            ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertFalse(output.exists())

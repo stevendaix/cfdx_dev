@@ -4,6 +4,7 @@ Both histories must use the same mesh file contents, algorithm, and convection
 operator. The original solver's full physical/force certificates, an actual
 independent second converged solution, and the GCI are still required.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,8 +51,11 @@ def compare(
         for key in ("convection_scheme", "algorithm"):
             if a[key] != b[key]:
                 raise ValueError(f"different {key} at iteration {iteration + 1}")
-        if not math.isclose(float(a["high_order_fraction"]),
-                            float(b["high_order_fraction"]), abs_tol=1e-14):
+        if not math.isclose(
+            float(a["high_order_fraction"]),
+            float(b["high_order_fraction"]),
+            abs_tol=1e-14,
+        ):
             raise ValueError("different convection continuation schedules")
     a, b = cold[n - 1], warm[n - 1]
     results = {}

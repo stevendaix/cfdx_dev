@@ -81,14 +81,16 @@ def _mesh_diagnostics(a: dict[int, dict], b: dict[int, dict]) -> dict:
         layer_ratio = max(h_a, h_b) / min(h_a, h_b)
         if layer_ratio > 1.25:
             reasons.append(f"N{level}: first-wall-layer mismatch >25%")
-        pairs.append({
-            "N": level,
-            "first_wall_layer_a": h_a,
-            "first_wall_layer_b": h_b,
-            "first_wall_layer_ratio": layer_ratio,
-            "max_edge_aspect_ratio_a": float(ar["maximum_cell_edge_aspect_ratio"]),
-            "max_edge_aspect_ratio_b": float(br["maximum_cell_edge_aspect_ratio"]),
-        })
+        pairs.append(
+            {
+                "N": level,
+                "first_wall_layer_a": h_a,
+                "first_wall_layer_b": h_b,
+                "first_wall_layer_ratio": layer_ratio,
+                "max_edge_aspect_ratio_a": float(ar["maximum_cell_edge_aspect_ratio"]),
+                "max_edge_aspect_ratio_b": float(br["maximum_cell_edge_aspect_ratio"]),
+            }
+        )
     return {
         "status": (
             "COMPARABLE_WALL_RESOLUTION" if not reasons else "DIFFERENT_RESOLUTION"
@@ -118,8 +120,10 @@ def _candidate(result: object, family: str) -> dict:
     if gci.get("status") != "RICHARDSON_CANDIDATE_ONLY":
         raise ValueError(f"{family}: independent Richardson evidence missing")
     cases = result.get("cases")
-    if not isinstance(cases, list) or len(cases) != 3 or any(
-        case.get("status") != "CONVERGED" for case in cases
+    if (
+        not isinstance(cases, list)
+        or len(cases) != 3
+        or any(case.get("status") != "CONVERGED" for case in cases)
     ):
         raise ValueError(f"{family}: not three physically converged solutions")
     return gci["result"]["quantities"]
@@ -195,11 +199,7 @@ def compare(
             xb = float(bb["extrapolated"])
             ga = float(aa["GCI_absolute"])
             gb = float(bb["GCI_absolute"])
-            if (
-                not all(math.isfinite(v) for v in (xa, xb, ga, gb))
-                or ga < 0
-                or gb < 0
-            ):
+            if not all(math.isfinite(v) for v in (xa, xb, ga, gb)) or ga < 0 or gb < 0:
                 raise ValueError(
                     f"{name}: nonfinite/negative extrapolation or uncertainty"
                 )
@@ -258,8 +258,10 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
+
         def load(path: Path | None) -> object | None:
             return json.loads(path.read_text(encoding="utf-8")) if path else None
+
         report = compare(
             load(args.a_quality),
             load(args.b_quality),

@@ -34,8 +34,7 @@ load_manifest = COMPARATOR.load_manifest
 fnv64 = COMPARATOR.fnv64
 
 
-def test_runner_pairs_manifest_and_preserves_physical_threshold(
-        tmp_path, monkeypatch):
+def test_runner_pairs_manifest_and_preserves_physical_threshold(tmp_path, monkeypatch):
     mesh = tmp_path / "mesh.h5"
     mesh.touch()
     exe = tmp_path / "solver"
@@ -51,13 +50,24 @@ def test_runner_pairs_manifest_and_preserves_physical_threshold(
 
     monkeypatch.setattr(RUNNER.subprocess, "run", fake_run)
     output = tmp_path / "run"
-    assert run_case(mesh, output, exe, 10, 20,
-                    initial_paired_checkpoint=original, checkpoint_every=10,
-                    stagnation_diagnostic_only=True) == 1
+    assert (
+        run_case(
+            mesh,
+            output,
+            exe,
+            10,
+            20,
+            initial_paired_checkpoint=original,
+            checkpoint_every=10,
+            stagnation_diagnostic_only=True,
+        )
+        == 1
+    )
     env = captured["env"]
     assert env["CFDX_NACA_IMPORT_PAIRED_MANIFEST"] == str(original.resolve())
     assert env["CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST"] == str(
-        output / "checkpoint.manifest")
+        output / "checkpoint.manifest"
+    )
     assert env["CFDX_NACA_CHECKPOINT_EVERY"] == "10"
     assert env["CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY"] == "1"
     assert env["CFDX_NACA_LINEAR_TOLERANCE"] == "1e-12"
@@ -72,8 +82,14 @@ def test_runner_refuses_missing_or_colliding_paired_checkpoint(tmp_path):
     exe = tmp_path / "solver"
     output = tmp_path / "out"
     with pytest.raises(FileNotFoundError):
-        run_case(mesh, output, exe, 10, 20,
-                 initial_paired_checkpoint=tmp_path / "missing.manifest")
+        run_case(
+            mesh,
+            output,
+            exe,
+            10,
+            20,
+            initial_paired_checkpoint=tmp_path / "missing.manifest",
+        )
     output.mkdir()
     active = output / "checkpoint.manifest"
     active.write_text("unchanged")
@@ -81,8 +97,15 @@ def test_runner_refuses_missing_or_colliding_paired_checkpoint(tmp_path):
         run_case(mesh, output, exe, 10, 20, initial_paired_checkpoint=active)
     assert active.read_text() == "unchanged"
     with pytest.raises(ValueError, match="exclusive"):
-        run_case(mesh, output, exe, 10, 20, initial_state=active,
-                 initial_paired_checkpoint=active)
+        run_case(
+            mesh,
+            output,
+            exe,
+            10,
+            20,
+            initial_state=active,
+            initial_paired_checkpoint=active,
+        )
 
 
 def test_live_v2_checkpoints_replay_to_roundoff(tmp_path):
@@ -100,16 +123,20 @@ def test_comparator_rejects_extra_rows_even_with_valid_checksums(tmp_path):
         folder.mkdir()
         cell = folder / "state.csv"
         cell.write_text(
-            "cell,x,y,z,ux,uy,p\n0,0,0,0,1,2,3\n"
-            + ("1,0,0,0,4,5,6\n" if extra else ""))
+            "cell,x,y,z,ux,uy,p\n0,0,0,0,1,2,3\n" + ("1,0,0,0,4,5,6\n" if extra else "")
+        )
         flux = folder / "flux.csv"
         flux.write_text(
-            "face,owner,neighbour,cx,cy,cz,sx,sy,sz,mass_flux\n"
-            "0,0,-1,0,0,0,1,0,0,0.2\n")
+            "face,owner,neighbour,cx,cy,cz,sx,sy,sz,mass_flux\n0,0,-1,0,0,0,1,0,0,0.2\n"
+        )
         manifest = folder / "checkpoint.manifest"
         manifest.write_text(
             "CFDX_NACA_PAIRED_V2\n1,1,1,0.1,1,state.csv,flux.csv,"
-            + fnv64(cell) + "," + fnv64(flux) + "\n")
+            + fnv64(cell)
+            + ","
+            + fnv64(flux)
+            + "\n"
+        )
         return manifest
 
     a = make_checkpoint(tmp_path / "a", extra=False)
@@ -123,8 +150,9 @@ def test_runner_refuses_success_without_positive_flux_audit(tmp_path, monkeypatc
     mesh.touch()
     exe = tmp_path / "binary"
     exe.touch()
-    monkeypatch.setattr(RUNNER.subprocess, "run",
-                         lambda argv, **kwargs: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(
+        RUNNER.subprocess, "run", lambda argv, **kwargs: SimpleNamespace(returncode=0)
+    )
     output = tmp_path / "result"
     status = run_case(mesh, output, exe, 10, 10, farfield_pressure_neumann=True)
     assert status == 2
@@ -149,10 +177,16 @@ def test_runner_muscl_candidate_is_explicit_and_fail_closed(tmp_path, monkeypatc
     monkeypatch.setenv("CFDX_NACA_CONVECTION_TVD", "1")
     monkeypatch.setenv("CFDX_NACA_CONVECTION_CELL_LIMITED", "1")
     dest = tmp_path / "muscl"
-    status = run_case(mesh, dest, exe, 100, 20,
-                      farfield_pressure_neumann=True,
-                      convection_scheme="MUSCL_CELL_LIMITED",
-                      linear_tolerance=1e-10)
+    status = run_case(
+        mesh,
+        dest,
+        exe,
+        100,
+        20,
+        farfield_pressure_neumann=True,
+        convection_scheme="MUSCL_CELL_LIMITED",
+        linear_tolerance=1e-10,
+    )
     assert status == 1
     env = captured["env"]
     assert env["CFDX_NACA_CONVECTION_CELL_LIMITED"] == "1"
@@ -168,5 +202,4 @@ def test_runner_muscl_candidate_is_explicit_and_fail_closed(tmp_path, monkeypatc
     assert summary["nonlinear_tolerance"] == 1e-8
     assert not summary["kinematic_face_flux_certified"]
     with pytest.raises(ValueError, match="unrecognized"):
-        run_case(mesh, dest, exe, 100, 20,
-                 convection_scheme="UPWIND_LOW_ORDER")
+        run_case(mesh, dest, exe, 100, 20, convection_scheme="UPWIND_LOW_ORDER")

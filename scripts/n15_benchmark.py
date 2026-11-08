@@ -39,19 +39,22 @@ def git_sha(repo: Path) -> str | None:
     try:
         top = subprocess.check_output(
             ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
-            text=True, stderr=subprocess.DEVNULL,
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         if Path(top).resolve() != repo.resolve():
             return None
         modified = subprocess.check_output(
             ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"],
-            text=True, stderr=subprocess.DEVNULL,
+            text=True,
+            stderr=subprocess.DEVNULL,
         )
         if modified.strip():
             return None
         commit = subprocess.check_output(
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
-            text=True, stderr=subprocess.DEVNULL,
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
             return None
@@ -70,18 +73,24 @@ def source_identity(args: argparse.Namespace) -> dict[str, Any]:
         archive = Path(args.source_archive)
         if not archive.is_file() or not zipfile.is_zipfile(archive):
             raise ValueError("--source-archive requires an existing valid ZIP")
-        return {"git_sha": None, "source_kind": "archive",
-                "source_revision": sha256_file(archive),
-                "source_archive_path": str(archive.resolve()),
-                "source_identity_warning": (
-                    "Archive hash does not prove binary/source equivalence")}
+        return {
+            "git_sha": None,
+            "source_kind": "archive",
+            "source_revision": sha256_file(archive),
+            "source_archive_path": str(archive.resolve()),
+            "source_identity_warning": (
+                "Archive hash does not prove binary/source equivalence"
+            ),
+        }
     commit = git_sha(Path(args.repo))
     if commit:
-        return {"git_sha": commit, "source_kind": "git",
-                "source_revision": commit}
-    return {"git_sha": None, "source_kind": "unverified",
-            "source_revision": None,
-            "source_identity_warning": "No clean Git HEAD or explicit source ZIP"}
+        return {"git_sha": commit, "source_kind": "git", "source_revision": commit}
+    return {
+        "git_sha": None,
+        "source_kind": "unverified",
+        "source_revision": None,
+        "source_identity_warning": "No clean Git HEAD or explicit source ZIP",
+    }
 
 
 def compiler_info() -> dict[str, str | None]:
@@ -291,9 +300,7 @@ def run_once(
     if not command_path.is_file():
         resolved = shutil.which(command[0])
         command_path = Path(resolved) if resolved else command_path
-    executable_hash = (
-        sha256_file(command_path) if command_path.is_file() else None
-    )
+    executable_hash = sha256_file(command_path) if command_path.is_file() else None
     if "peak_rss_bytes" not in metrics:
         metrics["peak_rss_bytes"] = child_peak_rss
         metrics["peak_rss_source"] = rss_source
@@ -323,9 +330,13 @@ def run_once(
         "mesh": case.get("mesh", {}),
         "numerics": case.get("numerics", {}),
         "performance": metrics,
-        "status": ("FAIL" if completed.returncode != 0 else
-                   "PASS" if source["source_revision"] and executable_hash else
-                   "UNVERIFIED_SOURCE"),
+        "status": (
+            "FAIL"
+            if completed.returncode != 0
+            else "PASS"
+            if source["source_revision"] and executable_hash
+            else "UNVERIFIED_SOURCE"
+        ),
         "stdout": completed.stdout if not args.inherit_output else None,
         "stderr": completed.stderr if not args.inherit_output else None,
     }
@@ -415,7 +426,8 @@ def make_parser() -> argparse.ArgumentParser:
     common.add_argument("--repo", default=".")
     common.add_argument(
         "--source-archive",
-        help="ZIP with SHA-256 source identity when Git is unavailable")
+        help="ZIP with SHA-256 source identity when Git is unavailable",
+    )
     common.add_argument("--cwd", default=".")
     common.add_argument("--build-type", default="Release")
     common.add_argument("--mpi", default="unknown")

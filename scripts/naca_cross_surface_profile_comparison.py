@@ -21,13 +21,22 @@ def read_profile(path: Path, certificate: Path) -> dict:
         rows = list(csv.DictReader(file))
     with certificate.open(encoding="utf-8", newline="") as file:
         frows = list(csv.DictReader(file))
-    if (len(frows) != 1 or not rows
-            or frows[0].get("converged") not in ("yes", "true", "1")):
+    if (
+        len(frows) != 1
+        or not rows
+        or frows[0].get("converged") not in ("yes", "true", "1")
+    ):
         raise ValueError("missing full face-profile data or unconverged certificate")
     if len({row["face"] for row in rows}) != len(rows):
         raise ValueError("duplicate face index")
-    channels = ("x_over_c", "y_over_c", "Cp", "Cf_tangent",
-                "Cd_pressure_face", "Cd_viscous_face")
+    channels = (
+        "x_over_c",
+        "y_over_c",
+        "Cp",
+        "Cf_tangent",
+        "Cd_pressure_face",
+        "Cd_viscous_face",
+    )
     sums = {"cdp": 0.0, "cdv": 0.0}
     region = {side: [] for side in ("upper", "lower", "te_closure")}
     for row in rows:
@@ -48,38 +57,51 @@ def read_profile(path: Path, certificate: Path) -> dict:
     expected = {key: float(frows[0][key]) for key in ("cd", "cdp", "cdv")}
     if not all(math.isfinite(value) for value in expected.values()):
         raise ValueError("nonfinite force certificate")
-    if (not math.isclose(sums["cdp"], expected["cdp"], rel_tol=2e-7, abs_tol=2e-9)
-            or not math.isclose(sums["cdv"], expected["cdv"], rel_tol=2e-7, abs_tol=2e-9)
-            or not math.isclose(expected["cd"], sums["cdp"] + sums["cdv"],
-                                rel_tol=2e-7, abs_tol=2e-9)):
+    if (
+        not math.isclose(sums["cdp"], expected["cdp"], rel_tol=2e-7, abs_tol=2e-9)
+        or not math.isclose(sums["cdv"], expected["cdv"], rel_tol=2e-7, abs_tol=2e-9)
+        or not math.isclose(
+            expected["cd"], sums["cdp"] + sums["cdv"], rel_tol=2e-7, abs_tol=2e-9
+        )
+    ):
         raise ValueError("face forces do not reconstruct drag certificate")
     result = {"force": expected, "bins": [], "n_wall_faces": len(rows)}
     for side, entries in region.items():
         for start, end in zip(BINS[:-1], BINS[1:]):
             values = [r for r in entries if start <= r["x_over_c"] < end]
-            result["bins"].append({
-                "side": side, "range": [start, end], "face_count": len(values),
-                "cdp": sum(v["Cd_pressure_face"] for v in values),
-                "cdv": sum(v["Cd_viscous_face"] for v in values),
-            })
+            result["bins"].append(
+                {
+                    "side": side,
+                    "range": [start, end],
+                    "face_count": len(values),
+                    "cdp": sum(v["Cd_pressure_face"] for v in values),
+                    "cdv": sum(v["Cd_viscous_face"] for v in values),
+                }
+            )
     return result
 
 
 def compare(a: dict, b: dict) -> dict:
     if len(a["bins"]) != len(b["bins"]):
         raise ValueError("bin layout mismatch")
-    delta = {comp: float(b["force"][comp]) - float(a["force"][comp])
-             for comp in ("cd", "cdp", "cdv")}
+    delta = {
+        comp: float(b["force"][comp]) - float(a["force"][comp])
+        for comp in ("cd", "cdp", "cdv")
+    }
     rows = []
     for x, y in zip(a["bins"], b["bins"]):
         if x["side"] != y["side"] or x["range"] != y["range"]:
             raise ValueError("mismatched bin definitions")
-        rows.append({
-            "side": x["side"], "range": x["range"],
-            "delta_cdp": y["cdp"] - x["cdp"],
-            "delta_cdv": y["cdv"] - x["cdv"],
-            "n_faces_a": x["face_count"], "n_faces_b": y["face_count"],
-        })
+        rows.append(
+            {
+                "side": x["side"],
+                "range": x["range"],
+                "delta_cdp": y["cdp"] - x["cdp"],
+                "delta_cdv": y["cdv"] - x["cdv"],
+                "n_faces_a": x["face_count"],
+                "n_faces_b": y["face_count"],
+            }
+        )
     for comp in ("cdp", "cdv"):
         total = sum(r["delta_" + comp] for r in rows)
         if not math.isclose(total, delta[comp], rel_tol=1e-8, abs_tol=1e-9):
@@ -88,10 +110,10 @@ def compare(a: dict, b: dict) -> dict:
         raise ValueError("force decomposition does not close")
     return {
         "status": "TWO_MESH_PROFILE_DIAGNOSTIC_ONLY",
-        "delta_force": delta, "bins": rows,
+        "delta_force": delta,
+        "bins": rows,
         "pressure_viscous_cancellation_fraction": (
-            1.0 - abs(delta["cd"])
-            / max(abs(delta["cdp"]) + abs(delta["cdv"]), 1e-30)
+            1.0 - abs(delta["cd"]) / max(abs(delta["cdp"]) + abs(delta["cdv"]), 1e-30)
         ),
     }
 
@@ -104,17 +126,26 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
     try:
-        r = compare(read_profile(args.a_profiles, args.a_force),
-                    read_profile(args.b_profiles, args.b_force))
+        r = compare(
+            read_profile(args.a_profiles, args.a_force),
+            read_profile(args.b_profiles, args.b_force),
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(r, indent=2) + "\n")
     except (ValueError, TypeError, KeyError, OSError) as err:
         args.output.unlink(missing_ok=True)
         print("CROSS_SURFACE_PROFILE: BLOCKED", err)
         return 2
-    print(json.dumps({"status": r["status"], "delta_force": r["delta_force"],
-                      "cancellation": r["pressure_viscous_cancellation_fraction"]},
-                     indent=2))
+    print(
+        json.dumps(
+            {
+                "status": r["status"],
+                "delta_force": r["delta_force"],
+                "cancellation": r["pressure_viscous_cancellation_fraction"],
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

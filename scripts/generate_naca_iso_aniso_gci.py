@@ -46,14 +46,14 @@ def arc_length_surface(n: int, native, cluster: float = 0.0):
         # cosine clustering, the smallest wall segment refines as O(1/N).
         t = 1.0 - np.expm1(cluster * (1.0 - t)) / np.expm1(cluster)
     targets = float(arc[-1]) * t
-    upper = np.column_stack((
-        np.interp(targets, arc, samples[:, 0]),
-        np.interp(targets, arc, samples[:, 1]),
-    ))
+    upper = np.column_stack(
+        (
+            np.interp(targets, arc, samples[:, 0]),
+            np.interp(targets, arc, samples[:, 1]),
+        )
+    )
     # TE upper -> LE -> TE lower, with a single LE node.
-    return [tuple(p) for p in upper] + [
-        (float(x), -float(y)) for x, y in upper[-2::-1]
-    ]
+    return [tuple(p) for p in upper] + [(float(x), -float(y)) for x, y in upper[-2::-1]]
 
 
 def wall_aspect_metrics(points, n: int, n_radial: int) -> dict:
@@ -74,8 +74,7 @@ def wall_aspect_metrics(points, n: int, n_radial: int) -> dict:
     }
 
 
-def shear_interior_rings(mesh, n: int, n_radial: int,
-                         strength: float = 0.01):
+def shear_interior_rings(mesh, n: int, n_radial: int, strength: float = 0.01):
     """Controlled volume-mesh skew at EXACTLY identical wall/farfield nodes.
 
     Tangential displacement is proportional to sin(pi * eta), so it vanishes
@@ -96,8 +95,9 @@ def shear_interior_rings(mesh, n: int, n_radial: int,
         fraction = shift - base
         for z in range(span_levels):
             ring = rings[z, j].copy()
-            rings[z, j] = ((1 - fraction) * np.roll(ring, -base, axis=0)
-                           + fraction * np.roll(ring, -base - 1, axis=0))
+            rings[z, j] = (1 - fraction) * np.roll(
+                ring, -base, axis=0
+            ) + fraction * np.roll(ring, -base - 1, axis=0)
     return rings.reshape(-1, 3).tolist(), cells, boundary
 
 
@@ -111,8 +111,13 @@ def contour_polygon_error(surface) -> dict:
 
     def thickness(x):
         x = np.clip(x, 0.0, 1.0)
-        return 0.6 * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x * x
-                      + 0.2843 * x**3 - 0.1015 * x**4)
+        return 0.6 * (
+            0.2969 * np.sqrt(x)
+            - 0.1260 * x
+            - 0.3516 * x * x
+            + 0.2843 * x**3
+            - 0.1015 * x**4
+        )
 
     errors = []
     for i in range(len(pts) - 1):
@@ -133,10 +138,14 @@ def contour_polygon_error(surface) -> dict:
     }
 
 
-def build_families(out: Path, powers: float = 2.0,
-                   levels: tuple[int, ...] = (64, 128, 256),
-                   make_hdf5: bool = True, only_family: str | None = None,
-                   shear_strength: float = 0.01) -> dict:
+def build_families(
+    out: Path,
+    powers: float = 2.0,
+    levels: tuple[int, ...] = (64, 128, 256),
+    make_hdf5: bool = True,
+    only_family: str | None = None,
+    shear_strength: float = 0.01,
+) -> dict:
     if powers < 1 or powers > 3:
         raise ValueError("invalid radial exponent")
     if not math.isfinite(shear_strength) or not 0.0 <= shear_strength <= 0.03:
@@ -157,9 +166,13 @@ def build_families(out: Path, powers: float = 2.0,
         "controlled_anisotropic_mild": "finite_slope_LE_clustering_2p0",
         "anisotropic": "cosine",
     }
-    for family in ("quasi_isotropic", "sheared_isosurface",
-                   "controlled_anisotropic", "controlled_anisotropic_mild",
-                   "anisotropic"):
+    for family in (
+        "quasi_isotropic",
+        "sheared_isosurface",
+        "controlled_anisotropic",
+        "controlled_anisotropic_mild",
+        "anisotropic",
+    ):
         if only_family is not None and family != only_family:
             continue
         gen.naca_o_grid = original_grid
@@ -167,8 +180,9 @@ def build_families(out: Path, powers: float = 2.0,
             gen.naca0012_surface = native
         else:
             gen.naca0012_surface = (
-                lambda n, native=native, cluster=clusters.get(family, 0.0):
-                arc_length_surface(n, native, cluster=cluster)
+                lambda n, native=native, cluster=clusters.get(family, 0.0): (
+                    arc_length_surface(n, native, cluster=cluster)
+                )
             )
         if family == "sheared_isosurface":
             gen.naca_o_grid = lambda n, nr, *a, **kw: shear_interior_rings(
@@ -198,7 +212,9 @@ def build_families(out: Path, powers: float = 2.0,
             if make_hdf5:
                 gen.write_mesh(
                     out / family / f"naca0012_{family}_n{n}.h5",
-                    points, cells, boundaries,
+                    points,
+                    cells,
+                    boundaries,
                 )
         (out / family / "quality.json").write_text(
             json.dumps(rows, indent=2) + "\n", encoding="utf-8"
@@ -215,9 +231,13 @@ def main():
     p.add_argument("--quality-only", action="store_true")
     p.add_argument(
         "--only-family",
-        choices=("quasi_isotropic", "sheared_isosurface",
-                 "controlled_anisotropic", "controlled_anisotropic_mild",
-                 "anisotropic"),
+        choices=(
+            "quasi_isotropic",
+            "sheared_isosurface",
+            "controlled_anisotropic",
+            "controlled_anisotropic_mild",
+            "anisotropic",
+        ),
     )
     args = p.parse_args()
     result = build_families(

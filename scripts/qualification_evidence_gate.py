@@ -56,25 +56,56 @@ REQUIRED_QOI = {
 # Explicit physics obligations: no substring heuristics silently skip a balance
 # on a case whose registry domain happens to use a different French/English label.
 FLOW_CASES = {
-    "LAM-COUETTE", "LAM-POISEUILLE", "INC-GHIA", "FORCE-VMFL036",
-    "EXT-NACA0012", "INT-CHANNEL", "SEP-BFS", "TUR-FLATPLATE",
-    "TUR-CHANNEL", "SEP-BFS-DRIVER", "TH-MIXED-CONVECTION",
-    "TH-TJUNCTION", "TUR-NACA0012", "TH-CONV", "N9-S8-NACA0012",
-    "T2-FLUID-ENERGY", "INC-TRANSPOSE-STRESS-MMS",
+    "LAM-COUETTE",
+    "LAM-POISEUILLE",
+    "INC-GHIA",
+    "FORCE-VMFL036",
+    "EXT-NACA0012",
+    "INT-CHANNEL",
+    "SEP-BFS",
+    "TUR-FLATPLATE",
+    "TUR-CHANNEL",
+    "SEP-BFS-DRIVER",
+    "TH-MIXED-CONVECTION",
+    "TH-TJUNCTION",
+    "TUR-NACA0012",
+    "TH-CONV",
+    "N9-S8-NACA0012",
+    "T2-FLUID-ENERGY",
+    "INC-TRANSPOSE-STRESS-MMS",
 }
 ENERGY_CASES = {
-    "TH-MIXED-CONVECTION", "TH-TJUNCTION", "TH-CONV", "CHT-INTERFACE",
-    "T1-SOLID-COND", "T2-FLUID-ENERGY", "RAD-P1", "RAD-DOM", "RAD-S2S",
+    "TH-MIXED-CONVECTION",
+    "TH-TJUNCTION",
+    "TH-CONV",
+    "CHT-INTERFACE",
+    "T1-SOLID-COND",
+    "T2-FLUID-ENERGY",
+    "RAD-P1",
+    "RAD-DOM",
+    "RAD-S2S",
 }
 RADIATION_CASES = {"RAD-P1", "RAD-DOM", "RAD-S2S"}
-ALL_CHECKS = ("reference_artifact", "provenance", "raw_evidence", "case_contract",
-              "solver", "residuals", "qoi_stability", "conservation", "force_decomposition",
-              "reference", "mesh_series", "spatial_order")
+ALL_CHECKS = (
+    "reference_artifact",
+    "provenance",
+    "raw_evidence",
+    "case_contract",
+    "solver",
+    "residuals",
+    "qoi_stability",
+    "conservation",
+    "force_decomposition",
+    "reference",
+    "mesh_series",
+    "spatial_order",
+)
 FORCE_RE = ("FORCE-", "EXT-NACA", "TUR-NACA", "N9-S8-NACA")
 
 
-def number(value: Any, name: str, *, positive: bool = False,
-           nonnegative: bool = False) -> float:
+def number(
+    value: Any, name: str, *, positive: bool = False, nonnegative: bool = False
+) -> float:
     if isinstance(value, bool) or not isinstance(value, (float, int)):
         raise ValueError(f"{name}: numeric value required")
     result = float(value)
@@ -100,8 +131,10 @@ def verify_artifact(base: Path, artifact: Any, context: str) -> dict:
     checksum = artifact["sha256"]
     if not isinstance(rel, str) or not rel or Path(rel).is_absolute():
         raise ValueError(f"{context}: invalid relative artifact path")
-    if not isinstance(checksum, str) or len(checksum) != 64 or any(
-        c not in "0123456789abcdef" for c in checksum
+    if (
+        not isinstance(checksum, str)
+        or len(checksum) != 64
+        or any(c not in "0123456789abcdef" for c in checksum)
     ):
         raise ValueError(f"{context}: invalid sha256")
     root = base.resolve()
@@ -120,13 +153,18 @@ def verify_provenance(evidence: dict, base: Path) -> dict:
     kind = provenance.get("source_kind")
     revision = provenance.get("source_revision")
     if kind == "git":
-        if not isinstance(revision, str) or len(revision) != 40 or any(
-            c not in "0123456789abcdef" for c in revision
-        ) or provenance.get("dirty") is not False:
+        if (
+            not isinstance(revision, str)
+            or len(revision) != 40
+            or any(c not in "0123456789abcdef" for c in revision)
+            or provenance.get("dirty") is not False
+        ):
             raise ValueError("provenance: clean 40-digit git commit required")
     elif kind == "archive":
-        if not isinstance(revision, str) or len(revision) != 64 or any(
-            c not in "0123456789abcdef" for c in revision
+        if (
+            not isinstance(revision, str)
+            or len(revision) != 64
+            or any(c not in "0123456789abcdef" for c in revision)
         ):
             raise ValueError("provenance: source archive SHA-256 required")
     else:
@@ -138,13 +176,17 @@ def verify_provenance(evidence: dict, base: Path) -> dict:
     if kind == "archive":
         required.add("source_archive")
     if not required.issubset(artifacts):
-        raise ValueError(f"provenance: missing artifacts {sorted(required - set(artifacts))}")
-    records = {name: verify_artifact(base, artifacts[name], name)
-               for name in sorted(required)}
+        raise ValueError(
+            f"provenance: missing artifacts {sorted(required - set(artifacts))}"
+        )
+    records = {
+        name: verify_artifact(base, artifacts[name], name) for name in sorted(required)
+    }
     if kind == "archive" and records["source_archive"]["sha256"] != revision:
-        raise ValueError("provenance: archive source_revision is not its actual SHA-256")
+        raise ValueError(
+            "provenance: archive source_revision is not its actual SHA-256"
+        )
     return records
-
 
 
 def verify_raw_mesh_evidence(meshes: list[dict], base: Path, case_id: str) -> dict:
@@ -159,15 +201,23 @@ def verify_raw_mesh_evidence(meshes: list[dict], base: Path, case_id: str) -> di
         artifacts = mesh.get("artifacts")
         required = {"mesh", "history", "independent_oracle"}
         if not isinstance(artifacts, dict) or not required.issubset(artifacts):
-            raise ValueError(f"raw_evidence: {name} missing mesh/history/oracle artifacts")
-        records = {key: verify_artifact(base, artifacts[key], f"{name}.{key}")
-                   for key in sorted(required)}
+            raise ValueError(
+                f"raw_evidence: {name} missing mesh/history/oracle artifacts"
+            )
+        records = {
+            key: verify_artifact(base, artifacts[key], f"{name}.{key}")
+            for key in sorted(required)
+        }
         histpath = (base / artifacts["history"]["path"]).resolve()
         with histpath.open(newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             residuals = mesh["residuals"]
             required_csv = {"iteration", *residuals}
-            if not reader.fieldnames or len(set(reader.fieldnames)) != len(reader.fieldnames) or not required_csv.issubset(reader.fieldnames):
+            if (
+                not reader.fieldnames
+                or len(set(reader.fieldnames)) != len(reader.fieldnames)
+                or not required_csv.issubset(reader.fieldnames)
+            ):
                 raise ValueError(f"raw_evidence: {name} invalid history columns")
             previous, last = 0, None
             for row in reader:
@@ -181,7 +231,9 @@ def verify_raw_mesh_evidence(meshes: list[dict], base: Path, case_id: str) -> di
                     number(float(row[key]), f"{name}.history.{key}", nonnegative=True)
                 last = row
             if last is None or previous != mesh["iterations"]:
-                raise ValueError(f"raw_evidence: {name} missing final accepted iteration")
+                raise ValueError(
+                    f"raw_evidence: {name} missing final accepted iteration"
+                )
             for key, value in residuals.items():
                 observed = float(last[key])
                 expected = number(value, f"{name}.residuals.{key}", nonnegative=True)
@@ -189,17 +241,41 @@ def verify_raw_mesh_evidence(meshes: list[dict], base: Path, case_id: str) -> di
                     raise ValueError(f"raw_evidence: {name}.{key} stale final residual")
         oraclepath = (base / artifacts["independent_oracle"]["path"]).resolve()
         oracle = json.loads(oraclepath.read_text(encoding="utf-8"))
-        if oracle.get("schema") != "cfdx-independent-fv-oracle/v1" or oracle.get("case_id") != case_id or oracle.get("mesh_id") != name:
+        if (
+            oracle.get("schema") != "cfdx-independent-fv-oracle/v1"
+            or oracle.get("case_id") != case_id
+            or oracle.get("mesh_id") != name
+        ):
             raise ValueError(f"raw_evidence: {name} oracle case/mesh mismatch")
         for key, expected in mesh["independent_residuals"].items():
-            observed = number(oracle.get("residuals", {}).get(key), f"{name}.oracle.{key}", nonnegative=True)
-            if not math.isclose(observed, number(expected, key, nonnegative=True), abs_tol=1e-13, rel_tol=1e-6):
-                raise ValueError(f"raw_evidence: {name} oracle residual mismatch: {key}")
+            observed = number(
+                oracle.get("residuals", {}).get(key),
+                f"{name}.oracle.{key}",
+                nonnegative=True,
+            )
+            if not math.isclose(
+                observed,
+                number(expected, key, nonnegative=True),
+                abs_tol=1e-13,
+                rel_tol=1e-6,
+            ):
+                raise ValueError(
+                    f"raw_evidence: {name} oracle residual mismatch: {key}"
+                )
         if oracle.get("balances") != mesh["balances"]:
-            raise ValueError(f"raw_evidence: {name} independent integral balances mismatch")
+            raise ValueError(
+                f"raw_evidence: {name} independent integral balances mismatch"
+            )
         if "Cd_control_volume" in mesh.get("quantities", {}):
-            value = number(oracle.get("Cd_control_volume"), f"{name}.oracle.Cd_control_volume")
-            if not math.isclose(value, mesh["quantities"]["Cd_control_volume"], abs_tol=1e-10, rel_tol=1e-8):
+            value = number(
+                oracle.get("Cd_control_volume"), f"{name}.oracle.Cd_control_volume"
+            )
+            if not math.isclose(
+                value,
+                mesh["quantities"]["Cd_control_volume"],
+                abs_tol=1e-10,
+                rel_tol=1e-8,
+            ):
                 raise ValueError(f"raw_evidence: {name} independent force mismatch")
         results.append({"mesh_id": name, "verified_artifacts": records})
     return {"raw_meshes": results}
@@ -211,22 +287,49 @@ def verify_contract(evidence: dict, reference: dict, case: dict) -> dict:
     setup = evidence["setup"]
     if not isinstance(setup, dict) or not setup:
         raise ValueError("case_contract: missing physical setup")
-    if setup.get("model") not in ("laminar", "RANS", "LES", "thermal",
-                                   "CHT", "radiation", "multiphase",
-                                   "scalar", "verification"):
+    if setup.get("model") not in (
+        "laminar",
+        "RANS",
+        "LES",
+        "thermal",
+        "CHT",
+        "radiation",
+        "multiphase",
+        "scalar",
+        "verification",
+    ):
         raise ValueError("case_contract: unspecified physical model")
     for key in ("reynolds", "mach", "alpha_degrees"):
         if key in setup:
             number(setup[key], f"setup.{key}", nonnegative=(key != "alpha_degrees"))
     if "NACA" in case["id"]:
-        for key in ("reynolds", "mach", "alpha_degrees", "density",
-                    "dynamic_viscosity", "reference_area", "reference_chord"):
-            number(setup.get(key), f"NACA setup.{key}",
-                   positive=key in ("reynolds", "density", "dynamic_viscosity",
-                                    "reference_area", "reference_chord"))
+        for key in (
+            "reynolds",
+            "mach",
+            "alpha_degrees",
+            "density",
+            "dynamic_viscosity",
+            "reference_area",
+            "reference_chord",
+        ):
+            number(
+                setup.get(key),
+                f"NACA setup.{key}",
+                positive=key
+                in (
+                    "reynolds",
+                    "density",
+                    "dynamic_viscosity",
+                    "reference_area",
+                    "reference_chord",
+                ),
+            )
     if reference.get("case_id") != case["id"] or reference.get("setup") != setup:
         raise ValueError("case_contract: reference describes different physics")
-    if not isinstance(reference.get("citation"), str) or not reference["citation"].strip():
+    if (
+        not isinstance(reference.get("citation"), str)
+        or not reference["citation"].strip()
+    ):
         raise ValueError("case_contract: independent reference citation required")
     if reference.get("independent_of_solver") is not True:
         raise ValueError("case_contract: no independent physical reference")
@@ -247,9 +350,11 @@ def verify_solver(meshes: Any) -> dict:
         seen.add(name)
         if mesh.get("status") != "CONVERGED":
             raise ValueError(f"solver: {name} has no converged final state")
-        if not isinstance(mesh.get("iterations"), int) or isinstance(
-            mesh["iterations"], bool
-        ) or mesh["iterations"] < 1:
+        if (
+            not isinstance(mesh.get("iterations"), int)
+            or isinstance(mesh["iterations"], bool)
+            or mesh["iterations"] < 1
+        ):
             raise ValueError(f"solver: {name} invalid accepted iteration count")
         number(mesh.get("runtime_seconds"), f"solver: {name}.runtime", positive=True)
         if not isinstance(mesh.get("final_scheme"), str) or not mesh["final_scheme"]:
@@ -287,13 +392,18 @@ def verify_residuals(meshes: list[dict], case: dict) -> dict:
         if not all(isinstance(v, dict) for v in (residuals, limits, independent)):
             raise ValueError(f"residuals: {name} missing independent residual sets")
         for key in required:
-            value = number(residuals.get(key), f"{name}.residuals.{key}", nonnegative=True)
+            value = number(
+                residuals.get(key), f"{name}.residuals.{key}", nonnegative=True
+            )
             independent_value = number(
-                independent.get(key), f"{name}.independent.{key}", nonnegative=True)
+                independent.get(key), f"{name}.independent.{key}", nonnegative=True
+            )
             limit = number(limits.get(key), f"{name}.limit.{key}", positive=True)
             cap = 1e-8 if is_naca else MAX_RESIDUAL
             if limit > cap or value > limit or independent_value > limit:
-                raise ValueError(f"residuals: {name}.{key} exceeds strict verified limit")
+                raise ValueError(
+                    f"residuals: {name}.{key} exceeds strict verified limit"
+                )
             maxima[key] = max(maxima[key], value, independent_value)
         if is_naca and (
             mesh["final_scheme"] not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA")
@@ -303,7 +413,9 @@ def verify_residuals(meshes: list[dict], case: dict) -> dict:
     return {"max_independent_or_solver_residual": maxima}
 
 
-def verify_qoi_stability(meshes: list[dict], reference: dict, case: dict, base: Path) -> dict:
+def verify_qoi_stability(
+    meshes: list[dict], reference: dict, case: dict, base: Path
+) -> dict:
     """Recheck physical QoI drift from the actual hashed accepted-iterate CSV.
 
     Three recent accepted states are the minimum; use 10% of the independently
@@ -318,7 +430,9 @@ def verify_qoi_stability(meshes: list[dict], reference: dict, case: dict, base: 
         artifact = mesh.get("artifacts", {}).get("history", {})
         path = (base / artifact["path"]).resolve()
         if not path.is_relative_to(base.resolve()) or not path.is_file():
-            raise ValueError(f"qoi_stability: {name} history outside evidence directory")
+            raise ValueError(
+                f"qoi_stability: {name} history outside evidence directory"
+            )
         with path.open(newline="", encoding="utf-8") as stream:
             reader = csv.DictReader(stream)
             if not reader.fieldnames or not set(required).issubset(reader.fieldnames):
@@ -333,20 +447,32 @@ def verify_qoi_stability(meshes: list[dict], reference: dict, case: dict, base: 
         for key in required:
             spec = expected.get(key)
             if not isinstance(spec, dict):
-                raise ValueError(f"qoi_stability: {name} missing independent tolerance for {key}")
-            allowed = (number(spec.get("absolute_tolerance"), f"{key}.abs", nonnegative=True)
-                       + number(spec.get("relative_tolerance"), f"{key}.rel", nonnegative=True)
-                         * abs(number(spec.get("value"), f"{key}.reference"))
-                       + number(spec.get("uncertainty"), f"{key}.uncertainty", nonnegative=True))
+                raise ValueError(
+                    f"qoi_stability: {name} missing independent tolerance for {key}"
+                )
+            allowed = (
+                number(spec.get("absolute_tolerance"), f"{key}.abs", nonnegative=True)
+                + number(spec.get("relative_tolerance"), f"{key}.rel", nonnegative=True)
+                * abs(number(spec.get("value"), f"{key}.reference"))
+                + number(
+                    spec.get("uncertainty"), f"{key}.uncertainty", nonnegative=True
+                )
+            )
             if allowed <= 0:
-                raise ValueError(f"qoi_stability: {key} needs positive reference error budget")
-            readings = [number(float(row[key]), f"{name}.history.{key}") for row in last_three]
+                raise ValueError(
+                    f"qoi_stability: {key} needs positive reference error budget"
+                )
+            readings = [
+                number(float(row[key]), f"{name}.history.{key}") for row in last_three
+            ]
             final = number(mesh["quantities"].get(key), f"{name}.{key}")
             if not math.isclose(readings[-1], final, abs_tol=1e-12, rel_tol=1e-8):
                 raise ValueError(f"qoi_stability: {name}.{key} final QoI is stale")
             drift = max(abs(value - readings[-1]) for value in readings[:-1])
             if drift > 0.1 * allowed:
-                raise ValueError(f"qoi_stability: {name}.{key} drift {drift:.4g} > {0.1 * allowed:.4g}")
+                raise ValueError(
+                    f"qoi_stability: {name}.{key} drift {drift:.4g} > {0.1 * allowed:.4g}"
+                )
             checked[f"{name}.{key}"] = drift
     return {"max_absolute_drift_by_mesh_and_qoi": checked}
 
@@ -370,20 +496,36 @@ def verify_conservation(meshes: list[dict], case: dict) -> dict:
     for mesh in meshes:
         balances = mesh.get("balances")
         if not isinstance(balances, dict) or not essential.issubset(balances):
-            raise ValueError(f"conservation: {mesh['id']} missing {sorted(essential)} balance")
+            raise ValueError(
+                f"conservation: {mesh['id']} missing {sorted(essential)} balance"
+            )
         for name, terms in balances.items():
             if not isinstance(terms, dict):
                 raise ValueError(f"conservation: {name} bad balance")
             # Outward includes all boundary fluxes in the declared convention.
-            values = {key: number(terms.get(key), f"{name}.{key}")
-                      for key in ("inward", "outward", "source", "storage")}
-            limit = number(terms.get("relative_limit"), f"{name}.relative_limit", positive=True)
+            values = {
+                key: number(terms.get(key), f"{name}.{key}")
+                for key in ("inward", "outward", "source", "storage")
+            }
+            limit = number(
+                terms.get("relative_limit"), f"{name}.relative_limit", positive=True
+            )
             if limit > MAX_RESIDUAL:
                 raise ValueError(f"conservation: {name} tolerance too loose")
             scale = max(sum(abs(v) for v in values.values()), 1e-12)
-            defect = abs(values["inward"] + values["source"] - values["outward"] - values["storage"]) / scale
+            defect = (
+                abs(
+                    values["inward"]
+                    + values["source"]
+                    - values["outward"]
+                    - values["storage"]
+                )
+                / scale
+            )
             if defect > limit:
-                raise ValueError(f"conservation: {mesh['id']}.{name} defect {defect:.3g}")
+                raise ValueError(
+                    f"conservation: {mesh['id']}.{name} defect {defect:.3g}"
+                )
             worst[name] = max(worst.get(name, 0.0), defect)
     return {"max_relative_integral_defect": worst}
 
@@ -397,16 +539,27 @@ def verify_force(meshes: list[dict], case: dict) -> dict:
             raise ValueError("force_decomposition: missing quantities")
         for key in ("Cd", "Cd_pressure", "Cd_viscous"):
             number(observable.get(key), f"{mesh['id']}.{key}")
-        if not math.isclose(observable["Cd"], observable["Cd_pressure"] + observable["Cd_viscous"],
-                            abs_tol=1e-9, rel_tol=1e-7):
+        if not math.isclose(
+            observable["Cd"],
+            observable["Cd_pressure"] + observable["Cd_viscous"],
+            abs_tol=1e-9,
+            rel_tol=1e-7,
+        ):
             raise ValueError(f"force_decomposition: {mesh['id']} Cd mismatch")
         # Independent integration evidence must be a distinct observable,
         # never the same solver accumulator reused twice.
-        number(observable.get("Cd_independent_surface"), f"{mesh['id']}.Cd_independent_surface")
+        number(
+            observable.get("Cd_independent_surface"),
+            f"{mesh['id']}.Cd_independent_surface",
+        )
         number(observable.get("Cd_control_volume"), f"{mesh['id']}.Cd_control_volume")
         for key in ("Cd_independent_surface", "Cd_control_volume"):
-            if abs(observable["Cd"] - observable[key]) > 1e-3 * max(1.0, abs(observable["Cd"])):
-                raise ValueError(f"force_decomposition: {mesh['id']} {key} disagreement")
+            if abs(observable["Cd"] - observable[key]) > 1e-3 * max(
+                1.0, abs(observable["Cd"])
+            ):
+                raise ValueError(
+                    f"force_decomposition: {mesh['id']} {key} disagreement"
+                )
     return {"applicable": True, "force_checks": 3 * len(meshes)}
 
 
@@ -416,7 +569,9 @@ def verify_reference(meshes: list[dict], reference: dict, case: dict) -> dict:
         raise ValueError("reference: independent quantitative reference missing")
     required = set(REQUIRED_QOI[case["id"]])
     if not required.issubset(expected):
-        raise ValueError(f"reference: missing independent QoIs {sorted(required - set(expected))}")
+        raise ValueError(
+            f"reference: missing independent QoIs {sorted(required - set(expected))}"
+        )
     fine = min(meshes, key=lambda row: number(row.get("h"), "mesh.h", positive=True))
     errors = {}
     for key, spec in expected.items():
@@ -425,23 +580,44 @@ def verify_reference(meshes: list[dict], reference: dict, case: dict) -> dict:
         if not isinstance(spec.get("unit"), str) or not spec["unit"].strip():
             raise ValueError(f"reference: missing {key} units")
         target = number(spec.get("value"), f"reference.{key}")
-        uncertainty = number(spec.get("uncertainty"), f"reference.{key}.uncertainty", nonnegative=True)
-        absolute = number(spec.get("absolute_tolerance"), f"reference.{key}.absolute_tolerance", nonnegative=True)
-        relative = number(spec.get("relative_tolerance"), f"reference.{key}.relative_tolerance", nonnegative=True)
+        uncertainty = number(
+            spec.get("uncertainty"), f"reference.{key}.uncertainty", nonnegative=True
+        )
+        absolute = number(
+            spec.get("absolute_tolerance"),
+            f"reference.{key}.absolute_tolerance",
+            nonnegative=True,
+        )
+        relative = number(
+            spec.get("relative_tolerance"),
+            f"reference.{key}.relative_tolerance",
+            nonnegative=True,
+        )
         if absolute == 0 and relative == 0 and uncertainty == 0:
             raise ValueError(f"reference: {key} zero tolerance/uncertainty")
         computed = number(fine.get("quantities", {}).get(key), f"{fine['id']}.{key}")
         error = abs(computed - target)
         allowed = absolute + relative * abs(target) + uncertainty
         if error > allowed:
-            raise ValueError(f"reference: {key} physical error {error:.4g} > {allowed:.4g} {spec['unit']}")
-        errors[key] = {"computed": computed, "target": target,
-                       "error": error, "allowed": allowed, "unit": spec["unit"]}
+            raise ValueError(
+                f"reference: {key} physical error {error:.4g} > {allowed:.4g} {spec['unit']}"
+            )
+        errors[key] = {
+            "computed": computed,
+            "target": target,
+            "error": error,
+            "allowed": allowed,
+            "unit": spec["unit"],
+        }
     return {"fine_mesh": fine["id"], "quantities": errors}
 
 
 def verify_mesh_series(meshes: list[dict], case: dict) -> dict:
-    ordered = sorted(meshes, key=lambda item: number(item.get("h"), "mesh.h", positive=True), reverse=True)
+    ordered = sorted(
+        meshes,
+        key=lambda item: number(item.get("h"), "mesh.h", positive=True),
+        reverse=True,
+    )
     hs = [number(row["h"], f"{row['id']}.h", positive=True) for row in ordered]
     if any(h0 <= h1 for h0, h1 in zip(hs, hs[1:])):
         raise ValueError("mesh_series: duplicate or nondecreasing spacing")
@@ -451,8 +627,10 @@ def verify_mesh_series(meshes: list[dict], case: dict) -> dict:
     if max(refinement) / min(refinement) > 1.05:
         raise ValueError("mesh_series: incompatible uniform Richardson ratios")
     family = {row.get("mesh_family") for row in ordered}
-    if None in family or len(family) != 1 or not all(
-        isinstance(name, str) and name.strip() for name in family
+    if (
+        None in family
+        or len(family) != 1
+        or not all(isinstance(name, str) and name.strip() for name in family)
     ):
         raise ValueError("mesh_series: unverified or mixed mesh families")
     wall_layers = []
@@ -461,37 +639,69 @@ def verify_mesh_series(meshes: list[dict], case: dict) -> dict:
         quality = row.get("mesh_quality")
         if not isinstance(quality, dict):
             raise ValueError("mesh_series: missing mesh quality")
-        if quality.get("inverted_cells") != 0 or number(
-            quality.get("minimum_cell_volume"), "mesh_quality.minimum_cell_volume", positive=True
-        ) <= 0:
+        if (
+            quality.get("inverted_cells") != 0
+            or number(
+                quality.get("minimum_cell_volume"),
+                "mesh_quality.minimum_cell_volume",
+                positive=True,
+            )
+            <= 0
+        ):
             raise ValueError("mesh_series: inverted or degenerate cells")
-        max_angle = number(quality.get("max_nonorthogonality_degrees"),
-                           "mesh_quality.max_nonorthogonality", nonnegative=True)
+        max_angle = number(
+            quality.get("max_nonorthogonality_degrees"),
+            "mesh_quality.max_nonorthogonality",
+            nonnegative=True,
+        )
         if max_angle >= 80:
             raise ValueError("mesh_series: near-degenerate nonorthogonality")
         max_nonorth.append(max_angle)
         if "NACA" in case["id"]:
-            for key in ("minimum_first_layer_spacing", "mean_first_layer_spacing",
-                        "maximum_first_layer_spacing", "p95_nonorthogonality_degrees",
-                        "maximum_cell_edge_aspect_ratio"):
-                number(quality.get(key), f"{row['id']}.{key}",
-                       positive=key != "p95_nonorthogonality_degrees",
-                       nonnegative=key == "p95_nonorthogonality_degrees")
+            for key in (
+                "minimum_first_layer_spacing",
+                "mean_first_layer_spacing",
+                "maximum_first_layer_spacing",
+                "p95_nonorthogonality_degrees",
+                "maximum_cell_edge_aspect_ratio",
+            ):
+                number(
+                    quality.get(key),
+                    f"{row['id']}.{key}",
+                    positive=key != "p95_nonorthogonality_degrees",
+                    nonnegative=key == "p95_nonorthogonality_degrees",
+                )
             wall_layers.append(quality)
     if "NACA" in case["id"]:
         for i, (r, a, b) in enumerate(zip(refinement, wall_layers, wall_layers[1:])):
-            for key in ("minimum_first_layer_spacing", "mean_first_layer_spacing",
-                        "maximum_first_layer_spacing"):
+            for key in (
+                "minimum_first_layer_spacing",
+                "mean_first_layer_spacing",
+                "maximum_first_layer_spacing",
+            ):
                 actual_ratio = a[key] / b[key]
                 if abs(actual_ratio / r - 1) > 0.2:
-                    raise ValueError(f"mesh_series: {key} does not follow the tangential refinement")
-            if abs(max_nonorth[i+1] - max_nonorth[i]) > 10 or abs(
-                a["p95_nonorthogonality_degrees"] - b["p95_nonorthogonality_degrees"]
-            ) > 10:
-                raise ValueError("mesh_series: NACA nonorthogonality distribution drifts")
-    return {"order": [row["id"] for row in ordered], "h": hs,
-            "ratios": refinement, "family": next(iter(family)),
-            "max_nonorthogonality_degrees": max_nonorth}
+                    raise ValueError(
+                        f"mesh_series: {key} does not follow the tangential refinement"
+                    )
+            if (
+                abs(max_nonorth[i + 1] - max_nonorth[i]) > 10
+                or abs(
+                    a["p95_nonorthogonality_degrees"]
+                    - b["p95_nonorthogonality_degrees"]
+                )
+                > 10
+            ):
+                raise ValueError(
+                    "mesh_series: NACA nonorthogonality distribution drifts"
+                )
+    return {
+        "order": [row["id"] for row in ordered],
+        "h": hs,
+        "ratios": refinement,
+        "family": next(iter(family)),
+        "max_nonorthogonality_degrees": max_nonorth,
+    }
 
 
 def verify_order(meshes: list[dict], reference: dict) -> dict:
@@ -507,14 +717,18 @@ def verify_order(meshes: list[dict], reference: dict) -> dict:
         if d01 == 0 and d12 == 0:
             # Identical values on three meshes cannot establish observed order;
             # an exact analytic solution needs a SEPARATE MMS/round-off proof.
-            raise ValueError(f"spatial_order: {key} identical-grid plateau has no observed GCI")
+            raise ValueError(
+                f"spatial_order: {key} identical-grid plateau has no observed GCI"
+            )
         if d01 * d12 <= 0 or abs(d12) >= abs(d01):
             raise ValueError(f"spatial_order: {key} oscillating/stagnating mesh series")
         r21, r32 = h[0] / h[1], h[1] / h[2]
         log21, log32 = math.log(r21), math.log(r32)
         factor = abs(d01 / d12)
+
         def diff_ratio(p):
             return math.expm1(p * log21) / (-math.expm1(-p * log32))
+
         if factor <= log21 / log32 or factor >= diff_ratio(8):
             raise ValueError(f"spatial_order: {key} invalid positive observed order")
         lo, hi = 1e-9, 8.0
@@ -531,53 +745,88 @@ def verify_order(meshes: list[dict], reference: dict) -> dict:
         extrapolated = f[2] + d12 * (-1) / math.expm1(p * math.log(ratio))
         spec = reference["quantities"][key]
         target = number(spec["value"], f"reference.{key}")
-        allowed = (number(spec["absolute_tolerance"], "absolute_tolerance", nonnegative=True)
-                   + number(spec["relative_tolerance"], "relative_tolerance", nonnegative=True) * abs(target)
-                   + number(spec["uncertainty"], "uncertainty", nonnegative=True))
+        allowed = (
+            number(spec["absolute_tolerance"], "absolute_tolerance", nonnegative=True)
+            + number(spec["relative_tolerance"], "relative_tolerance", nonnegative=True)
+            * abs(target)
+            + number(spec["uncertainty"], "uncertainty", nonnegative=True)
+        )
         gci_absolute = 1.25 * abs(d12) / math.expm1(p * math.log(ratio))
         if gci_absolute > allowed:
-            raise ValueError(f"spatial_order: {key} fine-grid GCI {gci_absolute:.4g} > physical tolerance {allowed:.4g}")
+            raise ValueError(
+                f"spatial_order: {key} fine-grid GCI {gci_absolute:.4g} > physical tolerance {allowed:.4g}"
+            )
         if abs(extrapolated - target) > allowed:
-            raise ValueError(f"spatial_order: {key} extrapolated value is outside physical reference")
-        detail[key] = {"status": "RICHARDSON_CANDIDATE", "p": p,
-                       "extrapolated": extrapolated,
-                       "fine_grid_absolute_gci": gci_absolute}
+            raise ValueError(
+                f"spatial_order: {key} extrapolated value is outside physical reference"
+            )
+        detail[key] = {
+            "status": "RICHARDSON_CANDIDATE",
+            "p": p,
+            "extrapolated": extrapolated,
+            "fine_grid_absolute_gci": gci_absolute,
+        }
     return detail
 
 
 def evaluate_case(case: dict, path: Path) -> dict:
-    result = {"id": case["id"], "registry_status": case.get("status"),
-              "verification_status": "NOT_QUALIFIED", "checks": []}
+    result = {
+        "id": case["id"],
+        "registry_status": case.get("status"),
+        "verification_status": "NOT_QUALIFIED",
+        "checks": [],
+    }
     if not path.is_file():
-        result["checks"].append({"check": "evidence_file", "status": "MISSING",
-                                 "reason": "No solver/references file on this HEAD"})
-        result["checks"].extend({"check": name, "status": "MISSING"}
-                                for name in ALL_CHECKS)
+        result["checks"].append(
+            {
+                "check": "evidence_file",
+                "status": "MISSING",
+                "reason": "No solver/references file on this HEAD",
+            }
+        )
+        result["checks"].extend(
+            {"check": name, "status": "MISSING"} for name in ALL_CHECKS
+        )
         result["required_physical_observables"] = list(REQUIRED_QOI[case["id"]])
         return result
     try:
         evidence = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError, TypeError) as error:
-        result["checks"].append({"check": "evidence_file", "status": "FAIL",
-                                 "reason": f"Unreadable evidence: {error}"})
+        result["checks"].append(
+            {
+                "check": "evidence_file",
+                "status": "FAIL",
+                "reason": f"Unreadable evidence: {error}",
+            }
+        )
         return result
     if not isinstance(evidence, dict):
-        result["checks"].append({"check": "evidence_file", "status": "FAIL",
-                                 "reason": "Evidence must be an object"})
+        result["checks"].append(
+            {
+                "check": "evidence_file",
+                "status": "FAIL",
+                "reason": "Evidence must be an object",
+            }
+        )
         return result
 
     def gate(name, action):
         try:
             details = action()
-            result["checks"].append({"check": name, "status": "PASS", "details": details})
+            result["checks"].append(
+                {"check": name, "status": "PASS", "details": details}
+            )
         except (ValueError, KeyError, OSError, TypeError, OverflowError) as error:
-            result["checks"].append({"check": name, "status": "FAIL", "reason": str(error)})
+            result["checks"].append(
+                {"check": name, "status": "FAIL", "reason": str(error)}
+            )
 
     base = path.parent
     meshes = evidence.get("meshes", [])
     # Independent artifact: exact bytes hash-matched, not a self-referential
     # reference JSON encoded in the same solver-generated summary.
     reference_path = base / "reference.json"
+
     def read_reference():
         if not reference_path.is_file():
             raise ValueError("missing independent reference.json")
@@ -586,11 +835,14 @@ def evaluate_case(case: dict, path: Path) -> dict:
         if digest(reference_path) != expected_sha:
             raise ValueError("reference SHA mismatch")
         return ref
+
     try:
         reference = read_reference()
     except (ValueError, KeyError, OSError, TypeError) as error:
         reference = None
-        result["checks"].append({"check": "reference_artifact", "status": "FAIL", "reason": str(error)})
+        result["checks"].append(
+            {"check": "reference_artifact", "status": "FAIL", "reason": str(error)}
+        )
     else:
         result["checks"].append({"check": "reference_artifact", "status": "PASS"})
     gate("provenance", lambda: verify_provenance(evidence, base))
@@ -609,7 +861,9 @@ def evaluate_case(case: dict, path: Path) -> dict:
     return result
 
 
-def evaluate_registry(registry: dict, evidence_dir: Path, selection: set[str] | None = None) -> dict:
+def evaluate_registry(
+    registry: dict, evidence_dir: Path, selection: set[str] | None = None
+) -> dict:
     cases = registry.get("cases", [])
     if not isinstance(cases, list) or not cases:
         raise ValueError("empty qualification registry")
@@ -617,9 +871,11 @@ def evaluate_registry(registry: dict, evidence_dir: Path, selection: set[str] | 
     if not all(isinstance(i, str) and i for i in ids) or len(set(ids)) != len(ids):
         raise ValueError("invalid or duplicate qualification IDs")
     if set(ids) != set(REQUIRED_QOI):
-        raise ValueError(f"equation/physical obligation map does not cover registry IDs: "
-                         f"missing={sorted(set(ids)-set(REQUIRED_QOI))}, "
-                         f"retired={sorted(set(REQUIRED_QOI)-set(ids))}")
+        raise ValueError(
+            f"equation/physical obligation map does not cover registry IDs: "
+            f"missing={sorted(set(ids) - set(REQUIRED_QOI))}, "
+            f"retired={sorted(set(REQUIRED_QOI) - set(ids))}"
+        )
     if selection is not None and not selection.issubset(ids):
         raise ValueError(f"unknown case IDs: {sorted(selection - set(ids))}")
     selected = [case for case in cases if selection is None or case["id"] in selection]
@@ -627,38 +883,59 @@ def evaluate_registry(registry: dict, evidence_dir: Path, selection: set[str] | 
     for case in selected:
         if not all(c.isascii() and (c.isalnum() or c in "_-") for c in case["id"]):
             raise ValueError(f"unsafe case ID: {case['id']!r}")
-    reports = [evaluate_case(case, evidence_dir / case["id"] / "evidence.json") for case in selected]
+    reports = [
+        evaluate_case(case, evidence_dir / case["id"] / "evidence.json")
+        for case in selected
+    ]
     passed = sum(r["verification_status"] == "EVIDENCE_GATES_PASS" for r in reports)
-    return {"schema": "cfdx-qualification-coverage/v1", "cases": reports,
-            "coverage": {"selected": len(reports), "evidence_pass": passed,
-                         "not_qualified": len(reports) - passed},
-            "all_evidence_gates_pass": passed == len(reports),
-            "warning": "Evidence gates are not proof of equation correctness: independent MMS and experiments remain necessary"}
+    return {
+        "schema": "cfdx-qualification-coverage/v1",
+        "cases": reports,
+        "coverage": {
+            "selected": len(reports),
+            "evidence_pass": passed,
+            "not_qualified": len(reports) - passed,
+        },
+        "all_evidence_gates_pass": passed == len(reports),
+        "warning": "Evidence gates are not proof of equation correctness: independent MMS and experiments remain necessary",
+    }
 
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--registry", type=Path, default=root / "docs/validation/CFDX_QUALIFICATION_REGISTRY.json")
+    parser.add_argument(
+        "--registry",
+        type=Path,
+        default=root / "docs/validation/CFDX_QUALIFICATION_REGISTRY.json",
+    )
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--case", action="append", dest="cases")
-    parser.add_argument("--require-all", action="store_true", help="exit 2 if any case unqualified")
+    parser.add_argument(
+        "--require-all", action="store_true", help="exit 2 if any case unqualified"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         registry = json.loads(args.registry.read_text(encoding="utf-8"))
-        report = evaluate_registry(registry, args.evidence_dir,
-                                   set(args.cases) if args.cases else None)
+        report = evaluate_registry(
+            registry, args.evidence_dir, set(args.cases) if args.cases else None
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         temp = args.output.with_name(args.output.name + ".tmp")
-        temp.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        temp.write_text(
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
         os.replace(temp, args.output)
     except (OSError, ValueError, KeyError, TypeError) as error:
         args.output.unlink(missing_ok=True)
         print(f"QUALIFICATION_EVIDENCE_GATE: FAIL {error}")
         return 2
-    print(f"QUALIFICATION_EVIDENCE_GATE: {report['coverage']['evidence_pass']}/"
-          f"{report['coverage']['selected']} verifiable; report={args.output}")
+    print(
+        f"QUALIFICATION_EVIDENCE_GATE: {report['coverage']['evidence_pass']}/"
+        f"{report['coverage']['selected']} verifiable; report={args.output}"
+    )
     return 2 if args.require_all and not report["all_evidence_gates_pass"] else 0
 
 
