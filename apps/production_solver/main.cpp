@@ -1304,6 +1304,7 @@ int main(int argc, char** argv)
             };
             controls.diagnostics.flux_patch_audit=flag("v17_flux_patch_audit");
             controls.pressure_compensated_assembly=flag("pressure_compensated_assembly");
+            controls.pressure_compensated_refinement_diagnostic=flag("pressure_compensated_refinement_diagnostic");
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
             controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
             controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
