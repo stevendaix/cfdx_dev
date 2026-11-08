@@ -179,7 +179,7 @@ int main()
     run_case("sst_multicell_retry_restores_every_field_and_authoritative_flux", [] {
         SSTChannelCase c;
         c.controls.nonlinear_retry.max_retries=1;
-        std::size_t predictor_calls=0,output_calls=0;
+        std::size_t predictor_calls=0,gate_calls=0;
         Field<double,Location::CELL> first_U;
         Field<double,Location::FACE> first_flux;
         SSTProductionState first_state(3);
@@ -200,15 +200,14 @@ int main()
                 for (std::size_t face=0; face<flux.size(); ++face) EXPECT_NEAR(flux(face),first_flux(face),0.0);
             }
         };
-        c.controls.iteration_output_callback = [&](std::size_t,double,const auto&,const auto&,const auto&) {
-            if (++output_calls==1) {
+        c.controls.tentative_iteration_gate_callback = [&](std::size_t,double,const auto&,const auto&,const auto&) {
+            if (++gate_calls==1) {
                 EXPECT_TRUE(c.state.k(0)!=first_state.k(0));
-                throw NonlinearRetryableFailure("test rejection after SST commit with nonzero flux");
+                throw NonlinearRetryableFailure("test rejection before SST transaction commit with nonzero flux");
             }
-            return false;
         };
         const auto result=solve_steady_incompressible(c.mesh,c.U,c.p,c.ubc,c.pbc,c.controls);
-        EXPECT_TRUE(predictor_calls==2 && output_calls==2 && result.history.size()==1);
+        EXPECT_TRUE(predictor_calls==2 && gate_calls==2 && result.history.size()==1);
         SSTChannelCase reference;
         reference.controls.coupling.alpha_u=result.history[0].effective_alpha_u;
         reference.controls.coupling.alpha_p=result.history[0].effective_alpha_p;
