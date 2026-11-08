@@ -14,12 +14,12 @@ import math
 import os
 from pathlib import Path
 
+from naca_compare_mesh_families import compare
 from naca_force_mesh_qualification import (
     certify,
     read_one_certificate,
     verify_physical_history,
 )
-from naca_compare_mesh_families import compare
 from qualify_naca_grid import qualify
 
 LEVELS = (64, 128, 256)
@@ -319,8 +319,8 @@ def markdown(result: dict) -> str:
     lines = [
         "# NACA0012 — GCI par contribution de traînée",
         "",
-        "**Convention :** Cd = Cd_pressure + Cd_viscous. "
-        "Trois solutions convergées avec le même schéma sont indispensables.",
+        ("**Convention :** Cd = Cd_pressure + Cd_viscous. "
+        "Trois solutions convergées avec le même schéma sont indispensables."),
         "",
         "| Famille | Niveau | Cd | Cd pression | Cd viscosité | Statut |",
         "|---|---:|---:|---:|---:|---|",
@@ -339,11 +339,11 @@ def markdown(result: dict) -> str:
             "",
             "## GCI conditionnel à deux grilles (p=2 supposé, Fs=3)",
             "",
-            "**Non certifié :** ces chiffres utilisent N64/N128 uniquement; "
-            "leur ordre n’est pas mesuré.",
+            ("**Non certifié :** ces chiffres utilisent N64/N128 uniquement; "
+            "leur ordre n’est pas mesuré."),
             "",
-            "| Famille | Grandeur | GCI conditionnel (%) "
-            "| Limite sous hypothèse p=2 (non validée) |",
+            ("| Famille | Grandeur | GCI conditionnel (%) "
+            "| Limite sous hypothèse p=2 (non validée) |"),
             "|---|---|---:|---:|",
         ]
     )
@@ -366,8 +366,8 @@ def markdown(result: dict) -> str:
             "",
             "## GCI à ordre observé sur trois grilles",
             "",
-            "| Famille | Grandeur | ordre observé | Extrapolation h→0 "
-            "| GCI fin (%) | Statut |",
+            ("| Famille | Grandeur | ordre observé | Extrapolation h→0 "
+            "| GCI fin (%) | Statut |"),
             "|---|---|---:|---:|---:|---|",
         ]
     )
@@ -398,8 +398,8 @@ def markdown(result: dict) -> str:
         lines.extend(
             [
                 "| Grandeur | Limite quasi-isotrope "
-                "| Limite famille anisotrope (cosinus) | Écart relatif "
-                "| GCI compatibles |",
+                ("| Limite famille anisotrope (cosinus) | Écart relatif "
+                "| GCI compatibles |"),
                 "|---|---:|---:|---:|---|",
             ]
         )
@@ -426,20 +426,20 @@ def markdown(result: dict) -> str:
             "",
             "## Réserves et contrôles",
             "",
-            "- Les tendances et GCI sont des estimations de discrétisation, "
-            "non une validation expérimentale.",
-            "- La valeur Cd≈0,119 est une référence numérique publiée, sans "
-            "décomposition Cp/Cf indépendante ici.",
+            ("- Les tendances et GCI sont des estimations de discrétisation, "
+            "non une validation expérimentale."),
+            ("- La valeur Cd≈0,119 est une référence numérique publiée, sans "
+            "décomposition Cp/Cf indépendante ici."),
             "- Les deux familles comparées utilisent des échantillonnages "
-            "différents du profil analytique; leur accord ne prouve pas une "
-            "invariance à anisotropie pure, à géométrie discrète strictement fixée.",
+            ("différents du profil analytique; leur accord ne prouve pas une "
+            "invariance à anisotropie pure, à géométrie discrète strictement fixée."),
             "- L’arête de fermeture du bord de fuite (épaisseur NACA non nulle) "
-            "reste un seul segment : ce défaut de raffinement géométrique doit "
-            "être suivi.",
-            "- La famille cosinus historique accroît fortement son aspect maximal "
-            "au bord d’attaque.",
-            "- Une compensation entre erreurs de pression et de frottement "
-            "n’est jamais une preuve d’indépendance du Cd total.",
+            ("reste un seul segment : ce défaut de raffinement géométrique doit "
+            "être suivi."),
+            ("- La famille cosinus historique accroît fortement son aspect maximal "
+            "au bord d’attaque."),
+            ("- Une compensation entre erreurs de pression et de frottement "
+            "n’est jamais une preuve d’indépendance du Cd total."),
             "",
             "Statut global : **" + result["status"] + "**.",
             "",
