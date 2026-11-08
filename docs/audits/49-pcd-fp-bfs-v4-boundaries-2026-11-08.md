@@ -133,3 +133,41 @@ ou avec `--self-test`. Le mode normal `capture.cfp [budget] [tol]` et sa
 sortie numérique restent inchangés. Le CTest explicite du mode capture reste
 actif. Les **6 tests CTest** ciblés ont passé, sans marquer un échec comme
 attendu ni le désactiver. Les **48 tests Python** BFS/TH-03 ciblés ont passé.
+
+
+## 1. Périmètre et hypothèses
+
+Cette fiche formalise les frontières auxiliaires PCD \(F_p/K_p\) et le cas de pression BFS V4. L'opérateur auxiliaire ne remplace jamais l'opérateur physique de continuité ni le flux de masse conservatif. Les réglages de frontière expérimentaux sont désactivés par défaut.
+
+## 2. Formulation continue
+
+Le champ physique satisfait \(\nabla\cdot u=0\) et l'équation de quantité de mouvement incompressible. La pression est définie à une constante près en l'absence de référence Dirichlet. Dans la décomposition bloc, le complément de Schur exact est \(S=C-DA_{uu}^{-1}G\); le PCD utilise des opérateurs auxiliaires pour approcher son inverse, sans prétendre calculer \(A_{uu}^{-1}\) exactement.
+
+## 3. Discrétisation Volume Fini
+
+La continuité sur une cellule est le bilan des flux de masse orientés aux faces. La matrice de pression CSR est assemblée à partir des coefficients de faces et des contributions de frontières; l'opérateur de face conservatif est une représentation distincte utilisée pour vérifier les flux. Une correction algébrique high/low ne certifie pas le résidu obtenu après arrondi FP64 ni le bilan conservatif des faces. Chaque quantité doit être recalculée avec son opérateur de référence.
+
+## 4. Traitement des frontières
+
+Pour les opérateurs auxiliaires PCD, l'option expérimentale applique une condition homogène Dirichlet aux seules faces d'entrée détectées par \(\dot m_f<0\). Les patches WALL, SYMMETRY, EMPTY, INTERFACE et PERIODIC conservent leur traitement. Les conditions de pression physique et la jauge restent indépendantes. Toute activation doit être explicite, tracée dans les paramètres du cas et testée contre le chemin par défaut.
+
+## 5. Pièges connus
+
+- Une condition auxiliaire PCD n'est pas une condition physique de pression.
+- La sélection des faces entrantes dépend du signe du flux orienté owner/neighbour; une convention inversée modifie le problème.
+- Une jauge de pression ne doit pas être confondue avec une frontière physique.
+- Un résidu CSR, un résidu d'opérateur implicite de faces et un résidu après arrondi FP64 sont trois mesures distinctes.
+- Une correction high/low ne doit pas être promue comme champ physique si le champ FP64 arrondi échoue.
+- Un maillage valide géométriquement peut produire un système de pression mal conditionné.
+
+## 6. Vérifications et critères d'acceptation
+
+Les tests doivent couvrir le sens du flux, l'ensemble des types de patches, l'absence de modification du chemin par défaut, la jauge et le null-space. Pour chaque cas, consigner séparément le résidu CSR original, le résidu face implicite, le résidu après arrondi FP64, le bilan global de masse et les erreurs locales de conservation. Le seuil algébrique est évalué sans relâchement; les preuves physiques nécessitent en plus une campagne convergée.
+
+## 7. Statut d'implémentation
+
+**Statut :** option Dirichlet auxiliaire PCD à l'entrée implémentée en mode expérimental opt-in; opérateurs de pression high/low et face conservatif disponibles à des fins de diagnostic. Aucun branchement expérimental n'est activé par défaut.
+
+**Statut des preuves :** les tests de contrat et les diagnostics de pression sont partiels. Le résidu CSR après arrondi et les résultats BFS V4 ne satisfont pas encore le critère annoncé; aucune qualification physique SST n'est revendiquée.
+
+**Références :** Kay, Loghin & Wathen (2002), DOI: 10.1137/S1064827500389549; Rhie & Chow (1983), DOI: 10.2514/3.8284; Driver & Seegmiller (1985), DOI: 10.2514/3.8890.
