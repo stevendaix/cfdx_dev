@@ -218,9 +218,7 @@ def _validate_global_nonlinear_v8(value: object, history_index: int) -> None:
     if not isinstance(components, list) or len(components) != 3:
         raise EvidenceError(f"{key}.momentum_component_relative must have 3 entries")
     for component in components:
-        _optional_nonnegative_finite(
-            component, f"{key}.momentum_component_relative"
-        )
+        _optional_nonnegative_finite(component, f"{key}.momentum_component_relative")
     if value["sst_transport_committed"] and not value["sst"]:
         raise EvidenceError(f"{key}.sst_transport_committed requires sst")
     if value["converged"] and not (

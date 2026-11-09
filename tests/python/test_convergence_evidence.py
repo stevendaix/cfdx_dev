@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from cfdx.convergence_evidence import (
     EvidenceError,
     baseline_signatures,
