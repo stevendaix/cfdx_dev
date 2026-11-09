@@ -343,18 +343,24 @@ def markdown_report(report: dict, previous: dict | None = None) -> str:
         "# CFDX — Qualification simultanée : tableau de bord",
         "",
         f"Généré : {report['generated_at_utc']}.",
-        (f"Source archive SHA-256 : `{src['source_archive_sha256'] or 'NON FOURNIE'}`. "
-         "Correspondance binaire/source : **non attestée**."),
+        (
+            f"Source archive SHA-256 : `{src['source_archive_sha256'] or 'NON FOURNIE'}`. "
+            "Correspondance binaire/source : **non attestée**."
+        ),
         f"Révision source déclarée : `{markdown_table_cell(src['declared_source_revision'] or 'NON FOURNIE')}`.",
         "",
-        (f"**{summary['registered_cases']} cas enregistrés ; {summary['unregistered_backlog']} "
-         "campagnes supplémentaires à inscrire.** "
-         f"Preuves physiques vérifiables dans le dossier fourni : **{summary['physical_evidence_gates_pass']}/{summary['registered_cases']}**. "
-         f"Manifest CTest : **{summary['ctest_inventory_size'] if summary['ctest_inventory_size'] is not None else 'non fourni'}** tests, "
-         f"JUnit importés : **{summary['provided_junit_test_results']}**."),
+        (
+            f"**{summary['registered_cases']} cas enregistrés ; {summary['unregistered_backlog']} "
+            "campagnes supplémentaires à inscrire.** "
+            f"Preuves physiques vérifiables dans le dossier fourni : **{summary['physical_evidence_gates_pass']}/{summary['registered_cases']}**. "
+            f"Manifest CTest : **{summary['ctest_inventory_size'] if summary['ctest_inventory_size'] is not None else 'non fourni'}** tests, "
+            f"JUnit importés : **{summary['provided_junit_test_results']}**."
+        ),
         "",
-        ("> `PASS` de la colonne registre = historique. `PASS` de test = résultat JUnit. "
-         "Les deux sont indépendants de `EVIDENCE_GATES_PASS`, et ce dernier n'est pas une certification scientifique automatique."),
+        (
+            "> `PASS` de la colonne registre = historique. `PASS` de test = résultat JUnit. "
+            "Les deux sont indépendants de `EVIDENCE_GATES_PASS`, et ce dernier n'est pas une certification scientifique automatique."
+        ),
         "",
         "## Vue par domaine",
         "",
