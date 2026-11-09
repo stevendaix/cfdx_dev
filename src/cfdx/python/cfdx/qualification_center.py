@@ -135,7 +135,7 @@ def read_qualification_registry(source: str | Path) -> QualificationRegistry:
     seen: set[str] = set()
     for index, item in enumerate(data):
         if not isinstance(item, dict):
-            raise ValueError(f"case[{index}] must be an object")
+            raise ValueError(f"case[{index}] must be an object")  # noqa: TRY004
         case_id = _bounded_string(item.get("id"), f"case[{index}].id")
         if not CASE_ID_PATTERN.fullmatch(case_id):
             raise ValueError(f"invalid qualification case id: {case_id!r}")
