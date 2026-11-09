@@ -796,6 +796,8 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+        if (is_case_hdf5)
+            resolve_production_mesh_patch_types(mesh, case_setup);
         if (options.experimental_sst && !is_case_hdf5)
             throw std::invalid_argument(
                 "production solver: --experimental-sst requires a .cfdx.h5 case");
