@@ -38,8 +38,10 @@
 #include "cfdx/physics/cell_convergence_tracker.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/sst_openfoam_wall_audit_v7.h"
+#include "cfdx/physics/sst_openfoam_wall_coupling_v8.h"
 #include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
+#include "cfdx/physics/global_nonlinear_residual_v8.h"
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
@@ -309,6 +311,12 @@ struct IncompressibleSolverControls {
     // AFTER the accepted candidate SST transport changed nu_t. A pressure
     // solve using the previous turbulent viscosity cannot certify this state.
     bool require_post_sst_momentum_reassembly = false;
+    // V8 opt-in physical residual certificate shared by SIMPLE, SIMPLEC,
+    // COUPLED BlockLocal/PCD/LSC/BFBT/SIMPLE/SIMPLEC. Do not inspect a
+    // preconditioner residual to certify the actual U-p-k-omega state.
+    // Reassembles momentum after SST and both SST equations on the returned
+    // state; all existing acceptance gates remain mandatory.
+    bool require_global_nonlinear_certificate_v8 = false;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     IncompressibleTransientControls transient;
     V17PseudoMomentumControls pseudo_momentum;
@@ -639,6 +647,8 @@ struct IncompressibleIteration {
     // with the trial k/omega/nu_t, U, pressure gradient and authoritative phi.
     double post_sst_momentum_rhs_relative =
         std::numeric_limits<double>::quiet_NaN();
+    // Returned-state certificate; unset when V8 is disabled.
+    GlobalNonlinearResidualV8 global_nonlinear_v8;
     double momentum_equation_residual = std::numeric_limits<double>::infinity();
     double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
@@ -9227,6 +9237,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         mesh, geometry, U, p);
         }
         SSTProductionStepResult sst_step;
+        MomentumResidualCertificate v8_refreshed_momentum =
+            momentum_component_certificate;
         double sst_nu_t_relative_change = 0.0;
         if (controls.sst_runtime) {
             std::map<std::string, std::array<double, 3>> fixed_velocity_values;
@@ -9285,6 +9297,31 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " comparable=0 reason=" << e.what()
                               << " qualified=0\n";
                 }
+                // Reference-only triple audit: wall nut / omega / G are
+                // linked. OpenFOAM's corner weighting and patch constraints
+                // are deliberately NOT assumed equal to CFDX SST.
+                try {
+                    const auto triple = audit_openfoam_wall_coupling_v8(
+                        mesh, geometry,
+                        controls.sst_runtime->wall_omega_sst_patches,
+                        U, *controls.sst_runtime->state,
+                        fixed_velocity_values,
+                        controls.sst_runtime->transport);
+                    std::cerr << "SST_WALL_COUPLING_V8 iteration=" << iter
+                              << " faces=" << triple.faces
+                              << " omega_owner_gap=" << triple.max_omega_owner_gap
+                              << " nut_spalding_gap=" << triple.max_nut_wall_gap
+                              << " G_proxy_gap=" << triple.max_production_gap
+                              << " yplus_k_max=" << triple.max_k_yplus
+                              << " yplus_spalding_max=" << triple.max_spalding_yplus
+                              << " worst_face=" << triple.worst_face
+                              << " openfoam_equivalent=" << triple.openfoam_equivalent
+                              << " qualified=0\n";
+                } catch (const std::exception& e) {
+                    std::cerr << "SST_WALL_COUPLING_V8 iteration=" << iter
+                              << " comparable=0 reason=" << e.what()
+                              << " qualified=0\n";
+                }
             }
             sst_step = advance_sst_production_iterate_transactionally(
                 mesh, U, p, mass_flux, *controls.sst_runtime->state,
@@ -9326,7 +9363,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // viscosity and the SAME accepted trial U, p, Rhie-Chow flux.
             // This is an independent nonlinear coupling gate, not a change
             // to the transport/SST equations or their convergence tolerance.
-            if (controls.require_post_sst_momentum_reassembly) {
+            if (controls.require_post_sst_momentum_reassembly ||
+                controls.require_global_nonlinear_certificate_v8) {
                 std::vector<double> trial_mu(mesh.n_cells());
                 for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
                     trial_mu[cell]=controls.density*(
@@ -9415,9 +9453,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // existing production momentum certificate. In particular,
                 // inactive 2D/extrusion components do not acquire a different
                 // artificial normalization in this second residual channel.
-                h.post_sst_momentum_rhs_relative=certify_momentum_residual_components(
+                v8_refreshed_momentum = certify_momentum_residual_components(
                     absolute_residuals,rhs_scales,
-                    controls.convergence.relative_tolerance).max_active_component_relative;
+                    controls.convergence.relative_tolerance);
+                h.post_sst_momentum_rhs_relative =
+                    v8_refreshed_momentum.max_active_component_relative;
                 if (controls.diagnostics.iteration_trace)
                     std::cerr << "POST_SST_MOMENTUM iteration=" << iter
                               << " old_nut_operator="
@@ -9442,6 +9482,67 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     throw NonlinearRetryableFailure(
                         "post-SST physical momentum residual growth: retry full U/p/SST step");
             }
+        }
+        if (controls.require_global_nonlinear_certificate_v8) {
+            double k_residual = std::numeric_limits<double>::quiet_NaN();
+            double omega_residual = std::numeric_limits<double>::quiet_NaN();
+            double viscosity_closure = std::numeric_limits<double>::quiet_NaN();
+            if (controls.sst_runtime) {
+                const auto& runtime = *controls.sst_runtime;
+                const auto& state = *runtime.state;
+                // Reassemble against the actual returned, coupled state:
+                // this is independent of the frozen SST linear Krylov status.
+                const auto sample = sst_reassembled_returned_state_residual(
+                    mesh, geometry, mass_flux, state.k, state.omega,
+                    state.strain_rate, state.wall_distance, runtime.transport,
+                    runtime.k_boundary_conditions,
+                    runtime.omega_boundary_conditions, &runtime.omega_face_values);
+                k_residual = sample.k_local_relative;
+                omega_residual = sample.omega_local_relative;
+                viscosity_closure = 0.;
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                    const auto blend = compute_sst_blending(
+                        state.k(cell), state.omega(cell), state.wall_distance(cell),
+                        controls.kinematic_viscosity, runtime.transport.beta_star,
+                        0., controls.density, runtime.transport.sst_sigma_w2);
+                    const double expected = runtime.transport.a1 * state.k(cell) /
+                        std::max(runtime.transport.a1 * state.omega(cell),
+                                 state.strain_rate(cell) * blend.second);
+                    const double scale = std::max({controls.kinematic_viscosity,
+                        expected, state.nu_t(cell)});
+                    viscosity_closure = std::max(viscosity_closure,
+                        std::abs(state.nu_t(cell) - expected) / scale);
+                }
+            }
+            h.global_nonlinear_v8 = certify_global_nonlinear_residual_v8(
+                controls.algorithm, controls.coupling.schur_model,
+                v8_refreshed_momentum, h.continuity_normalized,
+                controls.convergence, controls.sst_runtime != nullptr,
+                k_residual, omega_residual, viscosity_closure,
+                !controls.sst_runtime ||
+                    (sst_step.committed && !sst_step.provisional &&
+                     sst_step.transport.converged),
+                !controls.sst_runtime ||
+                    (sst_step.transport.nonfinite_bound_events == 0 &&
+                     sst_step.transport.k_floor_events == 0 &&
+                     sst_step.transport.second_floor_events == 0));
+            if (!h.global_nonlinear_v8.all_finite)
+                throw NonlinearRetryableFailure(
+                    "V8 global physical residual has nonfinite components");
+            nonlinear_metric = std::max(nonlinear_metric,
+                h.global_nonlinear_v8.merit);
+            if (controls.diagnostics.iteration_trace)
+                std::cerr << "GLOBAL_NONLINEAR_V8 iteration=" << iter
+                          << " schur=" << to_string(controls.coupling.schur_model)
+                          << " method=" << static_cast<int>(controls.algorithm)
+                          << " U=" << h.global_nonlinear_v8.momentum.max_active_component_relative
+                          << " p_continuity=" << h.global_nonlinear_v8.continuity
+                          << " k=" << h.global_nonlinear_v8.k
+                          << " omega=" << h.global_nonlinear_v8.omega
+                          << " nut_closure=" << h.global_nonlinear_v8.eddy_viscosity_closure
+                          << " merit=" << h.global_nonlinear_v8.merit
+                          << " accepted=" << h.global_nonlinear_v8.converged
+                          << " qualified=0\n";
         }
         if (controls.convection_continuation.enabled &&
             outer_high_order_fraction == 1.0 && iter > 1 &&
@@ -9476,10 +9577,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
              (!controls.require_post_sst_momentum_reassembly ||
               h.post_sst_momentum_rhs_relative <=
                   controls.convergence.relative_tolerance));
+        const bool global_nonlinear_v8_gate =
+            !controls.require_global_nonlinear_certificate_v8 ||
+            h.global_nonlinear_v8.converged;
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
-            per_criterion_gates_ok && sst_residual_gate && full_order_eligible;
+            per_criterion_gates_ok && sst_residual_gate &&
+            global_nonlinear_v8_gate && full_order_eligible;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
@@ -10144,6 +10249,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             result.convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
             result.convergence_reason =
                 "high-order convection continuation: full operator hold not completed";
+        }
+        if (controls.require_global_nonlinear_certificate_v8 &&
+            !global_nonlinear_v8_gate &&
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED) {
+            result.convergence_status =
+                iter == controls.convergence.max_iterations
+                    ? cfdx::core::ConvergenceStatus::MAX_ITERATIONS
+                    : cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "V8 true U-p-k-omega residual certificate is not satisfied";
         }
         if (convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
             (!per_criterion_gates_ok || iter < minimum_outer_correctors)) {
