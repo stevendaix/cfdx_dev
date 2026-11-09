@@ -281,7 +281,11 @@ int main() {
         const auto M=pressure_operator(n,1.0,0.0);
         const auto P_inv=inverse(dense(P));
         const auto F_inv=inverse(dense(F));
+        // All six preconditioners are applied to the SAME Oseen block matrix
+        // and right-hand side. This is an algebraic cross-method comparison,
+        // not a physical Couette/Poiseuille/Ghia convergence certificate.
         const std::vector<std::pair<std::string,CoupledSchurApproximationModel>> models={
+            {"block_local",CoupledSchurApproximationModel::BlockLocal},
             {"simple",CoupledSchurApproximationModel::SIMPLE},
             {"simplec",CoupledSchurApproximationModel::SIMPLEC},
             {"lsc",CoupledSchurApproximationModel::LSC},

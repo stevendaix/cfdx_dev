@@ -56,6 +56,10 @@ struct NativeAMGPreconditioner::Impl {
     bool energy_minimizing = false;
     double prolongator_filter = 0.0;
     std::size_t cf_interpolation_limit = 0;
+    double max_coarsening_fraction = 1.0;
+    double max_image_ratio = 0.0;
+    std::vector<double> bounded_inv_diag;
+    std::size_t bounded_fallbacks = 0;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
     std::unique_ptr<detail::OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
@@ -105,6 +109,57 @@ std::size_t NativeAMGPreconditioner::cf_interpolation_limit() const noexcept {
     return impl_->cf_interpolation_limit;
 }
 
+void NativeAMGPreconditioner::configure_max_coarsening_fraction(double fraction) {
+    if (!std::isfinite(fraction) || fraction < 0.5 || fraction > 1.0)
+        throw std::invalid_argument("AMG coarsening fraction must lie in [0.5,1]");
+    if (impl_->max_coarsening_fraction != fraction) {
+        impl_->amg.reset();
+        impl_->op.reset();
+    }
+    impl_->max_coarsening_fraction = fraction;
+    impl_->error.clear();
+}
+
+void NativeAMGPreconditioner::configure_bounded_nonsymmetric_action(double max_image_ratio) {
+    if (!std::isfinite(max_image_ratio) ||
+        (max_image_ratio != 0.0 && (max_image_ratio < 1.0 || max_image_ratio > 1e6)))
+        throw std::invalid_argument("AMG bounded-action ratio must be 0 or in [1,1e6]");
+    if (impl_->max_image_ratio != max_image_ratio) {
+        impl_->amg.reset();
+        impl_->op.reset();
+        impl_->bounded_inv_diag.clear();
+    }
+    impl_->max_image_ratio = max_image_ratio;
+    impl_->bounded_fallbacks = 0;
+    impl_->error.clear();
+}
+
+std::size_t NativeAMGPreconditioner::bounded_action_fallbacks() const noexcept {
+    return impl_->bounded_fallbacks;
+}
+
+static bool bounded_fine_diagonal(
+    const SparseMatrix& matrix, std::vector<double>& inverse) {
+    inverse.clear();
+    inverse.reserve(matrix.n_rows());
+    const auto* ro = matrix.row_offsets_data();
+    const auto* co = matrix.columns_data();
+    const auto* va = matrix.values_data();
+    for (std::size_t i = 0; i < matrix.n_rows(); ++i) {
+        double diag = 0.0;
+        double scale = 0.0;
+        for (std::size_t k = ro[i]; k < ro[i + 1]; ++k) {
+            if (co[k] == i) diag += va[k];
+            scale = std::max(scale, std::abs(va[k]));
+        }
+        if (!(scale > 0.0) || !std::isfinite(scale) ||
+            !std::isfinite(diag) || std::abs(diag) < 1e-12 * scale)
+            return false;
+        inverse.push_back(1.0 / diag);
+    }
+    return true;
+}
+
 bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
     // Stage the next hierarchy before committing. An invalid new mesh or
     // failed factorization must not destroy a previously usable solver.
@@ -136,6 +191,13 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         pre_sweeps = 2;
         post_sweeps = 2;
     }
+    std::vector<double> staged_inv_diag;
+    if (impl_->max_image_ratio > 0.0 &&
+        (!bounded_fine_diagonal(matrix, staged_inv_diag) ||
+         impl_->require_smoother_certificate)) {
+        impl_->error = "bounded AMG action requires nonsymmetric Krylov and finite nonzero diagonal";
+        return false;
+    }
     auto next_op = std::make_unique<detail::OwnedSparseOperator>(matrix);
     auto next_amg = std::make_unique<MatrixFreeVcyclePreconditioner>(
         *next_op, omega, pre_sweeps, post_sweeps, 0.25,
@@ -153,7 +215,8 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
             ? AMGSmootherPolicy::AlgebraicLineGaussSeidel
             : impl_->algebraic_line_smoother ? AMGSmootherPolicy::AlgebraicLines
                                             : AMGSmootherPolicy::DampedJacobi,
-        impl_->prolongator_filter, impl_->cf_interpolation_limit);
+        impl_->prolongator_filter, impl_->cf_interpolation_limit,
+        impl_->max_coarsening_fraction);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
         const auto& detail = next_amg->last_setup_error();
@@ -165,6 +228,8 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
     // is destroyed before its previous operator is released.
     impl_->amg = std::move(next_amg);
     impl_->op = std::move(next_op);
+    impl_->bounded_inv_diag = std::move(staged_inv_diag);
+    impl_->bounded_fallbacks = 0;
     ++impl_->hierarchy_builds;
     impl_->error.clear();
     return true;
@@ -198,11 +263,18 @@ bool NativeAMGPreconditioner::update_values(const SparseMatrix& matrix) {
         return false;
     }
 
+    std::vector<double> staged_inv_diag;
+    if (impl_->max_image_ratio > 0.0 &&
+        !bounded_fine_diagonal(matrix, staged_inv_diag)) {
+        impl_->error = "bounded AMG update requires safe diagonal";
+        return false;
+    }
     if (!impl_->amg->update_values(matrix)) {
         impl_->error = "native AMG numeric update failed";
         return false;
     }
     impl_->op->update(matrix);
+    impl_->bounded_inv_diag = std::move(staged_inv_diag);
     ++impl_->numeric_updates;
     impl_->error.clear();
     return true;
@@ -217,6 +289,41 @@ bool NativeAMGPreconditioner::apply(
     if (!impl_->amg->apply(residual, correction)) {
         impl_->error = "native AMG V-cycle failed";
         return false;
+    }
+    if (impl_->max_image_ratio > 0.0) {
+        // A single AMG action is only a preconditioning proposal, not a
+        // converged solve. Reject its catastrophic image amplification, or
+        // near-orthogonality to the requested residual, BEFORE passing z to
+        // Arnoldi. FGMRES accommodates the resulting variable action.
+        // Nothing is silently marked converged.
+        if (!impl_->op || impl_->bounded_inv_diag.size() != residual.size()) {
+            impl_->error = "bounded AMG action missing staged operator/diagonal";
+            return false;
+        }
+        const auto inspect = [&](const Vector& z) {
+            Vector image(residual.size(), 0.0);
+            impl_->op->apply(z, image);
+            const double rn = residual.norm2();
+            const double an = image.norm2();
+            if (!image.is_valid() || !std::isfinite(an) ||
+                !std::isfinite(rn) || !(rn > 0.0) || !(an > 0.0))
+                return rn == 0.0 && an == 0.0;
+            // Large but finite corrections may be legitimate for pinned
+            // nearly singular pressure operators. A directional/cosine
+            // gate would reject useful FGMRES search directions and did
+            // regress previously converged captured solves. Only reject
+            // catastrophic image amplification.
+            return an / rn <= impl_->max_image_ratio;
+        };
+        if (!inspect(correction)) {
+            ++impl_->bounded_fallbacks;
+            for (std::size_t i = 0; i < residual.size(); ++i)
+                correction(i) = 0.7 * impl_->bounded_inv_diag[i] * residual(i);
+            if (!correction.is_valid() || !inspect(correction)) {
+                impl_->error = "bounded AMG action and Jacobi fallback both unsafe";
+                return false;
+            }
+        }
     }
     impl_->error.clear();
     return true;

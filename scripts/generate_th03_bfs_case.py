@@ -268,7 +268,7 @@ def make_setup(height: float, reynolds: float, velocity: float) -> str:
         elif name == "outlet":
             spec = BoundarySpec(
                 patch_name=name,
-                type=BCType.OUTLET,
+                type=BCType.PRESSURE_OUTLET,
                 value_type=BCValueType.OUTLET_PRESSURE,
                 pressure=0,
                 sst_scalar_conditions=[

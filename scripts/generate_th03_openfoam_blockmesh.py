@@ -550,9 +550,12 @@ def make_case_setup(
                 sst_scalar_conditions=scalar,
             )
         elif name == "outlet":
+            # The OpenFOAM mesh label is `outlet`, but this *physical case*
+            # fixes p=0. CFDX intentionally rejects a generic OUTLET with
+            # OUTLET_PRESSURE: that would silently change the FV boundary.
             bc = BoundarySpec(
                 patch_name=name,
-                type=BCType.OUTLET,
+                type=BCType.PRESSURE_OUTLET,
                 value_type=BCValueType.OUTLET_PRESSURE,
                 pressure=0.0,
                 sst_scalar_conditions=scalar,

@@ -22,6 +22,105 @@ SparseMatrix make_poisson_1d(std::size_t n) {
 }
 
 int main() {
+    run_case("gmres_rejects_invalid_reliable_restart_threshold", []() {
+        const auto A = make_poisson_1d(3);
+        Vector b(3, 1.0), x(3, 0.0);
+        KrylovControls policy;
+        policy.residual_replacement_gap_ratio = 0.5;
+        EXPECT_TRUE(solve_gmres(A, b, x, 3, 10, 1e-10, nullptr, policy).status
+                    == SolverStatus::NOT_APPLICABLE);
+        policy.residual_replacement_gap_ratio =
+            std::numeric_limits<double>::quiet_NaN();
+        EXPECT_TRUE(solve_gmres(A, b, x, 3, 10, 1e-10, nullptr, policy).status
+                    == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_detects_projected_vs_true_operator_drift", []() {
+        const auto A = make_poisson_1d(18);
+        LinearOperator op;
+        op.size = A.n_rows();
+        op.apply_fp64 = [&A](const Vector& v, Vector& y) {
+            A.matvec_into(v, y);
+        };
+        op.apply = [&A](const Vector& v, Vector& y) {
+            A.matvec_into(v, y);
+            for (std::size_t i = 0; i < y.size(); ++i) y(i) *= 1.03;
+        };
+        Vector b(18, 0.0), x(18, 0.0);
+        for (std::size_t i = 0; i < b.size(); ++i)
+            b(i) = std::sin(0.3 * static_cast<double>(i + 1));
+        KrylovControls policy;
+        policy.adaptive_restart = false;
+        policy.restart_min = 16;
+        policy.restart_max = 16;
+        policy.residual_replacement_period = 3;
+        policy.residual_replacement_gap_ratio = 1.00001;
+        const auto result = solve_gmres(op, b, x, 16, 500, 1e-10,
+                                        nullptr, policy);
+        // With an inconsistent reduced-precision operator, acceptance still
+        // uses the authoritative FP64 original. Periodic replacement is
+        // permitted only after testing an actual candidate, not the old x.
+        EXPECT_TRUE(result.residual_replacements > 0);
+        const auto ax = A.matvec(x);
+        double rr = 0.0, bb = 0.0;
+        for (std::size_t i = 0; i < b.size(); ++i) {
+            rr += (ax[i] - b(i)) * (ax[i] - b(i));
+            bb += b(i) * b(i);
+        }
+        const double true_relative = std::sqrt(rr / bb);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED || true_relative <= 1e-10);
+        EXPECT_NEAR(result.residual_relative, true_relative, 1e-12);
+    });
+
+    run_case("gmres_reliable_periodic_restart_checks_updated_iterate", []() {
+        const auto A = make_poisson_1d(18);
+        Vector b(18, 0.0), x(18, 0.0);
+        for (std::size_t i = 0; i < b.size(); ++i)
+            b(i) = std::sin(0.17 * static_cast<double>(i + 1));
+        KrylovControls policy;
+        policy.adaptive_restart = false;
+        policy.restart_min = 9;
+        policy.restart_max = 9;
+        policy.residual_replacement = true;
+        policy.residual_replacement_period = 3;
+        const auto result = solve_gmres(A, b, x, 9, 800, 1e-10, nullptr, policy);
+        const auto ax = A.matvec(x);
+        double residual2 = 0.0, rhs2 = 0.0;
+        for (std::size_t i = 0; i < b.size(); ++i) {
+            residual2 += (ax[i] - b(i)) * (ax[i] - b(i));
+            rhs2 += b(i) * b(i);
+        }
+        const double relative = std::sqrt(residual2 / rhs2);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        // A well-behaved Arnoldi relation needs no forced restart.
+        EXPECT_TRUE(result.residual_replacements == 0);
+        EXPECT_TRUE(result.last_residual_replacement <= result.iterations);
+        EXPECT_TRUE(result.residual_relative <= 1e-10);
+        EXPECT_NEAR(result.residual_relative, relative, 1e-12);
+        EXPECT_TRUE(result.max_true_residual > 0.0);
+        EXPECT_TRUE(std::isfinite(result.max_true_recursive_ratio));
+    });
+
+    run_case("gmres_reliable_restart_never_certifies_unapplied_candidate", []() {
+        const auto A = make_poisson_1d(18);
+        Vector b(18, 1.0), x(18, 0.0);
+        KrylovControls policy;
+        policy.adaptive_restart = false;
+        policy.restart_min = 8;
+        policy.restart_max = 8;
+        policy.residual_replacement_period = 2;
+        const auto result = solve_gmres(A, b, x, 8, 2, 1e-14, nullptr, policy);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations == 2);
+        const auto ax = A.matvec(x);
+        double residual2 = 0.0, rhs2 = 0.0;
+        for (std::size_t i = 0; i < b.size(); ++i) {
+            residual2 += (ax[i] - b(i)) * (ax[i] - b(i));
+            rhs2 += b(i) * b(i);
+        }
+        EXPECT_NEAR(result.residual_relative, std::sqrt(residual2 / rhs2), 1e-12);
+    });
+
     run_case("gmres_solve_diagonal", []() {
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 2.0);

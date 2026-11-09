@@ -21,6 +21,19 @@ from scripts import compare_th03_wall_gradients as diag
 from scripts import generate_th03_bfs_case as bfs
 
 
+def test_debug_bfs_pressure_outlet_matches_physical_operator() -> None:
+    setup = json.loads(bfs.make_setup(height=0.0127, reynolds=36000, velocity=44.2))
+    outlet = next(
+        boundary
+        for boundary in setup["boundary_conditions"]
+        if boundary["patch_name"] == "outlet"
+    )
+    assert outlet["type"] == "pressure_outlet"
+    assert outlet["value_type"] == "outlet_pressure"
+    assert outlet["pressure"] == 0
+    assert outlet["back_pressure"] == outlet["pressure"]
+
+
 @pytest.mark.skipif(
     os.environ.get("CFDX_RUN_TH03_DEBUG_E2E") != "1",
     reason="opt-in actual SST BFS solve (145 nonlinear iterations)",
@@ -52,9 +65,21 @@ def test_real_sst_bfs_debug_is_never_physically_qualified(tmp_path: Path) -> Non
         run = subprocess.run(
             args, stdout=log, stderr=subprocess.STDOUT, timeout=240, check=False
         )
-    execution = json.loads((out / "execution.json").read_text())
-    flow = json.loads((out / "convergence.json").read_text())
-    assert run.returncode in (0, 1), (tmp_path / "solver.log").read_text()[-2500:]
+    solver_log = (tmp_path / "solver.log").read_text()
+    assert run.returncode in (0, 1), solver_log[-5000:]
+    execution_path = out / "execution.json"
+    assert execution_path.is_file(), (
+        "production solver did not write execution.json; "
+        f"returncode={run.returncode}; log tail:\\n{solver_log[-5000:]}"
+    )
+    execution = json.loads(execution_path.read_text())
+    convergence_path = out / "convergence.json"
+    assert convergence_path.is_file(), (
+        "production solver did not write convergence.json; "
+        f"returncode={run.returncode}; execution={execution}; "
+        f"log tail:\\n{solver_log[-5000:]}"
+    )
+    flow = json.loads(convergence_path.read_text())
     assert execution["converged"] is (run.returncode == 0)
     assert flow["converged"] is (run.returncode == 0)
     face = out / "benchmark_observables/face_fluxes.csv"

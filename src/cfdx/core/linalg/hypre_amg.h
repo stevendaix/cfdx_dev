@@ -50,6 +50,16 @@ public:
     // Changing the cap invalidates the current hierarchy; call setup() again.
     void configure_cf_interpolation_limit(std::size_t max_entries);
     std::size_t cf_interpolation_limit() const noexcept;
+    // Nonsymmetric FGMRES-only stability control; 1.0 preserves legacy AMG.
+    // Stop coarsening once a proposed level reduces unknowns too slowly.
+    // Changing this setup option invalidates the previous hierarchy.
+    void configure_max_coarsening_fraction(double fraction);
+    // FGMRES-only safety policy for pinned, nonsymmetric Fp matrices.
+    // An unstable V-cycle falls back to a bounded damped-Jacobi action; the
+    // Krylov true residual is still evaluated on the original matrix.
+    // 0 disables this experimental path. Never enable for CG.
+    void configure_bounded_nonsymmetric_action(double max_image_ratio);
+    std::size_t bounded_action_fallbacks() const noexcept;
     bool setup(const SparseMatrix& matrix) override;
     bool update_values(const SparseMatrix& matrix) override;
     bool apply(const Vector& residual, Vector& correction) const override;

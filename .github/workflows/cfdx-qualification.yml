@@ -41,6 +41,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  portfolio:
+    name: All-case qualification inventory (25 registered + backlog)
+    # Fast, read-only visibility on *every* PR, even when no expensive
+    # qualification:<profile> label was requested. This does NOT run solvers
+    # or claim a physical PASS. It configures CTest to detect orphaned cases.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure complete CTest inventory without building
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ libhdf5-dev
+          cmake -S . -B build-qualification-inventory -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_BUILD_PYTHON=OFF
+          ctest --test-dir build-qualification-inventory --show-only=json-v1 \
+            > qualification-ctest-manifest.json
+      - name: Check all 25 case-to-CTest links and publish portfolio
+        run: |
+          python3 scripts/qualification_portfolio.py \
+            --ctest-manifest qualification-ctest-manifest.json \
+            --output-dir qualification-portfolio --strict-links
+          python3 -m unittest -q tests.python.test_qualification_portfolio
+      - name: Upload per-case progress board
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cfdx-qualification-portfolio-${{ github.sha }}
+          path: |
+            qualification-portfolio/
+            qualification-ctest-manifest.json
+          if-no-files-found: warn
+          retention-days: 30
+
   select:
     name: Resolve qualification profile
     runs-on: ubuntu-24.04
@@ -124,6 +160,23 @@ jobs:
           python3 scripts/ci/qualification.py run \
             --profile "$CFDX_PROFILE" --scope "$CFDX_SCOPE" \
             --build-dir "$BUILD_DIR" --parallel 3
+      - name: Publish domain execution into the full 25-case portfolio
+        if: always() && steps.qualification.outcome != 'skipped'
+        shell: bash
+        run: |
+          # Every published PASS must be backed by an actual JUnit testcase.
+          # No JUnit => NOT_RUN; a failing CTest stays failing in the parent job.
+          ctest --test-dir "$BUILD_DIR" --show-only=json-v1 \
+            > "$BUILD_DIR/qualification/ctest-manifest.json"
+          junit="$BUILD_DIR/qualification/$CFDX_PROFILE-$CFDX_SCOPE/ctest.xml"
+          args=()
+          if [[ -f "$junit" ]]; then
+            args+=(--junit "$junit")
+          fi
+          python3 scripts/qualification_portfolio.py \
+            --ctest-manifest "$BUILD_DIR/qualification/ctest-manifest.json" \
+            "${args[@]}" \
+            --output-dir "$BUILD_DIR/qualification/portfolio" --strict-links
       - name: Upload profile plan, JUnit and timings
         if: always()
         uses: actions/upload-artifact@v7

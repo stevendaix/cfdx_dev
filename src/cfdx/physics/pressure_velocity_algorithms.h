@@ -81,6 +81,22 @@ struct CouplingControls {
     // pressure mass. The default remains the qualified legacy -Fp^-1 action.
     // No physical performance claim or automatic fallback is implied.
     bool pcd_lumped_mass_commutator_experimental = false;
+    // Diagnostic A/B only: align the nested pressure operators' gauge column
+    // with the monolithic eliminated gauge column. No production default change.
+    bool pcd_consistent_gauge_experimental = false;
+    // Research diagnostics only: exact row scaling of Fp and guarded nested
+    // actions. These change only the Schur preconditioner, not FV equations.
+    bool pcd_fp_row_equilibration_experimental = false;
+    bool pcd_fp_quality_guard_experimental = false;
+    bool pcd_fp_second_pass_experimental = false;
+    // Preconditioner-only A/B: pressure-space Dirichlet data on actual
+    // inflow faces, including mixed-in/out farfield patches. The physical
+    // momentum/continuity BCs and the Schur matrix A are NOT modified.
+    // Off by default until NACA/N9/BFS full physical A/B qualification.
+    bool pcd_pressure_inflow_dirichlet_experimental = false;
+    // Shared diagnostic across BlockLocal, PCD, LSC, BFBt, SIMPLE and
+    // SIMPLEC Schur. Off by default; no silent substitution on rejection.
+    bool schur_action_growth_guard_experimental = false;
     // Serial, small-subdomain, experimental RAS/weighted Schwarz for COUPLED
     // with BlockLocal Schur. Explicit opt-in; setup failure is fatal rather
     // than silently replaced by AMG. No MPI / coarse-space scaling claim.

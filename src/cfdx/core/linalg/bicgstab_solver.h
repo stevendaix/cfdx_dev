@@ -25,10 +25,9 @@ inline SolverResult solve_bicgstab(
        max_iter==0||!std::isfinite(tolerance)||tolerance<=0.0){
         result.status=SolverStatus::NOT_APPLICABLE;return result;
     }
-    if(preconditioner && !preconditioner->setup(A)){
-        result.status=SolverStatus::NOT_APPLICABLE;return result;
-    }
-
+    // A preconditioner is not needed for a solution already satisfying the
+    // original system. Defer setup until after the independently measured
+    // initial residual, as in CG. Failure must report that true residual.
     const std::size_t n=A.n_rows();
     const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
     const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
@@ -105,6 +104,13 @@ inline SolverResult solve_bicgstab(
         return result;
     }
 
+    if (preconditioner && !preconditioner->setup(A)) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.residual = res;
+        result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
+        return result;
+    }
+
     double rho=1.0,alpha=1.0,omega=1.0;
     for(std::size_t i=0;i<n;++i){w.v(i)=0.0;w.p(i)=0.0;}
 
@@ -141,7 +147,14 @@ inline SolverResult solve_bicgstab(
         for(std::size_t i=0;i<n;++i)w.p(i)=w.r(i)+beta*(w.p(i)-omega*w.v(i));
 
         if(preconditioner){
-            if(!preconditioner->apply(w.p,w.z)){result.status=SolverStatus::NOT_APPLICABLE;result.iterations=iter-1;return result;}
+            if(!preconditioner->apply(w.p,w.z)){
+                const double actual = true_residual();
+                result.status=SolverStatus::NOT_APPLICABLE;
+                result.iterations=iter-1;
+                result.residual=actual;
+                result.residual_relative=reference_norm>0.0?actual/reference_norm:0.0;
+                return result;
+            }
         }else{
             for(std::size_t i=0;i<n;++i)w.z(i)=w.p(i);
         }
@@ -183,7 +196,14 @@ inline SolverResult solve_bicgstab(
         }
 
         if(preconditioner){
-            if(!preconditioner->apply(w.s,w.z_s)){result.status=SolverStatus::NOT_APPLICABLE;result.iterations=iter;return result;}
+            if(!preconditioner->apply(w.s,w.z_s)){
+                const double actual = true_residual();
+                result.status=SolverStatus::NOT_APPLICABLE;
+                result.iterations=iter;
+                result.residual=actual;
+                result.residual_relative=reference_norm>0.0?actual/reference_norm:0.0;
+                return result;
+            }
         }else{
             for(std::size_t i=0;i<n;++i)w.z_s(i)=w.s(i);
         }
@@ -210,4 +230,5 @@ inline SolverResult solve_bicgstab(
     result.status=SolverStatus::MAX_ITER_REACHED;result.iterations=max_iter;result.residual=res;
     result.residual_relative=reference_norm>0?res/reference_norm:0.0;return result;
 }
-}
+
+} // namespace cfdx::core

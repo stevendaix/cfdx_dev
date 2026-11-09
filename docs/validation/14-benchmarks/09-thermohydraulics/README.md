@@ -9,11 +9,21 @@ Each benchmark has an independent GitHub Actions workflow and a machine-readable
 | TH-07 | Wagner–Wetzel mixed-convection DNS | `.github/workflows/th07-mixed-convection.yml` | Re_b=4328, Pr=0.71, Gr sweep, derived Ri, wall shear, U/T and turbulence statistics |
 | TH-08 | OECD/NEA–Vattenfall T-junction | `.github/workflows/th08-t-junction.yml` | inlet flow split, velocity profiles, T*, T*_rms, 3.5 Hz spectral feature |
 
+## Two different mixed-convection references (do not mix)
+
+The frozen **TH-07** case is the *Wagner–Wetzel (2022) differentially heated
+vertical plane-channel DNS*, at Re_b=4328 and Pr=0.71. It is **not** the
+*1998 heated vertical circular-pipe upflow experiment* described in the
+thermohydraulic theory/benchmark overview. The latter has an independent,
+not-yet-executable contract in `TH-PIPE-UPFLOW-1998.json`; all physical input
+parameters must be transcribed and frozen from the original source first.
+Do not transfer Re/Gr/geometry/Cf/Nu targets between these cases.
+
 ## Meaning of CI status
 
 The four workflows are deliberately **reference-contract CIs**: they validate that the frozen reference conditions, units, uncertainties, normalizations and derived dimensionless values are internally consistent. They do not run CFDX and do not claim a physical-validation PASS.
 
-The physical status remains BLOCKED: production has an explicit **experimental SST momentum path** (`--experimental-sst`), but that path rejects coupled energy, buoyancy and radiation, and is not physically qualified. These models and (where applicable) transient statistics still require full reference runs on mesh/time-step refinement levels. A successful reference-contract CI must never be promoted to a solver qualification.
+The physical status remains BLOCKED: production has an explicit **experimental SST momentum path** (`--experimental-sst`), and opt-in experimental SST+energy/Boussinesq paths, but the channel periodic/mass-flow controls and unsteady statistics are not established, while SST+radiation remains unsupported. None of these experimental paths is physically qualified. These models and (where applicable) transient statistics still require full reference runs on mesh/time-step refinement levels. A successful reference-contract CI must never be promoted to a solver qualification.
 
 ## Comparison and uncertainty policy
 

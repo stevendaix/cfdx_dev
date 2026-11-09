@@ -813,6 +813,19 @@ int main()
         controls.model = TurbulenceModel::SST;
         validate_sst_case_prerequisites(setup, controls);
 
+        // Explicit inlet k/omega values are authoritative and must not
+        // require a non-zero bulk velocity (e.g. a hydrostatic equilibrium).
+        inlet.velocity_magnitude = 0.0;
+        inlet.turbulence_intensity = 0.0;
+        inlet.turbulence_length_scale = 0.0;
+        inlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.01},
+            {"omega", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 2.0}
+        };
+        setup.boundary_conditions = {inlet};
+        validate_sst_case_prerequisites(setup, controls);
+        validate_sst_scalar_boundary_contract(setup);
+
         setup.initial_condition.scalar_fields.erase("omega");
         EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
                      std::invalid_argument);

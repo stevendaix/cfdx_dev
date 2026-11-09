@@ -144,7 +144,7 @@
   },
   "status": {
     "contract": "READY_FOR_CONTRACT_CI",
-    "physical_validation": "BLOCKED_UNTIL_BUOYANCY_ENERGY_AND_TURBULENCE_ARE_COUPLED_IN_PRODUCTION",
-    "reason": "A RANS model can compare mean profiles and integral quantities only; RMS, Reynolds stress and heat-flux claims require a resolved unsteady model or an explicit Reynolds-stress/heat-flux closure."
+    "physical_validation": "BLOCKED_UNTIL_REAL_DNS_CHANNEL_INPUTS_AND_PHYSICAL_EVIDENCE",
+    "reason": "This case is the Wagner-Wetzel (2022) differentially heated VERTICAL PLANE CHANNEL DNS, NOT the 1998 heated VERTICAL PIPE upflow experiment. CFDX exposes experimental SST + energy/Boussinesq, but the native case, periodic channel conditions, and independent mean/statistical qualification are missing; steady RANS cannot claim DNS fluctuations."
   }
 }

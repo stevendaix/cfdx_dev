@@ -131,7 +131,7 @@
   },
   "status": {
     "contract": "READY_FOR_CONTRACT_CI",
-    "physical_validation": "BLOCKED_UNTIL_PRODUCTION_RANS_OR_LES_COUPLING_AND_DNS_DATA_INGESTION",
-    "reason": "The current production path audit states that SST/SA/k-epsilon transport is not yet coupled to the production momentum solve."
+    "physical_validation": "BLOCKED_PERIODIC_CHANNEL_DNS_LES_AND_FULL_SST_PHYSICAL_QUALIFICATION",
+    "reason": "CFDX has an opt-in production SST momentum path, but the periodic mass-flow-controlled 3D turbulent DNS/LES channel and statistically converged reference campaign remain unavailable. Experimental SST alone is not channel validation."
   }
 }
