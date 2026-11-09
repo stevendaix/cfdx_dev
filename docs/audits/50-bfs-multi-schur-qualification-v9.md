@@ -133,3 +133,8 @@ relâchement de tolérance ni substitution silencieuse de préconditionneur.
 **Limites de cette livraison :** pas de binaire de production recompilé et lié
 à partir de cette copie V9, pas de nouvelles simulations BFS réelles ni de
 preuve d'accord expérimental. Toute affirmation contraire doit être rejetée.
+
+
+## Bibliographie
+
+- Driver, D. M.; Seegmiller, H. L. (1985). “Features of a reattaching turbulent shear layer in divergent channel flow.” *AIAA Journal*, 23(2), 163–171. DOI: [10.2514/3.8890](https://doi.org/10.2514/3.8890). NASA NTRS record: https://ntrs.nasa.gov/citations/19850039701.
