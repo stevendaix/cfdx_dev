@@ -41,7 +41,10 @@ def strict_load(path: Path) -> dict:
 
 
 def _positive_finite_number(value) -> bool:
+
     return type(value) in (float, int) and math.isfinite(value) and value >= 0.0
+
+
 def validate_bfs_evidence(
     output_dir: Path,
     exit_code: int | None,
@@ -77,7 +80,9 @@ def validate_bfs_evidence(
     if case_path is not None:
         try:
             import h5py
+
             case_path = Path(case_path)
+
             actual_sha = hashlib.sha256(case_path.read_bytes()).hexdigest()
             if actual_sha != case_sha256:
                 defects.append("case_sha256_mismatch")

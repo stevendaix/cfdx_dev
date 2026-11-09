@@ -225,7 +225,10 @@ COUPLED_PRECONDITIONERS = (
     "coupled_block_schur",
     "mgr",
     "braess_sarazin",
+
 )
+
+
 def validate_solver_selection(
     algorithm: str, schur: str | None, preconditioner: str | None
 ) -> None:
@@ -246,6 +249,8 @@ def validate_solver_selection(
         )
     if preconditioner == "braess_sarazin" and schur != "block_local":
         raise ValueError("Braess-Sarazin requires block_local Schur")
+
+
 def make_setup(
     height: float,
     reynolds: float,
@@ -589,7 +594,10 @@ def reconfigure_bfs_reference_case(
         "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified",
     }
 
+
+
 def main():
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--upstream", type=int, default=4)

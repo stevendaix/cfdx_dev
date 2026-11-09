@@ -7,7 +7,9 @@ explicit exit code. A successful CTest is NOT a physical certificate.
 Examples:
   python scripts/run_cfdx_coupled_campaign.py --build build --meshes build/validation_meshes --out runs --only naca --models pcd block_local
   python scripts/run_cfdx_coupled_campaign.py --build build --meshes build/validation_meshes --out runs --only all
+
 """
+
 from __future__ import annotations
 
 import argparse
@@ -132,6 +134,7 @@ def execute(
         variant = tag.removeprefix("bfs_")
         algorithm, schur, preconditioner = BFS_VARIANTS[variant]
         from qualify_bfs_schur_evidence import validate_bfs_evidence
+
         output_flag = cmd.index("--output-dir") + 1 if "--output-dir" in cmd else -1
         run_dir = Path(cmd[output_flag]) if output_flag > 0 else out / "missing_run_dir"
         result["bfs_v8_gate"] = validate_bfs_evidence(
@@ -248,6 +251,7 @@ def build_commands(args: argparse.Namespace):
             )
     if args.only in ("bfs", "all"):
         from generate_th03_bfs_case import reconfigure_bfs_reference_case, write_case
+
         reference = None
         for variant in getattr(args, "bfs_variants", list(BFS_VARIANTS)):
             algorithm, schur, preconditioner = BFS_VARIANTS[variant]
@@ -421,5 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         and r["case"].startswith("bfs_")
     )
     return 0 if software_ok and bfs_ok else 2
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

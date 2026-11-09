@@ -83,12 +83,14 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
     # NOT an implemented OpenFOAM wall-function contract. No string alias
     # or nominal omega factor constitutes an equivalence proof.
     equivalent_wall_functions = False
+
     reasons = [
         (
             "CFDX does not provide verified equivalents of OpenFOAM "
             "nutUSpaldingWallFunction/kqRWallFunction/omegaWallFunction for this case"
         )
     ]
+
     if raw.get("sst_molecular_wall_diffusion", "false") != "true":
         reasons.append("molecular near-wall diffusion path is legacy/disabled")
     if numerics.get("momentum_scheme") == "first_order":
