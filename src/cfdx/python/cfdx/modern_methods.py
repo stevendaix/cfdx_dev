@@ -159,16 +159,7 @@ def search_methods(
         if (
             not needle
             or needle
-            in " ".join(
-                (
-                    method.key,
-                    method.label,
-                    method.family,
-                    method.integration,
-                    method.purpose,
-                    method.qualification,
-                )
-            ).casefold()
+            in f"{method.key} {method.label} {method.family} {method.integration} {method.purpose} {method.qualification}".casefold()
         )
         and (
             integration == "all"
