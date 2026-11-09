@@ -70,5 +70,5 @@ int main() {
         EXPECT_TRUE(!pre.setup(A));
     });
     std::cout << "Schur catastrophic action guard PASS\n";
-    return 0;
+    return run_all();
 }
