@@ -9,7 +9,7 @@ from cfdx.modern_methods import (
 
 
 def test_catalog_contains_traceable_nonlinear_research_candidates():
-    assert len(set(item.key for item in METHODS)) == len(METHODS)
+    assert len({item.key for item in METHODS}) == len(METHODS)
     for key in ("NEWTON_KRYLOV", "ANDERSON", "NGMRES"):
         method = method_by_key(key)
         assert (
