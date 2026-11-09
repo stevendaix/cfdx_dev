@@ -1,5 +1,4 @@
 name: Pre-commit Fast Guards
-# Re-evaluate changed Python files after the Ruff autofix pass.
 
 on:
   pull_request:
