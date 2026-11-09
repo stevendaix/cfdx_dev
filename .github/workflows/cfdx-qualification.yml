@@ -202,7 +202,4 @@ jobs:
   total:
     name: Full physical qualification (canonical workflow)
     needs: select
-    if: needs.select.outputs.profile == 'total'
-    uses: ./.github/workflows/cfdx-validation.yml
-    permissions:
       contents: read

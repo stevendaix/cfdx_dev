@@ -1,9 +1,4 @@
-#pragma once
-
-#include "cfdx/physics/turbulence_solver.h"
-#include "cfdx/physics/scalar_transport_gradient.h"
-#include <algorithm>
-#include <array>
+#include "cfdx/physics/sst_fp64_stall_v14.h"
 #include <cstdlib>
 #include <iostream>
 #include <iomanip>
@@ -968,12 +963,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         throw std::invalid_argument("SST dynamic-blending field size mismatch");
     if (controls.model!=TurbulenceModel::SST || max_iterations==0 ||
         !std::isfinite(tolerance) || tolerance<=0.0)
-        throw std::invalid_argument("SST dynamic blending requires SST and valid iteration controls");
-    TurbulenceTransportResult result;
-    std::size_t consecutive_line_search_stalls=0;
-    for(std::size_t iter=1;iter<=max_iterations;++iter){
-        auto old_k=k,old_w=omega;
-        cfdx::core::Field<double,cfdx::core::Location::CELL> F1(n,"F1","1",1),F2(n,"F2","1",1);
+    SSTFp64StallV14 fp64_stall;
         // Compute the full-cell gradient contraction once per outer iteration.
         // Recomputing this n-cell vector inside the n-cell loop made this O(n^2).
         const auto cross=sst_boundary_gradient_dot(
@@ -1182,14 +1172,43 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             if (std::getenv("CFDX_SST_DIAGNOSTICS"))
                 std::cerr << "SST_LINESEARCH_STAGNATED iteration=" << iter
                           << " consecutive_rejections=" << consecutive_line_search_stalls
-                          << " qualified=0\n";
+        // The raw k/omega residuals alone do not certify convergence. In a
+        // stiff BFS, they can be < tolerance while the *returned* equations
+        // or field change remain above the same tolerance. Expose each gate
+        // without ever changing the acceptance predicate below.
+        if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+            (iter == 1 || iter % 100 == 0 || iter == max_iterations ||
+             (inner.converged && outer_update_ok && returned_equations_ok))) {
+            std::cerr << std::scientific << std::setprecision(12)
+                      << "SST_ACCEPTANCE_GATES iteration=" << iter
+                      << " inner_converged=" << inner.converged
+                      << " line_accepted=" << line_accepted
+                      << " finite=" << (result.nonfinite_bound_events == 0)
+                      << " outer_update_ok=" << outer_update_ok
+                      << " returned_equations_ok=" << returned_equations_ok
+                      << " dk_absolute=" << dk
+                      << " domega_absolute=" << dw
+                      << " k_returned_row_scaled=" << returned.k_row_scaled
+                      << " omega_returned_row_scaled=" << returned.omega_row_scaled
+                      << " tolerance=" << tolerance
+                      << " qualified_bfs=0\n";
+        }
+        const bool all_sst_gates_ok = inner.converged && line_accepted &&
+            result.nonfinite_bound_events == 0 && outer_update_ok &&
+            returned_equations_ok;
+        if (fp64_stall.observe(dk,dw,all_sst_gates_ok)) {
+            // Fail CLOSED: a repeated FP64 state with a nonzero discrete
+            // equation defect cannot converge on subsequent identical steps.
+            // This only saves work; the outer U,p,phi,SST transaction rolls back.
+            std::cerr << "SST_FP64_PRECISION_STALL_V14 iteration=" << iter
+                      << " identical_steps=" << fp64_stall.identical_unconverged
+                      << " k_returned_row_scaled=" << returned.k_row_scaled
+                      << " omega_returned_row_scaled=" << returned.omega_row_scaled
+                      << " target=" << tolerance
+                      << " accepted=0 qualified=0\n";
             break;
         }
-        if (inner.converged && line_accepted && result.nonfinite_bound_events == 0 &&
-            outer_update_ok && returned_equations_ok) {
-            result.converged = true;
-            if (std::getenv("CFDX_SST_DIAGNOSTICS"))
-                std::cerr << "SST_CERTIFIED_INNER"
+        if (all_sst_gates_ok) {
                           << " iteration=" << iter
                           << " k_nonlinear_raw=" << result.k_residual
                           << " omega_nonlinear_raw=" << result.second_residual

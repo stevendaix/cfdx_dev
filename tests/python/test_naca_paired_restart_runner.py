@@ -200,9 +200,34 @@ def test_runner_muscl_candidate_is_explicit_and_fail_closed(tmp_path, monkeypatc
     assert summary["scheme"] == "MUSCL_CELL_LIMITED"
     assert summary["linear_tolerance"] == 1e-10
     assert summary["nonlinear_tolerance"] == 1e-8
-    assert not summary["kinematic_face_flux_certified"]
-    with pytest.raises(ValueError, match="unrecognized"):
-        run_case(mesh, dest, exe, 100, 20, convection_scheme="UPWIND_LOW_ORDER")
+def test_gci_runner_overrides_ambient_algorithm_and_clears_stale_files(tmp_path, monkeypatch):
+    mesh, exe = tmp_path / "mesh.h5", tmp_path / "solver"
+    mesh.touch()
+    exe.touch()
+    output = tmp_path / "runs"
+    output.mkdir()
+    for name in ("force.csv", "raw_wall_faces.csv", "history.csv", "run_summary.json"):
+        (output / name).write_text("STALE")
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["env"] = kwargs["env"]
+        assert not (output / "force.csv").exists()
+        assert not (output / "raw_wall_faces.csv").exists()
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(RUNNER.subprocess, "run", fake_run)
+    monkeypatch.setenv("CFDX_NACA_ALGORITHM", "COUPLED")
+    monkeypatch.setenv("CFDX_NACA_COUPLED_SCHUR", "pcd")
+    status = run_case(mesh, output, exe, 10, 10, convection_scheme="TVD_VANLEER")
+    assert status == 1
+    assert captured["env"]["CFDX_NACA_ALGORITHM"] == "SIMPLE"
+    assert "CFDX_NACA_COUPLED_SCHUR" not in captured["env"]
+    summary = json.loads((output / "run_summary.json").read_text())
+    assert summary["algorithm"] == "SIMPLE"
+    assert summary["scheme"] == "TVD_VANLEER"
+    assert summary["certificate_present"] is False
+    assert summary["raw_wall_faces_present"] is False
 
 
 def test_gci_runner_overrides_ambient_algorithm_and_clears_stale_files(

@@ -7,6 +7,7 @@
 // replace CFDX's low-Re SST model or certify OpenFOAM equivalence.
 #include "cfdx/physics/sst_openfoam_wall_reference_v7.h"
 #include "cfdx/physics/sst_production_coupling.h"
+#include "cfdx/physics/sst_wall_triplet_cell_audit_v13.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -118,6 +119,13 @@ struct OpenFoamWallCouplingAuditV8 {
     double max_spalding_yplus=0.;
     double max_k_yplus=0.;
     std::size_t worst_face=0;
+    // Area-weighted MULTI-FACE wall-cell reference is diagnostic only.
+    // OpenFOAM corner weights and patch fields are not yet implemented.
+    std::size_t wall_owner_cells=0;
+    std::size_t multi_face_wall_owner_cells=0;
+    double weighted_omega_owner_gap=0.;
+    double weighted_nut_owner_proxy_gap=0.;
+    double weighted_G_owner_proxy_gap=0.;
     // This MUST remain false until the shared wall-cell constraints,
     // nut patch field, and G replacement are integrated and validated.
     bool openfoam_equivalent=false;
@@ -135,6 +143,7 @@ inline OpenFoamWallCouplingAuditV8 audit_openfoam_wall_coupling_v8(
         throw std::invalid_argument("V8 wall audit: U shape mismatch");
     validate_sst_production_state(state,mesh.n_cells());
     OpenFoamWallCouplingAuditV8 report;
+    std::vector<SstWallFaceTripletV13> wall_samples;
     for (const auto& name:wall_patches) {
         const auto it=fixed_wall_velocity.find(name);
         if (it==fixed_wall_velocity.end())
@@ -168,6 +177,8 @@ inline OpenFoamWallCouplingAuditV8 audit_openfoam_wall_coupling_v8(
                 c.sst_production_limiter*c.beta_star*c.density*k*omega);
             const auto ref=openfoam_wall_coupling_point_v8(
                 k,c.molecular_viscosity,y,tangential,g_local);
+            wall_samples.push_back({owner,face,area,ref.omega,ref.nut_spalding,
+                ref.production,omega,state.nu_t(owner),g_local});
             const double omega_gap=std::abs(omega-ref.omega)/
                 std::max(omega,ref.omega);
             // Current SST momentum uses molecular-only WALL diffusion.
@@ -192,6 +203,17 @@ inline OpenFoamWallCouplingAuditV8 audit_openfoam_wall_coupling_v8(
     }
     if (report.faces==0)
         throw std::invalid_argument("V8 wall audit: no wall faces");
+    const auto cells = audit_sst_wall_triplet_cells_v13(wall_samples);
+    report.wall_owner_cells=cells.size();
+    for (const auto& sample:cells) {
+        report.multi_face_wall_owner_cells += (sample.face_count>1);
+        report.weighted_omega_owner_gap = std::max(
+            report.weighted_omega_owner_gap,sample.omega_owner_gap);
+        report.weighted_nut_owner_proxy_gap = std::max(
+            report.weighted_nut_owner_proxy_gap,sample.nut_owner_proxy_gap);
+        report.weighted_G_owner_proxy_gap = std::max(
+            report.weighted_G_owner_proxy_gap,sample.G_owner_proxy_gap);
+    }
     return report;
 }
 
