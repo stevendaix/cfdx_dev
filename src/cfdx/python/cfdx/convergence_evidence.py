@@ -199,7 +199,9 @@ def _validate_global_nonlinear_v8(value: object, history_index: int) -> None:
     if set(value) != _V8_CERTIFICATE_KEYS:
         missing = sorted(_V8_CERTIFICATE_KEYS - set(value))
         extra = sorted(set(value) - _V8_CERTIFICATE_KEYS)
-        raise EvidenceError(f"{key} has invalid keys (missing={missing}, extra={extra})")
+        raise EvidenceError(
+            f"{key} has invalid keys (missing={missing}, extra={extra})"
+        )
     for name in _V8_BOOLEAN_KEYS:
         if not isinstance(value[name], bool):
             raise EvidenceError(f"{key}.{name} must be a boolean")
@@ -218,13 +220,17 @@ def _validate_global_nonlinear_v8(value: object, history_index: int) -> None:
     if not isinstance(components, list) or len(components) != 3:
         raise EvidenceError(f"{key}.momentum_component_relative must have 3 entries")
     for component in components:
-        _optional_nonnegative_finite(component, f"{key}.momentum_component_relative")
+        _optional_nonnegative_finite(
+            component, f"{key}.momentum_component_relative"
+        )
     if value["sst_transport_committed"] and not value["sst"]:
         raise EvidenceError(f"{key}.sst_transport_committed requires sst")
     if value["converged"] and not (
         value["evaluated"] and value["all_finite"] and value["bounded"]
     ):
-        raise EvidenceError(f"{key}.converged requires evaluated, finite, bounded state")
+        raise EvidenceError(
+            f"{key}.converged requires evaluated, finite, bounded state"
+        )
 
 
 def load_run_evidence(
