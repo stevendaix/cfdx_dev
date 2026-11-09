@@ -150,4 +150,6 @@ Le fichier `scripts/ci/qualification_profiles.json` est la source de verite :
    `python3 -m unittest discover -s tests/python -p 'test_ci_*.py'`.
 5. Configurer CMake et verifier le plan reel pour `quick` et `extended`.
 
+La politique CI echoue si la liste du menu et le catalogue divergent. Aucun
+nouveau test physique ne doit etre uniquement declare dans le menu sans CTest
 et reference independante correspondants.

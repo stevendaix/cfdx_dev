@@ -1,4 +1,10 @@
+#pragma once
+
+#include "cfdx/physics/turbulence_solver.h"
 #include "cfdx/physics/sst_fp64_stall_v14.h"
+#include "cfdx/physics/scalar_transport_gradient.h"
+#include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <iomanip>
@@ -963,7 +969,13 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         throw std::invalid_argument("SST dynamic-blending field size mismatch");
     if (controls.model!=TurbulenceModel::SST || max_iterations==0 ||
         !std::isfinite(tolerance) || tolerance<=0.0)
+        throw std::invalid_argument("SST dynamic blending requires SST and valid iteration controls");
+    TurbulenceTransportResult result;
+    std::size_t consecutive_line_search_stalls=0;
     SSTFp64StallV14 fp64_stall;
+    for(std::size_t iter=1;iter<=max_iterations;++iter){
+        auto old_k=k,old_w=omega;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> F1(n,"F1","1",1),F2(n,"F2","1",1);
         // Compute the full-cell gradient contraction once per outer iteration.
         // Recomputing this n-cell vector inside the n-cell loop made this O(n^2).
         const auto cross=sst_boundary_gradient_dot(
@@ -1172,6 +1184,9 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             if (std::getenv("CFDX_SST_DIAGNOSTICS"))
                 std::cerr << "SST_LINESEARCH_STAGNATED iteration=" << iter
                           << " consecutive_rejections=" << consecutive_line_search_stalls
+                          << " qualified=0\n";
+            break;
+        }
         // The raw k/omega residuals alone do not certify convergence. In a
         // stiff BFS, they can be < tolerance while the *returned* equations
         // or field change remain above the same tolerance. Expose each gate
@@ -1209,6 +1224,9 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             break;
         }
         if (all_sst_gates_ok) {
+            result.converged = true;
+            if (std::getenv("CFDX_SST_DIAGNOSTICS"))
+                std::cerr << "SST_CERTIFIED_INNER"
                           << " iteration=" << iter
                           << " k_nonlinear_raw=" << result.k_residual
                           << " omega_nonlinear_raw=" << result.second_residual
