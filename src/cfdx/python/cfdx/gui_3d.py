@@ -593,13 +593,13 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self.plotter.clear()
             self.plotter.add_mesh(derived, scalars=scalars)
             self.plotter.render()
-        except Exception:  # noqa: BLE001, S110
+        except Exception:
             if old_display is not None:
                 try:
                     self.plotter.clear()
                     self.plotter.add_mesh(old_display, scalars=old_scalars)
                     self.plotter.render()
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass  # Renderer failure still propagates; never claim success.
             raise
         self._selection_highlight = None
