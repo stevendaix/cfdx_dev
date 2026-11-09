@@ -1000,6 +1000,12 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     endif()
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
+        # Small, fail-closed wall-model comparability contract, no CFD solve.
+        add_test(NAME test_bfs_sst_wall_contract_v6
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_sst_wall_contract_v6.py)
+        set_tests_properties(test_bfs_sst_wall_contract_v6 PROPERTIES
+            LABELS "bfs;sst;wall;qualification;regression" TIMEOUT 20)
         add_test(NAME test_naca_farfield_face_flux_audit
             COMMAND ${Python3_EXECUTABLE} -m pytest -q
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_farfield_face_flux.py)
