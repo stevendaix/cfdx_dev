@@ -47,7 +47,7 @@ def field_rows(patch: str, boundary: Mapping[str, object]) -> tuple[PatchFieldRo
         raise ValueError("patch name must be provided")
     kind = boundary.get("type")
     if not isinstance(kind, str):
-        raise ValueError("invalid patch type")
+        raise ValueError("invalid patch type")  # noqa: TRY004
     fields = boundary.get("fields", [])
     if (
         not isinstance(fields, (list, tuple))
@@ -61,7 +61,7 @@ def field_rows(patch: str, boundary: Mapping[str, object]) -> tuple[PatchFieldRo
         data = condition_for_field(boundary, field)
         mode = data.get("velocity_type" if field == "velocity" else "scalar_type")
         if not isinstance(mode, str):
-            raise ValueError(f"missing {field} boundary condition type")
+            raise ValueError(f"missing {field} boundary condition type")  # noqa: TRY004
         if field == "velocity":
             vec = data.get("velocity_value")
             if not isinstance(vec, (list, tuple)) or len(vec) != 3:
@@ -141,7 +141,7 @@ def boundary_matrix(boundaries: Mapping[str, object]) -> tuple[PatchFieldRow, ..
     for name in sorted(boundaries):
         data = boundaries[name]
         if not isinstance(data, Mapping):
-            raise ValueError(f"invalid patch definition: {name}")
+            raise ValueError(f"invalid patch definition: {name}")  # noqa: TRY004
         result.extend(field_rows(name, data))
     return tuple(result)
 
