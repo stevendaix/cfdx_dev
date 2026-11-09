@@ -339,6 +339,12 @@ struct IncompressibleSolverControls {
     // the algebraic CSR without declaring a full FV pressure correction.
     // It does not overwrite the physical pressure, fluxes or solver status.
     bool pressure_compensated_refinement_diagnostic = false;
+    // V6 experimental actual SIMPLE production path. The full nonorthogonal
+    // Rhie-Chow face operator is the physical pressure residual; V18 sparse
+    // CSR serves only as an inexact Jacobian/preconditioner. Carry a high/low
+    // cell pressure through successive accepted iterations, use it in cell
+    // velocity gradients and full-step transport flux. Never enable by default.
+    bool pressure_high_low_production = false;
     ConvergenceAccelerationControls acceleration;
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
@@ -989,6 +995,24 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument(
             "V19 split pressure/flux requires SIMPLE, V18 full Jacobian, "
             "one pressure corrector and no pressure line-search");
+    if (c.pressure_high_low_production &&
+        std::numeric_limits<long double>::digits <=
+            std::numeric_limits<double>::digits)
+        throw std::invalid_argument(
+            "V6 high/low pressure requires extended long double; "
+            "this target needs a portable double-double face operator");
+    if (c.pressure_high_low_production &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         !c.v18_sparse_flux_pressure_jacobian ||
+         !c.v19_full_pressure_flux_step ||
+         c.pressure_continuity_line_search.enabled ||
+         c.pressure_skew_corrected_gradient ||
+         c.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF ||
+         c.initialization.mode == InitializationMode::Restart))
+        throw std::invalid_argument(
+            "V6 pressure high/low requires SIMPLE, sparse V18 full RC Jacobian, "
+            "V19 full flux, standard one-sweep gradient, no separate affine "
+            "pressure search/multisecant, and no unpaired restart");
     if (c.v18_full_flux_pressure_oracle && c.v18_sparse_flux_pressure_jacobian)
         throw std::invalid_argument("V18 reference and sparse pressure solvers are mutually exclusive");
     if (c.v18_sparse_flux_pressure_jacobian &&
@@ -1804,7 +1828,7 @@ make_rhie_chow_mass_flux(
 // owner/neighbour divergence is accumulated with opposite signs.
 inline std::vector<long double> reconstruct_compensated_rhie_chow_pressure_step(
     const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
-    const cfdx::core::Field<double,cfdx::core::Location::FACE>& base_flux,
+    const std::vector<long double>& base_flux,
     const cfdx::core::Vector& high, const cfdx::core::Vector& low,
     const std::array<std::vector<double>,3>& rAU, double rho,
     const ScalarBoundaryConditions& pressure_bcs,
@@ -1813,7 +1837,7 @@ inline std::vector<long double> reconstruct_compensated_rhie_chow_pressure_step(
     using namespace cfdx::core;
     const std::size_t nc=mesh.n_cells(), nf=mesh.n_faces();
     if (high.size()!=nc || low.size()!=nc || base_flux.size()!=nf ||
-        base_flux.dimension()!=1 || !(rho>0.0) || !std::isfinite(rho) ||
+        !(rho>0.0) || !std::isfinite(rho) ||
         std::numeric_limits<long double>::digits <=
             std::numeric_limits<double>::digits)
         throw std::invalid_argument("compensated RC: invalid dimensions/precision/density");
@@ -1946,11 +1970,267 @@ inline std::vector<long double> reconstruct_compensated_rhie_chow_pressure_step(
                 }
             }
         }
-        flux[f]=static_cast<long double>(base_flux(f))-response;
+        flux[f]=base_flux[f]-response;
         if (!std::isfinite(flux[f]))
             throw std::domain_error("compensated RC: nonfinite reconstructed flux");
     }
     return flux;
+}
+
+// Field overload retained for all V5 diagnostics and existing callers.
+inline std::vector<long double> reconstruct_compensated_rhie_chow_pressure_step(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& base_flux,
+    const cfdx::core::Vector& high, const cfdx::core::Vector& low,
+    const std::array<std::vector<double>,3>& rAU, double rho,
+    const ScalarBoundaryConditions& pressure_bcs,
+    bool projected_face_interpolation = false)
+{
+    if (base_flux.dimension()!=1 || base_flux.size()!=mesh.n_faces())
+        throw std::invalid_argument("compensated RC: invalid base flux");
+    std::vector<long double> base(mesh.n_faces());
+    for (std::size_t f=0;f<base.size();++f) base[f]=base_flux(f);
+    return reconstruct_compensated_rhie_chow_pressure_step(
+        mesh,geometry,base,high,low,rAU,rho,pressure_bcs,
+        projected_face_interpolation);
+}
+
+// Canonical physical face operator.  A zero CELL pressure establishes the
+// actual inhomogeneous boundary flux; the split cell pressure is then applied
+// as a homogeneous pressure response. No large p+dp is rounded for the flux.
+inline std::vector<long double> make_rhie_chow_mass_flux_high_low(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& HbyA,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& pressure_high,
+    const cfdx::core::Vector& pressure_low,
+    const std::array<std::vector<double>,3>& rAU, double density,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    bool projected_face_interpolation = false,
+    const VelocityFaceConditions* face_velocity_conditions = nullptr)
+{
+    using namespace cfdx::core;
+    if (pressure_high.size()!=mesh.n_cells() ||
+        pressure_low.size()!=mesh.n_cells())
+        throw std::invalid_argument("RC high/low: invalid pressure state");
+    Field<double,Location::CELL> zero(mesh.n_cells(),"pressure_zero","Pa",1);
+    zero.fill(0.0);
+    const auto zero_pressure_flux=make_rhie_chow_mass_flux(
+        mesh,geometry,HbyA,zero,rAU,density,velocity_bcs,pressure_bcs,
+        RhieChowVelocityContract::HBYA_PREDICTOR,false,
+        projected_face_interpolation,face_velocity_conditions);
+    Vector high(mesh.n_cells(),0.0);
+    for (std::size_t c=0;c<mesh.n_cells();++c) high(c)=pressure_high(c);
+    return reconstruct_compensated_rhie_chow_pressure_step(
+        mesh,geometry,zero_pressure_flux,high,pressure_low,rAU,density,
+        pressure_bcs,projected_face_interpolation);
+}
+
+// True signed FV residual: -div(phi), assembled once per oriented face and
+// normalized by the ORIGINAL pressure RHS. This remains distinct from the
+// preconditioner CSR residual and the accepted double transport flux.
+inline std::pair<cfdx::core::Vector,double> pressure_true_face_residual(
+    const cfdx::core::Mesh& mesh, const std::vector<long double>& flux,
+    const cfdx::core::Vector& original_rhs)
+{
+    using namespace cfdx::core;
+    if (flux.size()!=mesh.n_faces() || original_rhs.size()!=mesh.n_cells())
+        throw std::invalid_argument("RC true face residual: dimensions mismatch");
+    std::vector<long double> divergence(mesh.n_cells(),0.0L);
+    for (std::size_t f=0;f<flux.size();++f) {
+        if (!std::isfinite(flux[f]))
+            throw std::domain_error("RC true face residual: invalid flux");
+        const auto o=mesh.ownership().owner(f);
+        divergence[o]+=flux[f];
+        const auto nr=mesh.ownership().neighbour(f);
+        if (nr>=0) divergence[static_cast<std::size_t>(nr)]-=flux[f];
+    }
+    Vector residual(mesh.n_cells(),0.0);
+    long double residual2=0.0L, b2=0.0L;
+    for(std::size_t c=0;c<mesh.n_cells();++c) {
+        const long double r=-divergence[c];
+        if (!std::isfinite(r) || std::abs(r)>std::numeric_limits<double>::max() ||
+            !std::isfinite(original_rhs(c)))
+            throw std::domain_error("RC true face residual: invalid cell balance");
+        residual(c)=static_cast<double>(r);
+        residual2+=r*r;
+        b2+=static_cast<long double>(original_rhs(c))*original_rhs(c);
+    }
+    if (!(b2>0.0L))
+        throw std::invalid_argument("RC true face residual: zero reference RHS");
+    const double relative=static_cast<double>(std::sqrt(residual2/b2));
+    if(!std::isfinite(relative))
+        throw std::domain_error("RC true face residual: invalid norm");
+    return {std::move(residual),relative};
+}
+
+struct PressureTrueFaceRefinementReport {
+    bool converged=false;
+    std::size_t attempted=0, accepted=0;
+    double initial_relative=std::numeric_limits<double>::infinity();
+    double final_relative=std::numeric_limits<double>::infinity();
+};
+
+// The sparse Jacobian is a PRECONDITIONER for correction steps, never a
+// physical success oracle. Every trial is validated on the full RC face flux.
+// A nonconverged linear inner solve is permissible as a tentative direction,
+// but the final true-FV tolerance is never relaxed or bypassed.
+template <class FaceResidual, class LinearIncrement>
+PressureTrueFaceRefinementReport refine_pressure_true_face_high_low(
+    cfdx::core::Vector& high,cfdx::core::Vector& low,double tolerance,
+    std::size_t max_passes,FaceResidual&& physical_residual,
+    LinearIncrement&& linear_increment)
+{
+    using namespace cfdx::core;
+    if (high.size()==0 || high.size()!=low.size() ||
+        !(tolerance>0.0) || !std::isfinite(tolerance) || max_passes>12)
+        throw std::invalid_argument("RC true face refinement: invalid arguments");
+    auto [r,relative]=physical_residual(high,low);
+    if(r.size()!=high.size() || !std::isfinite(relative))
+        throw std::domain_error("RC true face refinement: invalid initial residual");
+    PressureTrueFaceRefinementReport report;
+    report.initial_relative=relative;
+    report.final_relative=relative;
+    for(std::size_t k=0;k<max_passes && relative>tolerance;++k) {
+        ++report.attempted;
+        Vector delta(high.size(),0.0);
+        if (!linear_increment(r,delta)) break;
+        bool accepted_step=false;
+        // Backtrack the pressure defect-correction direction on the independent
+        // physical full-face residual, not on FGMRES's approximate CSR norm.
+        // Geometric steps require no arbitrary relaxation of the final gate.
+        for (unsigned backtrack=0;backtrack<8;++backtrack) {
+            const double step=std::ldexp(1.0,-static_cast<int>(backtrack));
+            Vector candidate_high=high,candidate_low=low;
+            bool finite=true;
+            for(std::size_t c=0;c<high.size();++c)
+                finite=compensated_add(candidate_high(c),candidate_low(c),
+                                       step*delta(c)) && finite;
+            if(!finite) continue;
+            auto [trial_r,trial_relative]=physical_residual(
+                candidate_high,candidate_low);
+            if(!std::isfinite(trial_relative) || !(trial_relative<relative))
+                continue;
+            high=std::move(candidate_high);
+            low=std::move(candidate_low);
+            r=std::move(trial_r);
+            relative=trial_relative;
+            ++report.accepted;
+            report.final_relative=relative;
+            accepted_step=true;
+            break;
+        }
+        if (!accepted_step) break;
+    }
+    report.converged=relative<=tolerance;
+    return report;
+}
+
+// One-sweep Green-Gauss pressure gradient with no loss of the low component.
+// This is the exact pressure-gradient contract used by the experimental full
+// RC Jacobian.  Skew/multi-sweep is intentionally unsupported here.
+inline cfdx::core::Field<double,cfdx::core::Location::CELL>
+gauss_gradient_pressure_high_low(
+    const cfdx::core::Mesh& mesh,const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& high,
+    const cfdx::core::Vector& low,const ScalarBoundaryConditions& bcs,
+    bool projected=false)
+{
+    using namespace cfdx::core;
+    if (high.dimension()!=1 || high.size()!=mesh.n_cells() ||
+        low.size()!=mesh.n_cells())
+        throw std::invalid_argument("RC high/low gradient: invalid dimensions");
+    Field<double,Location::CELL> grad(mesh.n_cells(),"pressure_hilo_gradient","Pa/m",3);
+    const auto& own=mesh.ownership();
+    const auto* offsets=mesh.cells().offsets_data();
+    const auto* faces=mesh.cells().faces_data();
+    for(std::size_t c=0;c<mesh.n_cells();++c) {
+        if(!std::isfinite(high(c)) || !std::isfinite(low(c)) ||
+           !(geometry.cell_volumes[c]>0.0))
+            throw std::domain_error("RC high/low gradient: invalid pressure/volume");
+        std::array<long double,3> sum{0.0L,0.0L,0.0L};
+        for(Offset at=offsets[c];at<offsets[c+1];++at) {
+            const std::size_t f=faces[at];
+            const bool is_owner=own.owner(f)==c;
+            const Vec3 Sf=is_owner ? geometry.face_area_vectors[f] :
+                                     geometry.face_area_vectors[f]*-1.0;
+            long double vf=static_cast<long double>(high(c))+low(c);
+            const auto nr=own.neighbour(f);
+            if(nr>=0) {
+                const std::size_t other=is_owner ? static_cast<std::size_t>(nr) : own.owner(f);
+                double w=0.0;
+                if(projected) {
+                    const double wn=geometric_interpolation_weight(
+                        geometry.face_centres[f],geometry.cell_centres[c],
+                        &geometry.cell_centres[other]);
+                    w=1.0-wn;
+                } else {
+                    const double dc=(geometry.face_centres[f]-geometry.cell_centres[c]).mag();
+                    const double dn=(geometry.cell_centres[other]-geometry.face_centres[f]).mag();
+                    if(!(dc+dn>0.0)) throw std::invalid_argument("RC high/low gradient: degenerate face");
+                    w=dn/(dc+dn);
+                }
+                vf=static_cast<long double>(w)*vf+
+                    static_cast<long double>(1.0-w)*
+                        (static_cast<long double>(high(other))+low(other));
+            } else {
+                const auto patch=geometry.face_patch[f];
+                if(patch<mesh.boundary().n_patches() &&
+                   mesh.boundary().patch(patch).type==PatchType::EMPTY)
+                    continue;
+                if(patch<mesh.boundary().n_patches()) {
+                    const auto it=bcs.find(mesh.boundary().patch(patch).name);
+                    if(it!=bcs.end() && it->second.type==ScalarBoundaryType::FIXED_VALUE)
+                        vf=it->second.value;
+                    else if(it!=bcs.end() && it->second.type==ScalarBoundaryType::FIXED_GRADIENT) {
+                        const Vec3 unit=Sf*(1.0/Sf.mag());
+                        vf+=it->second.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
+                    }
+                }
+            }
+            sum[0]+=static_cast<long double>(Sf.x)*vf;
+            sum[1]+=static_cast<long double>(Sf.y)*vf;
+            sum[2]+=static_cast<long double>(Sf.z)*vf;
+        }
+        for(std::size_t d=0;d<3;++d) {
+            const long double v=sum[d]/geometry.cell_volumes[c];
+            if(!std::isfinite(v) || std::abs(v)>std::numeric_limits<double>::max())
+                throw std::domain_error("RC high/low gradient: nonfinite component");
+            grad.component_data(d)[c]=static_cast<double>(v);
+        }
+    }
+    return grad;
+}
+
+// An under-relaxed physical pressure update MUST retain its roundoff part;
+// an unrelaxed flux pressure is distinct from the momentum pressure in SIMPLE.
+inline void add_pressure_high_low(
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& high,
+    cfdx::core::Vector& low,const cfdx::core::Vector& correction_high,
+    const cfdx::core::Vector& correction_low,double alpha)
+{
+    if (high.size()!=low.size() || low.size()!=correction_high.size() ||
+        low.size()!=correction_low.size() || !(alpha>0.0 && alpha<=1.0) ||
+        !std::isfinite(alpha) ||
+        std::numeric_limits<long double>::digits<=std::numeric_limits<double>::digits)
+        throw std::invalid_argument("RC high/low update: invalid arguments");
+    for(std::size_t c=0;c<high.size();++c) {
+        // Never evaluate (high+low)+increment in long double: even 80-bit
+        // extended precision loses bits of the low part when |high| is large.
+        // Split the alpha-scaled correction before adding using TwoSum.
+        const long double increment = static_cast<long double>(alpha) *
+            (static_cast<long double>(correction_high(c)) +
+             static_cast<long double>(correction_low(c)));
+        if (!std::isfinite(increment) ||
+            std::abs(increment)>std::numeric_limits<double>::max())
+            throw std::domain_error("RC high/low update: invalid increment");
+        const double increment_high=static_cast<double>(increment);
+        const double increment_low=static_cast<double>(
+            increment-static_cast<long double>(increment_high));
+        if (!cfdx::core::compensated_add(high(c),low(c),increment_high) ||
+            !cfdx::core::compensated_add(high(c),low(c),increment_low))
+            throw std::domain_error("RC high/low update: nonfinite pressure");
+    }
 }
 
 inline double compensated_flux_continuity_relative(
@@ -5186,6 +5466,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             return pressure_face_orthogonal_coefficient(Sf, dvec, {cx, cy, cz});
         };
 
+    // Sidecar pressure low part: committed only with the nonlinear physical
+    // state. A failed iteration MUST roll this back alongside U/p/phi.
+    Vector pressure_low_state(
+        controls.pressure_high_low_production ? mesh.n_cells() : 0,0.0);
     Field<double, Location::FACE> mass_flux =
         make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs,
                        {}, controls.pressure_projected_face_interpolation);
@@ -5376,6 +5660,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         NonlinearRetryController retry_controller(controls.nonlinear_retry);
         NonlinearStateRollback transaction(U, p);
         const auto mass_flux_snapshot = mass_flux;
+        const Vector pressure_low_snapshot=pressure_low_state;
         bool iteration_completed = false;
         // A rejected multisecant predictor gets exactly one ordinary Picard
         // retry at UNCHANGED alpha_u/alpha_p. Reset the multisecant history;
@@ -5580,10 +5865,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (freeze_state)
             phi_used_in_momentum = mass_flux;
 
-        auto grad_p = gauss_gradient_with_boundary(
-            p, mesh, geometry, pressure_bcs,
-            controls.pressure_skew_corrected_gradient,
-            controls.pressure_projected_face_interpolation);
+        auto grad_p = controls.pressure_high_low_production
+            ? gauss_gradient_pressure_high_low(
+                mesh,geometry,p,pressure_low_state,pressure_bcs,
+                controls.pressure_projected_face_interpolation)
+            : gauss_gradient_with_boundary(
+                p,mesh,geometry,pressure_bcs,
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
 
         Field<double, Location::CELL> body_x(mesh.n_cells(), "body_x", "N/m3", 1);
         Field<double, Location::CELL> body_y(mesh.n_cells(), "body_y", "N/m3", 1);
@@ -6181,6 +6470,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // V19: last conservative flux may correspond to the unrelaxed
         // pressure step, not the under-relaxed physical pressure.
         auto v19_flux_pressure_state = p;
+        Vector v19_flux_pressure_low(
+            controls.pressure_high_low_production ? mesh.n_cells() : 0,0.0);
         auto phiHbyA = make_mass_flux(
             mesh, geometry, HbyA, controls.density, velocity_bcs,
             {}, controls.pressure_projected_face_interpolation,
@@ -6722,6 +7013,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
             }
 
+            // The V6 canonical pressure state includes the LOW sidecar of the
+            // previously accepted pressure. Keep its full face flux as the
+            // single residual operator for the new pressure increment.
+            std::vector<long double> canonical_base_flux;
+            if (controls.pressure_high_low_production) {
+                canonical_base_flux=make_rhie_chow_mass_flux_high_low(
+                    mesh,geometry,HbyA,p,pressure_low_state,rAU,controls.density,
+                    velocity_bcs,pressure_bcs,
+                    controls.pressure_projected_face_interpolation,
+                    face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+            }
             // Experimental reference matrix includes the derivative of every
             // pressure-dependent deferred Rhie-Chow gradient. Retain the same
             // physical RHS: minus divergence of the authoritative flux.
@@ -6751,6 +7053,24 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 if (rhs_error>1e-9*std::max(1.0,audit.cell_l1))
                     throw std::runtime_error("V18 full-flux pressure RHS inconsistent");
+                if (controls.pressure_high_low_production) {
+                    // Replace the FP64 RHS by the canonical split-pressure
+                    // minus divergence. The initial p_low=0 agrees with V18,
+                    // subsequent iterations must not discard its history.
+                    std::vector<long double> divergence(nc,0.0L);
+                    for(std::size_t f=0;f<mesh.n_faces();++f) {
+                        const auto o=mesh.ownership().owner(f);
+                        divergence[o]+=canonical_base_flux[f];
+                        const auto n=mesh.ownership().neighbour(f);
+                        if(n>=0) divergence[static_cast<std::size_t>(n)]-=canonical_base_flux[f];
+                    }
+                    for(std::size_t c=0;c<nc;++c) {
+                        const long double r=-divergence[c];
+                        if(!std::isfinite(r) || std::abs(r)>std::numeric_limits<double>::max())
+                            throw std::domain_error("RC high/low: invalid base divergence");
+                        b(c)=static_cast<double>(r);
+                    }
+                }
                 std::cerr << std::scientific << std::setprecision(12)
                           << "V18_FULL_FLUX_OPERATOR mode="
                           << (controls.v18_full_flux_pressure_oracle ? "reference" : "sparse")
@@ -6908,6 +7228,57 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             p_corr(cell) = reduced_corr(reduced_index(cell));
                     p_corr(ref) = 0.0;
                 }
+            }
+            // The original V18 sparse matrix is an inexact Jacobian for the
+            // REAL full Rhie-Chow face residual.  Neither CG/FGMRES status nor
+            // an algebraic CSR residual can promote a pressure correction.
+            Vector p_corr_low(nc,0.0);
+            if (controls.pressure_high_low_production) {
+                const double csr_relative=rp.residual_relative;
+                const auto physical_residual=[&](const Vector& hi,const Vector& lo) {
+                    const auto flux=reconstruct_compensated_rhie_chow_pressure_step(
+                        mesh,geometry,canonical_base_flux,hi,lo,rAU,
+                        controls.density,pressure_bcs,
+                        controls.pressure_projected_face_interpolation);
+                    return pressure_true_face_residual(mesh,flux,b);
+                };
+                const auto inner_direction=[&](const Vector& defect,Vector& delta) {
+                    const auto inner=solve_pressure_system(A,defect,delta);
+                    // Even a Krylov MAX_ITER direction must be checked on the
+                    // true FV faces; DIVERGED is never eligible.
+                    if(inner.status==SolverStatus::DIVERGED ||
+                       inner.status==SolverStatus::NOT_APPLICABLE) return false;
+                    for(std::size_t c=0;c<delta.size();++c)
+                        if(!std::isfinite(delta(c))) return false;
+                    return true;
+                };
+                const double physical_pressure_tolerance=
+                    controls.pressure_linear_tolerance>0.0
+                    ? controls.pressure_linear_tolerance : linear_tolerance;
+                const auto true_report=refine_pressure_true_face_high_low(
+                    p_corr,p_corr_low,physical_pressure_tolerance,12,
+                    physical_residual,inner_direction);
+                std::cerr << std::scientific << std::setprecision(16)
+                          << "PRESSURE_HILO_PRODUCTION iteration=" << iter
+                          << " corrector=" << corr
+                          << " original_csr_relative=" << csr_relative
+                          << " initial_face_relative=" << true_report.initial_relative
+                          << " final_face_relative=" << true_report.final_relative
+                          << " refinements_attempted=" << true_report.attempted
+                          << " refinements_accepted=" << true_report.accepted
+                          << " true_face_converged=" << true_report.converged
+                          << " requested_tolerance=" << physical_pressure_tolerance
+                          << " qualified_bfs=0\n";
+                // A MAX_ITER algebraic solve may supply a usable direction,
+                // but only a certified TRUE full face residual can promote it.
+                rp.residual_relative=true_report.final_relative;
+                long double b2=0.0L;
+                for(std::size_t c=0;c<nc;++c)
+                    b2+=static_cast<long double>(b(c))*b(c);
+                rp.residual=static_cast<double>(
+                    std::sqrt(b2)*true_report.final_relative);
+                rp.status=true_report.converged
+                    ? SolverStatus::CONVERGED : SolverStatus::MAX_ITER_REACHED;
             }
             // Optional snapshot of the ORIGINAL pressure matrix and right-hand
             // side. Independent of expensive momentum forensic logging.
@@ -7620,18 +7991,38 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 restore_base_pressure();
             }
             last_selected_pressure_alpha = alpha_p;
-            apply_v19_pressure_flux_policy(
-                p, v19_flux_pressure_state, p_corr, alpha_p,
-                controls.v19_full_pressure_flux_step,
-                geometry, controls.pressure_gauge_policy,
-                controls.pressure_reference_cell, controls.pressure_reference_value,
-                has_fixed_pressure_boundary);
+            if (controls.pressure_high_low_production) {
+                // Transactional high/low update of BOTH SIMPLE pressures:
+                // alpha*p_corr for velocity and full p_corr for transport.
+                auto physical_high=p;
+                auto physical_low=pressure_low_state;
+                auto flux_high=p;
+                auto flux_low=pressure_low_state;
+                add_pressure_high_low(physical_high,physical_low,
+                                      p_corr,p_corr_low,alpha_p);
+                add_pressure_high_low(flux_high,flux_low,
+                                      p_corr,p_corr_low,1.0);
+                p=std::move(physical_high);
+                pressure_low_state=std::move(physical_low);
+                v19_flux_pressure_state=std::move(flux_high);
+                v19_flux_pressure_low=std::move(flux_low);
+            } else {
+                apply_v19_pressure_flux_policy(
+                    p, v19_flux_pressure_state, p_corr, alpha_p,
+                    controls.v19_full_pressure_flux_step,
+                    geometry, controls.pressure_gauge_policy,
+                    controls.pressure_reference_cell, controls.pressure_reference_value,
+                    has_fixed_pressure_boundary);
+            }
 
-            auto corrected_grad_p =
-                gauss_gradient_with_boundary(
-            p, mesh, geometry, pressure_bcs,
-            controls.pressure_skew_corrected_gradient,
-            controls.pressure_projected_face_interpolation);
+            auto corrected_grad_p = controls.pressure_high_low_production
+                ? gauss_gradient_pressure_high_low(
+                    mesh,geometry,p,pressure_low_state,pressure_bcs,
+                    controls.pressure_projected_face_interpolation)
+                : gauss_gradient_with_boundary(
+                    p,mesh,geometry,pressure_bcs,
+                    controls.pressure_skew_corrected_gradient,
+                    controls.pressure_projected_face_interpolation);
 
             // Rebuild the corrected velocity from the same rAU operator
             // that built the cell HbyA, so the converged velocity
@@ -7651,14 +8042,53 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The conservative face flux is rebuilt from the same
             // momentum-weighted interpolation used by the pressure equation.
             // This is the single authoritative phi state for continuity.
-            mass_flux = make_rhie_chow_mass_flux(
-                mesh, geometry, HbyA, v19_flux_pressure_state,
-                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                controls.density, velocity_bcs, pressure_bcs,
-                RhieChowVelocityContract::HBYA_PREDICTOR,
-                controls.pressure_skew_corrected_gradient,
-                controls.pressure_projected_face_interpolation,
-                face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+            if (controls.pressure_high_low_production) {
+                const auto exact_flux=make_rhie_chow_mass_flux_high_low(
+                    mesh,geometry,HbyA,v19_flux_pressure_state,
+                    v19_flux_pressure_low,rAU,controls.density,
+                    velocity_bcs,pressure_bcs,
+                    controls.pressure_projected_face_interpolation,
+                    face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+                const auto exact_balance=pressure_true_face_residual(
+                    mesh,exact_flux,b);
+                for(std::size_t f=0;f<mesh.n_faces();++f)
+                    mass_flux(f)=static_cast<double>(exact_flux[f]);
+                std::vector<long double> rounded_flux(mesh.n_faces());
+                for(std::size_t f=0;f<mesh.n_faces();++f)
+                    rounded_flux[f]=mass_flux(f);
+                const double double_relative=pressure_true_face_residual(
+                    mesh,rounded_flux,b).second;
+                std::cerr << std::scientific << std::setprecision(16)
+                          << "PRESSURE_HILO_PHYSICAL_FLUX iteration=" << iter
+                          << " corrector=" << corr
+                          << " exact_relative=" << exact_balance.second
+                          << " stored_fp64_relative=" << double_relative
+                          << " alpha_p=" << alpha_p
+                          << " physical_pressure_low_max=" << [&] {
+                            double maximum=0.0;
+                            for(std::size_t c=0;c<nc;++c)
+                                maximum=std::max(maximum,std::abs(pressure_low_state(c)));
+                            return maximum;
+                          }()
+                          << " accepted_iteration=0\n";
+                const double physical_pressure_tolerance=
+                    controls.pressure_linear_tolerance>0.0
+                    ? controls.pressure_linear_tolerance : linear_tolerance;
+                if (exact_balance.second>physical_pressure_tolerance ||
+                    double_relative>physical_pressure_tolerance)
+                    throw NonlinearRetryableFailure(
+                        "V6 compensated pressure: full Rhie-Chow transport flux "
+                        "does not satisfy the original pressure tolerance");
+            } else {
+                mass_flux = make_rhie_chow_mass_flux(
+                    mesh, geometry, HbyA, v19_flux_pressure_state,
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                    controls.density, velocity_bcs, pressure_bcs,
+                    RhieChowVelocityContract::HBYA_PREDICTOR,
+                    controls.pressure_skew_corrected_gradient,
+                    controls.pressure_projected_face_interpolation,
+                    face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+            }
 
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(mass_flux);
@@ -7787,6 +8217,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.pressure_skew_corrected_gradient,
                 controls.pressure_projected_face_interpolation,
                 face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+            if (controls.pressure_high_low_production) {
+                const auto split_flux=make_rhie_chow_mass_flux_high_low(
+                    mesh,geometry,HbyA,v19_flux_pressure_state,
+                    v19_flux_pressure_low,rAU,controls.density,
+                    velocity_bcs,pressure_bcs,
+                    controls.pressure_projected_face_interpolation,
+                    face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+                for(std::size_t f=0;f<mesh.n_faces();++f)
+                    rederived_flux(f)=static_cast<double>(split_flux[f]);
+            }
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(rederived_flux);
             for (std::size_t f = 0; f < mesh.n_faces(); ++f)
@@ -7891,10 +8331,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             final_uy_field(c) = U.component_data(1)[c];
             final_uz_field(c) = U.component_data(2)[c];
         }
-        auto final_grad_p = gauss_gradient_with_boundary(
-            p, mesh, geometry, pressure_bcs,
-            controls.pressure_skew_corrected_gradient,
-            controls.pressure_projected_face_interpolation);
+        auto final_grad_p = controls.pressure_high_low_production
+            ? gauss_gradient_pressure_high_low(
+                mesh,geometry,p,pressure_low_state,pressure_bcs,
+                controls.pressure_projected_face_interpolation)
+            : gauss_gradient_with_boundary(
+                p,mesh,geometry,pressure_bcs,
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
         if (include_transpose_stress) {
             const auto final_stress_flux = transpose_viscous_stress_flux(
                 mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z},
@@ -8709,6 +9153,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
+                pressure_low_state=pressure_low_snapshot;
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 frozen_state_valid = false;
@@ -9645,6 +10090,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
+                pressure_low_state=pressure_low_snapshot;
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 if (controls.sst_runtime) {
@@ -9695,6 +10141,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (!transaction.active()) throw;
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
+                pressure_low_state=pressure_low_snapshot;
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 convergence_monitor = convergence_monitor_snapshot;
@@ -9723,6 +10170,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             } catch (...) {
                 if (transaction.active()) transaction.reject();
                 mass_flux = mass_flux_snapshot;
+                pressure_low_state=pressure_low_snapshot;
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 throw;
