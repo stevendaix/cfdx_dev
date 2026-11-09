@@ -79,7 +79,7 @@ def validate_boundary_definition(
 ) -> None:
     """Validate the supported single-field wire shape and staged field data."""
     if not isinstance(boundary, dict):
-        raise ValueError("boundary definition must be a mapping")
+        raise ValueError("boundary definition must be a mapping")  # noqa: TRY004
     kind = boundary.get("type")
     fields_for_boundary_type(kind)
     fields = boundary.get("fields", ())
@@ -136,12 +136,13 @@ def validate_boundary_definition(
                     or not isfinite(value)
                 ):
                     raise ValueError(f"{field}.{key} must be a finite number")
-    if kind in {"inlet", "outlet", "wall"} and "velocity" in declared:
-        if (
-            boundary.get("velocity_type", "ZERO_GRADIENT") not in VELOCITY_TYPES
-            and len(fields) <= 1
-        ):
-            raise ValueError("unsupported velocity boundary type")
+    if (
+        kind in {"inlet", "outlet", "wall"}
+        and "velocity" in declared
+        and boundary.get("velocity_type", "ZERO_GRADIENT") not in VELOCITY_TYPES
+        and len(fields) <= 1
+    ):
+        raise ValueError("unsupported velocity boundary type")
     runtime_ok, explanation = boundary_runtime_support(boundary)
     if not runtime_ok:
         raise ValueError(explanation)
