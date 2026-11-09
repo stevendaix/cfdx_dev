@@ -69,6 +69,9 @@ NON_FICHE_REPORTS = {
     # V9 is a campaign/evidence dossier, not a single numerical-method fiche:
     # its sections 1-9 document the multi-Schur qualification contract.
     "50-bfs-multi-schur-qualification-v9.md",
+    # V10 extends the same BFS campaign with solver-stage diagnostics and
+    # fail-closed physical qualification evidence; it is not a new method.
+    "51-bfs-six-schur-production-diagnostics-v10.md",
 }
 
 # Reference detection (DOI prefix or ISBN). Every character class avoids
