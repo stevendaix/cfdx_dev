@@ -38,7 +38,7 @@ class _Job(QRunnable):
     def run(self):
         try:
             self.events.done.emit(self.callback(), None)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.events.done.emit(None, str(exc))
 
 
