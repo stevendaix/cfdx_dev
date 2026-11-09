@@ -21,6 +21,17 @@ from scripts import compare_th03_wall_gradients as diag
 from scripts import generate_th03_bfs_case as bfs
 
 
+def test_debug_bfs_pressure_outlet_matches_physical_operator() -> None:
+    setup = json.loads(bfs.make_setup(height=0.0127, reynolds=36000, velocity=44.2))
+    outlet = next(
+        boundary for boundary in setup["boundary_conditions"]
+        if boundary["patch_name"] == "outlet"
+    )
+    assert outlet["type"] == "PRESSURE_OUTLET"
+    assert outlet["value_type"] == "OUTLET_PRESSURE"
+    assert outlet["pressure"] == 0
+
+
 @pytest.mark.skipif(
     os.environ.get("CFDX_RUN_TH03_DEBUG_E2E") != "1",
     reason="opt-in actual SST BFS solve (145 nonlinear iterations)",
