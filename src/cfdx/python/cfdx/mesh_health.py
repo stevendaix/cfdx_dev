@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -105,7 +106,7 @@ def _distribution(
     if np.any(valid < 0):
         raise ValueError(f"{name} contains negative values")
     distribution = []
-    for lower, upper in zip(bins[:-1], bins[1:], strict=True):
+    for lower, upper in pairwise(bins):
         count = int(np.count_nonzero((valid >= lower) & (valid < upper)))
         label = f"{lower:g}–{upper:g}" if math.isfinite(upper) else f">={lower:g}"
         distribution.append((label, count))
