@@ -177,7 +177,7 @@ class QualificationCenterPanel(QWidget):
             raise ValueError("invalid CI manifest schema or commit")
         entries = data.get("cases")
         if not isinstance(entries, list):
-            raise ValueError("missing case evidence list")
+            raise ValueError("missing case evidence list")  # noqa: TRY004
         proofs = {}
         allowed = {case.id for case in self.registry.cases}
         for item in entries:
