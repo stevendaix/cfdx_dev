@@ -87,6 +87,7 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
+    std::string high_low_checkpoint_prefix;
     bool validate_numerics_only = false;
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
@@ -712,6 +713,8 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
+        else if (arg == "--high-low-checkpoint-prefix")
+            o.high_low_checkpoint_prefix = value("--high-low-checkpoint-prefix");
         else if (arg == "--validate-numerics-only") o.validate_numerics_only = true;
         else if (arg == "--pressure-replay-prefix")
             o.pressure_replay_prefix = value("--pressure-replay-prefix");
@@ -742,6 +745,7 @@ Options parse(int argc, char** argv)
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
+                         "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
                          "  [--validate-numerics-only] (validate and print resolved case methods; do not solve)\n"
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
@@ -1385,6 +1389,11 @@ int main(int argc, char** argv)
             controls.pressure_compensated_assembly=flag("pressure_compensated_assembly");
             controls.pressure_compensated_refinement_diagnostic=flag("pressure_compensated_refinement_diagnostic");
             controls.pressure_high_low_production=flag("pressure_high_low_production");
+            controls.require_post_sst_momentum_reassembly=
+                flag("v7_post_sst_momentum_gate");
+            if (controls.require_post_sst_momentum_reassembly)
+                std::cout << "V7 cross-equation momentum residual after SST: "
+                             "EXPERIMENTAL physical gate, tolerances unchanged\n";
             if (controls.pressure_high_low_production)
                 std::cout << "V6 full Rhie-Chow high/low pressure PRODUCTION: EXPERIMENTAL, not BFS-qualified\n";
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
@@ -1786,6 +1795,44 @@ int main(int argc, char** argv)
                 << "WARNING: experimental SST runtime explicitly enabled. "
                    "This path is not physically qualified and does not enable "
                    "the general RANS selector.\n";
+        }
+
+        if (!options.high_low_checkpoint_prefix.empty()) {
+            if (!controls.pressure_high_low_production)
+                throw std::invalid_argument(
+                    "--high-low-checkpoint-prefix requires pressure_high_low_production=true");
+            const std::filesystem::path prefix(options.high_low_checkpoint_prefix);
+            if (!prefix.parent_path().empty())
+                std::filesystem::create_directories(prefix.parent_path());
+            controls.accepted_compensated_iteration_callback =
+                [&options,&experimental_sst_state](
+                    std::size_t iter, const Mesh& mesh,
+                    const Field<double,Location::CELL>& u,
+                    const Field<double,Location::CELL>& p,
+                    const Field<double,Location::FACE>& flux,
+                    const Vector& low) {
+                    if (low.size()!=mesh.n_cells() || flux.size()!=mesh.n_faces())
+                        throw std::logic_error("DAT6 checkpoint: incomplete accepted high/low state");
+                    Field<double,Location::CELL> p_low(mesh.n_cells(),"p_low","Pa",1);
+                    for (std::size_t c=0;c<mesh.n_cells();++c) p_low(c)=low(c);
+                    // The writer's legacy field pointers are mutable, but
+                    // these copies leave the committed solver state untouched.
+                    auto flux_copy=flux;
+                    DatRestartFields fields;
+                    fields.pressure_low=&p_low;
+                    fields.face_mass_flux=&flux_copy;
+                    if (experimental_sst_state) {
+                        fields.k=&experimental_sst_state->k;
+                        fields.omega=&experimental_sst_state->omega;
+                    }
+                    const auto name=options.high_low_checkpoint_prefix +
+                        "_iter" + std::to_string(iter) + ".dat";
+                    write_dat_restart_fields(name,mesh,u,p,fields,iter,0.0);
+                    std::cout << "HILO_DAT6_CHECKPOINT iteration=" << iter
+                              << " file=" << name << " qualified=0\n";
+                };
+            std::cout << "V7 DAT6 accepted-state checkpoint enabled: "
+                      << options.high_low_checkpoint_prefix << " (EXPERIMENTAL)\n";
         }
 
         std::cout << "Initialization strategy "
