@@ -49,29 +49,6 @@ jobs:
         env:
           CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
 
-      - name: TEMP Ruff autofix artifact
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/ruff-fixed
-          mapfile -t files < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" -- '*.py')
-          if (("${#files[@]}" > 0)); then
-            ruff check --fix "${files[@]}" || true
-            ruff format "${files[@]}"
-            for f in "${files[@]}"; do
-              mkdir -p "/tmp/ruff-fixed/$(dirname "$f")"
-              cp "$f" "/tmp/ruff-fixed/$f"
-            done
-            ruff check "${files[@]}" > /tmp/ruff-fixed/ruff-check.txt 2>&1 || true
-          fi
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: pr1191-ruff-fixed
-          path: /tmp/ruff-fixed/
-          if-no-files-found: ignore
-
       - name: Ruff diagnostics (annotate exact lint/format findings)
         if: failure()
         run: |
