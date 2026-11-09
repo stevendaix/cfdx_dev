@@ -1783,6 +1783,194 @@ make_rhie_chow_mass_flux(
     return flux;
 }
 
+// Experimental audit of the COMPLETE pressure-dependent Rhie-Chow face
+// response of the same Picard-frozen SIMPLE state.  Unlike an implicit-face
+// residual, this also includes the deferred/nonorthogonal Green-Gauss term.
+// It is a diagnostic: the public FV fields are still FP64 and the nonlinear
+// momentum/SST acceptance gates are not replaced.  Skewed multi-sweep
+// gradients, SIMPLEC and COUPLED need separate linearization contracts.
+//
+// The derivative is assembled from the high/low *increment* using extended
+// precision, so neither (high+low) nor p_old+increment is rounded before
+// computing pressure gradients and differences.  Each face is written ONCE;
+// owner/neighbour divergence is accumulated with opposite signs.
+inline std::vector<long double> reconstruct_compensated_rhie_chow_pressure_step(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& base_flux,
+    const cfdx::core::Vector& high, const cfdx::core::Vector& low,
+    const std::array<std::vector<double>,3>& rAU, double rho,
+    const ScalarBoundaryConditions& pressure_bcs,
+    bool projected_face_interpolation = false)
+{
+    using namespace cfdx::core;
+    const std::size_t nc=mesh.n_cells(), nf=mesh.n_faces();
+    if (high.size()!=nc || low.size()!=nc || base_flux.size()!=nf ||
+        base_flux.dimension()!=1 || !(rho>0.0) || !std::isfinite(rho) ||
+        std::numeric_limits<long double>::digits <=
+            std::numeric_limits<double>::digits)
+        throw std::invalid_argument("compensated RC: invalid dimensions/precision/density");
+    for (const auto& component : rAU) {
+        if (component.size()!=nc)
+            throw std::invalid_argument("compensated RC: rAU dimension mismatch");
+        for (double value : component)
+            if (!std::isfinite(value) || !(value>0.0))
+                throw std::invalid_argument("compensated RC: invalid inverse momentum diagonal");
+    }
+    const auto& ownership=mesh.ownership();
+    const auto* offsets=mesh.cells().offsets_data();
+    const auto* cell_faces=mesh.cells().faces_data();
+    std::vector<std::array<long double,3>> gradient(nc);
+    for (std::size_t c=0;c<nc;++c) {
+        if (!std::isfinite(high(c)) || !std::isfinite(low(c)) ||
+            !(geometry.cell_volumes[c]>0.0))
+            throw std::invalid_argument("compensated RC: invalid pressure/volume");
+        std::array<long double,3> sum{0.0L,0.0L,0.0L};
+        for (Offset k=offsets[c];k<offsets[c+1];++k) {
+            const auto f=cell_faces[k];
+            const bool is_owner=ownership.owner(f)==c;
+            const auto Sf=is_owner ? geometry.face_area_vectors[f] :
+                                      geometry.face_area_vectors[f]*-1.0;
+            const auto nr=ownership.neighbour(f);
+            long double vf=static_cast<long double>(high(c))+low(c);
+            if (nr>=0) {
+                const std::size_t other=is_owner ? static_cast<std::size_t>(nr) :
+                                                      ownership.owner(f);
+                double w;
+                if (projected_face_interpolation) {
+                    const double wn=geometric_interpolation_weight(
+                        geometry.face_centres[f], geometry.cell_centres[c],
+                        &geometry.cell_centres[other]);
+                    w=1.0-wn;
+                } else {
+                    const double dc=(geometry.face_centres[f]-geometry.cell_centres[c]).mag();
+                    const double dn=(geometry.cell_centres[other]-geometry.face_centres[f]).mag();
+                    if (!(dc+dn>0.0))
+                        throw std::runtime_error("compensated RC: zero face distance");
+                    w=dn/(dc+dn);
+                }
+                vf=static_cast<long double>(w)*
+                       (static_cast<long double>(high(c))+low(c)) +
+                   static_cast<long double>(1.0-w)*
+                       (static_cast<long double>(high(other))+low(other));
+            } else {
+                const auto patch=geometry.face_patch[f];
+                if (patch<mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type==PatchType::EMPTY)
+                    continue;
+                if (patch<mesh.boundary().n_patches()) {
+                    const auto& name=mesh.boundary().patch(patch).name;
+                    const auto bc=pressure_bcs.find(name);
+                    // A correction field has homogeneous fixed-value BC and
+                    // homogeneous fixed-gradient BC. Both must be zeroed.
+                    if (bc!=pressure_bcs.end() &&
+                        bc->second.type==ScalarBoundaryType::FIXED_VALUE)
+                        vf=0.0L;
+                }
+            }
+            sum[0]+=static_cast<long double>(Sf.x)*vf;
+            sum[1]+=static_cast<long double>(Sf.y)*vf;
+            sum[2]+=static_cast<long double>(Sf.z)*vf;
+        }
+        for (std::size_t d=0;d<3;++d) {
+            gradient[c][d]=sum[d]/geometry.cell_volumes[c];
+            if (!std::isfinite(gradient[c][d]))
+                throw std::domain_error("compensated RC: nonfinite pressure gradient");
+        }
+    }
+    std::vector<long double> flux(nf);
+    const auto deferred = [&](const Vec3& Sf, const Vec3& dvec,
+                              const Vec3& dAU,
+                              const std::array<long double,3>& gp) {
+        const double d=dvec.mag();
+        if (!(d>0.0)) throw std::runtime_error("compensated RC: degenerate face");
+        const Vec3 e=dvec*(1.0/d);
+        const double ge=dAU.x*e.x*e.x+dAU.y*e.y*e.y+dAU.z*e.z*e.z;
+        const double orth_area=Sf.dot(e);
+        const long double projected_grad=
+            gp[0]*e.x+gp[1]*e.y+gp[2]*e.z;
+        return static_cast<long double>(dAU.x)*gp[0]*Sf.x+
+               static_cast<long double>(dAU.y)*gp[1]*Sf.y+
+               static_cast<long double>(dAU.z)*gp[2]*Sf.z-
+               static_cast<long double>(ge)*projected_grad*orth_area;
+    };
+    for (std::size_t f=0;f<nf;++f) {
+        const auto o=ownership.owner(f);
+        const auto nr=ownership.neighbour(f);
+        const Vec3 Sf=geometry.face_area_vectors[f];
+        long double response=0.0L;
+        if (nr>=0) {
+            const auto n=static_cast<std::size_t>(nr);
+            const auto dvec=geometry.cell_centres[n]-geometry.cell_centres[o];
+            const double wn=pressure_face_neighbour_weight(
+                geometry,f,o,n,projected_face_interpolation);
+            const double wo=1.0-wn;
+            const Vec3 dAU{
+                wo*geometry.cell_volumes[o]*rAU[0][o]+wn*geometry.cell_volumes[n]*rAU[0][n],
+                wo*geometry.cell_volumes[o]*rAU[1][o]+wn*geometry.cell_volumes[n]*rAU[1][n],
+                wo*geometry.cell_volumes[o]*rAU[2][o]+wn*geometry.cell_volumes[n]*rAU[2][n]};
+            const double orth=pressure_face_orthogonal_coefficient(Sf,dvec,dAU);
+            const long double jump=
+                (static_cast<long double>(high(n))-high(o))+
+                (static_cast<long double>(low(n))-low(o));
+            const std::array<long double,3> gp{
+                wo*gradient[o][0]+wn*gradient[n][0],
+                wo*gradient[o][1]+wn*gradient[n][1],
+                wo*gradient[o][2]+wn*gradient[n][2]};
+            response=static_cast<long double>(rho)*
+                (static_cast<long double>(orth)*jump+deferred(Sf,dvec,dAU,gp));
+        } else {
+            const auto patch=geometry.face_patch[f];
+            if (patch<mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type!=PatchType::EMPTY &&
+                mesh.boundary().patch(patch).type!=PatchType::SYMMETRY) {
+                const auto bc=pressure_bcs.find(mesh.boundary().patch(patch).name);
+                if (bc!=pressure_bcs.end() &&
+                    bc->second.type==ScalarBoundaryType::FIXED_VALUE) {
+                    const Vec3 dvec=geometry.face_centres[f]-geometry.cell_centres[o];
+                    const Vec3 dAU{geometry.cell_volumes[o]*rAU[0][o],
+                                   geometry.cell_volumes[o]*rAU[1][o],
+                                   geometry.cell_volumes[o]*rAU[2][o]};
+                    const double orth=pressure_face_orthogonal_coefficient(Sf,dvec,dAU);
+                    const long double jump=-static_cast<long double>(high(o))-low(o);
+                    response=static_cast<long double>(rho)*
+                        (static_cast<long double>(orth)*jump+
+                         deferred(Sf,dvec,dAU,gradient[o]));
+                }
+            }
+        }
+        flux[f]=static_cast<long double>(base_flux(f))-response;
+        if (!std::isfinite(flux[f]))
+            throw std::domain_error("compensated RC: nonfinite reconstructed flux");
+    }
+    return flux;
+}
+
+inline double compensated_flux_continuity_relative(
+    const cfdx::core::Mesh& mesh, const std::vector<long double>& flux,
+    const cfdx::core::Vector& normalization_rhs)
+{
+    if (flux.size()!=mesh.n_faces() || normalization_rhs.size()!=mesh.n_cells())
+        throw std::invalid_argument("compensated RC continuity: dimensions mismatch");
+    std::vector<long double> balance(mesh.n_cells(),0.0L);
+    long double norm=0.0L, rhs_norm=0.0L;
+    for (std::size_t f=0;f<mesh.n_faces();++f) {
+        if (!std::isfinite(flux[f]))
+            throw std::domain_error("compensated RC continuity: nonfinite face flux");
+        const auto o=mesh.ownership().owner(f);
+        balance[o]+=flux[f];
+        const auto n=mesh.ownership().neighbour(f);
+        if (n>=0) balance[static_cast<std::size_t>(n)]-=flux[f];
+    }
+    for (std::size_t c=0;c<mesh.n_cells();++c) {
+        const long double r=normalization_rhs(c);
+        rhs_norm+=r*r;
+        norm+=balance[c]*balance[c];
+    }
+    if (!(rhs_norm>0.0L))
+        throw std::invalid_argument("compensated RC continuity: zero normalization RHS");
+    return static_cast<double>(std::sqrt(norm/rhs_norm));
+}
+
 // V20: decompose the INDEPENDENT face-flux discrepancy into two mechanisms.
 // phi_transport is conservative and uses the full pressure step in V19.
 // phi_relaxed uses the identical HbyA, rAU, BCs, and RC reconstruction but
@@ -6945,7 +7133,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         face_entries.reserve(mesh.n_faces());
                         for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
                             const double coefficient = pressure_face_coefficients[face];
-                            if (coefficient <= 0.0) continue;
+                            // Preserve EVERY native face slot, even zero-pressure
+                            // BC faces, to compare against the authoritative
+                            // Rhie-Chow face flux without any reindexing.
                             face_entries.push_back({
                                 mesh.ownership().owner(face),
                                 mesh.ownership().neighbour(face), coefficient});
@@ -6966,6 +7156,96 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                            inner.status !=
                                                cfdx::core::SolverStatus::DIVERGED;
                                 });
+                        // Independent bridge: the pressure RHS must be the
+                        // negative divergence of the SAME frozen Rhie-Chow
+                        // flux used before the correction.  Reconstruct both
+                        // the implicit FACE step and the full (nonorthogonal)
+                        // pressure response from high/low.  A tiny matrix
+                        // residual alone never promotes the solver status.
+                        if (controls.algorithm == PressureVelocityAlgorithm::SIMPLE &&
+                            !controls.pressure_skew_corrected_gradient) {
+                            const auto base_rhie_flux=make_rhie_chow_mass_flux(
+                                mesh,geometry,HbyA,p,rAU,controls.density,
+                                velocity_bcs,pressure_bcs,
+                                RhieChowVelocityContract::HBYA_PREDICTOR,false,
+                                controls.pressure_projected_face_interpolation,
+                                face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+                            std::vector<double> base_face_flux(mesh.n_faces());
+                            for (std::size_t face=0;face<mesh.n_faces();++face)
+                                base_face_flux[face]=base_rhie_flux(face);
+                            const auto bridge=physical_implicit_faces.audit_implicit_flux_bridge(
+                                original_rhs,high,low,base_face_flux,final_tolerance);
+                            const auto full_compensated=reconstruct_compensated_rhie_chow_pressure_step(
+                                mesh,geometry,base_rhie_flux,high,low,rAU,
+                                controls.density,pressure_bcs,
+                                controls.pressure_projected_face_interpolation);
+                            const double full_rc_relative=compensated_flux_continuity_relative(
+                                mesh,full_compensated,original_rhs);
+                            const auto flux_gap=physical_implicit_faces.diagnose_full_flux_gap(
+                                original_rhs,high,low,base_face_flux,full_compensated);
+                            auto rounded_p=p;
+                            for (std::size_t c=0;c<nc;++c) {
+                                rounded_p(c)+=high(c);
+                                rounded_p(c)+=low(c);
+                            }
+                            const auto rounded_flux=make_rhie_chow_mass_flux(
+                                mesh,geometry,HbyA,rounded_p,rAU,controls.density,
+                                velocity_bcs,pressure_bcs,
+                                RhieChowVelocityContract::HBYA_PREDICTOR,false,
+                                controls.pressure_projected_face_interpolation,
+                                face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+                            std::vector<long double> rounded_face_flux(mesh.n_faces());
+                            long double mismatch2=0.0L, rhs2=0.0L;
+                            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                                rounded_face_flux[f]=rounded_flux(f);
+                                const long double delta=full_compensated[f]-rounded_flux(f);
+                                mismatch2+=delta*delta;
+                            }
+                            for (std::size_t c=0;c<nc;++c)
+                                rhs2+=static_cast<long double>(original_rhs(c))*original_rhs(c);
+                            const double rounded_rc_relative=compensated_flux_continuity_relative(
+                                mesh,rounded_face_flux,original_rhs);
+                            std::cerr << std::scientific << std::setprecision(16)
+                                      << "PRESSURE_HILO_RHIE_CHOW_BRIDGE"
+                                      << " iter=" << iter << " corrector=" << corr
+                                      << " rhs_base_flux_relative="
+                                      << bridge.rhs_base_flux_relative
+                                      << " implicit_linearized_continuity_relative="
+                                      << bridge.implicit_flux_continuity_relative
+                                      << " implicit_operator_relative="
+                                      << bridge.implicit_operator_residual_relative
+                                      << " full_rc_compensated_continuity_relative="
+                                      << full_rc_relative
+                                      << " full_rc_fp64_continuity_relative="
+                                      << rounded_rc_relative
+                                      << " deferred_divergence_relative="
+                                      << flux_gap.deferred_divergence_relative
+                                      << " deferred_face_l2_over_rhs="
+                                      << flux_gap.deferred_face_l2_relative
+                                      << " worst_deferred_face="
+                                      << flux_gap.worst_deferred_face
+                                      << " worst_deferred_cell="
+                                      << flux_gap.worst_deferred_cell
+                                      << " worst_full_divergence_cell="
+                                      << flux_gap.worst_divergence_cell
+                                      << " worst_full_divergence_x="
+                                      << geometry.cell_centres[flux_gap.worst_divergence_cell].x
+                                      << " worst_full_divergence_y="
+                                      << geometry.cell_centres[flux_gap.worst_divergence_cell].y
+                                      << " worst_full_divergence_z="
+                                      << geometry.cell_centres[flux_gap.worst_divergence_cell].z
+                                      << " full_rc_face_rounding_l2_over_rhs="
+                                      << static_cast<double>(std::sqrt(mismatch2/rhs2))
+                                      << " rhs_base_contract_pass="
+                                      << bridge.rhs_matches_base_flux
+                                      << " full_rc_qualified=0"
+                                      << " pressure_state_unchanged=1\n";
+                        } else {
+                            std::cerr << "PRESSURE_HILO_RHIE_CHOW_BRIDGE"
+                                      << " iter=" << iter << " corrector=" << corr
+                                      << " status=UNSUPPORTED_ALGORITHM_OR_SKEW"
+                                      << " full_rc_qualified=0 pressure_state_unchanged=1\n";
+                        }
                         std::cerr << std::scientific << std::setprecision(16)
                                   << "PRESSURE_HILO_FACES_LIVE"
                                   << " iter=" << iter << " corrector=" << corr
