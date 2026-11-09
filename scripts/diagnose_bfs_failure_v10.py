@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Classify the *first observed* BFS blocker using production stdout only.
 
 A timeout is an incomplete observation, never an assertion that a solver
@@ -6,6 +5,7 @@ algorithm failed or that the experimental physics did not converge.  The
 reported physical stage comes from opt-in BFS_PHASE_V10 markers emitted by the
 C++ production implementation, not the requested Schur model name.
 """
+
 from __future__ import annotations
 
 import argparse

@@ -132,6 +132,7 @@ def execute(
     result["wall_seconds"] = time.monotonic() - start
     if tag.startswith("bfs_") and tag.removeprefix("bfs_") in BFS_VARIANTS:
         from diagnose_bfs_failure_v10 import classify_log
+
         content = (
             logfile.read_text(encoding="utf-8", errors="replace")
             if logfile.exists()

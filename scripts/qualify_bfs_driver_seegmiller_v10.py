@@ -10,9 +10,9 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import math
-import itertools
 from pathlib import Path
 
 from qualify_bfs_schur_evidence import validate_bfs_evidence
@@ -96,12 +96,14 @@ def extract_velocity_profiles(
     data: list[tuple[float, float, float, float]] = []
     with cells_csv.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
-            data.append((
-                _number(row, "x_m") / step_height,
-                _number(row, "y_m") / step_height,
-                _number(row, "u_x_m_s") / u_ref,
-                _number(row, "u_y_m_s") / u_ref,
-            ))
+            data.append(
+                (
+                    _number(row, "x_m") / step_height,
+                    _number(row, "y_m") / step_height,
+                    _number(row, "u_x_m_s") / u_ref,
+                    _number(row, "u_y_m_s") / u_ref,
+                )
+            )
     if not data:
         raise ValueError("no cellwise velocity fields")
     result = {}
@@ -168,9 +170,11 @@ def make_report(
     obs = output_dir / "benchmark_observables"
     result["comparison"] = {
         "cf_and_reattachment": cf_and_reattachment(
-            obs / "face_fluxes.csv", rho=rho, u_ref=u_ref, step_height=step_height),
+            obs / "face_fluxes.csv", rho=rho, u_ref=u_ref, step_height=step_height
+        ),
         "velocity_profiles": extract_velocity_profiles(
-            obs / "cell_fields.csv", step_height=step_height, u_ref=u_ref),
+            obs / "cell_fields.csv", step_height=step_height, u_ref=u_ref
+        ),
     }
     result["reason"] = "DIAGNOSTIC_ONLY_NASA_PROFILES_AND_STRESSES_NOT_CHECKED"
     return result
