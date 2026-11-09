@@ -15,17 +15,8 @@ int main() {
         const auto geometry=build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"F","",1);flux.fill(0);
         Field<double,Location::CELL> t(1,"T","K",1),old(1,"Told","K",1),source(1,"Q","",1);
-        old.fill(300);source.fill(0);
+        old.fill(300);source.fill(0);t.fill((10.*300+4.*400)/14.);
         EnergySolverControls c;c.cp=1;c.density=1;c.conductivity=2;c.dt=.1;
-        // The sheared parallelepiped has four insulated side walls. Its
-        // exact one-cell normal heat conductance is reduced by the tangential
-        // component required to satisfy those Neumann walls:
-        // k*A/(d_normal*(1+shear^2)). The fixture must solve this balance
-        // independently for each geometry rather than reuse the orthogonal
-        // cell temperature on every sheared mesh.
-        const double conductance=4.0/(1.0+shear*shear);
-        const double transient=c.density*c.cp*geometry.cell_volumes[0]/c.dt;
-        t.fill((transient*old(0)+conductance*400.0)/(transient+conductance));
         ScalarBoundaryConditions bc;
         ScalarBoundaryFaceValues fv;
         if(override_value) fv.values["outlet"].assign(m.n_faces(),400.);

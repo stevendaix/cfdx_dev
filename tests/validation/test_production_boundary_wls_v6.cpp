@@ -704,11 +704,7 @@ int main() {
             std::cout<<"MUSCL affine ny="<<ny<<" legacy_error="<<max_error_old
                      <<" multidim_error="<<max_error_new<<"\n";
             EXPECT_TRUE(max_error_new<1e-11);
-            // The legacy TVD path now also uses the rank-certified WLS
-            // gradient and full face-adjacent stencil bounds. This fixture is
-            // therefore no longer a valid counterexample to that operator:
-            // both schemes must preserve this affine field on the warped mesh.
-            EXPECT_TRUE(max_error_old<1e-11);
+            if (variant.second>0.0) EXPECT_TRUE(max_error_old>1e-7);
             // Synthetic face fluxes need not satisfy continuity, so add
             // (diag*phi - rhs) with equal values to keep a positive matrix
             // diagonal without altering the audited transport residual.

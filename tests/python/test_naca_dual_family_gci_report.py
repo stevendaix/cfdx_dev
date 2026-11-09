@@ -215,8 +215,7 @@ def test_full_synthetic_three_grid_chain_exercises_cross_family_gci(tmp_path):
                 )
             (run / "history.csv").write_text(
                 "iteration,momentum_rhs_relative,continuity_normalized,"
-                "mass_local_linf,mass_normalized_imbalance,"
-                "nonfinite_mass_faces,nonfinite_velocities,"
+                "mass_local_linf,nonfinite_mass_faces,nonfinite_velocities,"
                 "high_order_fraction,face_momentum_x_relative,"
                 "face_momentum_y_relative,face_momentum_z_relative,"
                 "face_momentum_x_linf,face_momentum_y_linf,"
@@ -224,7 +223,7 @@ def test_full_synthetic_three_grid_chain_exercises_cross_family_gci(tmp_path):
                 "momentum_x_rhs_relative,momentum_y_rhs_relative,"
                 "momentum_z_rhs_relative,momentum_component_max,"
                 "pressure_residual,velocity_change_inf,pressure_change_inf\n"
-                "1,1e-11,1e-12,2e-11,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
+                "1,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
                 "TVD_VANLEER,1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n"
             )
     result = analyze(tmp_path / "families", tmp_path / "runs", Path(sys.executable))
