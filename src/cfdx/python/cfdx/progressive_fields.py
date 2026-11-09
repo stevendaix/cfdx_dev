@@ -36,7 +36,7 @@ def _field(h5, name: str):
     link = h5.get(name, getlink=True)
     data = h5.get(name)
     if not isinstance(link, h5py.HardLink) or not isinstance(data, h5py.Dataset):
-        raise ValueError("field is not an internal hard-linked dataset")
+        raise ValueError("field is not an internal hard-linked dataset")  # noqa: TRY004
     if data.is_virtual or data.external:
         raise ValueError("external and virtual fields are not streamed")
     if data.dtype.kind not in "fiu" or data.dtype.itemsize > 8 or data.ndim != 1:
@@ -63,13 +63,13 @@ def field_catalog(path: str | Path, *, max_fields: int = 4096) -> tuple[str, ...
             if link is None:
                 continue
             if not isinstance(link, h5py.HardLink):
-                raise ValueError("field catalog group must be internal and hard-linked")
+                raise ValueError("field catalog group must be internal and hard-linked")  # noqa: TRY004
             group = h5[prefix]
             if not isinstance(group, h5py.Group):
                 continue
             if len(group) > max_fields:
                 raise ValueError("field catalog exceeds metadata budget")
-            for name in group.keys():
+            for name in group:
                 full = f"{prefix}/{name}"
                 try:
                     _field(h5, full)
