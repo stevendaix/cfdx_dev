@@ -132,9 +132,14 @@ def execute(
     result["wall_seconds"] = time.monotonic() - start
     if tag.startswith("bfs_") and tag.removeprefix("bfs_") in BFS_VARIANTS:
         from diagnose_bfs_failure_v10 import classify_log
-        content = logfile.read_text(encoding="utf-8", errors="replace") if logfile.exists() else ""
+        content = (
+            logfile.read_text(encoding="utf-8", errors="replace")
+            if logfile.exists()
+            else ""
+        )
         result["first_blocker_v10"] = classify_log(
-            content, execution=result["execution"], exit_code=result["exit_code"])
+            content, execution=result["execution"], exit_code=result["exit_code"]
+        )
         result["log_sha256"] = sha256(logfile) if logfile.exists() else None
         variant = tag.removeprefix("bfs_")
         algorithm, schur, preconditioner = BFS_VARIANTS[variant]
