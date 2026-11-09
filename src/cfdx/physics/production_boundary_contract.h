@@ -109,9 +109,13 @@ inline void validate_production_incompressible_boundary(
             bc.source_type_name == "mass-flow-inlet" ||
             bc.source_type_name == "pressure-far-field")
             reject("imported inlet uses a physical operator not implemented by the incompressible production adapter");
-        if (bc.value_type != BCValueType::FIXED)
-            reject("velocity inlet requires FIXED velocity; pressure/debit inlet needs a dedicated operator");
-        return;
+        if (bc.value_type == BCValueType::FIXED) return;
+        // A fully-developed/open inlet may explicitly use zero normal
+        // gradient. It is distinct from a pressure/debit inlet and is
+        // supported by the production velocity boundary adapter. Do not
+        // silently ignore a simultaneously prescribed non-zero velocity.
+        if (bc.value_type == BCValueType::ZERO_GRADIENT && zero_velocity) return;
+        reject("inlet requires FIXED velocity or ZERO_GRADIENT with no prescribed velocity; pressure/debit inlet needs a dedicated operator");
     case BCType::PRESSURE_OUTLET:
         if (mesh_patch_type != PatchType::OUTLET)
             reject("PRESSURE_OUTLET requires an OUTLET mesh patch");
