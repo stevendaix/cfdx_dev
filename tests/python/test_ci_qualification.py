@@ -35,6 +35,7 @@ class ProfileTests(unittest.TestCase):
             {
                 "smoke",
                 "naca",
+                "bfs",
                 "momentum",
                 "sst",
                 "thermal",

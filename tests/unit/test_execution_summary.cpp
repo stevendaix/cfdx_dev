@@ -3,6 +3,7 @@
 #include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include "common/live_assert.hpp"
@@ -22,7 +23,7 @@ int main()
     std::filesystem::remove(path, ec);
 
     write_execution_summary(path.string(), ExecutionSummary{
-        0, true, 7, 1, "converged \"normally\"", true, true});
+        0, true, 7, 1, "converged \"normally\"", true, true, 1.25});
 
     std::ifstream in(path);
     assert(in.good());
@@ -38,9 +39,17 @@ int main()
     assert(json.find("\\\"normally\\\"") != std::string::npos);
     assert(json.find("\"restart_dat\": true") != std::string::npos);
     assert(json.find("\"convergence_json\": true") != std::string::npos);
+    assert(json.find("\"elapsed_wall_seconds\": 1.25") != std::string::npos);
 
     write_execution_summary(path.string(), ExecutionSummary{
         1, false, 9, 0, "iteration limit", true, true});
+    bool rejected_nonfinite_time = false;
+    try {
+        write_execution_summary(path.string(), ExecutionSummary{
+            1, false, 9, 0, "invalid timing", true, true,
+            std::numeric_limits<double>::infinity()});
+    } catch (const std::invalid_argument&) { rejected_nonfinite_time = true; }
+    if (!rejected_nonfinite_time) return 1;
     bool rejected_invalid_exit = false;
     try {
         write_execution_summary(path.string(), ExecutionSummary{

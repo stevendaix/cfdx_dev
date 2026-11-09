@@ -40,3 +40,21 @@ The production integration must reuse the existing application facade, session, 
 ## Review status
 
 This is a visual/interaction proposal for explicit product review. It is not a production GUI, not a qualified workflow and not a migration of the current PySide6 Workbench.
+
+## Lot 2: modern workspaces and real-data import
+
+Open `modern_lot2.html` for the latest interaction concept. It adds
+numerical-method discovery, patch editing mockup, Mesh/Run/Analyze/Validate
+navigation, dark/light mode and *optional* local import of a monitor or
+qualification JSON file. Data and the native solver are not modified.
+All content remains a browser preview; see
+`docs/gui/LOT2_MODERN_INTERFACE_METHODS.md` for the integrated Python code.
+
+## Lot 3: OLED black by default and accessible command palette
+
+Open `modern_lot3.html`. Its first-use background is `#000000` (OLED black),
+with alternative graphite and light themes. Theme choice is saved locally by
+browser preference, and the search button / `Ctrl+K` opens a keyboard-friendly
+palette. Monitor and registry JSON can still be inspected, without inventing
+CFD results. The native Qt Workbench's default theme is also black; unlike this
+HTML preview, it runs real CFDX case and solver actions.

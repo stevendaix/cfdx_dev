@@ -703,6 +703,39 @@ int main() {
         std::remove(filename.c_str());
     });
 
+    run_case("case_hdf5_native_multi_field_boundary_roundtrip", []() {
+        const std::string filename = "/tmp/cfdx_case_native_multi_bc.h5";
+        std::remove(filename.c_str());
+        Mesh mesh = make_unit_cube();
+        SourceInfo source = make_test_source();
+        CaseSetup setup = make_default_setup();
+        auto& bc = setup.boundary_conditions[0];
+        bc.field_conditions["velocity"] = NativeFieldBoundary{"FIXED_VALUE", {1.0, 2.0, 3.0}, 0.0};
+        bc.field_conditions["pressure"] = NativeFieldBoundary{"ZERO_GRADIENT", {0.0}, 0.0};
+        bc.field_conditions["temperature"] = NativeFieldBoundary{"FIXED_VALUE", {300.0}, 0.0};
+        GapAnalysis gap;
+        EXPECT_TRUE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
+        Mesh loaded_mesh;
+        SourceInfo loaded_source;
+        CaseSetup loaded;
+        GapAnalysis loaded_gap;
+        EXPECT_TRUE(read_case_cfdx_h5(filename, loaded_mesh, loaded_source, loaded, loaded_gap));
+        EXPECT_TRUE(loaded.boundary_conditions.size() == 1);
+        const auto* u = loaded.boundary_conditions.at(0).find_field("velocity");
+        const auto* p = loaded.boundary_conditions.at(0).find_field("pressure");
+        const auto* t = loaded.boundary_conditions.at(0).find_field("temperature");
+        EXPECT_TRUE(u != nullptr && p != nullptr && t != nullptr);
+        if (u != nullptr) {
+            EXPECT_TRUE(u->value.size() == 3);
+            EXPECT_NEAR(u->value[1], 2.0, 1e-14);
+        }
+        if (p != nullptr)
+            EXPECT_TRUE(p->type == "ZERO_GRADIENT");
+        if (t != nullptr)
+            EXPECT_NEAR(t->value.at(0), 300.0, 1e-14);
+        std::remove(filename.c_str());
+    });
+
     run_case("case_hdf5_rejects_malformed_vector_dimensions", []() {
         const std::string filename = "/tmp/cfdx_case_bad_vector_shape.h5";
         std::remove(filename.c_str());

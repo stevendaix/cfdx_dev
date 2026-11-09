@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
+from .boundary_setup import validate_boundary_definition
+from .convergence_evidence import (
+    ConvergenceEvidence,
+    EvidenceError,
+    baseline_signatures,
+    load_run_evidence,
+)
 from .metrics import SolverMetrics, SolverMetricsParser
 from .monitors import MonitorSample, MonitorSeries
 from .probe_stream import ProbeStreamSample, parse_probe_stream_line
@@ -21,34 +27,6 @@ class ExecutionError:
     command: tuple[str, ...]
 
 
-def _read_convergence_status(output_dir: Path | None) -> bool | None:
-    """Return the solver's own convergence verdict, or None when unreadable.
-
-    The production solver writes ``convergence.json`` alongside
-    ``execution.json`` and ``restart.dat``. A process exit code of 0 does
-    not by itself mean convergence: the solver can exit cleanly after a
-    non-converged run (see ``test_production_solver_non_converged_exit_is_
-    persisted``). The authoritative verdict is the solver's own
-    ``converged`` field, so the GUI must read it rather than infer
-    convergence from the presence of a process or a return code.
-    """
-    if output_dir is None:
-        return None
-    path = Path(output_dir) / "convergence.json"
-    if not path.is_file():
-        return None
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(document, dict):
-        return None
-    converged = document.get("converged")
-    if isinstance(converged, bool):
-        return converged
-    return None
-
-
 class ExecutionController:
     """Drive solver execution without blocking the caller."""
 
@@ -59,6 +37,11 @@ class ExecutionController:
         self.latest_metrics: SolverMetrics | None = None
         self.monitor_series = MonitorSeries("solver", [])
         self.error: ExecutionError | None = None
+        self.convergence_verdict: bool | None = None
+        self.convergence_evidence: ConvergenceEvidence | None = None
+        self.convergence_evidence_error: str | None = None
+        self._run_output_dir: Path | None = None
+        self._run_evidence_baseline: dict = {}
         self.on_output: Callable[[str, bool], None] | None = None
         self.on_metrics: Callable[[SolverMetrics], None] | None = None
         self.on_probe_sample: Callable[[ProbeStreamSample], None] | None = None
@@ -67,6 +50,44 @@ class ExecutionController:
         self.probe_stream_error: str | None = None
         self._stop_requested = False
         self._monitor_lock = Lock()
+
+    def _prepare_run_evidence(self) -> Path | None:
+        """Resolve the actual configured output folder before subprocess launch.
+
+        The CLI may specify --output-dir even when the case model does not.
+        Do not guess a directory from the current working directory.
+        """
+        candidate = self.session.case.execution.output_dir
+        if not candidate:
+            command = tuple(self.runner.command)
+            for index, arg in enumerate(command):
+                if arg == "--output-dir" and index + 1 < len(command):
+                    candidate = command[index + 1]
+                elif arg.startswith("--output-dir="):
+                    candidate = arg.split("=", 1)[1]
+        directory = Path(candidate) if candidate else None
+        if directory is not None and not directory.is_absolute() and self.runner.cwd:
+            directory = Path(self.runner.cwd) / directory
+        self._run_output_dir = directory
+        self._run_evidence_baseline = baseline_signatures(directory)
+        self.convergence_evidence = None
+        self.convergence_evidence_error = None
+        return directory
+
+    def _assert_native_boundary_ready(self) -> None:
+        """Block unrepresentable staged fields even when Run bypasses Validate.
+
+        The editable Python case and C++ CaseSetup JSON are distinct formats.
+        This check prevents known loss of multiple fields on direct Run/Restart;
+        it does not claim that a native bridge exists for legacy boundaries.
+        """
+        for name, boundary in self.session.case.boundaries.items():
+            try:
+                validate_boundary_definition(boundary)
+            except (ValueError, KeyError, TypeError) as exc:
+                raise ValueError(
+                    f"boundary {name!r} cannot be sent to the native solver: {exc}"
+                ) from exc
 
     def restart(self, dat_path: str | Path) -> None:
         """Restart through the runner using the case-configured checkpoint option."""
@@ -80,36 +101,50 @@ class ExecutionController:
             raise ValueError(
                 "A DAT restart is loaded but no solver restart option is configured"
             )
+        self._assert_native_boundary_ready()
+        output_dir = self._prepare_run_evidence()
         self.session.run()
         self.error = None
+        self.convergence_verdict = None
         self.latest_metrics = None
         self.latest_probe_samples.clear()
         self.probe_stream_error = None
         with self._monitor_lock:
             self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
-        self.runner.start(
-            self._output,
-            self._complete,
-            restart_path=path,
-            restart_option=restart_option,
-        )
+        try:
+            self.runner.start(
+                self._output,
+                self._complete,
+                restart_path=path,
+                restart_option=restart_option,
+                output_dir=output_dir,
+            )
+        except (OSError, RuntimeError, ValueError):
+            self.session.state = SimulationState.FAILED
+            raise
 
     def start(self) -> None:
+        self._assert_native_boundary_ready()
+        output_dir = self._prepare_run_evidence()
         self.session.run()
         self.error = None
+        self.convergence_verdict = None
         self.latest_metrics = None
         self.latest_probe_samples.clear()
         self.probe_stream_error = None
         with self._monitor_lock:
             self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
-        output_dir = self.session.case.execution.output_dir
-        self.runner.start(
-            self._output,
-            self._complete,
-            output_dir=Path(output_dir) if output_dir else None,
-        )
+        try:
+            self.runner.start(
+                self._output,
+                self._complete,
+                output_dir=output_dir,
+            )
+        except (OSError, RuntimeError, ValueError):
+            self.session.state = SimulationState.FAILED
+            raise
 
     def _output(self, line: str, is_stderr: bool) -> None:
         is_probe_stream_line = not is_stderr and (
@@ -181,27 +216,45 @@ class ExecutionController:
             self.on_output(line, is_stderr)
 
     def _complete(self, result: ProcessResult) -> None:
+        """Never equate clean process exit with scientific convergence.
+
+        Exit code 1 means nonconvergence only when the native execution JSON
+        proves it. Otherwise unknown nonzero returns are execution errors.
+        """
+        self.convergence_evidence = None
+        self.convergence_verdict = None
+        self.convergence_evidence_error = None
         if self._stop_requested:
             self.session.state = SimulationState.STOPPED
-        elif result.returncode != 0:
-            # A non-zero exit is a solver error, not a non-converged run.
+        elif result.returncode in (0, 1) and result.output_dir is not None:
+            try:
+                certificate = load_run_evidence(
+                    result.output_dir,
+                    process_exit_code=result.returncode,
+                    baseline=self._run_evidence_baseline,
+                )
+            except (EvidenceError, OSError, ValueError) as exc:
+                self.convergence_evidence_error = str(exc)
+            else:
+                self.convergence_evidence = certificate
+                self.convergence_verdict = certificate.overall_converged
+
+            if self.convergence_verdict is True:
+                self.session.state = SimulationState.CONVERGED
+            elif self.convergence_verdict is False:
+                self.session.state = SimulationState.STOPPED
+            elif result.returncode == 0:
+                # Legacy or invalid artifact: no certified convergence.
+                self.session.state = SimulationState.STOPPED
+            else:
+                self.error = ExecutionError(result.returncode, result.command)
+                self.session.state = SimulationState.FAILED
+        elif result.returncode == 0:
+            self.convergence_evidence_error = "no output directory attached to this run"
+            self.session.state = SimulationState.STOPPED
+        else:
             self.error = ExecutionError(result.returncode, result.command)
             self.session.state = SimulationState.FAILED
-        else:
-            # The process exited cleanly, but the solver's own convergence
-            # verdict is authoritative: a clean exit does not imply
-            # convergence. Read convergence.json when available and fall back
-            # to the exit code only when the artifact is absent.
-            converged = _read_convergence_status(result.output_dir)
-            if converged is False:
-                self.session.state = SimulationState.STOPPED
-            elif converged is True:
-                self.session.state = SimulationState.CONVERGED
-            else:
-                # No convergence artifact: the solver predates the contract.
-                # Preserve the historical behaviour (clean exit = converged)
-                # rather than inventing a verdict.
-                self.session.state = SimulationState.CONVERGED
         if self.on_complete:
             self.on_complete(result)
 

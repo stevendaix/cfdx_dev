@@ -14,6 +14,7 @@ on:
         options:
           - smoke
           - naca
+          - bfs
           - momentum
           - sst
           - thermal
@@ -188,6 +189,15 @@ jobs:
             ${{ env.BUILD_DIR }}/naca-pressure-*
           if-no-files-found: warn
           retention-days: 30
+      - name: Build commit-bound Workbench qualification evidence index
+        if: always()
+        run: |
+          mkdir -p "$BUILD_DIR/qualification/physical-evidence"
+          python3 scripts/ci/collect_workbench_evidence.py \
+            --registry docs/validation/CFDX_QUALIFICATION_REGISTRY.json \
+            --evidence-root "$BUILD_DIR/qualification/physical-evidence" \
+            --commit "$(git rev-parse HEAD)" \
+            --output "$BUILD_DIR/qualification/cfdx-qualification-evidence.json"
 
   total:
     name: Full physical qualification (canonical workflow)

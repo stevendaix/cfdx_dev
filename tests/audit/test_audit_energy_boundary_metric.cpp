@@ -1,7 +1,9 @@
 // H05: a one-cell transient balance with an independent normal-distance oracle.
 #include "chain_fixture.h"
 #include "cfdx/physics/energy_solver.h"
+#include <array>
 #include <cmath>
+#include <string>
 #include <iostream>
 #include <iomanip>
 using namespace cfdx::core;
@@ -10,17 +12,36 @@ int main() {
     int checks=0,failures=0;
     for(const double shear:{0.,1.,3.}) for(const bool override_value:{false,true}) {
         auto m=make_1d_chain(1);
+        const auto wall_faces=m.boundary().patch(2).face_ids;
+        m.boundary().remove_patch(2);
+        const std::array<std::string,4> wall_names{"y0","y1","z0","z1"};
+        for(std::size_t side=0;side<4;++side) {
+            Patch patch;
+            patch.name=wall_names[side];
+            patch.type=PatchType::WALL;
+            patch.face_ids.push_back(wall_faces[side]);
+            m.boundary().add_patch(patch);
+        }
         for(std::size_t i=0;i<m.n_points();++i)
             m.points().set(i,m.points().x(i),m.points().y(i)+shear*(m.points().x(i)-1),m.points().z(i));
         const auto geometry=build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"F","",1);flux.fill(0);
         Field<double,Location::CELL> t(1,"T","K",1),old(1,"Told","K",1),source(1,"Q","",1);
-        old.fill(300);source.fill(0);t.fill((10.*300+4.*400)/14.);
+        // Exact affine field T=300+100*x in the sheared physical cell. The
+        // side-wall Neumann data are the analytic outward normal derivative,
+        // so the geometry is skewed without changing the manufactured field.
+        old.fill(349);source.fill(10);t.fill(350);
         EnergySolverControls c;c.cp=1;c.density=1;c.conductivity=2;c.dt=.1;
         ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,300,0};
+        bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,400,0};
+        const double side_gradient=100.0*shear/std::sqrt(1.0+shear*shear);
+        bc["y0"]={ScalarBoundaryType::FIXED_GRADIENT,0,side_gradient};
+        bc["y1"]={ScalarBoundaryType::FIXED_GRADIENT,0,-side_gradient};
+        bc["z0"]={ScalarBoundaryType::FIXED_GRADIENT,0,0};
+        bc["z1"]={ScalarBoundaryType::FIXED_GRADIENT,0,0};
         ScalarBoundaryFaceValues fv;
         if(override_value) fv.values["outlet"].assign(m.n_faces(),400.);
-        else bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,400,0};
         const auto* values=override_value?&fv:nullptr;
         const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,nullptr,nullptr,&t);
         Vector x(1,t(0));

@@ -75,6 +75,7 @@ def test_n9_coupled_schur_uses_case_selection_and_production_resolution(
                 str(output_dir),
                 "--iterations",
                 "1",
+                "--validate-numerics-only",
             ],
             capture_output=True,
             text=True,
@@ -83,9 +84,10 @@ def test_n9_coupled_schur_uses_case_selection_and_production_resolution(
         )
         diagnostics = completed.stdout + completed.stderr
 
-        # One iteration is intentionally used here: this test verifies the
-        # production selection boundary, not convergence of N9 physical cases.
-        assert completed.returncode in (0, 1), diagnostics[-12000:]
+        # This is a method-resolution contract, not a flow or physical
+        # qualification. The dedicated preflight validates production registry
+        # dispatch without pretending SU2 farfield semantics are implemented.
+        assert completed.returncode == 0, diagnostics[-12000:]
         assert "Resolved numerical selections:" in diagnostics
         assert "scheme[pressure_velocity]=pressure_velocity.coupled" in diagnostics
         assert f"scheme[schur]=schur.{model}" in diagnostics

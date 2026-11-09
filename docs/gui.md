@@ -139,3 +139,12 @@ The GUI keeps a persistent case tree and provides a separate 3D Results
 workspace. VTU/VTK datasets can be loaded directly into the optional
 PyVista/Qt view. The visualization adapter remains separate from the solver
 and can therefore be disabled on headless HPC installations.
+
+## Modern Workbench lot 2
+
+The dockable Workbench now contains a read-only **Numerical Methods Explorer**
+and a revised convergence cockpit with grouped telemetry, diagnostics and a
+separate solver-verdict indicator. The Case Setup editor offers searchable
+boundary patches and safe lossless staging; unsupported multi-field native
+mappings block execution. See
+[lot 2 implementation and qualification notes](gui/LOT2_MODERN_INTERFACE_METHODS.md).

@@ -213,7 +213,9 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     controller.resume()
     assert session.state is SimulationState.RUNNING
     runner._thread.join(timeout=5.0)
-    assert session.state is SimulationState.CONVERGED
+    # The fixture script emits VTK and stdout only, not native CFDX evidence.
+    assert session.state is SimulationState.STOPPED
+    assert controller.convergence_verdict is None
     assert session.iteration == 2
     assert session.time == pytest.approx(0.2)
 
@@ -240,7 +242,8 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     application.run()
     restart_runner = restart_controller.runner
     restart_runner._thread.join(timeout=5.0)
-    assert application.session.state is SimulationState.CONVERGED
+    assert application.session.state is SimulationState.STOPPED
+    assert restart_controller.convergence_verdict is None
     assert application.session.iteration == 4
     assert application.session.time == pytest.approx(0.4)
     assert restart_controller.monitor_series.samples[-1].iteration == 4

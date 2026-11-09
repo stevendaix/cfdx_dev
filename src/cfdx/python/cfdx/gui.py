@@ -95,6 +95,9 @@ if QApplication is not None:
             self._connect_controller()
             self._install_shortcuts()
             self.refresh()
+            from .theme import apply_workbench_theme
+
+            apply_workbench_theme(self)
             if self._result_watcher is not None:
                 self._result_watcher.start()
 

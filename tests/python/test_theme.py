@@ -1,7 +1,16 @@
 import importlib.util
 
 import pytest
-from cfdx.theme import TOKENS, WORKBENCH_STYLESHEET, apply_workbench_theme
+from cfdx.theme import (
+    DEFAULT_THEME,
+    THEMES,
+    TOKENS,
+    WORKBENCH_STYLESHEET,
+    apply_workbench_theme,
+    style_scientific_plot,
+    theme_tokens,
+    workbench_stylesheet,
+)
 
 
 def test_theme_tokens_are_semantic_and_complete() -> None:
@@ -32,7 +41,7 @@ def test_theme_tokens_are_semantic_and_complete() -> None:
 
 def test_theme_module_imports_without_qt() -> None:
     # Importing semantic tokens must remain safe for base installations.
-    assert TOKENS["surface.canvas"] == "#10151B"
+    assert TOKENS["surface.canvas"] == "#000000"
     if importlib.util.find_spec("PySide6") is None:
         with pytest.raises(RuntimeError, match="PySide6 is required"):
             apply_workbench_theme(object())
@@ -156,3 +165,84 @@ def test_dense_data_views_use_semantic_table_chrome() -> None:
     assert "QAbstractItemView:disabled" in WORKBENCH_STYLESHEET
     assert "show-decoration-selected: 1" in WORKBENCH_STYLESHEET
     assert "QTreeView:focus" in WORKBENCH_STYLESHEET
+
+
+def test_black_is_the_first_run_default_and_compiled_styles_are_complete() -> None:
+    assert DEFAULT_THEME == "black"
+    assert theme_tokens() is TOKENS
+    assert TOKENS["surface.canvas"] == "#000000"
+    for name in ("black", "graphite", "light"):
+        assert set(THEMES[name]) == set(TOKENS)
+        css = workbench_stylesheet(name)
+        assert "@surface." not in css
+        assert "@status." not in css
+        assert "QTabWidget::pane" in css
+        assert "QScrollBar:vertical" in css
+        assert THEMES[name]["surface.canvas"] in css
+        assert 'QLabel[role="eyebrow"]' in css
+
+
+def test_theme_rejects_unsupported_choices_before_mutating_window() -> None:
+    with pytest.raises(ValueError, match="unsupported CFDX theme"):
+        theme_tokens("fluorescent")
+    with pytest.raises(ValueError, match="unsupported CFDX theme"):
+        apply_workbench_theme(object(), "unexpected")
+
+
+@pytest.mark.parametrize("name", list(THEMES))
+@pytest.mark.parametrize("text_token", ["text.primary", "text.secondary", "text.muted"])
+@pytest.mark.parametrize(
+    "surface", ["surface.canvas", "surface.panel", "surface.input", "surface.raised"]
+)
+def test_all_theme_text_contrasts(name: str, text_token: str, surface: str) -> None:
+    colors = THEMES[name]
+    assert _contrast_ratio(colors[text_token], colors[surface]) >= 4.5
+
+
+@pytest.mark.parametrize("name", list(THEMES))
+@pytest.mark.parametrize("highlight", ["border.subtle", "accent.primary"])
+@pytest.mark.parametrize(
+    "surface", ["surface.canvas", "surface.panel", "surface.input", "surface.raised"]
+)
+def test_all_theme_control_indicators_are_legible(
+    name: str, highlight: str, surface: str
+) -> None:
+    colors = THEMES[name]
+    assert _contrast_ratio(colors[highlight], colors[surface]) >= 3.0
+
+
+@pytest.mark.parametrize("name", list(THEMES))
+@pytest.mark.parametrize(
+    "status", ["status.success", "status.warning", "status.error", "status.info"]
+)
+def test_theme_status_labels_are_legible(name: str, status: str) -> None:
+    colors = THEMES[name]
+    assert _contrast_ratio(colors[status], colors["surface.panel"]) >= 4.5
+
+
+def test_plot_styling_changes_only_background_and_axis_chrome() -> None:
+    class Axis:
+        def setPen(self, color):
+            self.pen = color
+
+        def setTextPen(self, color):
+            self.text = color
+
+    class FakePlot:
+        def __init__(self):
+            self.axes = {k: Axis() for k in ("left", "bottom")}
+
+        def setBackground(self, color):
+            self.background = color
+
+        def getPlotItem(self):
+            return self
+
+        def getAxis(self, key):
+            return self.axes[key]
+
+    plot = FakePlot()
+    style_scientific_plot(plot, "light")
+    assert plot.background == THEMES["light"]["surface.canvas"]
+    assert plot.axes["left"].text == THEMES["light"]["text.secondary"]
+    assert plot.axes["bottom"].pen == THEMES["light"]["border.subtle"]

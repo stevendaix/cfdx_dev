@@ -14,9 +14,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
 )
 
+from .mesh_health import summarize_mesh_health
 from .volume_mesh_quality import VolumeSkewnessReport, analyze_cfdx_volume_skewness
 
 
@@ -96,11 +99,19 @@ class VolumeSkewnessDialog(QDialog):
         ).astype(np.uint8)
         self._grid = grid
         self._threshold = float(self.report.threshold)
+        self._quality_metric = "skewness"
+        self._metric_thresholds = {
+            "skewness": self._threshold,
+            "non-orthogonality": 70.0,  # user-adjustable visual alert, not a solver gate
+        }
         self._cut_axis = "z"
         self._cut_normal = (0.0, 0.0, 1.0)
         self._cut_origin = np.asarray(grid.center, dtype=float)
         self._camera_initialized = False
         self._plotter = QtInteractor(self)
+        self._metric_selector = QComboBox(self)
+        self._metric_selector.setObjectName("volume_skewness.metric")
+        self._metric_selector.addItems(("skewness", "non-orthogonality"))
         self._cell_selector = QComboBox(self)
         self._cell_selector.setObjectName("volume_skewness.cell_selector")
         for cell_id in self.report.worst_cell_ids:
@@ -130,6 +141,8 @@ class VolumeSkewnessDialog(QDialog):
         self._slice_button = QPushButton("Reset cut", self)
         self._slice_button.clicked.connect(self._reset_cut)
         controls = QHBoxLayout()
+        controls.addWidget(QLabel("Inspect metric:"))
+        controls.addWidget(self._metric_selector)
         controls.addWidget(QLabel("Worst cell:"))
         controls.addWidget(self._cell_selector, 1)
         controls.addWidget(QLabel("Cut normal:"))
@@ -143,21 +156,97 @@ class VolumeSkewnessDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
         layout.addWidget(self._plotter, 1)
+        self._quality_overview = QLabel()
+        self._quality_overview.setWordWrap(True)
+        self._quality_overview.setObjectName("volume_skewness.overview")
+        layout.addWidget(self._quality_overview)
+        self._worst_table = QTableWidget(0, 3, self)
+        self._worst_table.setObjectName("volume_skewness.worst_cells")
+        self._worst_table.setHorizontalHeaderLabels(
+            ("Cell ID", "Skewness", "Non-orthogonality [deg]")
+        )
+        self._worst_table.setMaximumHeight(165)
+        self._worst_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self._worst_table)
         layout.addWidget(self._details)
         self._cell_selector.currentIndexChanged.connect(self._show_selected_cell)
+        self._metric_selector.currentTextChanged.connect(self._switch_metric)
         self._slice_axis.currentTextChanged.connect(self._render_cut)
         self._slice_position.valueChanged.connect(self._render_cut)
         self._threshold_spin.valueChanged.connect(self._update_threshold)
-        self._render_cut()
+        self._refresh_worst_cells()
+        self._update_threshold(self._threshold)
+
+    def _active_scores(self):
+        if self._quality_metric == "non-orthogonality":
+            return self.report.cell_non_orthogonality_deg
+        return self.report.cell_skewness
+
+    def _refresh_worst_cells(self) -> None:
+        scores = self._active_scores()
+        assessed = np.flatnonzero(np.isfinite(scores))
+        order = assessed[np.argsort(scores[assessed], kind="stable")[::-1]][:20]
+        self._cell_selector.blockSignals(True)
+        self._cell_selector.clear()
+        self._worst_table.setRowCount(len(order))
+        for row, cell_id in enumerate(order):
+            cell = int(cell_id)
+            self._cell_selector.addItem(f"Cell {cell} · {scores[cell]:.4g}", cell)
+            for col, text in enumerate(
+                (
+                    str(cell),
+                    f"{self.report.cell_skewness[cell]:.7g}",
+                    f"{self.report.cell_non_orthogonality_deg[cell]:.7g}",
+                )
+            ):
+                self._worst_table.setItem(row, col, QTableWidgetItem(text))
+        self._cell_selector.blockSignals(False)
+        self._show_selected_cell()
+
+    def _switch_metric(self, name: str) -> None:
+        if name not in self._metric_thresholds:
+            raise ValueError(f"unsupported mesh quality metric: {name}")
+        self._metric_thresholds[self._quality_metric] = self._threshold
+        self._quality_metric = name
+        self._threshold_spin.blockSignals(True)
+        self._threshold_spin.setRange(
+            0.001, 180.0 if name == "non-orthogonality" else 10.0
+        )
+        self._threshold_spin.setSuffix(" deg" if name == "non-orthogonality" else "")
+        self._threshold_spin.setValue(self._metric_thresholds[name])
+        self._threshold_spin.blockSignals(False)
+        self._refresh_worst_cells()
+        self._update_threshold(self._threshold_spin.value())
 
     def _reset_cut(self) -> None:
         self._slice_position.setValue(500)
 
     def _update_threshold(self, value: float) -> None:
         self._threshold = float(value)
+        scores = self._active_scores()
         self._grid.cell_data["bad"] = (
-            self.report.cell_skewness > self._threshold
+            np.isfinite(scores) & (scores > self._threshold)
         ).astype(np.uint8)
+        self._metric_thresholds[self._quality_metric] = self._threshold
+        summary = summarize_mesh_health(
+            self.report,
+            source_file="inspected volume",
+            file_signature=(0, 0, 0, 0),
+            skewness_alert=self._metric_thresholds["skewness"],
+            non_orthogonality_alert_deg=self._metric_thresholds["non-orthogonality"],
+        )
+        dist = (
+            summary.non_orthogonality
+            if self._quality_metric == "non-orthogonality"
+            else summary.skewness
+        )
+        self._quality_overview.setText(
+            f"Measured {dist.assessed:,}/{summary.cell_count:,} cells | "
+            f"unassessed {dist.unavailable:,} | p95 {dist.p95 if dist.p95 is not None else 'n/a'} | "
+            f"max {dist.maximum if dist.maximum is not None else 'n/a'} | "
+            f"above chosen alert {dist.alert_limit:g}: {dist.above_alert:,}. "
+            "Alert ≠ solver mesh rejection."
+        )
         self._render_cut()
 
     def _render_cut(self, *_args) -> None:
@@ -203,7 +292,7 @@ class VolumeSkewnessDialog(QDialog):
                     name="volume-cut-bad",
                 )
         self._plotter.add_text(
-            f"Cut {axis.upper()} · red: skewness > {self._threshold:g} · "
+            f"Cut {axis.upper()} · red: {self._quality_metric} > {self._threshold:g} · "
             "transparent: remaining cells",
             font_size=10,
         )
@@ -222,7 +311,7 @@ class VolumeSkewnessDialog(QDialog):
             return
         cell_id = int(cell_id)
         neighbours = self.report.cell_neighbours[cell_id]
-        selected_score = self.report.cell_skewness[cell_id]
+        selected_score = self._active_scores()[cell_id]
         selected_non_orth = self.report.cell_non_orthogonality_deg[cell_id]
         status = (
             "above threshold"
@@ -230,7 +319,7 @@ class VolumeSkewnessDialog(QDialog):
             else "within threshold"
         )
         self._details.setText(
-            f"Cell {cell_id} · {status} · skewness {selected_score:.6g} · "
+            f"Cell {cell_id} · {status} · {self._quality_metric} {selected_score:.6g} · "
             f"non-orthogonality {selected_non_orth:.3f} deg · "
             f"threshold {self._threshold:g}\n"
             f"Adjacent cells ({len(neighbours)}): "

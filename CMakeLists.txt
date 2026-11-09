@@ -422,6 +422,16 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Opt-in per-cell nonlinear residual diagnosis: same-cell persistence,
+    # bounded streaming and stable cell IDs. Does not modify solver gates.
+    add_cfdx_test(test_cell_convergence_tracker tests/unit/test_cell_convergence_tracker.cpp)
+    set_tests_properties(test_cell_convergence_tracker PROPERTIES
+        LABELS "unit;diagnostics;mesh;convergence" TIMEOUT 20)
+
+    add_cfdx_test(test_cell_field_map_writer tests/unit/test_cell_field_map_writer.cpp)
+    set_tests_properties(test_cell_field_map_writer PROPERTIES
+        LABELS "unit;diagnostics;mesh;convergence" TIMEOUT 20)
+
     # Focused thermal audit regressions, extracted from PR #1096 without its
     # unrelated changes or truncated build configuration.
     add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
@@ -1749,6 +1759,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 120)
+            add_test(NAME test_cell_hotspots_native_e2e
+                     COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_cell_hotspots_native_e2e.py)
+            set_tests_properties(test_cell_hotspots_native_e2e PROPERTIES
+                LABELS "diagnostics;integration;convergence"
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+                TIMEOUT 90)
             add_test(NAME test_production_solver_e2e
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)

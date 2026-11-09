@@ -99,6 +99,16 @@ struct SSTScalarBoundarySpec {
 };
 
 // ---------------------------------------------------------------------------
+// Explicit per-field boundary contract from the Workbench (v1 additive).
+// It does not replace the legacy BoundarySpec: old cases retain their meaning.
+// ---------------------------------------------------------------------------
+struct NativeFieldBoundary {
+    std::string type; // FIXED_VALUE | ZERO_GRADIENT | FIXED_GRADIENT
+    std::vector<double> value; // three values for velocity; one for scalar
+    double gradient = 0.0;
+};
+
+// ---------------------------------------------------------------------------
 // Boundary condition specification
 // ---------------------------------------------------------------------------
 struct BoundarySpec {
@@ -114,6 +124,12 @@ struct BoundarySpec {
     double turbulence_intensity = 0.0;
     double turbulence_length_scale = 0.0;
     std::vector<SSTScalarBoundarySpec> sst_scalar_conditions;
+    std::map<std::string, NativeFieldBoundary> field_conditions;
+
+    const NativeFieldBoundary* find_field(const std::string& name) const {
+        const auto it = field_conditions.find(name);
+        return it == field_conditions.end() ? nullptr : &it->second;
+    }
 
     // For wall
     double roughness_height = 0.0;

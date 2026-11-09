@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ..convergence_evidence import ConvergenceEvidence
 from ..execution import ExecutionController
 from ..metrics import SolverMetrics
 from ..probe_stream import ProbeStreamSample
@@ -20,6 +21,9 @@ class RunCenterState:
     latest_metrics: SolverMetrics | None
     output: tuple[str, ...]
     error: object | None
+    convergence_verdict: bool | None = None
+    convergence_evidence: ConvergenceEvidence | None = None
+    convergence_evidence_error: str | None = None
 
 
 class RunCenterModel:
@@ -57,6 +61,9 @@ class RunCenterModel:
             self._latest_metrics,
             tuple(self.output),
             getattr(self.controller, "error", None),
+            getattr(self.controller, "convergence_verdict", None),
+            getattr(self.controller, "convergence_evidence", None),
+            getattr(self.controller, "convergence_evidence_error", None),
         )
 
     def clear(self) -> RunCenterState:

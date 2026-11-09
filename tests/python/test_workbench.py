@@ -198,7 +198,10 @@ def test_metadata_only_mesh_open_clears_stale_mesh_catalog(
 
     assert window.application.mesh_catalog is None
     assert window.mesh_browser.patches.topLevelItemCount() == 0
-    assert "preview deferred" in window.statusBar().currentMessage()
+    assert (
+        "bounded boundary-surface preview requested"
+        in window.statusBar().currentMessage()
+    )
     window.close()
     app.quit()
 
