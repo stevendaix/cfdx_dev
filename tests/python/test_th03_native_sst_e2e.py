@@ -31,6 +31,7 @@ def test_debug_bfs_pressure_outlet_matches_physical_operator() -> None:
     assert outlet["type"] == "pressure_outlet"
     assert outlet["value_type"] == "outlet_pressure"
     assert outlet["pressure"] == 0
+    assert outlet["back_pressure"] == outlet["pressure"]
 
 
 @pytest.mark.skipif(
