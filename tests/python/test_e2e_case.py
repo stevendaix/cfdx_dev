@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from cfdx import CFDXSession, ExecutionController, SolverRunner
 
@@ -12,7 +12,9 @@ def test_short_headless_case(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     session = CFDXSession()
-    controller = ExecutionController(session, SolverRunner([sys.executable, str(solver)]))
+    controller = ExecutionController(
+        session, SolverRunner([sys.executable, str(solver)])
+    )
     controller.start()
     assert controller.runner._thread is not None
     controller.runner._thread.join(timeout=10)
