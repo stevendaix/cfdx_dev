@@ -328,8 +328,19 @@ set(CFDX_CORE_HEADERS
     src/cfdx/io/vtu/vtu_writer.h
 )
 
+# Compile only the very large production entry translation unit at -O0
+# when explicitly requested for bounded diagnostic campaigns. This is a
+# compile-time convenience, not a qualification/performance build; normal
+# Release retains the original optimization flags unchanged.
+option(CFDX_DIAGNOSTIC_FAST_PRODUCTION_COMPILE
+    "Compile production main at -O0 for non-performance diagnostic runs" OFF)
 add_executable(cfdx_production_solver apps/production_solver/main.cpp)
 target_link_libraries(cfdx_production_solver PRIVATE cfdx_core)
+if(CFDX_DIAGNOSTIC_FAST_PRODUCTION_COMPILE AND
+   CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(cfdx_production_solver PRIVATE -O0 -g0)
+    message(STATUS "Diagnostic-only: production main compiled with -O0 (NOT performance-certified)")
+endif()
 
 add_executable(cfdx_thermal_solver apps/thermal_solver/main.cpp)
 target_link_libraries(cfdx_thermal_solver PRIVATE cfdx_core)
@@ -1420,6 +1431,14 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
     add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
+    add_cfdx_test(test_pcd_fp_bisided_basis_v13 tests/unit/test_pcd_fp_bisided_basis_v13.cpp)
+    add_cfdx_test(test_global_nonlinear_acceptance_v13 tests/unit/test_global_nonlinear_acceptance_v13.cpp)
+    add_cfdx_test(test_pcd_bilateral_deflation_v14 tests/unit/test_pcd_bilateral_deflation_v14.cpp)
+    add_cfdx_test(test_global_nonlinear_contraction_v14 tests/unit/test_global_nonlinear_contraction_v14.cpp)
+    add_cfdx_test(test_sst_wall_triplet_cell_audit_v13 tests/unit/test_sst_wall_triplet_cell_audit_v13.cpp)
+    add_cfdx_test(test_sst_fp64_stall_v14 tests/unit/test_sst_fp64_stall_v14.cpp)
+    add_cfdx_test(test_pcd_fp_strong_component_anchor tests/unit/test_pcd_fp_strong_component_anchor.cpp)
+    set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")
     add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
     add_cfdx_test(test_pcd_pressure_inflow_boundary tests/validation/test_pcd_pressure_inflow_boundary.cpp)
     add_test(NAME test_pcd_fp_replay_capture COMMAND test_pcd_fp_replay --self-test)

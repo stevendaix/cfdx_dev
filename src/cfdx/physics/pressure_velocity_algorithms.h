@@ -89,6 +89,14 @@ struct CouplingControls {
     bool pcd_fp_row_equilibration_experimental = false;
     bool pcd_fp_quality_guard_experimental = false;
     bool pcd_fp_second_pass_experimental = false;
+    // Experimental Fp-only strong-component anchor. The coupled FV matrix,
+    // physical pressure gauge and nonlinear gates are unchanged.
+    bool pcd_fp_recirculation_anchor_experimental = false;
+    // Opt-in certified nonsymmetric Fp deflation. Must carry a LEFT/RIGHT
+    // basis file whose coefficient fingerprint matches the CURRENT Fp.
+    // The matrix-free solve changes ONLY the PCD action, never the coupled FV
+    // system. No automatic basis reuse when numerical coefficients change.
+    std::string pcd_fp_bisided_basis_file_experimental;
     // Preconditioner-only A/B: pressure-space Dirichlet data on actual
     // inflow faces, including mixed-in/out farfield patches. The physical
     // momentum/continuity BCs and the Schur matrix A are NOT modified.
