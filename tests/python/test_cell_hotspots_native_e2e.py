@@ -29,6 +29,7 @@ def test_production_solver_writes_accepted_cell_snapshots(tmp_path):
             "--cell-hotspots-every",
             "2",
         ],
+        check=False,
         text=True,
         capture_output=True,
         timeout=60,
