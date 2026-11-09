@@ -15,7 +15,7 @@ from typing import Any
 
 def _finite_number(value: float, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, Real):
-        raise ValueError(f"{label} must be a finite number")
+        raise ValueError(f"{label} must be a finite number")  # noqa: TRY004
     try:
         number = float(value)
     except (ValueError, OverflowError) as exc:
@@ -79,7 +79,7 @@ class VisualizationOperation:
             if lower > upper:
                 raise ValueError("threshold minimum must not exceed maximum")
         if not isinstance(self.invert, bool):
-            raise ValueError("invert must be a boolean")
+            raise ValueError("invert must be a boolean")  # noqa: TRY004
 
     @classmethod
     def contour(cls, scalars: str, isosurfaces: int = 10) -> VisualizationOperation:
