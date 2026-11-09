@@ -30,8 +30,11 @@ def _strict_object(items):
 
 
 def strict_load(path: Path) -> dict:
-    doc = json.loads(path.read_text(encoding="utf-8"),
-                     parse_constant=_reject_constant, object_pairs_hook=_strict_object)
+    doc = json.loads(
+        path.read_text(encoding="utf-8"),
+        parse_constant=_reject_constant,
+        object_pairs_hook=_strict_object,
+    )
     if not isinstance(doc, dict):
         raise TypeError("expected JSON object")
     return doc
@@ -39,8 +42,6 @@ def strict_load(path: Path) -> dict:
 
 def _positive_finite_number(value) -> bool:
     return type(value) in (float, int) and math.isfinite(value) and value >= 0.0
-
-
 def validate_bfs_evidence(
     output_dir: Path,
     exit_code: int | None,
@@ -76,7 +77,6 @@ def validate_bfs_evidence(
     if case_path is not None:
         try:
             import h5py
-
             case_path = Path(case_path)
             actual_sha = hashlib.sha256(case_path.read_bytes()).hexdigest()
             if actual_sha != case_sha256:

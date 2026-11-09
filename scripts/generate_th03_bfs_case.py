@@ -219,11 +219,16 @@ def make_mesh(
 
 
 SCHUR_MODELS = ("pcd", "block_local", "lsc", "bfbt", "simple", "simplec")
-COUPLED_PRECONDITIONERS = ("auto", "pcd", "coupled_block_schur", "mgr", "braess_sarazin")
-
-
-def validate_solver_selection(algorithm: str, schur: str | None,
-                              preconditioner: str | None) -> None:
+COUPLED_PRECONDITIONERS = (
+    "auto",
+    "pcd",
+    "coupled_block_schur",
+    "mgr",
+    "braess_sarazin",
+)
+def validate_solver_selection(
+    algorithm: str, schur: str | None, preconditioner: str | None
+) -> None:
     """Fail before the HDF5 write; never silently substitute a Schur or PC."""
     if algorithm not in ("simple", "simplec", "coupled"):
         raise ValueError("algorithm must be simple, simplec or coupled")
@@ -241,8 +246,6 @@ def validate_solver_selection(algorithm: str, schur: str | None,
         )
     if preconditioner == "braess_sarazin" and schur != "block_local":
         raise ValueError("Braess-Sarazin requires block_local Schur")
-
-
 def make_setup(
     height: float,
     reynolds: float,
@@ -585,7 +588,6 @@ def reconfigure_bfs_reference_case(
         "physical_qualification": "NOT_QUALIFIED",
         "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified",
     }
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

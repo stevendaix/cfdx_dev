@@ -15,7 +15,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "src/cfdx/python"))
 from generate_th03_bfs_case import write_case
 from qualify_bfs_schur_evidence import strict_load, validate_bfs_evidence
-
 spec = importlib.util.spec_from_file_location(
     "bfs_v9_campaign", ROOT / "scripts/run_cfdx_coupled_campaign.py"
 )
@@ -72,8 +71,6 @@ def test_six_schur_plus_block_preconditioners_have_real_bfs_commands(tmp_path):
     assert {x[1] for item in selections for x in item if x[0] == "schur"} == {
         f"schur.{name}" for name in campaign.SCHUR_MODELS
     }
-
-
 @pytest.mark.parametrize(
     "algorithm,schur,pc",
     [
@@ -194,7 +191,6 @@ def test_execution_status_not_proven_from_just_exit_zero(tmp_path):
 
 def test_imported_reference_candidate_keeps_boundary_and_field_datasets(tmp_path):
     from generate_th03_bfs_case import reconfigure_bfs_reference_case
-
     source = tmp_path / "reference.h5"
     write_case(
         source,
@@ -233,11 +229,8 @@ def test_imported_reference_candidate_keeps_boundary_and_field_datasets(tmp_path
             for e in entries
         )
         assert b["numerics"]["max_iterations"] == 23
-
-
 def test_case_sha_input_and_numerical_selection_are_checked(tmp_path):
     from hashlib import sha256
-
     case_path = tmp_path / "bfs.h5"
     write_case(case_path, algorithm="coupled", schur="pcd", preconditioner="pcd")
     _write(tmp_path, _evidence())
@@ -258,11 +251,8 @@ def test_case_sha_input_and_numerical_selection_are_checked(tmp_path):
     assert not validate_bfs_evidence(tmp_path, 0, **{**kw, "preconditioner": "mgr"})[
         "nonlinear_v8_proven"
     ]
-
-
 def test_upwind_cannot_pass_second_order_gate_even_with_v8_certificate(tmp_path):
     from hashlib import sha256
-
     case_path = tmp_path / "upwind.h5"
     write_case(case_path, algorithm="coupled", schur="pcd", preconditioner="pcd")
     with h5py.File(case_path, "r+") as h5:
@@ -283,8 +273,6 @@ def test_upwind_cannot_pass_second_order_gate_even_with_v8_certificate(tmp_path)
     )
     assert not gate["nonlinear_v8_proven"]
     assert "case_second_order_convection_not_selected" in gate["defects"]
-
-
 def test_invalid_segregated_resolved_plan_is_fail_closed(tmp_path):
     summary, history = _evidence()
     v8 = history["history"][0]["global_nonlinear_v8"]

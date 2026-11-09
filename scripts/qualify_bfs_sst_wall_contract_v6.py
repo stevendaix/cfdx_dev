@@ -90,9 +90,7 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
     if raw.get("sst_molecular_wall_diffusion", "false") != "true":
         reasons.append("molecular near-wall diffusion path is legacy/disabled")
     if numerics.get("momentum_scheme") == "first_order":
-        reasons.append(
-            "convection is first order rather than independently qualified"
-        )
+        reasons.append("convection is first order rather than independently qualified")
     pressure_records = []
     for line in log.splitlines():
         if not line.startswith("PRESSURE_HILO_PHYSICAL_FLUX "):
