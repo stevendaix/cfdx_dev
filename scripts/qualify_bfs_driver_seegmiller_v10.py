@@ -12,8 +12,8 @@ import csv
 import hashlib
 import json
 import math
-from pathlib import Path
 import itertools
+from pathlib import Path
 
 from qualify_bfs_schur_evidence import validate_bfs_evidence
 
