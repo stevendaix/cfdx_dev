@@ -90,7 +90,9 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
     if raw.get("sst_molecular_wall_diffusion", "false") != "true":
         reasons.append("molecular near-wall diffusion path is legacy/disabled")
     if numerics.get("momentum_scheme") == "first_order":
-        reasons.append("convection is first order rather than independently qualified")
+        reasons.append(
+            "convection is first order rather than independently qualified"
+        )
     pressure_records = []
     for line in log.splitlines():
         if not line.startswith("PRESSURE_HILO_PHYSICAL_FLUX "):
@@ -110,7 +112,9 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
         })
     if not isinstance(convergence, (dict, type(None))):
         raise BFSWallContractError("invalid convergence certificate")
-    nonlinear_converged = convergence is not None and convergence.get("converged") is True
+    nonlinear_converged = (
+        convergence is not None and convergence.get("converged") is True
+    )
     pressure_substeps_pass = bool(pressure_records) and all(
         r["substep_pass"] for r in pressure_records
     )
