@@ -131,6 +131,11 @@ def execute(
             result["reason"] = str(exc)
     result["wall_seconds"] = time.monotonic() - start
     if tag.startswith("bfs_") and tag.removeprefix("bfs_") in BFS_VARIANTS:
+        from diagnose_bfs_failure_v10 import classify_log
+        content = logfile.read_text(encoding="utf-8", errors="replace") if logfile.exists() else ""
+        result["first_blocker_v10"] = classify_log(
+            content, execution=result["execution"], exit_code=result["exit_code"])
+        result["log_sha256"] = sha256(logfile) if logfile.exists() else None
         variant = tag.removeprefix("bfs_")
         algorithm, schur, preconditioner = BFS_VARIANTS[variant]
         from qualify_bfs_schur_evidence import validate_bfs_evidence
@@ -295,6 +300,7 @@ def build_commands(args: argparse.Namespace):
             for key in list(env):
                 if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
                     env.pop(key)
+            env["CFDX_BFS_STAGE_TRACE"] = "1"
             yield (
                 tag,
                 [

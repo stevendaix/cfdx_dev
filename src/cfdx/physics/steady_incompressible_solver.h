@@ -6159,6 +6159,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         std::optional<Field<double,Location::FACE>> v20_relaxed_pressure_flux;
 
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
+            // V10: phase-only evidence; never consumed by convergence logic.
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=COUPLED_LINEAR_BEGIN\\n";
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
@@ -6174,6 +6178,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 retry_controller.alpha_u(effective_alpha_u),
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=COUPLED_LINEAR_END status="
+                          << static_cast<int>(coupled_result.status)
+                          << " iterations=" << coupled_result.iterations
+                          << " true_relative=" << coupled_result.residual_relative
+                          << " actual_krylov=" << cfdx::core::to_string(result.coupled_linear_plan.krylov)
+                          << " actual_preconditioner=" << cfdx::core::to_string(result.coupled_linear_plan.preconditioner)
+                          << " resolved_schur=" << cfdx::physics::to_string(result.resolved_coupled_schur_model)
+                          << "\\n";
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 // Report the stalled linear state in scientific notation.
                 // std::to_string truncates to six fixed decimals, so a
@@ -7229,6 +7243,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             ? controls.pressure_linear_tolerance
                             : linear_tolerance).result;
                 };
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " corrector=" << corr
+                          << " phase=PRESSURE_LINEAR_BEGIN\\n";
             std::unique_ptr<SparseMatrix> reduced_pressure_matrix;
             std::unique_ptr<Vector> reduced_pressure_rhs;
             const SparseMatrix* solved_pressure_matrix = &A;
@@ -7760,6 +7778,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
             }
 
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " corrector=" << corr
+                          << " phase=PRESSURE_LINEAR_END status="
+                          << static_cast<int>(rp.status)
+                          << " iterations=" << rp.iterations
+                          << " true_relative=" << rp.residual_relative << "\\n";
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 if (controls.momentum_assembly_forensic_callback) {
                     const auto& matrix = *solved_pressure_matrix;
@@ -9323,6 +9348,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " qualified=0\n";
                 }
             }
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=SST_TRANSPORT_BEGIN budget="
+                          << controls.sst_runtime->max_transport_iterations
+                          << " target=" << controls.sst_runtime->transport_tolerance << "\\n";
             sst_step = advance_sst_production_iterate_transactionally(
                 mesh, U, p, mass_flux, *controls.sst_runtime->state,
                 controls.sst_runtime->transport, fixed_velocity_values,
@@ -9333,6 +9363,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime->transport_tolerance,
                 &controls.sst_runtime->omega_face_values,
                 controls.sst_runtime->allow_bounded_provisional_transport);
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=SST_TRANSPORT_END committed=" << sst_step.committed
+                          << " converged=" << sst_step.transport.converged
+                          << " iterations=" << sst_step.transport.iterations
+                          << " k_residual=" << sst_step.transport.k_residual
+                          << " omega_residual=" << sst_step.transport.second_residual
+                          << " k_floor_events=" << sst_step.transport.k_floor_events
+                          << " omega_floor_events=" << sst_step.transport.second_floor_events
+                          << "\\n";
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);

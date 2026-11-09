@@ -810,7 +810,8 @@ def write_case(
     setup.source_metadata["mesh_description"] = mesh_source
     setup.source_metadata["physics_gaps"] = (
         "RANS-SST experimental; wall model not equivalent to OpenFOAM; "
-        "first-order convection; not grid-converged; no verified Cf/Cp/profiles"
+        f"momentum convection={convection_scheme}; not grid-converged; "
+        "no verified Cf/Cp/profiles"
     )
     topology_hash, geometry_hash, mesh_hash = _integrity_hashes(mesh)
     metadata, face_ids, face_offsets = _boundary_patch_metadata(mesh)
@@ -882,7 +883,7 @@ def write_case(
         "warnings": [
             "TH-03 experimental registry Re_h=37500 differs from OpenFOAM nominal Re_h=36000",
             "experimental SST opt-in",
-            "CFDX first-order upwind",
+            f"CFDX momentum convection={convection_scheme} (not yet physically qualified)",
             "wall treatment not equivalent to OpenFOAM tutorial",
             "OpenFOAM omega inlet is derived from published nut/nu, not verified from raw file",
             "initial profile and grid convergence not verified",
