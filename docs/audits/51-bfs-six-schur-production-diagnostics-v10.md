@@ -2,8 +2,9 @@
 
 Date : 2026-11-09. Source de verite : ZIP original `cfdx_dev-master (2)(1).zip`,
 SHA256 `c3a0d40206829596dca61871c10f6079724c6d0e11bbf63a47d4e894e914e62c`.
-Le lot V10 inclut integrativement les changements V8 puis V9. Il ne prouve pas
-l'equivalence avec un HEAD GitHub. Aucun push n'a ete effectue.
+Le lot V10 inclut integrativement les changements V8 puis V9. Le rapport a ete
+prepare avant son integration dans la branche GitHub ; il ne constitue pas une
+preuve d'equivalence byte a byte avec le ZIP source.
 
 ## 1. Verdict et limites
 
