@@ -45,7 +45,7 @@ def _binary_fixture(path, complete=True, malformed=False):
 def test_full_cell_map_stable_scale_and_unknown_cells(tmp_path):
     with CellFieldMap(_binary_fixture(tmp_path / "map.bin")) as m:
         assert m.complete and m.n_cells == 3 and m.frame().iteration == 4
-        scalar, clim, title = m.scalar("momentum")
+        scalar, clim, _title = m.scalar("momentum")
         assert clim == (-2, 4)
         assert scalar[0] == pytest.approx(-2)
         assert scalar[1] == pytest.approx(3)
