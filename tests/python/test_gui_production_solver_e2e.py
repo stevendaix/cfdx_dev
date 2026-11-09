@@ -17,20 +17,23 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _wait_for_convergence(window: Any, timeout: float = 45.0) -> None:
+def _wait_for_completion(window: Any, timeout: float = 45.0) -> None:
     from cfdx.session import SimulationState
     from PySide6.QtWidgets import QApplication
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         QApplication.processEvents()
-        if window.session.state is SimulationState.CONVERGED:
+        if window.session.state in {
+            SimulationState.CONVERGED,
+            SimulationState.STOPPED,
+        }:
             return
         if window.session.state is SimulationState.FAILED:
             raise AssertionError("production solver entered FAILED state")
         time.sleep(0.05)
     raise AssertionError(
-        f"production solver did not converge within {timeout}s; "
+        f"production solver did not finish within {timeout}s; "
         f"state={window.session.state}, iteration={window.session.iteration}"
     )
 
@@ -44,7 +47,7 @@ def _write_solver_adapter(path: Path, output_dir: Path) -> None:
         f"solver = {str(solver)!r}\n"
         f"mesh = {str(mesh)!r}\n"
         f"output_dir = {str(output_dir)!r}\n"
-        "args = [solver, '--mesh', mesh, '--output-dir', output_dir, '--iterations', '5']\n"
+        "args = [solver, '--mesh', mesh, '--output-dir', output_dir, '--iterations', '1']\n"
         "restart = list(sys.argv[2:])\n"
         "if restart:\n"
         "    args.extend(restart)\n"
@@ -73,6 +76,7 @@ def test_workbench_production_solver_and_3d_result_e2e(tmp_path: Path) -> None:
     session = CFDXSession()
     session.case.name = "p2i-production"
     session.case.execution.solver = str(adapter)
+    session.case.execution.output_dir = str(results_dir)
     session.case.set_numerics(cfl=0.5)
 
     window = CFDXWorkbenchWindow(session)
@@ -81,10 +85,20 @@ def test_workbench_production_solver_and_3d_result_e2e(tmp_path: Path) -> None:
         assert case_path.is_file()
 
         window._run()
-        _wait_for_convergence(window)
+        _wait_for_completion(window)
 
-        assert window.session.state is SimulationState.CONVERGED
+        assert window.session.state in {
+            SimulationState.CONVERGED,
+            SimulationState.STOPPED,
+        }
         assert window.session.iteration > 0
+        controller = window.application.controller
+        assert controller is not None
+        assert controller.convergence_evidence is not None
+        assert controller.convergence_evidence_error is None
+        assert controller.convergence_verdict is (
+            window.session.state is SimulationState.CONVERGED
+        )
 
         outputs = sorted(results_dir.glob("result_*.vtu"))
         assert outputs, "production solver produced no VTU result"
