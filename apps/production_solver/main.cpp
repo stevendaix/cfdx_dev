@@ -87,6 +87,7 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
+    bool validate_numerics_only = false;
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
     std::vector<std::size_t> pressure_replay_iterations;
@@ -711,6 +712,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
+        else if (arg == "--validate-numerics-only") o.validate_numerics_only = true;
         else if (arg == "--pressure-replay-prefix")
             o.pressure_replay_prefix = value("--pressure-replay-prefix");
         else if (arg == "--pressure-replay-iterations")
@@ -856,6 +858,17 @@ int main(int argc, char** argv)
                     "production solver: energy_model 'compressible' is not "
                     "solved by this executable (incompressible carrier "
                     "only); use a compressible solver for this case");
+        }
+
+        if (options.validate_numerics_only) {
+            if (!is_case_hdf5)
+                throw std::invalid_argument(
+                    "--validate-numerics-only requires a .cfdx.h5 case");
+            IncompressibleSolverControls selection_controls;
+            apply_explicit_case_numerics(case_setup, selection_controls);
+            std::cout << "Resolved numerical selections:\\n"
+                      << cfdx::core::format_numerics_report(case_setup.numerical_report);
+            return 0;
         }
 
         if (options.initial_pressure_field && (!options.initial_velocity_field ||
