@@ -287,6 +287,10 @@ void apply_explicit_case_numerics(
                 model = PreconditionerModel::CoupledBlockSchur;
             else if (selection.method_id == "preconditioner.pcd")
                 model = PreconditionerModel::PCD;
+            else if (selection.method_id == "preconditioner.mgr")
+                model = PreconditionerModel::MGR;
+            else if (selection.method_id == "preconditioner.braess_sarazin")
+                model = PreconditionerModel::BraessSarazin;
             else
                 throw std::invalid_argument(
                     "unsupported resolved preconditioner selection: " +
