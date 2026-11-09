@@ -45,7 +45,7 @@ class _SurfaceJob(QRunnable if QRunnable is not None else object):
                     "mesh changed while constructing progressive surface preview"
                 )
             self.events.done.emit(self.revision, result, None)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.events.done.emit(self.revision, None, str(exc))
 
 
@@ -64,7 +64,7 @@ class _VolumeJob(QRunnable if QRunnable is not None else object):
                 self.path, self.start_cell, count=self.count, field=self.field
             )
             self.events.done.emit(self.revision, result, None)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.events.done.emit(self.revision, None, str(exc))
 
 
@@ -309,7 +309,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             )
             self.plotter.reset_camera()
             self.plotter.render()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.volume_partition_failed.emit(str(exc))
             return
         first, last = piece.original_cell_ids[[0, -1]]
@@ -358,7 +358,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 f"{preview.n_boundary_faces:,} boundary faces "
                 f"({preview.coverage:.2%}); NO full-volume fields or cell map"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.progressive_preview_failed.emit(
                 f"surface preview rendering failed: {exc}"
             )
@@ -593,7 +593,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self.plotter.clear()
             self.plotter.add_mesh(derived, scalars=scalars)
             self.plotter.render()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             if old_display is not None:
                 try:
                     self.plotter.clear()
