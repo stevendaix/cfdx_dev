@@ -1,5 +1,7 @@
 # CFDX - Activer une qualification en quelques clics
 
+Pour **suivre tous les cas en parallèle**, consulter aussi [le portefeuille transversal](QUALIFICATION_PORTFOLIO.md). Le dashboard de chaque PR comprend les 25 cas (y compris ceux qui n'ont pas été exécutés), indépendamment du profil ciblé.
+
 ## 1. Depuis GitHub Actions (un seul menu)
 
 1. Ouvrir **Actions > CFDX qualification - activate a profile**.

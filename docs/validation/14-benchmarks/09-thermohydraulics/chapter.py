@@ -11,7 +11,7 @@
 # |---|---|---|---|---|
 # | TUR-CHANNEL | Canal plan DNS | Moser–Kim–Mansour (1999) | RANS SST puis RSM; DNS/LES si disponible | U+, contraintes, Cf, Re_b |
 # | SEP-BFS-DRIVER | Marche descendante | Driver–Seegmiller (1985) | SST, realizable k-epsilon | x_r/h, Cp, Cf, U/V, R_ij |
-# | TH-MIXED-CONVECTION | Conduite verticale chauffée | Expérience upflow (1998) | SST avec flottabilité | U, T, Nu, Cf, Ri |
+# | TH-MIXED-CONVECTION-PIPE | Conduite verticale chauffée | Expérience upflow (1998) | SST avec flottabilité | U, T, Nu, Cf, Ri |
 # | TH-TJUNCTION | Mélange en T | OECD/NEA–Vattenfall | SST/URANS puis LES | profils U/T, RMS T, spectres |
 #
 # ## 1. TUR-CHANNEL — Moser, Kim & Mansour
@@ -95,7 +95,14 @@
 # d'entrée. Le cas SEP-BFS déjà enregistré pour Armaly/VMFL064 (Re_D=200)
 # reste un autre benchmark : ne pas réutiliser ses paramètres ou sa référence.
 #
-# ## 3. TH-MIXED-CONVECTION — conduite verticale chauffée
+# IMPORTANT — Le fichier TH-07.json existant est la DNS Wagner-Wetzel 2022
+# d'un CANAL PLAN VERTICAL (parois differentiellement chauffees). Ce n'est
+# PAS l'experience 1998 de conduite CIRCULAIRE ascendante ci-dessous.
+# L'experience de conduite possede maintenant TH-PIPE-UPFLOW-1998.json,
+# une fiche de preparation sans statut de simulation ni valeurs inventees.
+# Ne jamais la verifier a partir des sorties ou des references TH-07.
+#
+# ## 3. TH-MIXED-CONVECTION-PIPE — conduite verticale chauffée
 #
 # ### Référence expérimentale
 #

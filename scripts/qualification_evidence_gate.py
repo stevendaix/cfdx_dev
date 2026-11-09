@@ -407,7 +407,8 @@ def verify_residuals(meshes: list[dict], case: dict) -> dict:
                 )
             maxima[key] = max(maxima[key], value, independent_value)
         if is_naca and (
-            mesh["final_scheme"] not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA")
+            mesh["final_scheme"]
+            not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA", "MUSCL_CELL_LIMITED")
             or number(mesh.get("high_order_fraction"), "TVD fraction") != 1.0
         ):
             raise ValueError(f"residuals: {name} NACA must finish in full TVD")

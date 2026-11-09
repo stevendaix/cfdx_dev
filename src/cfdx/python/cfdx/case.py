@@ -54,6 +54,8 @@ class Case:
             "execution": {
                 "policy": self.execution.policy,
                 "solver": self.execution.solver,
+                "mesh": self.execution.mesh,
+                "output_dir": self.execution.output_dir,
                 "mpi_ranks": self.execution.mpi_ranks,
                 "deterministic": self.execution.deterministic,
                 "restart_option": self.execution.restart_option,
@@ -63,7 +65,22 @@ class Case:
     def run(self, case_file: Path, extra_args: list[str] | None = None) -> int:
         if not self.execution.solver:
             raise ValueError("execution.solver must be set before run()")
-        command = [self.execution.solver, str(case_file)]
+        from .native_solver_preflight import (
+            is_native_production_solver,
+            native_production_command,
+        )
+
+        if is_native_production_solver(self.execution.solver):
+            command = native_production_command(
+                self.execution.solver,
+                Path(case_file),
+                output_dir=(
+                    self.execution.output_dir or Path(case_file).parent / "results"
+                ),
+                max_iterations=self.numerics.get("max_iterations", 500),
+            )
+        else:
+            command = [self.execution.solver, str(case_file)]
         if extra_args:
             command.extend(extra_args)
         if self.execution.mpi_ranks > 1:

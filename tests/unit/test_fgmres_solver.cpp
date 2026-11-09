@@ -89,6 +89,29 @@ private:
 } // namespace
 
 int main() {
+    run_case("fgmres_variable_schur_style_action_periodic_true_restart", [] {
+        const auto A = make_nonsymmetric_system(32);
+        Vector exact(32, 0.0);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = std::cos(0.13 * static_cast<double>(i));
+        const auto b = matvec(A, exact);
+        AlternatingPreconditioner pc;
+        KrylovControls policy;
+        policy.adaptive_restart = false;
+        policy.restart_min = 10;
+        policy.restart_max = 10;
+        policy.residual_replacement = true;
+        policy.residual_replacement_period = 2;
+        Vector x(32, 0.0);
+        const auto result = solve_fgmres(
+            A, b, x, 10, 500, 1e-11, &pc, policy);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.residual_replacements == 0);
+        EXPECT_TRUE(result.residual_relative <= 1e-11);
+        EXPECT_NEAR(result.residual_relative, true_relative_residual(A, x, b), 1e-12);
+        EXPECT_TRUE(pc.calls() > result.residual_replacements);
+    });
+
     run_case("fgmres_accepts_variable_preconditioner_and_true_residual", [] {
         const auto A = make_nonsymmetric_system(32);
         Vector exact(32);

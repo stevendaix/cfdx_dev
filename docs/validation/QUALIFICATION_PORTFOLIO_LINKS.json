@@ -1,0 +1,317 @@
+{
+  "schema_version": 1,
+  "purpose": "Explicit links from 25 registry cases to named CTest checks and CFDX solver campaigns; none of these alone proves physical qualification.",
+  "cases": {
+    "LAM-COUETTE": {
+      "domain_group": "laminar",
+      "contract_tests": [
+        "test_couette_quick"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Relancer trois grilles sur le solveur reel, conserver profils/bilans/logs et reference analytique."
+    },
+    "LAM-POISEUILLE": {
+      "domain_group": "laminar",
+      "contract_tests": [
+        "test_poiseuille_quick"
+      ],
+      "campaign_tests": [
+        "test_n9_poiseuille_body_force_production"
+      ],
+      "reference_workflows": [],
+      "next_action": "Rattacher les profils et debits sur maillages raffines avec bilans independants."
+    },
+    "INC-GHIA": {
+      "domain_group": "incompressible",
+      "contract_tests": [
+        "test_ghia_cavity_quick"
+      ],
+      "campaign_tests": [
+        "test_ghia_cavity_order",
+        "test_ghia_cavity_profile_study"
+      ],
+      "reference_workflows": [],
+      "next_action": "Relancer Ghia Re=100/400/1000, garder profils Ghia et convergence vraie sur 3 grilles."
+    },
+    "VER-MMS": {
+      "domain_group": "verification",
+      "contract_tests": [
+        "test_mms_scalar_diffusion",
+        "test_n12_momentum_mms",
+        "test_wall_face_reconstruction_mms"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Publier source MMS, erreurs L2/Linf et ordres sur 3 grilles pour chaque operateur."
+    },
+    "FORCE-VMFL036": {
+      "domain_group": "forces",
+      "contract_tests": [
+        "test_vmfl036_axisymmetric_quick"
+      ],
+      "campaign_tests": [
+        "test_vmfl036_axisymmetric"
+      ],
+      "reference_workflows": [],
+      "next_action": "Verifier geometrie/domaine 3D ou axisymetrique et reference, puis Cd pression/visqueux sur 3 grilles."
+    },
+    "EXT-NACA0012": {
+      "domain_group": "naca",
+      "contract_tests": [
+        "test_naca0012_quick",
+        "test_naca_force_mesh_qualification"
+      ],
+      "campaign_tests": [
+        "test_naca0012_qualification",
+        "test_naca0012_wall_shear_audit"
+      ],
+      "reference_workflows": [],
+      "next_action": "Fermer N64/N128/N256 TVD avec vrais residus et Cp/Cf/Cd/Cl/Cm avant GCI."
+    },
+    "INT-CHANNEL": {
+      "domain_group": "incompressible",
+      "contract_tests": [
+        "test_channel_quick"
+      ],
+      "campaign_tests": [
+        "test_channel_qualification"
+      ],
+      "reference_workflows": [],
+      "next_action": "Obtenir convergence n8/n16/n32/n64 du solveur reel avec profil, frottement et debit."
+    },
+    "SEP-BFS": {
+      "domain_group": "incompressible",
+      "contract_tests": [
+        "test_bfs_quick"
+      ],
+      "campaign_tests": [
+        "test_bfs_qualification"
+      ],
+      "reference_workflows": [],
+      "next_action": "Confronter le rattachement et les profils a Armaly avec 3 grilles convergentes."
+    },
+    "TUR-FLATPLATE": {
+      "domain_group": "turbulence",
+      "contract_tests": [
+        "test_turbulence_qualification_equations"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Creer une campagne SST couche limite plate avec Cf, U+ et comparaison NASA/TMR."
+    },
+    "TUR-CHANNEL": {
+      "domain_group": "turbulence",
+      "contract_tests": [
+        "test_turbulence_qualification_matrix"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [
+        "th01-channel-dns.yml"
+      ],
+      "next_action": "Lancer solveur RANS sur canal Moser avec U+ et contraintes de Reynolds; workflow TH01 verifie surtout les references."
+    },
+    "SEP-BFS-DRIVER": {
+      "domain_group": "turbulence",
+      "contract_tests": [
+        "test_turbulence_qualification_matrix"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [
+        "th03-backward-facing-step.yml"
+      ],
+      "next_action": "Ajouter calcul CFDX Driver-Seegmiller exact avec longueur de rattachement et cisaillement."
+    },
+    "TH-MIXED-CONVECTION": {
+      "domain_group": "thermohydraulic",
+      "contract_tests": [
+        "test_thermohydraulic_observables"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [
+        "th07-mixed-convection.yml"
+      ],
+      "next_action": "Raccorder la configuration CFDX du conduit vertical et verifier Nu, energie et chute de pression."
+    },
+    "TH-TJUNCTION": {
+      "domain_group": "thermohydraulic",
+      "contract_tests": [
+        "test_thermohydraulic_observables"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [
+        "th08-t-junction.yml"
+      ],
+      "next_action": "Executer le melange T-junction CFDX avec thermocouples, bilans energie et cas de reference."
+    },
+    "TUR-NACA0012": {
+      "domain_group": "turbulence",
+      "contract_tests": [
+        "test_naca3d_thermal_turbulence_smoke",
+        "test_production_turbulence_contract"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Executer RANS SST NACA avec Re/Mach/alpha coherents, Cp/Cf/forces et y+ sur 3 grilles."
+    },
+    "TH-CONV": {
+      "domain_group": "thermal",
+      "contract_tests": [
+        "test_convection_solver_qualification",
+        "test_thermal_vv"
+      ],
+      "campaign_tests": [
+        "test_natural_convection_de_vahl_davis"
+      ],
+      "reference_workflows": [],
+      "next_action": "Etendre de Vahl Davis de Ra=1e3 a 1e4..1e6, Nu et champs independants."
+    },
+    "CHT-INTERFACE": {
+      "domain_group": "thermal",
+      "contract_tests": [
+        "test_cht_validation",
+        "test_cht_integration_contracts"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Ajouter campagne multi-region 3 grilles avec saut T et flux interface egal et oppose."
+    },
+    "RAD-P1": {
+      "domain_group": "radiation",
+      "contract_tests": [
+        "test_radiation_vv",
+        "test_production_radiation_contract"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Qualifier flux P1 contre solution etalon optiquement adaptee et fermeture energie."
+    },
+    "RAD-DOM": {
+      "domain_group": "radiation",
+      "contract_tests": [
+        "test_thermal_radiation_model_matrix",
+        "test_phase12_radiation_vv"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Qualifier DOM avec convergence spatiale et angulaire sur reference independante."
+    },
+    "RAD-S2S": {
+      "domain_group": "radiation",
+      "contract_tests": [
+        "test_s2s_radiation_vv",
+        "test_s2s_area_scale_reciprocity"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Ajouter geometrie S2S de reference avec facteurs de vue, reciprocite et flux."
+    },
+    "N9-S8-NACA0012": {
+      "domain_group": "naca",
+      "contract_tests": [
+        "test_n9_s8_naca0012_contract",
+        "test_n9_s9_rhie_chow_consistency"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Executer reference NASA/TMR Re=1000 distincte du NACA turbulent et prouver S8/N9."
+    },
+    "T1-SOLID-COND": {
+      "domain_group": "thermal",
+      "contract_tests": [
+        "test_solid_conduction_contract_e2e",
+        "test_thermal_zones_vv"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Faire 3 grilles d une conduction multi-materiaux avec puissance et resistances contacts."
+    },
+    "T2-FLUID-ENERGY": {
+      "domain_group": "thermal",
+      "contract_tests": [
+        "test_production_energy_stage_vv",
+        "test_thermal_driver_vv"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Tester le transport enthalpique avec flux convectif et diffusion, bilan source et erreur de temperature."
+    },
+    "INC-TRANSPOSE-STRESS-MMS": {
+      "domain_group": "verification",
+      "contract_tests": [
+        "test_variable_viscosity_transpose_stress"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Construire MMS sur viscosite variable, contraintes transposees et traction paroi sur 3 maillages."
+    },
+    "SCALAR-TRANSPORT-NONORTH-AFFINE": {
+      "domain_group": "verification",
+      "contract_tests": [
+        "test_scalar_transport_gradient_skew",
+        "test_nonorthogonal_skew_campaign"
+      ],
+      "campaign_tests": [],
+      "reference_workflows": [],
+      "next_action": "Comparer flux et erreurs sur maillages obliques non uniformes avec solution affine exacte."
+    },
+    "WALL-DISTANCE-GEOMETRY": {
+      "domain_group": "wall-distance",
+      "contract_tests": [
+        "test_wall_distance_precision",
+        "test_wall_distance_curved_qualification"
+      ],
+      "campaign_tests": [
+        "test_wall_distance_transport_stress65"
+      ],
+      "reference_workflows": [],
+      "next_action": "Fermer precision independante et vrais residus N128 des methodes transport, sans diluer le benchmark stress."
+    }
+  },
+  "unregistered_backlog": [
+    {
+      "id": "TH-DE-VAHL-DAVIS",
+      "domain": "thermal",
+      "existing_checks": [
+        "test_natural_convection_de_vahl_davis"
+      ],
+      "reason": "Prequalification disponible, absent comme cas autonome du registre (TH-CONV le cite)."
+    },
+    {
+      "id": "TH-RAYLEIGH-BENARD",
+      "domain": "thermal",
+      "existing_checks": [],
+      "reason": "Campagne transitoire Ra sous/sur critique non implementee dans les CTest de cette archive."
+    },
+    {
+      "id": "MULTI-VOF-ADVECTION",
+      "domain": "multiphase",
+      "existing_checks": [
+        "test_vof_curvature_contract"
+      ],
+      "reason": "Courbure VOF testee, pas de cas d advection d interface/masse avec oracle physique."
+    },
+    {
+      "id": "LES-CANONICAL",
+      "domain": "turbulence",
+      "existing_checks": [],
+      "reason": "Aucun cas de qualification LES complet avec statistiques et DNS independent."
+    },
+    {
+      "id": "RAD-VMFL056",
+      "domain": "radiation",
+      "existing_checks": [
+        "test_thermal_radiation_model_matrix"
+      ],
+      "reason": "Reference Fluent DOM/conduction identifiee dans la documentation, pas de campagne physique."
+    },
+    {
+      "id": "NACA-3D",
+      "domain": "naca",
+      "existing_checks": [
+        "test_naca0012_extruded_3d_quick"
+      ],
+      "reason": "Smokes 3D presentes; etude independante d erreurs 3D non inscrite comme cas."
+    }
+  ]
+}

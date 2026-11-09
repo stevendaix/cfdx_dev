@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.append(str(ROOT / "scripts"))
 import naca_force_mesh_qualification as m
 from naca_surface_force_oracle import COLUMNS
 
@@ -208,23 +208,38 @@ class NacaForceMeshTests(unittest.TestCase):
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
-            any("mixes convection schemes" in msg for msg in report["reasons"])
+            any("different high-order schemes" in msg for msg in report["reasons"])
         )
 
-    def test_early_upwind_then_final_tvd_is_blocked_by_scheme_consistency(self):
-        # Superseded contract (2026-11-08 lot evidence): a nonlinear history
-        # that mixes convection schemes is refused, even when only the final
-        # accepted operator is used for the certificate.
+    def test_early_upwind_then_final_tvd_remains_qualifiable(self):
         path = self.histories[64]
         lines = path.read_text().splitlines()
-        earlier = lines[1].replace("1,1e-11,", "1,1e-4,", 1)
-        earlier = earlier.replace(",TVD,", ",UPWIND,")
+        first = lines[1].replace(",TVD,", ",UPWIND,")
+        first = first.replace(",0,0,1,", ",0,0,0,")
         final = "2" + lines[1][1:]
-        path.write_text("\n".join((lines[0], earlier, final)) + "\n")
+        path.write_text("\n".join((lines[0], first, final)) + "\n")
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "GCI_CANDIDATE")
+        self.assertEqual(report["convection_scheme"], "TVD")
+
+    def test_return_to_upwind_after_activation_is_blocked(self):
+        path = self.histories[64]
+        lines = path.read_text().splitlines()
+        return_upwind = ("2" + lines[1][1:]).replace(",TVD,", ",UPWIND,")
+        path.write_text("\n".join((lines[0], lines[1], return_upwind)) + "\n")
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(any("returned to UPWIND" in r for r in report["reasons"]))
+
+    def test_high_order_fraction_cannot_recede(self):
+        path = self.histories[64]
+        lines = path.read_text().splitlines()
+        second = ("2" + lines[1][1:]).replace(",0,0,1,", ",0,0,0.5,")
+        path.write_text("\n".join((lines[0], lines[1], second)) + "\n")
         report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
-            any("mixes convection schemes" in msg for msg in report["reasons"])
+            any("continuation fraction decreases" in r for r in report["reasons"])
         )
 
     def test_missing_raw_surface_cannot_promote_solver_forces(self):

@@ -2,7 +2,9 @@
 # # Thermohydraulique turbulente — base théorique et V&V
 #
 # Ce chapitre fixe les équations, conventions et limites d'interprétation communes
-# aux campagnes TUR-CHANNEL, SEP-BFS-DRIVER, TH-MIXED-CONVECTION et TH-TJUNCTION.
+# aux campagnes TUR-CHANNEL, SEP-BFS-DRIVER, TH-MIXED-CONVECTION-PIPE et TH-TJUNCTION.
+# TH-07 est une autre reference : DNS de canal plan vertical Wagner-Wetzel.
+# Ne pas assimiler l'experience 1998 de conduite a cette DNS.
 # Il constitue une base scientifique, pas une preuve d'exécution ni de qualification.
 #
 # ## 1. Équations moyennées de quantité de mouvement

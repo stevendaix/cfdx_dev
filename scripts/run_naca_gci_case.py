@@ -25,7 +25,7 @@ def run_case(
     stagnation_diagnostic_only: bool = False,
     farfield_pressure_neumann: bool = False,
     require_kinematic_face_flux: bool = False,
-    convection_scheme: str = "TVD_VANLEER",
+    convection_scheme: str = "MUSCL_CELL_LIMITED",
     linear_tolerance: float = 1e-12,
 ):
     if linear_tolerance not in (1e-12, 1e-10):
@@ -61,10 +61,23 @@ def run_case(
         and manifest.resolve() == initial_paired_checkpoint.resolve()
     ):
         raise ValueError("cannot overwrite the active restart input manifest")
-    # A stale checkpoint must never be reported as a new checkpoint after
-    # failure.
-    manifest.unlink(missing_ok=True)
+    # Never accept stale artifacts from a previous run in the same directory.
+    # These are output-only names: input restarts are explicitly separate.
+    for name in (
+        "checkpoint.manifest",
+        "force.csv",
+        "history.csv",
+        "profiles.csv",
+        "raw_wall_faces.csv",
+        "run_summary.json",
+        "run.log",
+    ):
+        (output / name).unlink(missing_ok=True)
     env = os.environ.copy()
+    # Freeze the GCI solver choice for BOTH final schemes; a user shell must
+    # not change the numerical method by exporting CFDX_NACA_ALGORITHM.
+    env["CFDX_NACA_ALGORITHM"] = "SIMPLE"
+    env.pop("CFDX_NACA_COUPLED_SCHUR", None)
     env.update(
         {
             "CFDX_NACA_LINEAR_TOLERANCE": f"{linear_tolerance:.0e}",
@@ -86,7 +99,6 @@ def run_case(
         env["CFDX_NACA_CONVECTION_VANLEER"] = "1"
     if convection_scheme == "MUSCL_CELL_LIMITED":
         env["CFDX_NACA_CONVECTION_CELL_LIMITED"] = "1"
-        env["CFDX_NACA_ALGORITHM"] = "SIMPLE"
     if stagnation_diagnostic_only:
         env["CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY"] = "1"
     # The qualification contract owns these toggles. Do not inherit an
@@ -164,6 +176,7 @@ def run_case(
             {
                 "mesh": str(mesh),
                 "scheme": convection_scheme,
+                "algorithm": "SIMPLE",
                 "linear_tolerance": linear_tolerance,
                 "wall_traction": "FACE_WLS",
                 "stagnation_diagnostic_only": stagnation_diagnostic_only,
@@ -242,8 +255,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--scheme",
         choices=("TVD_VANLEER", "MUSCL_CELL_LIMITED"),
-        default="TVD_VANLEER",
-        help="fixed final convection operator",
+        default="MUSCL_CELL_LIMITED",
+        help="fixed final convection operator (MUSCL candidate, Van Leer comparison)",
     )
     parser.add_argument("--seconds", type=int, default=1100)
     parser.add_argument("--initial-state", type=Path)

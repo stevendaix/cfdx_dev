@@ -61,6 +61,10 @@ struct CoupledBlockSchurOptions {
     // Store its inverse scale 1/alpha, shared by velocity and Schur actions.
     // A scale of one retains the historical Block-Schur behavior.
     double velocity_inverse_scale = 1.0;
+    // Optional, common to all six Schur families: reject a catastrophic
+    // A*M^-1*r image BEFORE the outer FGMRES/Arnoldi basis is contaminated.
+    // Zero keeps the existing production path exactly unchanged.
+    double max_action_amplification = 0.0;
 };
 
 // Block preconditioner for the pressure-based coupled ordering
@@ -111,6 +115,10 @@ public:
         if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
             A.n_rows() != 4 * n_cells_)
             return fail("expected a square 4N coupled matrix");
+        if (!(options_.max_action_amplification == 0.0 ||
+              (std::isfinite(options_.max_action_amplification) &&
+               options_.max_action_amplification >= 1.0e3)))
+            return fail("invalid Schur action-amplification threshold");
         if (!(options_.velocity_inverse_scale > 0.0) ||
             !std::isfinite(options_.velocity_inverse_scale) ||
             options_.velocity_inverse_scale > 4.0)
@@ -436,11 +444,43 @@ public:
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         }
         for (std::size_t c = 0; c < n_cells_; ++c) z(nv_ + c) = zp(c);
+        if (!z.is_valid()) return false;
+        if (options_.max_action_amplification > 0.0) {
+            // The REAL monolithic matrix is measured, not the Schur model.
+            // Accumulate in long double to avoid overflow in this diagnostic
+            // when a nested inverse has returned a huge but finite vector.
+            long double rhs_sq = 0.0L;
+            long double image_sq = 0.0L;
+            for (std::size_t i = 0; i < r.size(); ++i) {
+                rhs_sq += static_cast<long double>(r(i)) * r(i);
+                long double image = 0.0L;
+                for (std::size_t k = row_[i]; k < row_[i + 1]; ++k)
+                    image += static_cast<long double>(val_[k]) * z(col_[k]);
+                image_sq += image * image;
+            }
+            const long double limit = options_.max_action_amplification;
+            const bool safe = rhs_sq == 0.0L
+                ? image_sq == 0.0L
+                : std::isfinite(image_sq) &&
+                  image_sq <= limit * limit * rhs_sq;
+            if (!safe) {
+                if (krylov_diagnostics_enabled())
+                    std::cerr << "KRYLOV_SCHUR_ACTION_REJECT model=" << name()
+                              << " image_ratio="
+                              << (rhs_sq > 0.0L
+                                  ? static_cast<double>(std::sqrt(image_sq / rhs_sq))
+                                  : std::numeric_limits<double>::infinity())
+                              << " threshold=" << options_.max_action_amplification
+                              << " (no preconditioner fallback)\n";
+                z.fill(0.0);
+                return false;
+            }
+        }
         if (krylov_diagnostics_verbose()) {
             const double gauge_output = (gauge_row < z.size()) ? z(gauge_row) : 0.0;
             std::cerr << "KRYLOV_PRECOND_APPLY_DONE gauge_output=" << gauge_output << "\n";
         }
-        return z.is_valid();
+        return true;
     }
 
     const char* name() const override {

@@ -45,7 +45,7 @@ def test_three_grid_campaign_fails_closed_with_rejected_solver(tmp_path: Path):
     import sys
 
     root = Path(__file__).resolve().parents[2]
-    sys.path.insert(0, str(root / "scripts"))
+    sys.path.append(str(root / "scripts"))
     from run_th03_pressure_campaign_v5 import campaign
 
     fake = tmp_path / "reject.sh"

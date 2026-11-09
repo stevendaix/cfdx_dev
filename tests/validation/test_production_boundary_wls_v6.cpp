@@ -688,9 +688,12 @@ int main() {
             }
             const auto gradient=compute_boundary_aware_wls_gradient(
                 field,mesh,geo,{},nullptr,&bc);
+            // SECOND_ORDER_UPWIND retains the legacy two-cell face
+            // clipping. TVD_VANLEER now uses the multidimensional stencil
+            // envelope and is not a valid "old clipping" comparator here.
             const auto old_flux=reconstruct_scalar_transport_flux(
                 mesh,geo,mass,field,0.0,{},false,
-                ConvectionScheme::TVD_VANLEER,&bc);
+                ConvectionScheme::SECOND_ORDER_UPWIND,&bc);
             const auto new_flux=reconstruct_scalar_transport_flux(
                 mesh,geo,mass,field,0.0,{},false,
                 ConvectionScheme::MUSCL_CELL_LIMITED,&bc);

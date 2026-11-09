@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
 from compare_naca_multisecant import EvidenceError, compare
 
 

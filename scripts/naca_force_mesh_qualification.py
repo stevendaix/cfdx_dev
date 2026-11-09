@@ -93,6 +93,8 @@ def verify_physical_history(
         count = 0
         last = None
         run_scheme = None
+        entered_high_order = False
+        previous_fraction = 0.0
         for row in reader:
             count += 1
             iteration = int(row["iteration"])
@@ -139,12 +141,26 @@ def verify_physical_history(
                 "MUSCL_CELL_LIMITED",
             ):
                 raise ValueError(f"N{level}: unknown convection scheme")
-            if run_scheme is None:
-                run_scheme = row["convection_scheme"]
-            elif row["convection_scheme"] != run_scheme:
+            scheme = row["convection_scheme"]
+            fraction = float(row["high_order_fraction"])
+            if fraction + 1e-12 < previous_fraction:
                 raise ValueError(
-                    f"N{level}: nonlinear history mixes convection schemes"
+                    f"N{level}: high-order continuation fraction decreases"
                 )
+            previous_fraction = fraction
+            if scheme == "UPWIND":
+                if entered_high_order:
+                    raise ValueError(
+                        f"N{level}: returned to UPWIND after high-order activation"
+                    )
+            else:
+                entered_high_order = True
+                if run_scheme is None:
+                    run_scheme = scheme
+                elif scheme != run_scheme:
+                    raise ValueError(
+                        f"N{level}: nonlinear history mixes different high-order schemes"
+                    )
             if (
                 int(row["nonfinite_mass_faces"]) != 0
                 or int(row["nonfinite_velocities"]) != 0
@@ -205,8 +221,10 @@ def verify_physical_history(
         "final_mass_normalized_imbalance": mass_imbalance,
         "final_certificate_mass_residual": mass,
         "final_independent_face_momentum_relative": face_residuals,
-        "convection_scheme": run_scheme,
-        "experimental_reconstruction": run_scheme == "MUSCL_CELL_LIMITED",
+        "convection_scheme": last["convection_scheme"],
+        "experimental_reconstruction": (
+            last["convection_scheme"] == "MUSCL_CELL_LIMITED"
+        ),
     }
 
 

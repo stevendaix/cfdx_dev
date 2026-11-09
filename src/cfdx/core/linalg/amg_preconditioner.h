@@ -50,21 +50,25 @@ public:
                                    bool require_smoother_certificate = true,
                                    AMGSmootherPolicy smoother = AMGSmootherPolicy::DampedJacobi,
                                    double prolongator_filter = 0.0,
-                                   std::size_t max_cf_interpolation_entries = 0)
+                                   std::size_t max_cf_interpolation_entries = 0,
+                                   double max_coarsening_fraction = 1.0)
         : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
           constant_null_space_(constant_null_space),
           require_smoother_certificate_(require_smoother_certificate),
           smoother_policy_(smoother), prolongator_filter_(prolongator_filter),
-          max_cf_interpolation_entries_(max_cf_interpolation_entries)
+          max_cf_interpolation_entries_(max_cf_interpolation_entries),
+          max_coarsening_fraction_(max_coarsening_fraction)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
             strength_threshold_ > 1.0 || max_levels_ == 0 ||
             !std::isfinite(prolongator_filter_) || prolongator_filter_ < 0.0 ||
             prolongator_filter_ >= 1.0 ||
-            max_cf_interpolation_entries_ == 1) {
+            max_cf_interpolation_entries_ == 1 ||
+            !std::isfinite(max_coarsening_fraction_) ||
+            max_coarsening_fraction_ < 0.5 || max_coarsening_fraction_ > 1.0) {
             throw std::invalid_argument("invalid AMG operator");
         }
     }
@@ -154,7 +158,19 @@ public:
                     return false;
                 }
             }
-            if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
+            // Stagnating nonsymmetric coarsening is NOT harmless. On the
+            // captured pinned-Neumann NACA Fp, 25 increasingly weak levels
+            // amplified one V-cycle by 3e14, while 5 effective levels were
+            // bounded. Stop before constructing an unproductive coarse level
+            // and use the already existing sparse terminal smoother. This
+            // opt-in does not change the finest matrix, transfer formula,
+            // SPD/CG hierarchy, or the external true-residual criteria.
+            if (coarse_n == 0 ||
+                coarse_n >= levels_.back().A.n_rows() ||
+                (max_coarsening_fraction_ < 1.0 &&
+                 static_cast<double>(coarse_n) >=
+                     max_coarsening_fraction_ *
+                         static_cast<double>(levels_.back().A.n_rows()))) {
                 break;
             }
 
@@ -2661,6 +2677,7 @@ private:
     const AMGSmootherPolicy smoother_policy_;
     const double prolongator_filter_;
     const std::size_t max_cf_interpolation_entries_;
+    const double max_coarsening_fraction_;
     std::size_t line_factor_fallback_levels_ = 0;
     std::size_t numeric_line_fallbacks_ = 0;
     std::vector<Level> levels_;
