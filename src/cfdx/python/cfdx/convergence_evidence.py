@@ -297,11 +297,14 @@ def load_run_evidence(
                 "history iterations are not strictly increasing or exceed run count"
             )
         for metric, value in row.items():
-            if metric == "iteration" or value is None or isinstance(value, (bool, str)):
+            if metric == "iteration":
                 continue
             if metric == "global_nonlinear_v8":
                 _validate_global_nonlinear_v8(value, index)
-            elif isinstance(value, (int, float)):
+                continue
+            if value is None or isinstance(value, (bool, str)):
+                continue
+            if isinstance(value, (int, float)):
                 if not math.isfinite(value):
                     raise EvidenceError(f"non-finite history[{index}].{metric}")
             elif isinstance(value, list):

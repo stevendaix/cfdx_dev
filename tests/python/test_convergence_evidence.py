@@ -90,3 +90,8 @@ def test_load_run_evidence_rejects_inconsistent_v8_sst_flags(tmp_path):
     certificate["sst"] = False
     with pytest.raises(EvidenceError, match="requires sst"):
         _load(tmp_path, certificate)
+
+
+def test_load_run_evidence_rejects_missing_v8_certificate(tmp_path):
+    with pytest.raises(EvidenceError, match="global_nonlinear_v8 must be an object"):
+        _load(tmp_path, None)
