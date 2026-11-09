@@ -1,7 +1,9 @@
 // H05: a one-cell transient balance with an independent normal-distance oracle.
 #include "chain_fixture.h"
 #include "cfdx/physics/energy_solver.h"
+#include <array>
 #include <cmath>
+#include <string>
 #include <iostream>
 #include <iomanip>
 using namespace cfdx::core;
