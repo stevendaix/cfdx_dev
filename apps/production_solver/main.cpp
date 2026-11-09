@@ -1391,6 +1391,11 @@ int main(int argc, char** argv)
             controls.pressure_high_low_production=flag("pressure_high_low_production");
             controls.require_post_sst_momentum_reassembly=
                 flag("v7_post_sst_momentum_gate");
+            controls.require_global_nonlinear_certificate_v8 =
+                flag("v8_global_nonlinear_residual");
+            if (controls.require_global_nonlinear_certificate_v8)
+                std::cout << "V8 independent U-p-k-omega residual: "
+                             "EXPERIMENTAL for all Schur variants; no physical tolerances changed\n";
             if (controls.require_post_sst_momentum_reassembly)
                 std::cout << "V7 cross-equation momentum residual after SST: "
                              "EXPERIMENTAL physical gate, tolerances unchanged\n";
