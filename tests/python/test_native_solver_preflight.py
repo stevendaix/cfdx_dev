@@ -1,4 +1,5 @@
 """GUI and native production solver must agree about runnable case schema."""
+
 from __future__ import annotations
 
 import json
@@ -6,8 +7,6 @@ from unittest.mock import patch
 
 import h5py
 import pytest
-
-from cfdx import CFDXSession
 from cfdx.case import Case
 from cfdx.case_io import read_case, save_case
 from cfdx.native_solver_preflight import (
@@ -15,6 +14,8 @@ from cfdx.native_solver_preflight import (
     is_native_production_solver,
     native_production_command,
 )
+
+from cfdx import CFDXSession
 
 
 def test_detects_only_native_executable():

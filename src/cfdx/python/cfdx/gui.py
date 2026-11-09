@@ -1,31 +1,44 @@
 """Optional PySide6 GUI for CFDX case setup and solver execution."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from .dat_io import read_dat_restart
+from .execution import ExecutionController
+from .mesh_model import read_mesh_catalog
 from .native_solver_preflight import (
     check_native_production_case,
     is_native_production_solver,
     native_production_command,
 )
-from .dat_io import read_dat_restart
-from .execution import ExecutionController
 from .output import OutputThrottle
-from .runner import SolverRunner
-from .session import CFDXSession, SimulationState, ChangeImpact
-from .tui import TuiRenderer
-from .watcher import ResultWatcher
-from .mesh_model import read_mesh_catalog
 from .results_series import discover_result_series
+from .runner import SolverRunner
+from .session import CFDXSession, ChangeImpact, SimulationState
+from .tui import TuiRenderer
 from .validation import validate_case
+from .watcher import ResultWatcher
 
 try:
-    from PySide6.QtCore import QObject, QTimer, Qt, Signal
+    from PySide6.QtCore import QObject, Qt, QTimer, Signal
     from PySide6.QtWidgets import (
-        QApplication, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
-        QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-        QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+        QApplication,
+        QDoubleSpinBox,
+        QFileDialog,
+        QFormLayout,
+        QHBoxLayout,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QPlainTextEdit,
+        QPushButton,
+        QTabWidget,
+        QTreeWidget,
+        QTreeWidgetItem,
+        QVBoxLayout,
+        QWidget,
     )
 except ImportError:  # pragma: no cover
     QApplication = None
@@ -34,10 +47,10 @@ except ImportError:  # pragma: no cover
 
 
 if QApplication is not None:
+    from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
     from .results_series_panel import ResultsSeriesPanel
     from .setup_panel import CaseSetupPanel
-    from .gui_3d import PyVistaQtView
 
     class SessionSignals(QObject):
         state_changed = Signal(object)
@@ -73,7 +86,8 @@ if QApplication is not None:
             self._flush_timer.start()
             self._result_watcher = (
                 ResultWatcher(results_dir, self.signals.results_changed.emit)
-                if results_dir is not None else None
+                if results_dir is not None
+                else None
             )
 
             self._build_actions()
@@ -141,7 +155,13 @@ if QApplication is not None:
             self.stop_button = QPushButton("Stop")
             self.check_case_button = QPushButton("Check Case")
             controls = QHBoxLayout()
-            for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button, self.check_case_button):
+            for button in (
+                self.run_button,
+                self.pause_button,
+                self.resume_button,
+                self.stop_button,
+                self.check_case_button,
+            ):
                 controls.addWidget(button)
 
             self.parameters = QFormLayout()
@@ -212,8 +232,10 @@ if QApplication is not None:
 
         def _open_mesh(self) -> bool:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open CFDX Mesh", str(self._case_path.parent if self._case_path else ""),
-                "CFDX mesh (*.h5);;All files (*)"
+                self,
+                "Open CFDX Mesh",
+                str(self._case_path.parent if self._case_path else ""),
+                "CFDX mesh (*.h5);;All files (*)",
             )
             if not path:
                 return False
@@ -248,8 +270,9 @@ if QApplication is not None:
 
         def _open_results_directory(self) -> bool:
             directory = QFileDialog.getExistingDirectory(
-                self, "Open CFDX Results Directory",
-                str(self._case_path.parent if self._case_path else "")
+                self,
+                "Open CFDX Results Directory",
+                str(self._case_path.parent if self._case_path else ""),
             )
             if not directory:
                 return False
@@ -292,7 +315,9 @@ if QApplication is not None:
         def _mesh_selection_changed(self, selection) -> None:
             if self.view3d is not None and selection.kind == "patch":
                 try:
-                    self.view3d.select(selection.stable_id or f"patch:{selection.index}")
+                    self.view3d.select(
+                        selection.stable_id or f"patch:{selection.index}"
+                    )
                 except KeyError:
                     pass
             if selection.kind == "patch" and selection.name:
@@ -326,9 +351,15 @@ if QApplication is not None:
         def _connect_controller(self) -> None:
             if self.controller is None:
                 return
-            self.controller.on_output = lambda line, stderr: self.signals.output.emit(line, stderr)
-            self.controller.on_metrics = lambda metrics: self.signals.metrics_changed.emit(metrics)
-            self.controller.on_complete = lambda _result: self.signals.state_changed.emit(self.session.state)
+            self.controller.on_output = lambda line, stderr: self.signals.output.emit(
+                line, stderr
+            )
+            self.controller.on_metrics = lambda metrics: (
+                self.signals.metrics_changed.emit(metrics)
+            )
+            self.controller.on_complete = lambda _result: (
+                self.signals.state_changed.emit(self.session.state)
+            )
 
         def _solver_command(self) -> list[str]:
             solver = self.session.case.execution.solver
@@ -337,11 +368,15 @@ if QApplication is not None:
             if self._case_path is None:
                 raise ValueError("Save the case before Run")
             if is_native_production_solver(solver):
-                output_dir = (self.session.case.execution.output_dir
-                              or self._case_path.parent / "results")
+                output_dir = (
+                    self.session.case.execution.output_dir
+                    or self._case_path.parent / "results"
+                )
                 iterations = self.session.case.numerics.get("max_iterations", 500)
                 command = native_production_command(
-                    solver, self._case_path, output_dir=output_dir,
+                    solver,
+                    self._case_path,
+                    output_dir=output_dir,
                     max_iterations=iterations,
                 )
             else:
@@ -349,17 +384,24 @@ if QApplication is not None:
             if self._restart_dat is not None:
                 restart_option = self.session.case.execution.restart_option
                 if not restart_option:
-                    raise ValueError("A DAT restart is loaded but no solver restart option is configured")
+                    raise ValueError(
+                        "A DAT restart is loaded but no solver restart option is configured"
+                    )
                 command.extend([restart_option, str(self._restart_dat)])
             if self.session.case.execution.mpi_ranks > 1:
                 command = [
-                    "mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command                ]
+                    "mpiexec",
+                    "-n",
+                    str(self.session.case.execution.mpi_ranks),
+                    *command,
+                ]
             return command
 
         def _ensure_controller(self) -> ExecutionController:
             if self.controller is None:
                 self.controller = ExecutionController(
-                    self.session, SolverRunner(self._solver_command(), cwd=self._case_path.parent)
+                    self.session,
+                    SolverRunner(self._solver_command(), cwd=self._case_path.parent),
                 )
                 self._connect_controller()
             return self.controller
@@ -375,8 +417,10 @@ if QApplication is not None:
 
         def _save_case_as(self) -> bool:
             path, _ = QFileDialog.getSaveFileName(
-                self, "Save CFDX Case", self.session.case.name + ".cfdx.h5",
-                "CFDX Case (*.cfdx.h5);;All files (*)"
+                self,
+                "Save CFDX Case",
+                self.session.case.name + ".cfdx.h5",
+                "CFDX Case (*.cfdx.h5);;All files (*)",
             )
             if not path:
                 return False
@@ -406,8 +450,10 @@ if QApplication is not None:
             if not self._ensure_case_path():
                 return False
             dat_path, _ = QFileDialog.getOpenFileName(
-                self, "Select solver DAT restart", str(self._case_path.parent),
-                "CFDX DAT checkpoint (*.dat.h5 *.dat);;CFDX DAT HDF5 (*.dat.h5);;CFDX DAT text (*.dat);;All files (*)"
+                self,
+                "Select solver DAT restart",
+                str(self._case_path.parent),
+                "CFDX DAT checkpoint (*.dat.h5 *.dat);;CFDX DAT HDF5 (*.dat.h5);;CFDX DAT text (*.dat);;All files (*)",
             )
             if not dat_path:
                 return False
@@ -448,8 +494,10 @@ if QApplication is not None:
                 )
                 return None
             dat_path, _ = QFileDialog.getOpenFileName(
-                self, title, str(self._case_path.parent),
-                "CFDX DAT (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
+                self,
+                title,
+                str(self._case_path.parent),
+                "CFDX DAT (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)",
             )
             return Path(dat_path) if dat_path else None
 
@@ -493,12 +541,20 @@ if QApplication is not None:
         def _open_dat_result(self) -> bool:
             """Load DAT numerical state for visualization without selecting a restart."""
             dat_path = self._select_dat_result("Read DAT Result")
-            return self._load_dat_result(dat_path, use_for_restart=False) if dat_path else False
+            return (
+                self._load_dat_result(dat_path, use_for_restart=False)
+                if dat_path
+                else False
+            )
 
         def _open_dat_checkpoint(self) -> bool:
             """Load DAT numerical state and also select it for solver continuation."""
             dat_path = self._select_dat_result("Read DAT Checkpoint")
-            return self._load_dat_result(dat_path, use_for_restart=True) if dat_path else False
+            return (
+                self._load_dat_result(dat_path, use_for_restart=True)
+                if dat_path
+                else False
+            )
 
         def _open_case_with_dat(self) -> bool:
             path, _ = QFileDialog.getOpenFileName(
@@ -507,8 +563,10 @@ if QApplication is not None:
             if not path:
                 return False
             dat_path, _ = QFileDialog.getOpenFileName(
-                self, "Select paired solver DAT", str(Path(path).parent),
-                "CFDX DAT checkpoint (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
+                self,
+                "Select paired solver DAT",
+                str(Path(path).parent),
+                "CFDX DAT checkpoint (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)",
             )
             if not dat_path:
                 return False
@@ -519,7 +577,9 @@ if QApplication is not None:
                 self._restart_dat = restart
                 checkpoint = read_dat_restart(restart)
                 if self.view3d is not None:
-                    fields = self.view3d.load_cfdx_dat(str(self._case_path), str(restart))
+                    fields = self.view3d.load_cfdx_dat(
+                        str(self._case_path), str(restart)
+                    )
                     self._result_source = restart
                     self.results_series.set_checkpoint_fields(
                         fields, checkpoint.iteration, checkpoint.time, restart.name
@@ -565,6 +625,7 @@ if QApplication is not None:
         def _install_shortcuts(self) -> None:
             # Standard application actions remain accessible without mouse-only navigation.
             from PySide6.QtGui import QKeySequence, QShortcut
+
             QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save_case)
             QShortcut(QKeySequence("F5"), self, activated=self._run)
             QShortcut(QKeySequence("F6"), self, activated=self._check_case)
@@ -598,8 +659,10 @@ if QApplication is not None:
                 f"Time: {self.session.time:g}"
             )
             run_enabled = state in {
-                SimulationState.CREATED, SimulationState.READY,
-                SimulationState.PAUSED, SimulationState.STOPPED,
+                SimulationState.CREATED,
+                SimulationState.READY,
+                SimulationState.PAUSED,
+                SimulationState.STOPPED,
             }
             self.run_button.setEnabled(run_enabled)
             self.run_action.setEnabled(run_enabled)
@@ -607,15 +670,32 @@ if QApplication is not None:
             self.pause_action.setEnabled(state is SimulationState.RUNNING)
             self.resume_button.setEnabled(state is SimulationState.PAUSED)
             self.resume_action.setEnabled(state is SimulationState.PAUSED)
-            self.stop_button.setEnabled(state in {SimulationState.RUNNING, SimulationState.PAUSED})
-            self.stop_action.setEnabled(state in {SimulationState.RUNNING, SimulationState.PAUSED})
-            self.save_case_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
-            self.save_case_as_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
-            self.save_case_dat_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING} and self._case_path is not None)
-            self.open_dat_action.setEnabled(self._case_path is not None and state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
+            self.stop_button.setEnabled(
+                state in {SimulationState.RUNNING, SimulationState.PAUSED}
+            )
+            self.stop_action.setEnabled(
+                state in {SimulationState.RUNNING, SimulationState.PAUSED}
+            )
+            self.save_case_action.setEnabled(
+                state not in {SimulationState.RUNNING, SimulationState.VALIDATING}
+            )
+            self.save_case_as_action.setEnabled(
+                state not in {SimulationState.RUNNING, SimulationState.VALIDATING}
+            )
+            self.save_case_dat_action.setEnabled(
+                state not in {SimulationState.RUNNING, SimulationState.VALIDATING}
+                and self._case_path is not None
+            )
+            self.open_dat_action.setEnabled(
+                self._case_path is not None
+                and state not in {SimulationState.RUNNING, SimulationState.VALIDATING}
+            )
 
         def _set_cfl(self, value: float) -> None:
-            if self.session.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
+            if self.session.state in {
+                SimulationState.RUNNING,
+                SimulationState.VALIDATING,
+            }:
                 return
             self.session.edit("cfl", value, ChangeImpact.HOT)
             self._mark_dirty()
@@ -626,16 +706,23 @@ if QApplication is not None:
                 report = validate_case(self.session.case, mesh)
                 if report.ok:
                     solver = self.session.case.execution.solver
-                    if is_native_production_solver(solver) and self._case_path is not None:
+                    if (
+                        is_native_production_solver(solver)
+                        and self._case_path is not None
+                    ):
                         check_native_production_case(self._case_path)
                     message = "Case is valid."
                     if report.warnings:
-                        message += "\n\nWarnings:\n" + "\n".join(f"- {d.message}" for d in report.warnings)
+                        message += "\n\nWarnings:\n" + "\n".join(
+                            f"- {d.message}" for d in report.warnings
+                        )
                     QMessageBox.information(self, "Check Case", message)
                     return True
                 details = "\n".join(f"- [{d.code}] {d.message}" for d in report.errors)
                 if report.warnings:
-                    details += "\n\nWarnings:\n" + "\n".join(f"- {d.message}" for d in report.warnings)
+                    details += "\n\nWarnings:\n" + "\n".join(
+                        f"- {d.message}" for d in report.warnings
+                    )
                 QMessageBox.critical(self, "Check Case failed", details)
                 return False
             except (TypeError, ValueError, OSError) as exc:
@@ -656,7 +743,10 @@ if QApplication is not None:
                     )
                     if choice is QMessageBox.StandardButton.Cancel:
                         return
-                    if choice is QMessageBox.StandardButton.Save and not self._save_case():
+                    if (
+                        choice is QMessageBox.StandardButton.Save
+                        and not self._save_case()
+                    ):
                         return
                 if not self._ensure_case_path():
                     return
@@ -706,7 +796,9 @@ if QApplication is not None:
             return TuiRenderer.render(self.session)
 
         def closeEvent(self, event) -> None:
-            if self._dirty and (self.controller is None or not self.controller.runner.running):
+            if self._dirty and (
+                self.controller is None or not self.controller.runner.running
+            ):
                 choice = QMessageBox.question(
                     self,
                     "Unsaved changes",
@@ -724,7 +816,8 @@ if QApplication is not None:
                     return
             if self.controller is not None and self.controller.runner.running:
                 choice = QMessageBox.question(
-                    self, "Solver still running",
+                    self,
+                    "Solver still running",
                     "The solver is still running. Stop it before closing?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.Yes,
@@ -743,7 +836,9 @@ if QApplication is not None:
     def create_application(argv: list[str] | None = None) -> QApplication:
         return QApplication.instance() or QApplication(argv or [])
 
-    def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
+    def launch(
+        session: CFDXSession | None = None, argv: list[str] | None = None
+    ) -> int:
         from .workbench import CFDXWorkbenchWindow
 
         app = create_application(argv)

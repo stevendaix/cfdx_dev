@@ -24,7 +24,8 @@ from scripts import generate_th03_bfs_case as bfs
 def test_debug_bfs_pressure_outlet_matches_physical_operator() -> None:
     setup = json.loads(bfs.make_setup(height=0.0127, reynolds=36000, velocity=44.2))
     outlet = next(
-        boundary for boundary in setup["boundary_conditions"]
+        boundary
+        for boundary in setup["boundary_conditions"]
         if boundary["patch_name"] == "outlet"
     )
     assert outlet["type"] == "pressure_outlet"

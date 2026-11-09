@@ -5,6 +5,7 @@ attribute are distinct schemas. They are intentionally *not* conflated.
 A future translator must synchronise them before editable dual-schema cases
 can be executed via the native solver.
 """
+
 from __future__ import annotations
 
 import json

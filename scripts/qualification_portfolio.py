@@ -59,21 +59,27 @@ def validate_links(registry: dict, mapping: dict) -> None:
         )
     if set(ids) != set(links):
         raise PortfolioError(
-            f"case mapping drift: missing={sorted(set(ids)-set(links))}; "
-            f"extra={sorted(set(links)-set(ids))}"
+            f"case mapping drift: missing={sorted(set(ids) - set(links))}; "
+            f"extra={sorted(set(links) - set(ids))}"
         )
     for case_id, link in links.items():
         if not isinstance(link, dict):
             raise PortfolioError(f"invalid mapping for {case_id}")
         for field in ("contract_tests", "campaign_tests", "reference_workflows"):
             items = link.get(field)
-            if not isinstance(items, list) or any(
-                not isinstance(n, str) or not n for n in items
-            ) or len(items) != len(set(items)):
+            if (
+                not isinstance(items, list)
+                or any(not isinstance(n, str) or not n for n in items)
+                or len(items) != len(set(items))
+            ):
                 raise PortfolioError(f"invalid {field} for {case_id}")
         if set(link["contract_tests"]) & set(link["campaign_tests"]):
             raise PortfolioError(f"duplicate contract/campaign test for {case_id}")
-        if not link["contract_tests"] or not isinstance(link.get("next_action"), str) or not link["next_action"].strip():
+        if (
+            not link["contract_tests"]
+            or not isinstance(link.get("next_action"), str)
+            or not link["next_action"].strip()
+        ):
             raise PortfolioError(f"missing contract or action for {case_id}")
         if not isinstance(link.get("domain_group"), str) or not link["domain_group"]:
             raise PortfolioError(f"missing domain_group for {case_id}")
@@ -90,7 +96,11 @@ def validate_links(registry: dict, mapping: dict) -> None:
     if not isinstance(backlog, list):
         raise PortfolioError("unregistered_backlog must be a list")
     extras = [row.get("id") for row in backlog if isinstance(row, dict)]
-    if len(extras) != len(backlog) or len(extras) != len(set(extras)) or set(extras) & set(ids):
+    if (
+        len(extras) != len(backlog)
+        or len(extras) != len(set(extras))
+        or set(extras) & set(ids)
+    ):
         raise PortfolioError("backlog IDs missing, duplicated, or registered already")
     for item in backlog:
         if not isinstance(item.get("reason"), str) or not item["reason"]:
@@ -107,7 +117,11 @@ def read_manifest(path: Path | None) -> dict[str, bool] | None:
     if not isinstance(tests, list) or not tests:
         raise PortfolioError("CTest JSON manifest is empty or invalid")
     names = [item.get("name") for item in tests if isinstance(item, dict)]
-    if len(names) != len(tests) or any(not isinstance(n, str) or not n for n in names) or len(names) != len(set(names)):
+    if (
+        len(names) != len(tests)
+        or any(not isinstance(n, str) or not n for n in names)
+        or len(names) != len(set(names))
+    ):
         raise PortfolioError("CTest manifest has empty or duplicated test names")
     # CTest accepts DISABLED tests in --show-only. They must not be counted as
     # executable or even a valid mandatory anchor in the strict inventory.
@@ -115,7 +129,11 @@ def read_manifest(path: Path | None) -> dict[str, bool] | None:
     for item in tests:
         properties = {p.get("name"): p.get("value") for p in item.get("properties", [])}
         enabled[item["name"]] = properties.get("DISABLED") not in (
-            True, "TRUE", "ON", "1", 1
+            True,
+            "TRUE",
+            "ON",
+            "1",
+            1,
         )
     return enabled
 
@@ -132,7 +150,10 @@ def read_junits(paths: list[Path]) -> dict[str, str]:
                 raise PortfolioError(f"unnamed JUnit testcase in {path}")
             if node.find("failure") is not None or node.find("error") is not None:
                 state = "FAIL"
-            elif node.find("skipped") is not None or node.get("status") in ("notrun", "skipped"):
+            elif node.find("skipped") is not None or node.get("status") in (
+                "notrun",
+                "skipped",
+            ):
                 state = "SKIPPED"
             else:
                 state = "PASS"
@@ -429,9 +450,11 @@ def markdown_report(report: dict, previous: dict | None = None) -> str:
                     changed.append(
                         f"- `{cur['id']}` {key}: `{before.get(key)}` → `{cur.get(key)}`"
                     )
-        out += changed if changed else [
-            "Aucun changement de statut mesuré entre ces deux bilans."
-        ]
+        out += (
+            changed
+            if changed
+            else ["Aucun changement de statut mesuré entre ces deux bilans."]
+        )
     out += ["", "*Document de suivi, non certificat de validation physique.*", ""]
     return "\n".join(out)
 

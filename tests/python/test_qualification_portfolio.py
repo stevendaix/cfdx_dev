@@ -32,9 +32,7 @@ class QualificationPortfolioTests(unittest.TestCase):
             for info in LINKS["cases"].values()
             for n in info["contract_tests"] + info["campaign_tests"]
         } | {
-            n
-            for info in LINKS["unregistered_backlog"]
-            for n in info["existing_checks"]
+            n for info in LINKS["unregistered_backlog"] for n in info["existing_checks"]
         }
 
     def test_exact_25_case_mapping_and_backlog_are_distinct(self):

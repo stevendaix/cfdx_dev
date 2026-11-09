@@ -44,7 +44,9 @@ def test_all_thermohydraulic_reference_contracts_are_consistent(tmp_path: Path) 
 def test_vertical_pipe_1998_must_never_be_mislabeled_as_th07_dns() -> None:
     contracts = ROOT / "docs/validation/14-benchmarks/09-thermohydraulics"
     dns = json.loads((contracts / "TH-07.json").read_text(encoding="utf-8"))
-    pipe = json.loads((contracts / "TH-PIPE-UPFLOW-1998.json").read_text(encoding="utf-8"))
+    pipe = json.loads(
+        (contracts / "TH-PIPE-UPFLOW-1998.json").read_text(encoding="utf-8")
+    )
     assert dns["case_id"] == "TH-07"
     assert "plane channel" in dns["physics"]["model"]
     assert dns["reference"]["type"] == "DNS"
@@ -55,7 +57,9 @@ def test_vertical_pipe_1998_must_never_be_mislabeled_as_th07_dns() -> None:
     assert pipe["campaign_implementation"] == "UNREGISTERED_REFERENCE_PREPARATION_ONLY"
 
 
-def test_reference_status_tracks_experimental_sst_production_without_certification() -> None:
+def test_reference_status_tracks_experimental_sst_production_without_certification() -> (
+    None
+):
     contracts = ROOT / "docs/validation/14-benchmarks/09-thermohydraulics"
     for case in ("TH-01", "TH-03", "TH-07"):
         data = json.loads((contracts / f"{case}.json").read_text(encoding="utf-8"))
