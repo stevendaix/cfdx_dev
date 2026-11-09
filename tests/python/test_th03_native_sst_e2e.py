@@ -27,8 +27,8 @@ def test_debug_bfs_pressure_outlet_matches_physical_operator() -> None:
         boundary for boundary in setup["boundary_conditions"]
         if boundary["patch_name"] == "outlet"
     )
-    assert outlet["type"] == "PRESSURE_OUTLET"
-    assert outlet["value_type"] == "OUTLET_PRESSURE"
+    assert outlet["type"] == "pressure_outlet"
+    assert outlet["value_type"] == "outlet_pressure"
     assert outlet["pressure"] == 0
 
 
