@@ -22,50 +22,105 @@ class MethodInfo:
 
 
 METHODS: tuple[MethodInfo, ...] = (
-    MethodInfo("SIMPLE", "Pressure–velocity", "SIMPLE", "Adapter mapping exists",
-               "Segregated pressure/velocity updates.",
-               "Independently re-evaluate continuity, momentum, face-flux and solution-change norms.",
-               "https://doc.cfd.direct/openfoam/user-guide-v13/fvsolution"),
-    MethodInfo("SIMPLEC", "Pressure–velocity", "SIMPLEC", "Adapter mapping exists",
-               "Pressure correction using a modified momentum coefficient treatment.",
-               "Compare physical residual and conservation with SIMPLE on the same case.",
-               "https://doc.cfd.direct/openfoam/user-guide-v13/fvsolution"),
-    MethodInfo("COUPLED", "Pressure–velocity", "Block COUPLED", "Adapter mapping exists",
-               "Joint pressure/velocity system; Schur selection must be explicit.",
-               "Verify block operator, Rhie–Chow flux, PCD/Schur and nonlinear residual on the returned state.",
-               "https://petsc.org/release/manual/ksp/"),
-    MethodInfo("PCD", "Preconditioners", "PCD Schur", "Adapter mapping exists",
-               "Pressure convection-diffusion approximation for coupled Schur solves.",
-               "Check true coupled-system residual and preconditioner reuse under anisotropy.",
-               "https://petsc.org/release/manual/ksp/"),
-    MethodInfo("AMG", "Preconditioners", "Algebraic multigrid", "Adapter mapping exists",
-               "Accelerate elliptic/diffusive linear systems.",
-               "Test anisotropic meshes, rebuild conditions and true residual after preconditioning.",
-               "https://hypre.readthedocs.io/en/latest/solvers-boomeramg.html"),
-    MethodInfo("FGMRES", "Linear algebra", "Flexible GMRES", "Adapter mapping exists",
-               "Krylov method supporting a changing preconditioner.",
-               "Compare against GMRES/CG for appropriate operator properties and equal true residual thresholds.",
-               "https://petsc.org/release/manual/ksp/"),
-    MethodInfo("WLS", "Discretization", "Weighted least squares", "Adapter mapping exists",
-               "Reconstruct gradients on non-orthogonal/skewed meshes.",
-               "Use affine/quadratic manufactured solutions and boundary face reconstruction tests.",
-               "https://www.openfoam.com/documentation/guides/latest/doc/guide-schemes-gradient.html"),
-    MethodInfo("TVD", "Discretization", "Bounded TVD convection", "Adapter mapping exists",
-               "Limit numerical oscillations while retaining second-order accuracy where possible.",
-               "Require converged full TVD physical residual, not merely a first-order continuation stage.",
-               "https://www.openfoam.com/documentation/guides/latest/doc/guide-schemes-divergence.html"),
-    MethodInfo("NEWTON_KRYLOV", "Nonlinear acceleration", "Newton–Krylov", "Research candidate — no native integration certified",
-               "Use a Jacobian-vector action derived from the full nonlinear finite-volume residual.",
-               "Prove Jv via directional finite differences and full conservation before enabling in production.",
-               "https://petsc.org/release/manual/snes/"),
-    MethodInfo("ANDERSON", "Nonlinear acceleration", "Anderson mixing", "Research candidate — no native integration certified",
-               "Accelerate a nonlinear fixed-point iteration using a limited iterate history.",
-               "Benchmark against unchanged tolerances, preserve safeguards, and reject nonphysical iterates.",
-               "https://petsc.org/release/manual/snes/"),
-    MethodInfo("NGMRES", "Nonlinear acceleration", "Nonlinear GMRES", "Research candidate — no native integration certified",
-               "Combine fixed-point iterates to minimize an independently evaluated nonlinear residual.",
-               "Require repeated-restart tests, residual decreases and conservation on final physical scheme.",
-               "https://petsc.org/release/manual/snes/"),
+    MethodInfo(
+        "SIMPLE",
+        "Pressure–velocity",
+        "SIMPLE",
+        "Adapter mapping exists",
+        "Segregated pressure/velocity updates.",
+        "Independently re-evaluate continuity, momentum, face-flux and solution-change norms.",
+        "https://doc.cfd.direct/openfoam/user-guide-v13/fvsolution",
+    ),
+    MethodInfo(
+        "SIMPLEC",
+        "Pressure–velocity",
+        "SIMPLEC",
+        "Adapter mapping exists",
+        "Pressure correction using a modified momentum coefficient treatment.",
+        "Compare physical residual and conservation with SIMPLE on the same case.",
+        "https://doc.cfd.direct/openfoam/user-guide-v13/fvsolution",
+    ),
+    MethodInfo(
+        "COUPLED",
+        "Pressure–velocity",
+        "Block COUPLED",
+        "Adapter mapping exists",
+        "Joint pressure/velocity system; Schur selection must be explicit.",
+        "Verify block operator, Rhie–Chow flux, PCD/Schur and nonlinear residual on the returned state.",
+        "https://petsc.org/release/manual/ksp/",
+    ),
+    MethodInfo(
+        "PCD",
+        "Preconditioners",
+        "PCD Schur",
+        "Adapter mapping exists",
+        "Pressure convection-diffusion approximation for coupled Schur solves.",
+        "Check true coupled-system residual and preconditioner reuse under anisotropy.",
+        "https://petsc.org/release/manual/ksp/",
+    ),
+    MethodInfo(
+        "AMG",
+        "Preconditioners",
+        "Algebraic multigrid",
+        "Adapter mapping exists",
+        "Accelerate elliptic/diffusive linear systems.",
+        "Test anisotropic meshes, rebuild conditions and true residual after preconditioning.",
+        "https://hypre.readthedocs.io/en/latest/solvers-boomeramg.html",
+    ),
+    MethodInfo(
+        "FGMRES",
+        "Linear algebra",
+        "Flexible GMRES",
+        "Adapter mapping exists",
+        "Krylov method supporting a changing preconditioner.",
+        "Compare against GMRES/CG for appropriate operator properties and equal true residual thresholds.",
+        "https://petsc.org/release/manual/ksp/",
+    ),
+    MethodInfo(
+        "WLS",
+        "Discretization",
+        "Weighted least squares",
+        "Adapter mapping exists",
+        "Reconstruct gradients on non-orthogonal/skewed meshes.",
+        "Use affine/quadratic manufactured solutions and boundary face reconstruction tests.",
+        "https://www.openfoam.com/documentation/guides/latest/doc/guide-schemes-gradient.html",
+    ),
+    MethodInfo(
+        "TVD",
+        "Discretization",
+        "Bounded TVD convection",
+        "Adapter mapping exists",
+        "Limit numerical oscillations while retaining second-order accuracy where possible.",
+        "Require converged full TVD physical residual, not merely a first-order continuation stage.",
+        "https://www.openfoam.com/documentation/guides/latest/doc/guide-schemes-divergence.html",
+    ),
+    MethodInfo(
+        "NEWTON_KRYLOV",
+        "Nonlinear acceleration",
+        "Newton–Krylov",
+        "Research candidate — no native integration certified",
+        "Use a Jacobian-vector action derived from the full nonlinear finite-volume residual.",
+        "Prove Jv via directional finite differences and full conservation before enabling in production.",
+        "https://petsc.org/release/manual/snes/",
+    ),
+    MethodInfo(
+        "ANDERSON",
+        "Nonlinear acceleration",
+        "Anderson mixing",
+        "Research candidate — no native integration certified",
+        "Accelerate a nonlinear fixed-point iteration using a limited iterate history.",
+        "Benchmark against unchanged tolerances, preserve safeguards, and reject nonphysical iterates.",
+        "https://petsc.org/release/manual/snes/",
+    ),
+    MethodInfo(
+        "NGMRES",
+        "Nonlinear acceleration",
+        "Nonlinear GMRES",
+        "Research candidate — no native integration certified",
+        "Combine fixed-point iterates to minimize an independently evaluated nonlinear residual.",
+        "Require repeated-restart tests, residual decreases and conservation on final physical scheme.",
+        "https://petsc.org/release/manual/snes/",
+    ),
 )
 
 
@@ -99,15 +154,31 @@ def search_methods(
     needle = query.casefold().strip()
     methods = methods_for_family(family)
     return tuple(
-        method for method in methods
-        if (not needle or needle in " ".join((
-            method.key, method.label, method.family, method.integration,
-            method.purpose, method.qualification,
-        )).casefold())
+        method
+        for method in methods
+        if (
+            not needle
+            or needle
+            in " ".join(
+                (
+                    method.key,
+                    method.label,
+                    method.family,
+                    method.integration,
+                    method.purpose,
+                    method.qualification,
+                )
+            ).casefold()
+        )
         and (
             integration == "all"
-            or (integration == "mapped" and method.integration == "Adapter mapping exists")
-            or (integration == "research" and "Research candidate" in method.integration)
+            or (
+                integration == "mapped"
+                and method.integration == "Adapter mapping exists"
+            )
+            or (
+                integration == "research" and "Research candidate" in method.integration
+            )
         )
     )
 

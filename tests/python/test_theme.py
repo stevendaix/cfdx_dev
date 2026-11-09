@@ -2,8 +2,14 @@ import importlib.util
 
 import pytest
 from cfdx.theme import (
-    DEFAULT_THEME, THEMES, TOKENS, WORKBENCH_STYLESHEET,
-    apply_workbench_theme, theme_tokens, workbench_stylesheet, style_scientific_plot,
+    DEFAULT_THEME,
+    THEMES,
+    TOKENS,
+    WORKBENCH_STYLESHEET,
+    apply_workbench_theme,
+    style_scientific_plot,
+    theme_tokens,
+    workbench_stylesheet,
 )
 
 
@@ -173,7 +179,7 @@ def test_black_is_the_first_run_default_and_compiled_styles_are_complete() -> No
         assert "QTabWidget::pane" in css
         assert "QScrollBar:vertical" in css
         assert THEMES[name]["surface.canvas"] in css
-        assert "QLabel[role=\"eyebrow\"]" in css
+        assert 'QLabel[role="eyebrow"]' in css
 
 
 def test_theme_rejects_unsupported_choices_before_mutating_window() -> None:
@@ -185,7 +191,9 @@ def test_theme_rejects_unsupported_choices_before_mutating_window() -> None:
 
 @pytest.mark.parametrize("name", list(THEMES))
 @pytest.mark.parametrize("text_token", ["text.primary", "text.secondary", "text.muted"])
-@pytest.mark.parametrize("surface", ["surface.canvas", "surface.panel", "surface.input", "surface.raised"])
+@pytest.mark.parametrize(
+    "surface", ["surface.canvas", "surface.panel", "surface.input", "surface.raised"]
+)
 def test_all_theme_text_contrasts(name: str, text_token: str, surface: str) -> None:
     colors = THEMES[name]
     assert _contrast_ratio(colors[text_token], colors[surface]) >= 4.5
@@ -193,14 +201,20 @@ def test_all_theme_text_contrasts(name: str, text_token: str, surface: str) -> N
 
 @pytest.mark.parametrize("name", list(THEMES))
 @pytest.mark.parametrize("highlight", ["border.subtle", "accent.primary"])
-@pytest.mark.parametrize("surface", ["surface.canvas", "surface.panel", "surface.input", "surface.raised"])
-def test_all_theme_control_indicators_are_legible(name: str, highlight: str, surface: str) -> None:
+@pytest.mark.parametrize(
+    "surface", ["surface.canvas", "surface.panel", "surface.input", "surface.raised"]
+)
+def test_all_theme_control_indicators_are_legible(
+    name: str, highlight: str, surface: str
+) -> None:
     colors = THEMES[name]
     assert _contrast_ratio(colors[highlight], colors[surface]) >= 3.0
 
 
 @pytest.mark.parametrize("name", list(THEMES))
-@pytest.mark.parametrize("status", ["status.success", "status.warning", "status.error", "status.info"])
+@pytest.mark.parametrize(
+    "status", ["status.success", "status.warning", "status.error", "status.info"]
+)
 def test_theme_status_labels_are_legible(name: str, status: str) -> None:
     colors = THEMES[name]
     assert _contrast_ratio(colors[status], colors["surface.panel"]) >= 4.5
@@ -208,13 +222,25 @@ def test_theme_status_labels_are_legible(name: str, status: str) -> None:
 
 def test_plot_styling_changes_only_background_and_axis_chrome() -> None:
     class Axis:
-        def setPen(self, color): self.pen = color
-        def setTextPen(self, color): self.text = color
+        def setPen(self, color):
+            self.pen = color
+
+        def setTextPen(self, color):
+            self.text = color
+
     class FakePlot:
-        def __init__(self): self.axes = {k: Axis() for k in ("left", "bottom")}
-        def setBackground(self, color): self.background = color
-        def getPlotItem(self): return self
-        def getAxis(self, key): return self.axes[key]
+        def __init__(self):
+            self.axes = {k: Axis() for k in ("left", "bottom")}
+
+        def setBackground(self, color):
+            self.background = color
+
+        def getPlotItem(self):
+            return self
+
+        def getAxis(self, key):
+            return self.axes[key]
+
     plot = FakePlot()
     style_scientific_plot(plot, "light")
     assert plot.background == THEMES["light"]["surface.canvas"]

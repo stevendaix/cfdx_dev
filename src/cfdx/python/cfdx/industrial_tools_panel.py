@@ -1,17 +1,28 @@
 """Industrial Workbench tools: bounded data inspection and verified comparisons."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
-from PySide6.QtWidgets import (QFileDialog, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QPlainTextEdit, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
-from .progressive_fields import field_catalog, stream_field_statistics
-from .simulation_compare import compare_scalar_fields, compare_run_reports
 from .conservative_remap import conservative_box_remap
 from .convex_polyhedral_remap import conservative_convex_remap
+from .progressive_fields import stream_field_statistics
+from .simulation_compare import compare_run_reports, compare_scalar_fields
 
 
 class _Events(QObject):
@@ -82,10 +93,14 @@ class IndustrialToolsPanel(QWidget):
         vf.addRow("Cells per tile (1..512)", self.volume_count)
         vf.addRow("Optional cell scalar", self.volume_scalar)
         tile_button = QPushButton("Load one actual polyhedral volume tile")
-        tile_button.setToolTip("I/O off Qt thread; exact cell IDs; VTK CPU/OpenGL renderer; not GPU compute")
+        tile_button.setToolTip(
+            "I/O off Qt thread; exact cell IDs; VTK CPU/OpenGL renderer; not GPU compute"
+        )
         tile_button.clicked.connect(self.request_volume_partition)
         vf.addRow(tile_button)
-        self.volume_note = QLabel("Only the selected cell range is loaded. Other cells are absent, not converged or empty. ")
+        self.volume_note = QLabel(
+            "Only the selected cell range is loaded. Other cells are absent, not converged or empty. "
+        )
         self.volume_note.setWordWrap(True)
         vf.addRow(self.volume_note)
         self.tabs.addTab(tile_tab, "Volume tiles (CPU/VTK)")
@@ -96,12 +111,16 @@ class IndustrialToolsPanel(QWidget):
         self.compare_field = QLineEdit("/fields/scalar/p")
         self.compare_text = QPlainTextEdit()
         self.compare_text.setReadOnly(True)
-        for title, control in (("Reference HDF5", self.left_file),
-                               ("Candidate HDF5", self.right_file)):
+        for title, control in (
+            ("Reference HDF5", self.left_file),
+            ("Candidate HDF5", self.right_file),
+        ):
             row = QHBoxLayout()
             row.addWidget(control)
             button = QPushButton("Browse…")
-            button.clicked.connect(lambda _checked=False, target=control: self._choose(target))
+            button.clicked.connect(
+                lambda _checked=False, target=control: self._choose(target)
+            )
             row.addWidget(button)
             cf.addRow(title, row)
         cf.addRow("Field", self.compare_field)
@@ -111,19 +130,26 @@ class IndustrialToolsPanel(QWidget):
         self.difference_button = QPushButton("Show signed difference in 3D (bounded)")
         self.difference_button.setEnabled(False)
         self.difference_button.clicked.connect(
-            lambda: self.show_difference.emit(self.left_file.text(),
-                                              self.right_file.text(), self.compare_field.text()))
+            lambda: self.show_difference.emit(
+                self.left_file.text(), self.right_file.text(), self.compare_field.text()
+            )
+        )
         cf.addRow(self.difference_button)
         cf.addRow(self.compare_text)
         remap_button = QPushButton("Conservative comparison (Cartesian hexahedra)")
         remap_button.setToolTip(
             "Exact volume overlap; only validated axis-aligned 8-vertex cells. "
-            "Refuses curved/nonmatching domains and unbounded meshes.")
+            "Refuses curved/nonmatching domains and unbounded meshes."
+        )
         remap_button.clicked.connect(self.compare_conservative)
         cf.addRow(remap_button)
-        convex_button = QPushButton("Conservative comparison (verified convex polyhedra)")
-        convex_button.setToolTip("First-order numerical volume overlap via SciPy Qhull with conservative checks. "
-                                 "Rejects concave/warped cells, incompatible domains and large problems.")
+        convex_button = QPushButton(
+            "Conservative comparison (verified convex polyhedra)"
+        )
+        convex_button.setToolTip(
+            "First-order numerical volume overlap via SciPy Qhull with conservative checks. "
+            "Rejects concave/warped cells, incompatible domains and large problems."
+        )
         convex_button.clicked.connect(self.compare_convex)
         cf.addRow(convex_button)
         self.tabs.addTab(comparison, "Compare runs")
@@ -133,19 +159,25 @@ class IndustrialToolsPanel(QWidget):
         self.reference_run, self.candidate_run = QLineEdit(), QLineEdit()
         mf.addRow("Reference output directory", self.reference_run)
         mf.addRow("Candidate output directory", self.candidate_run)
-        telemetry_button = QPushButton("Compare recorded solver metrics and wall forces")
+        telemetry_button = QPushButton(
+            "Compare recorded solver metrics and wall forces"
+        )
         telemetry_button.clicked.connect(self.compare_telemetry)
         mf.addRow(telemetry_button)
         self.telemetry_text = QPlainTextEdit()
         self.telemetry_text.setReadOnly(True)
         mf.addRow(self.telemetry_text)
         self.tabs.addTab(monitor_panel, "Solver metrics")
-        self.disclaimer = QLabel("Data diagnostics only: identical mesh, unit and time checks are mandatory. Conservative remapping is opt-in and restricted to Cartesian boxes; never a V&V verdict.")
+        self.disclaimer = QLabel(
+            "Data diagnostics only: identical mesh, unit and time checks are mandatory. Conservative remapping is opt-in and restricted to Cartesian boxes; never a V&V verdict."
+        )
         self.disclaimer.setWordWrap(True)
         layout.addWidget(self.disclaimer)
 
     def _choose(self, target):
-        chosen, _ = QFileDialog.getOpenFileName(self, "Choose CFDX HDF5", "", "CFDX HDF5 (*.h5);;All files (*)")
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Choose CFDX HDF5", "", "CFDX HDF5 (*.h5);;All files (*)"
+        )
         if chosen:
             target.setText(chosen)
             self.difference_button.setEnabled(False)
@@ -154,6 +186,7 @@ class IndustrialToolsPanel(QWidget):
         target.setPlainText("Analyzing... (data worker, GUI remains responsive)")
         job = _Job(callback)
         self._jobs.append(job)
+
         def finished(result, error):
             if job in self._jobs:
                 self._jobs.remove(job)
@@ -163,43 +196,72 @@ class IndustrialToolsPanel(QWidget):
             else:
                 if on_success is not None:
                     on_success(result)
-                target.setPlainText(json.dumps(result, indent=2, allow_nan=False, ensure_ascii=False))
+                target.setPlainText(
+                    json.dumps(result, indent=2, allow_nan=False, ensure_ascii=False)
+                )
+
         job.events.done.connect(finished)
         self._pool.start(job)
 
     def inspect(self):
         from dataclasses import asdict
+
         path, field = self.source_file.text(), self.field.text()
-        self._launch(lambda: asdict(stream_field_statistics(path, field)), self.stats_text)
+        self._launch(
+            lambda: asdict(stream_field_statistics(path, field)), self.stats_text
+        )
 
     def compare(self):
-        left, right, field = self.left_file.text(), self.right_file.text(), self.compare_field.text()
+        left, right, field = (
+            self.left_file.text(),
+            self.right_file.text(),
+            self.compare_field.text(),
+        )
         self.difference_button.setEnabled(False)
-        self._launch(lambda: compare_scalar_fields(left, right, field).to_dict(),
-                     self.compare_text,
-                     lambda value: self.difference_button.setEnabled(value["cells"] <= 250_000))
+        self._launch(
+            lambda: compare_scalar_fields(left, right, field).to_dict(),
+            self.compare_text,
+            lambda value: self.difference_button.setEnabled(value["cells"] <= 250_000),
+        )
 
     def compare_conservative(self):
-        left, right, field = self.left_file.text(), self.right_file.text(), self.compare_field.text()
+        left, right, field = (
+            self.left_file.text(),
+            self.right_file.text(),
+            self.compare_field.text(),
+        )
         self.difference_button.setEnabled(False)
-        self._launch(lambda: conservative_box_remap(left, right, field)[1].to_dict(),
-                     self.compare_text)
+        self._launch(
+            lambda: conservative_box_remap(left, right, field)[1].to_dict(),
+            self.compare_text,
+        )
 
     def compare_convex(self):
-        left, right, field = self.left_file.text(), self.right_file.text(), self.compare_field.text()
+        left, right, field = (
+            self.left_file.text(),
+            self.right_file.text(),
+            self.compare_field.text(),
+        )
         self.difference_button.setEnabled(False)
-        self._launch(lambda: conservative_convex_remap(left, right, field)[1].to_dict(),
-                     self.compare_text)
+        self._launch(
+            lambda: conservative_convex_remap(left, right, field)[1].to_dict(),
+            self.compare_text,
+        )
 
     def request_volume_partition(self):
         path = self.volume_file.text().strip()
         if not path:
-            self.volume_note.setText("Choose an HDF5 file containing the native CFDX volume mesh")
+            self.volume_note.setText(
+                "Choose an HDF5 file containing the native CFDX volume mesh"
+            )
             return
         field = self.volume_scalar.text().strip() or None
-        self.volume_note.setText("Reading selected volume tile in background; no full mesh allocation")
-        self.volume_partition_requested.emit(path, self.volume_start.value(),
-                                             self.volume_count.value(), field)
+        self.volume_note.setText(
+            "Reading selected volume tile in background; no full mesh allocation"
+        )
+        self.volume_partition_requested.emit(
+            path, self.volume_start.value(), self.volume_count.value(), field
+        )
 
     def compare_telemetry(self):
         left, right = self.reference_run.text(), self.candidate_run.text()

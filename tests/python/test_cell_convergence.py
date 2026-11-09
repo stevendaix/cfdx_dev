@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from cfdx.cell_convergence import (
     CellConvergenceError,
     cell_trace_metric_name,
@@ -18,20 +17,34 @@ from cfdx.cell_convergence import (
 def fixture_trace(tmp_path: Path) -> Path:
     source = tmp_path / "cell_convergence.jsonl"
     header = {
-        "kind": "header", "format": "CFDX-CELL-CONVERGENCE", "schema_version": 1,
-        "mesh_source": "/work/mesh.cfdx.h5", "n_cells": 6, "n_faces": 20,
-        "every": 1, "top_k": 3,
+        "kind": "header",
+        "format": "CFDX-CELL-CONVERGENCE",
+        "schema_version": 1,
+        "mesh_source": "/work/mesh.cfdx.h5",
+        "n_cells": 6,
+        "n_faces": 20,
+        "every": 1,
+        "top_k": 3,
         "reference_relative_tolerance": 1e-6,
     }
     cell = {
-        "cell_id": 2, "center": [-1.0, 0.1, 6],
-        "momentum_abs": [0.2, 0, 0.02], "momentum_scaled": 0.1,
-        "mass_imbalance_abs": 0.004, "nondecrease_streak": 3,
+        "cell_id": 2,
+        "center": [-1.0, 0.1, 6],
+        "momentum_abs": [0.2, 0, 0.02],
+        "momentum_scaled": 0.1,
+        "mass_imbalance_abs": 0.004,
+        "nondecrease_streak": 3,
     }
     frame = {
-        "kind": "frame", "iteration": 4, "assessed": 6, "nonfinite": 0,
-        "momentum_above_reference": 5, "persistent_momentum_cells": 2,
-        "operator_comparable": True, "rhs_scale": [2, 1, 1], "cells": [cell],
+        "kind": "frame",
+        "iteration": 4,
+        "assessed": 6,
+        "nonfinite": 0,
+        "momentum_above_reference": 5,
+        "persistent_momentum_cells": 2,
+        "operator_comparable": True,
+        "rhs_scale": [2, 1, 1],
+        "cells": [cell],
     }
     end = {"kind": "end", "iterations": 4, "last_frame_iteration": 4}
     source.write_text("".join(json.dumps(row) + "\n" for row in (header, frame, end)))
@@ -69,24 +82,45 @@ def test_header_only_live_file(tmp_path):
     assert read_cell_trace(source).latest is None
 
 
-@pytest.mark.parametrize("mutate,match", [
-    (lambda h,f,e: h.update({"format": "WRONG"}), "format|supported"),
-    (lambda h,f,e: h.update({"mesh_source": ""}), "mesh source"),
-    (lambda h,f,e: h.update({"n_cells": True}), "n_cells"),
-    (lambda h,f,e: h.update({"top_k": 0}), "top_k"),
-    (lambda h,f,e: f.update({"assessed": 7}), "counts"),
-    (lambda h,f,e: f.update({"nonfinite": 1}), "counts"),
-    (lambda h,f,e: f.update({"operator_comparable": "true"}), "boolean"),
-    (lambda h,f,e: f.update({"rhs_scale": [1, 0, 1]}), "positive"),
-    (lambda h,f,e: f.update({"cells": [{**f["cells"][0], "cell_id": 6}]}), "out-of-range"),
-    (lambda h,f,e: f.update({"cells": [f["cells"][0], f["cells"][0]]}), "duplicate"),
-    (lambda h,f,e: f["cells"][0].update({"center": [0, float('nan'), 0]}), "non-finite"),
-    (lambda h,f,e: f["cells"][0].update({"momentum_scaled": 0.5}), "does not match"),
-    (lambda h,f,e: f["cells"][0].update({"nondecrease_streak": 7}), "persistence"),
-    (lambda h,f,e: f["cells"][0].update({"mass_imbalance_abs": -1}), "nonnegative"),
-    (lambda h,f,e: e.update({"iterations": 3}), "disagrees"),
-    (lambda h,f,e: e.update({"last_frame_iteration": 3}), "disagrees"),
-])
+@pytest.mark.parametrize(
+    "mutate,match",
+    [
+        (lambda h, f, e: h.update({"format": "WRONG"}), "format|supported"),
+        (lambda h, f, e: h.update({"mesh_source": ""}), "mesh source"),
+        (lambda h, f, e: h.update({"n_cells": True}), "n_cells"),
+        (lambda h, f, e: h.update({"top_k": 0}), "top_k"),
+        (lambda h, f, e: f.update({"assessed": 7}), "counts"),
+        (lambda h, f, e: f.update({"nonfinite": 1}), "counts"),
+        (lambda h, f, e: f.update({"operator_comparable": "true"}), "boolean"),
+        (lambda h, f, e: f.update({"rhs_scale": [1, 0, 1]}), "positive"),
+        (
+            lambda h, f, e: f.update({"cells": [{**f["cells"][0], "cell_id": 6}]}),
+            "out-of-range",
+        ),
+        (
+            lambda h, f, e: f.update({"cells": [f["cells"][0], f["cells"][0]]}),
+            "duplicate",
+        ),
+        (
+            lambda h, f, e: f["cells"][0].update({"center": [0, float("nan"), 0]}),
+            "non-finite",
+        ),
+        (
+            lambda h, f, e: f["cells"][0].update({"momentum_scaled": 0.5}),
+            "does not match",
+        ),
+        (
+            lambda h, f, e: f["cells"][0].update({"nondecrease_streak": 7}),
+            "persistence",
+        ),
+        (
+            lambda h, f, e: f["cells"][0].update({"mass_imbalance_abs": -1}),
+            "nonnegative",
+        ),
+        (lambda h, f, e: e.update({"iterations": 3}), "disagrees"),
+        (lambda h, f, e: e.update({"last_frame_iteration": 3}), "disagrees"),
+    ],
+)
 def test_invalid_trace_fail_closed(tmp_path, mutate, match):
     source = fixture_trace(tmp_path)
     h, f, e = [json.loads(line) for line in source.read_text().splitlines()]
@@ -98,7 +132,9 @@ def test_invalid_trace_fail_closed(tmp_path, mutate, match):
 
 def test_duplicate_key_rejected(tmp_path):
     source = fixture_trace(tmp_path)
-    source.write_text(source.read_text().replace('"cell_id": 2', '"cell_id": 2, "cell_id": 2'))
+    source.write_text(
+        source.read_text().replace('"cell_id": 2', '"cell_id": 2, "cell_id": 2')
+    )
     with pytest.raises(CellConvergenceError, match="duplicate"):
         read_cell_trace(source)
 
@@ -117,7 +153,9 @@ def test_file_budgets_and_symlinks_fail_closed(tmp_path):
 def test_incomplete_or_out_of_order_frames_not_certified(tmp_path):
     source = fixture_trace(tmp_path)
     lines = source.read_text().splitlines()
-    source.write_text(lines[0] + "\n" + lines[1] + "\n" + lines[1] + "\n" + lines[2] + "\n")
+    source.write_text(
+        lines[0] + "\n" + lines[1] + "\n" + lines[1] + "\n" + lines[2] + "\n"
+    )
     with pytest.raises(CellConvergenceError, match="increase"):
         read_cell_trace(source)
 
@@ -131,6 +169,7 @@ def test_no_corruption_if_last_partial_line_is_not_ascii(tmp_path):
 
 def test_jsonl_cli_smoke(tmp_path, capsys):
     from cfdx.cell_convergence import main
+
     assert main([str(fixture_trace(tmp_path)), "--metric", "persistence"]) == 0
     text = capsys.readouterr().out
     assert "cell        2" in text
@@ -148,9 +187,12 @@ def test_ranked_limits(tmp_path):
 def test_no_accepted_iteration_complete_but_not_converged(tmp_path):
     source = fixture_trace(tmp_path)
     header = source.read_text().splitlines()[0]
-    source.write_text(header + "\n" + json.dumps({
-        "kind": "end", "iterations": 0, "last_frame_iteration": 0
-    }) + "\n")
+    source.write_text(
+        header
+        + "\n"
+        + json.dumps({"kind": "end", "iterations": 0, "last_frame_iteration": 0})
+        + "\n"
+    )
     trace = read_cell_trace(source)
     assert trace.complete
     assert trace.accepted_iterations == 0
@@ -172,7 +214,8 @@ def test_end_marker_allows_last_periodic_frame_before_last_iteration(tmp_path):
 def test_reject_end_with_zero_accepted_and_positive_frame(tmp_path):
     source = fixture_trace(tmp_path)
     lines = source.read_text().splitlines()
-    e = json.loads(lines[-1]); e["iterations"] = 0
+    e = json.loads(lines[-1])
+    e["iterations"] = 0
     source.write_text("\n".join(lines[:-1] + [json.dumps(e)]) + "\n")
     with pytest.raises(CellConvergenceError, match="end marker"):
         read_cell_trace(source)

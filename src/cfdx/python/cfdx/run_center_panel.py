@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
-from weakref import ref
 import json
 from pathlib import Path
+from weakref import ref
 
-from PySide6.QtCore import Signal, QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .application import Application, ApplicationStateChanged
@@ -26,8 +37,12 @@ class RunCenterPanel(QWidget):
     full_cell_map_selected = Signal(object)
     cell_hotspot_selected = Signal(object, object)
     _GROUPS = (
-        "All reported", "Nonlinear / equation", "Conservation",
-        "Linear solve", "State updates", "Other reported",
+        "All reported",
+        "Nonlinear / equation",
+        "Conservation",
+        "Linear solve",
+        "State updates",
+        "Other reported",
     )
 
     def __init__(self, application: Application, parent: QWidget | None = None) -> None:
@@ -51,15 +66,26 @@ class RunCenterPanel(QWidget):
         self.spatial_diagnostics = QCheckBox("Cell hotspots (opt-in)", self)
         self.full_cell_map = QCheckBox("Full per-cell map (opt-in, 512 MiB cap)", self)
         self.full_cell_map.setObjectName("workbench.run.full_cell_map_opt_in")
-        self.full_cell_map.setToolTip("Observational full-field map, no physics acceptance change; max 512 MiB")
-        self.full_cell_map.toggled.connect(lambda enabled: self.spatial_diagnostics.setChecked(True) if enabled else None)
+        self.full_cell_map.setToolTip(
+            "Observational full-field map, no physics acceptance change; max 512 MiB"
+        )
+        self.full_cell_map.toggled.connect(
+            lambda enabled: (
+                self.spatial_diagnostics.setChecked(True) if enabled else None
+            )
+        )
         self.spatial_diagnostics.setObjectName("workbench.run.cell_hotspots_opt_in")
         self.spatial_diagnostics.setToolTip(
             "Add --cell-hotspots to the native CFDX solver command for the next run. "
             "Creates a bounded, live per-cell diagnostic without changing solver tolerances."
         )
         controls = QHBoxLayout()
-        for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button):
+        for button in (
+            self.run_button,
+            self.pause_button,
+            self.resume_button,
+            self.stop_button,
+        ):
             controls.addWidget(button)
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
@@ -86,9 +112,16 @@ class RunCenterPanel(QWidget):
         convergence_layout.addWidget(self.metric_filter)
         self.table = QTableWidget(0, 6, self)
         self.table.setObjectName("workbench.run.metric_table")
-        self.table.setHorizontalHeaderLabels((
-            "Group", "Quantity", "Latest", "Trend", "Decades / iteration", "History",
-        ))
+        self.table.setHorizontalHeaderLabels(
+            (
+                "Group",
+                "Quantity",
+                "Latest",
+                "Trend",
+                "Decades / iteration",
+                "History",
+            )
+        )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -116,14 +149,20 @@ class RunCenterPanel(QWidget):
         # CFDX-EXECUTION and CFDX-CONVERGENCE v1 artifacts.
         evidence_tab = QWidget(self)
         evidence_layout = QVBoxLayout(evidence_tab)
-        self.evidence_summary = QLabel("No verified native execution artifacts for this run")
+        self.evidence_summary = QLabel(
+            "No verified native execution artifacts for this run"
+        )
         self.evidence_summary.setObjectName("workbench.run.evidence_summary")
         self.evidence_summary.setWordWrap(True)
         evidence_layout.addWidget(self.evidence_summary)
         self.evidence_table = QTableWidget(0, 3, self)
         self.evidence_table.setObjectName("workbench.run.evidence_table")
-        self.evidence_table.setHorizontalHeaderLabels(("Group", "Final metric", "Reported value"))
-        self.evidence_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.evidence_table.setHorizontalHeaderLabels(
+            ("Group", "Final metric", "Reported value")
+        )
+        self.evidence_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
         self.evidence_table.horizontalHeader().setStretchLastSection(True)
         evidence_layout.addWidget(self.evidence_table)
         self.export_evidence = QPushButton("Export verified evidence (JSON)")
@@ -163,7 +202,9 @@ class RunCenterPanel(QWidget):
         application.events.subscribe(ApplicationStateChanged, queue_state_event)
         event_bus = application.events
         self.destroyed.connect(
-            lambda *_args: event_bus.unsubscribe(ApplicationStateChanged, queue_state_event)
+            lambda *_args: event_bus.unsubscribe(
+                ApplicationStateChanged, queue_state_event
+            )
         )
         self._refresh(application.state)
 
@@ -182,22 +223,38 @@ class RunCenterPanel(QWidget):
         command = tuple(runner.command)
         if self.spatial_diagnostics.isChecked() or self.full_cell_map.isChecked():
             executable = Path(command[0]).name.casefold()
-            if executable not in ("cfdx_production_solver", "cfdx_production_solver.exe"):
+            if executable not in (
+                "cfdx_production_solver",
+                "cfdx_production_solver.exe",
+            ):
                 self.status.setText(
                     "Cell hotspot opt-in requires the native cfdx_production_solver CLI. "
                     "Configure that executable or turn off the checkbox."
                 )
                 return
-            extra = tuple(flag for flag in ("--cell-hotspots", "--cell-map-full")
-                          if flag not in command and
-                          (flag != "--cell-map-full" or self.full_cell_map.isChecked()))
+            extra = tuple(
+                flag
+                for flag in ("--cell-hotspots", "--cell-map-full")
+                if flag not in command
+                and (flag != "--cell-map-full" or self.full_cell_map.isChecked())
+            )
             if extra:
                 runner.command = command + extra
                 self._spatial_flag_added = True
-            elif not self.full_cell_map.isChecked() and "--cell-map-full" in command and self._spatial_flag_added:
-                runner.command = tuple(arg for arg in command if arg != "--cell-map-full")
+            elif (
+                not self.full_cell_map.isChecked()
+                and "--cell-map-full" in command
+                and self._spatial_flag_added
+            ):
+                runner.command = tuple(
+                    arg for arg in command if arg != "--cell-map-full"
+                )
         elif getattr(self, "_spatial_flag_added", False):
-            runner.command = tuple(arg for arg in command if arg not in {"--cell-hotspots", "--cell-map-full"})
+            runner.command = tuple(
+                arg
+                for arg in command
+                if arg not in {"--cell-hotspots", "--cell-map-full"}
+            )
             self._spatial_flag_added = False
         self._invoke("run")
 
@@ -233,7 +290,12 @@ class RunCenterPanel(QWidget):
             self._refresh_evidence(None, "no execution controller attached")
             # A different CFDX project must never inherit old spatial samples.
             self.cell_hotspots.set_source(None)
-            for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button):
+            for button in (
+                self.run_button,
+                self.pause_button,
+                self.resume_button,
+                self.stop_button,
+            ):
                 button.setEnabled(False)
             return
         state = center.state
@@ -250,23 +312,28 @@ class RunCenterPanel(QWidget):
         else:
             verdict_text = "NOT VERIFIED — no fresh compatible execution.json + convergence.json. A zero process exit is not convergence."
         self.verdict.setText(verdict_text)
-        self._refresh_evidence(state.convergence_evidence, state.convergence_evidence_error)
+        self._refresh_evidence(
+            state.convergence_evidence, state.convergence_evidence_error
+        )
         # Link the spatial trace only to runs launched with the native opt-in.
         # Never auto-load an old file from a directory used by another run.
         controller = center.controller
         command = tuple(controller.runner.command)
         output_dir = getattr(controller, "_run_output_dir", None)
         if "--cell-hotspots" in command and output_dir is not None:
-            self.cell_hotspots.set_source(Path(output_dir) / "cell_convergence.jsonl",
-                                          automatic=True)
-        elif self.cell_hotspots.source is not None and getattr(self, "_spatial_flag_added", False):
+            self.cell_hotspots.set_source(
+                Path(output_dir) / "cell_convergence.jsonl", automatic=True
+            )
+        elif self.cell_hotspots.source is not None and getattr(
+            self, "_spatial_flag_added", False
+        ):
             self.cell_hotspots.set_source(None)
 
         output = state.output
         scroll = self.output.verticalScrollBar()
         follow = scroll.value() >= scroll.maximum() - 10
-        if output[:len(self._visible_output)] == self._visible_output:
-            for line in output[len(self._visible_output):]:
+        if output[: len(self._visible_output)] == self._visible_output:
+            for line in output[len(self._visible_output) :]:
                 self.output.append(line)
         else:
             # A new run or bounded rolling history invalidates the prior view.
@@ -290,7 +357,9 @@ class RunCenterPanel(QWidget):
         running = state.simulation_state.value == "RUNNING"
         paused = state.simulation_state.value == "PAUSED"
         self.run_button.setEnabled(not running and not paused)
-        supports_pause = bool(getattr(center.controller.runner, "supports_pause", False))
+        supports_pause = bool(
+            getattr(center.controller.runner, "supports_pause", False)
+        )
         self.pause_button.setEnabled(running and supports_pause)
         self.resume_button.setEnabled(paused and supports_pause)
         self.stop_button.setEnabled(running or paused)
@@ -317,10 +386,13 @@ class RunCenterPanel(QWidget):
         )
         self.evidence_table.setRowCount(len(evidence.final_metrics))
         for row, (name, value) in enumerate(evidence.final_metrics):
-            for col, label in enumerate((
-                metric_group(name),
-                name, f"{value:.9g}",
-            )):
+            for col, label in enumerate(
+                (
+                    metric_group(name),
+                    name,
+                    f"{value:.9g}",
+                )
+            ):
                 self.evidence_table.setItem(row, col, QTableWidgetItem(label))
 
     def _export_evidence(self) -> None:
@@ -328,13 +400,19 @@ class RunCenterPanel(QWidget):
         if evidence is None:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export verified run evidence", "cfdx-run-evidence.json", "JSON (*.json)"
+            self,
+            "Export verified run evidence",
+            "cfdx-run-evidence.json",
+            "JSON (*.json)",
         )
         if not path:
             return
         try:
             Path(path).write_text(
-                json.dumps(evidence.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n",
+                json.dumps(
+                    evidence.to_dict(), indent=2, sort_keys=True, allow_nan=False
+                )
+                + "\n",
                 encoding="utf-8",
             )
         except (OSError, TypeError, ValueError) as exc:
@@ -342,13 +420,22 @@ class RunCenterPanel(QWidget):
 
     def _refresh_monitor_details(self, *_args) -> None:
         group = self.metric_filter.currentText()
-        trends = [item for item in self._trends if group == "All reported" or item.group == group]
+        trends = [
+            item
+            for item in self._trends
+            if group == "All reported" or item.group == group
+        ]
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(trends))
         for row, trend in enumerate(trends):
             columns = (
-                trend.group, trend.name, f"{trend.last:.5g}", trend.trend,
-                f"{trend.decades_per_iteration:+.3g}" if trend.decades_per_iteration is not None else "—",
+                trend.group,
+                trend.name,
+                f"{trend.last:.5g}",
+                trend.trend,
+                f"{trend.decades_per_iteration:+.3g}"
+                if trend.decades_per_iteration is not None
+                else "—",
                 trend.sparkline,
             )
             for col, value in enumerate(columns):
@@ -360,12 +447,22 @@ class RunCenterPanel(QWidget):
             series = self._last_series
             if series is not None:
                 import pyqtgraph as pg
+
                 for index, trend in enumerate(trends[:8]):
-                    samples = [sample for sample in series.samples[-512:] if trend.name in sample.values]
+                    samples = [
+                        sample
+                        for sample in series.samples[-512:]
+                        if trend.name in sample.values
+                    ]
                     x = [sample.iteration for sample in samples]
-                    y = [max(abs(sample.values[trend.name]), 1e-300) for sample in samples]
+                    y = [
+                        max(abs(sample.values[trend.name]), 1e-300)
+                        for sample in samples
+                    ]
                     curve = self.plot.plot(
-                        x, y, name=trend.name,
+                        x,
+                        y,
+                        name=trend.name,
                         pen=pg.mkPen(pg.intColor(index, hues=8), width=1.5),
                     )
                     self._plot_curves[trend.name] = curve

@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from cfdx.qualification_center import (
     MAX_REGISTRY_BYTES,
     STATUSES,
@@ -23,12 +22,20 @@ def _fixture_registry() -> dict:
         "status_policy": {status: f"Meaning of {status}" for status in STATUSES},
         "cases": [
             {
-                "id": "EXT-NACA0012", "domain": "External flow", "case": "NACA0012",
-                "status": "DIAGNOSTIC", "qoi": "Cd, Cl, Cp", "runtime": "unverified",
+                "id": "EXT-NACA0012",
+                "domain": "External flow",
+                "case": "NACA0012",
+                "status": "DIAGNOSTIC",
+                "qoi": "Cd, Cl, Cp",
+                "runtime": "unverified",
             },
             {
-                "id": "TUR-CHANNEL", "domain": "Turbulence", "case": "Channel",
-                "status": "BLOCKED", "qoi": "Cf", "runtime": "not run",
+                "id": "TUR-CHANNEL",
+                "domain": "Turbulence",
+                "case": "Channel",
+                "status": "BLOCKED",
+                "qoi": "Cf",
+                "runtime": "not run",
             },
         ],
     }
@@ -40,7 +47,9 @@ def _write(tmp_path: Path, data: dict) -> Path:
     return path
 
 
-def test_actual_repository_registry_is_browsable_without_claiming_head_evidence() -> None:
+def test_actual_repository_registry_is_browsable_without_claiming_head_evidence() -> (
+    None
+):
     repo = Path(__file__).resolve().parents[2]
     source = discover_qualification_registry(repo)
     assert source == repo / "docs/validation/CFDX_QUALIFICATION_REGISTRY.json"
@@ -48,11 +57,17 @@ def test_actual_repository_registry_is_browsable_without_claiming_head_evidence(
     registry = read_qualification_registry(source)
     assert len(registry.cases) == 25
     assert registry.counts() == {
-        "PLANNED": 2, "READY": 10, "RUNNING": 0,
-        "DIAGNOSTIC": 6, "PASS": 3, "BLOCKED": 4,
+        "PLANNED": 2,
+        "READY": 10,
+        "RUNNING": 0,
+        "DIAGNOSTIC": 6,
+        "PASS": 3,
+        "BLOCKED": 4,
     }
     assert {case.id for case in registry.filter("NACA")} == {
-        "EXT-NACA0012", "TUR-NACA0012", "N9-S8-NACA0012",
+        "EXT-NACA0012",
+        "TUR-NACA0012",
+        "N9-S8-NACA0012",
     }
     assert len(registry.filter(status="DIAGNOSTIC")) == 6
     assert all(case.status != "PASS" for case in registry.filter("NACA"))
@@ -62,9 +77,7 @@ def test_actual_repository_registry_is_browsable_without_claiming_head_evidence(
 def test_filter_is_case_insensitive_and_status_domain_exact(tmp_path: Path) -> None:
     registry = read_qualification_registry(_write(tmp_path, _fixture_registry()))
     assert [case.id for case in registry.filter("naca")] == ["EXT-NACA0012"]
-    assert [case.id for case in registry.filter(domain="Turbulence")] == [
-        "TUR-CHANNEL"
-    ]
+    assert [case.id for case in registry.filter(domain="Turbulence")] == ["TUR-CHANNEL"]
     assert registry.filter("naca", status="BLOCKED") == ()
     assert registry.policy_for("DIAGNOSTIC") == "Meaning of DIAGNOSTIC"
     assert registry.cases[0].details[0] == ("qoi", "Cd, Cl, Cp")
@@ -74,12 +87,24 @@ def test_filter_is_case_insensitive_and_status_domain_exact(tmp_path: Path) -> N
     "edit,expected",
     [
         (lambda x: x.update(schema_version="2.0"), "schema version"),
-        (lambda x: x["cases"][0].update(status="PASSED"), "unsupported qualification status"),
-        (lambda x: x["cases"][1].update(id="EXT-NACA0012"), "duplicate qualification case id"),
-        (lambda x: x["cases"][0].update(id="../../tmp/foo"), "invalid qualification case id"),
+        (
+            lambda x: x["cases"][0].update(status="PASSED"),
+            "unsupported qualification status",
+        ),
+        (
+            lambda x: x["cases"][1].update(id="EXT-NACA0012"),
+            "duplicate qualification case id",
+        ),
+        (
+            lambda x: x["cases"][0].update(id="../../tmp/foo"),
+            "invalid qualification case id",
+        ),
         (lambda x: x["cases"][0].update(qoi={"error": "vector"}), "bounded string"),
         (lambda x: x["status_policy"].pop("DIAGNOSTIC"), "incomplete status policy"),
-        (lambda x: x.update(cases="not a list"), "invalid qualification registry case list"),
+        (
+            lambda x: x.update(cases="not a list"),
+            "invalid qualification registry case list",
+        ),
         (lambda x: x["cases"].append("not an object"), "must be an object"),
     ],
 )
@@ -109,7 +134,9 @@ def test_registry_file_budget_is_fail_closed(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="Qt optional")
-def test_qualification_panel_parallel_case_filters_and_failed_reload(tmp_path: Path) -> None:
+def test_qualification_panel_parallel_case_filters_and_failed_reload(
+    tmp_path: Path,
+) -> None:
     from cfdx.gui import create_application
     from cfdx.qualification_panel import QualificationCenterPanel
 
@@ -138,10 +165,10 @@ def test_qualification_panel_parallel_case_filters_and_failed_reload(tmp_path: P
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="Qt optional")
 def test_workbench_validate_workspace_and_registry_dock() -> None:
-    from PySide6.QtWidgets import QDockWidget
     from cfdx.gui import create_application
     from cfdx.session import CFDXSession
     from cfdx.workbench import CFDXWorkbenchWindow
+    from PySide6.QtWidgets import QDockWidget
 
     app = create_application(["cfdx-qualification-workbench-test"])
     window = CFDXWorkbenchWindow(CFDXSession())
@@ -163,9 +190,19 @@ def test_headless_cli_does_not_promote_registry_status_to_solver_evidence(
     repo = Path(__file__).resolve().parents[2]
     source = _write(tmp_path, _fixture_registry())
     run = subprocess.run(
-        [sys.executable, str(repo / "scripts/cfdx_qualification_status.py"),
-         "--registry", str(source), "--format", "json", "--query", "naca"],
-        capture_output=True, text=True, check=True,
+        [
+            sys.executable,
+            str(repo / "scripts/cfdx_qualification_status.py"),
+            "--registry",
+            str(source),
+            "--format",
+            "json",
+            "--query",
+            "naca",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     payload = json.loads(run.stdout)
     assert payload["status_semantics"] == (
@@ -174,8 +211,10 @@ def test_headless_cli_does_not_promote_registry_status_to_solver_evidence(
     assert payload["total_cases"] == 2
     assert payload["filtered_cases"] == [
         {
-            "id": "EXT-NACA0012", "case": "NACA0012",
-            "domain": "External flow", "declared_status": "DIAGNOSTIC",
+            "id": "EXT-NACA0012",
+            "case": "NACA0012",
+            "domain": "External flow",
+            "declared_status": "DIAGNOSTIC",
             "head_evidence": "unverified",
         }
     ]

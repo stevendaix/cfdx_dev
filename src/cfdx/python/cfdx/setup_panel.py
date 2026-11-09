@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -14,18 +15,26 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QTableWidget, QTableWidgetItem, QAbstractItemView,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from .boundary_setup import FIELD_SPECS, SCALAR_TYPES, VELOCITY_TYPES
-from .boundary_matrix import FIELD_UNITS, field_rows, remove_field_condition, setup_advice
 from .boundary_editor import (
-    BOUNDARY_PRESETS, apply_boundary_condition, boundary_runtime_support,
+    BOUNDARY_PRESETS,
+    apply_boundary_condition,
+    boundary_runtime_support,
     condition_for_field,
 )
+from .boundary_matrix import (
+    FIELD_UNITS,
+    field_rows,
+    remove_field_condition,
+    setup_advice,
+)
+from .boundary_setup import FIELD_SPECS, SCALAR_TYPES, VELOCITY_TYPES
 from .case import Case
 from .initialization import InitializationMode, InitializationSpec
 from .materials import MaterialSpec
@@ -241,7 +250,9 @@ class CaseSetupPanel(QWidget):
         self.boundary_search.setPlaceholderText("Filter boundary patches...")
         self.boundary_preset = QComboBox()
         self.boundary_preset.setObjectName("workbench.boundaries.preset")
-        self.boundary_preset.addItem("Choose a suggested setup (never auto-applied)", -1)
+        self.boundary_preset.addItem(
+            "Choose a suggested setup (never auto-applied)", -1
+        )
         for index, preset in enumerate(BOUNDARY_PRESETS):
             self.boundary_preset.addItem(preset.name, index)
         self.boundary_preset_button = QPushButton("Use suggested setup")
@@ -265,12 +276,20 @@ class CaseSetupPanel(QWidget):
         self.boundary_z = self._real(0.0)
         self.boundary_button = QPushButton("Apply / Update")
         self.boundary_field_remove_button = QPushButton("Remove selected field")
-        self.boundary_field_remove_button.setObjectName("workbench.boundaries.remove_field")
+        self.boundary_field_remove_button.setObjectName(
+            "workbench.boundaries.remove_field"
+        )
         self.boundary_matrix = QTableWidget(0, 4, w)
         self.boundary_matrix.setObjectName("workbench.boundaries.field_matrix")
-        self.boundary_matrix.setHorizontalHeaderLabels(("Field", "Condition", "Value", "Execution status"))
-        self.boundary_matrix.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.boundary_matrix.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.boundary_matrix.setHorizontalHeaderLabels(
+            ("Field", "Condition", "Value", "Execution status")
+        )
+        self.boundary_matrix.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.boundary_matrix.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
         self.boundary_matrix.horizontalHeader().setStretchLastSection(True)
         self.boundary_advice = QLabel("Choose a patch to inspect its fields")
         self.boundary_advice.setObjectName("workbench.boundaries.advice")
@@ -301,7 +320,9 @@ class CaseSetupPanel(QWidget):
         form.addRow("", row)
         self.boundary_button.clicked.connect(self._apply_boundary)
         self.boundary_field_remove_button.clicked.connect(self._remove_boundary_field)
-        self.boundary_matrix.itemSelectionChanged.connect(self._selected_field_in_matrix)
+        self.boundary_matrix.itemSelectionChanged.connect(
+            self._selected_field_in_matrix
+        )
         self.boundary_remove_button.clicked.connect(self._remove_boundary)
         self.boundary_list.currentTextChanged.connect(self._load_boundary)
         self.boundary_search.textChanged.connect(self._filter_boundary_list)
@@ -471,9 +492,18 @@ class CaseSetupPanel(QWidget):
         self.boundary_scalar_type.blockSignals(True)
         previous = self.boundary_scalar_type.currentText()
         self.boundary_scalar_type.clear()
-        choices = (VELOCITY_TYPES if vector else SCALAR_TYPES +
-                   (("WALL_K_ZERO",) if field == "k" else
-                    ("WALL_OMEGA_SST",) if field == "omega" else ()))
+        choices = (
+            VELOCITY_TYPES
+            if vector
+            else SCALAR_TYPES
+            + (
+                ("WALL_K_ZERO",)
+                if field == "k"
+                else ("WALL_OMEGA_SST",)
+                if field == "omega"
+                else ()
+            )
+        )
         self.boundary_scalar_type.addItems(choices)
         if previous in choices:
             self.boundary_scalar_type.setCurrentText(previous)
@@ -490,8 +520,11 @@ class CaseSetupPanel(QWidget):
         self.boundary_field.setEnabled(not is_geometric)
         self.boundary_scalar_type.setEnabled(not is_geometric)
         for editor in (
-            self.boundary_value, self.boundary_gradient,
-            self.boundary_x, self.boundary_y, self.boundary_z,
+            self.boundary_value,
+            self.boundary_gradient,
+            self.boundary_x,
+            self.boundary_y,
+            self.boundary_z,
         ):
             editor.setEnabled(not is_geometric)
         selected = self.boundary_name.text().strip()
@@ -499,14 +532,21 @@ class CaseSetupPanel(QWidget):
         if existing:
             supported, message = boundary_runtime_support(existing)
             self.boundary_note.setText(
-                ("Editor schema accepted; native mapping unverified: "
-                 if supported else "Native execution blocked: ") + message
+                (
+                    "Editor schema accepted; native mapping unverified: "
+                    if supported
+                    else "Native execution blocked: "
+                )
+                + message
             )
-            self._set_validation_state(self.boundary_note, "" if supported else "warning")
+            self._set_validation_state(
+                self.boundary_note, "" if supported else "warning"
+            )
         else:
             self.boundary_note.setText(
-                "Geometry-only patch: no field conditions" if is_geometric else
-                "Single-field CFDX solver contract. Additional fields can be staged "
+                "Geometry-only patch: no field conditions"
+                if is_geometric
+                else "Single-field CFDX solver contract. Additional fields can be staged "
                 "without data loss, but will block execution until natively mapped."
             )
             self._set_validation_state(self.boundary_note, "")
@@ -524,15 +564,22 @@ class CaseSetupPanel(QWidget):
                 return
             self.boundary_matrix.setRowCount(len(rows))
             for row, item in enumerate(rows):
-                for column, value in enumerate((
-                    item.field, item.mode, f"{item.value} {item.units}",
-                    "editor-valid / native unverified" if item.native_supported
-                    else "staged / BLOCKED",
-                )):
+                for column, value in enumerate(
+                    (
+                        item.field,
+                        item.mode,
+                        f"{item.value} {item.units}",
+                        "editor-valid / native unverified"
+                        if item.native_supported
+                        else "staged / BLOCKED",
+                    )
+                ):
                     self.boundary_matrix.setItem(row, column, QTableWidgetItem(value))
         self.boundary_field_remove_button.setEnabled(False)
         advice = setup_advice(self.case.boundaries)
-        self.boundary_advice.setText("; ".join(advice) if advice else "No additional editor warnings")
+        self.boundary_advice.setText(
+            "; ".join(advice) if advice else "No additional editor warnings"
+        )
 
     def _selected_field_in_matrix(self) -> None:
         row = self.boundary_matrix.currentRow()
@@ -549,7 +596,9 @@ class CaseSetupPanel(QWidget):
             return
         field = self.boundary_matrix.item(row, 0).text()
         response = QMessageBox.question(
-            self, "Remove field condition", f"Remove {field!r} from patch {name!r}?",
+            self,
+            "Remove field condition",
+            f"Remove {field!r} from patch {name!r}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -579,11 +628,15 @@ class CaseSetupPanel(QWidget):
         self.boundary_type.setCurrentText(preset.patch_type)
         if preset.field is not None:
             self.boundary_field.setCurrentText(preset.field)
-            self.boundary_scalar_type.setCurrentText(preset.condition or "ZERO_GRADIENT")
+            self.boundary_scalar_type.setCurrentText(
+                preset.condition or "ZERO_GRADIENT"
+            )
         if preset.name == "No-slip wall":
             for box in (self.boundary_x, self.boundary_y, self.boundary_z):
                 box.setValue(0.0)
-        self.boundary_note.setText(preset.explanation + " Click Apply / Update to save.")
+        self.boundary_note.setText(
+            preset.explanation + " Click Apply / Update to save."
+        )
 
     def _apply_boundary(self) -> None:
         name = self.boundary_name.text().strip()
@@ -595,7 +648,8 @@ class CaseSetupPanel(QWidget):
         changed_type = bool(existing and existing.get("type") != kind)
         if changed_type:
             response = QMessageBox.question(
-                self, "Change boundary kind",
+                self,
+                "Change boundary kind",
                 "Changing this patch kind will discard the previous field conditions. "
                 "Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -611,7 +665,11 @@ class CaseSetupPanel(QWidget):
                 mode=self.boundary_scalar_type.currentText(),
                 value=self.boundary_value.value(),
                 gradient=self.boundary_gradient.value(),
-                velocity=(self.boundary_x.value(), self.boundary_y.value(), self.boundary_z.value()),
+                velocity=(
+                    self.boundary_x.value(),
+                    self.boundary_y.value(),
+                    self.boundary_z.value(),
+                ),
                 allow_type_change=changed_type,
             )
         except ValueError as exc:
@@ -629,7 +687,9 @@ class CaseSetupPanel(QWidget):
         if item is None:
             return
         response = QMessageBox.question(
-            self, "Remove boundary", f"Remove patch configuration {item.text()!r}?",
+            self,
+            "Remove boundary",
+            f"Remove patch configuration {item.text()!r}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -643,7 +703,8 @@ class CaseSetupPanel(QWidget):
     def _refresh_boundaries(self, *, select: str | None = None) -> None:
         selected = select or (
             self.boundary_list.currentItem().text()
-            if self.boundary_list.currentItem() is not None else None
+            if self.boundary_list.currentItem() is not None
+            else None
         )
         self.boundary_list.blockSignals(True)
         self.boundary_list.clear()
@@ -665,12 +726,16 @@ class CaseSetupPanel(QWidget):
         # Switching to a not-yet-configured field must not inherit the last
         # field's mode. In particular, an inlet pressure preset must not leak
         # FIXED_VALUE into a newly selected temperature condition.
-        mode = condition.get("velocity_type" if field == "velocity" else "scalar_type", "ZERO_GRADIENT")
+        mode = condition.get(
+            "velocity_type" if field == "velocity" else "scalar_type", "ZERO_GRADIENT"
+        )
         if isinstance(mode, str):
             self.boundary_scalar_type.setCurrentText(mode)
         vector = condition.get("velocity_value", (0.0, 0.0, 0.0))
         if isinstance(vector, (list, tuple)) and len(vector) == 3:
-            for spin, value in zip((self.boundary_x, self.boundary_y, self.boundary_z), vector):
+            for spin, value in zip(
+                (self.boundary_x, self.boundary_y, self.boundary_z), vector
+            ):
                 spin.setValue(float(value))
         self.boundary_value.setValue(float(condition.get("value", 0.0)))
         self.boundary_gradient.setValue(float(condition.get("gradient", 0.0)))

@@ -48,8 +48,11 @@ def update_probe_plot(
         raise ValueError("x_axis must be 'time' or 'iteration'")
     tokens = theme_tokens(theme)
     colors = (
-        tokens["accent.primary"], tokens["accent.secondary"],
-        tokens["status.info"], tokens["status.warning"], tokens["status.error"],
+        tokens["accent.primary"],
+        tokens["accent.secondary"],
+        tokens["status.info"],
+        tokens["status.warning"],
+        tokens["status.error"],
     )
     plot.clear()
     plot.addLegend(offset=(10, 10))

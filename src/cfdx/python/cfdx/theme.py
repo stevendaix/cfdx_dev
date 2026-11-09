@@ -11,31 +11,52 @@ DEFAULT_THEME = "black"
 THEME_LABELS = {"black": "OLED Black", "graphite": "Graphite", "light": "Light"}
 THEMES: dict[str, dict[str, str]] = {
     "black": {
-        "surface.canvas": "#000000", "surface.panel": "#101114",
-        "surface.raised": "#1B1E24", "surface.input": "#08090C",
-        "border.subtle": "#707985", "text.primary": "#F2F5FA",
-        "text.secondary": "#B7C2D0", "text.muted": "#9AAAB9",
-        "accent.primary": "#79DFFC", "accent.secondary": "#91E4BF",
-        "status.success": "#7BDDB2", "status.warning": "#F2C174",
-        "status.error": "#FF9898", "status.info": "#A1BEFF",
+        "surface.canvas": "#000000",
+        "surface.panel": "#101114",
+        "surface.raised": "#1B1E24",
+        "surface.input": "#08090C",
+        "border.subtle": "#707985",
+        "text.primary": "#F2F5FA",
+        "text.secondary": "#B7C2D0",
+        "text.muted": "#9AAAB9",
+        "accent.primary": "#79DFFC",
+        "accent.secondary": "#91E4BF",
+        "status.success": "#7BDDB2",
+        "status.warning": "#F2C174",
+        "status.error": "#FF9898",
+        "status.info": "#A1BEFF",
     },
     "graphite": {
-        "surface.canvas": "#10151B", "surface.panel": "#171E26",
-        "surface.raised": "#202A35", "surface.input": "#0D1217",
-        "border.subtle": "#748293", "text.primary": "#E7EDF3",
-        "text.secondary": "#BCC8D4", "text.muted": "#A3B0BF",
-        "accent.primary": "#65D9EA", "accent.secondary": "#77E2B8",
-        "status.success": "#74D7A5", "status.warning": "#F4C57F",
-        "status.error": "#F9A3A3", "status.info": "#9DBFFF",
+        "surface.canvas": "#10151B",
+        "surface.panel": "#171E26",
+        "surface.raised": "#202A35",
+        "surface.input": "#0D1217",
+        "border.subtle": "#748293",
+        "text.primary": "#E7EDF3",
+        "text.secondary": "#BCC8D4",
+        "text.muted": "#A3B0BF",
+        "accent.primary": "#65D9EA",
+        "accent.secondary": "#77E2B8",
+        "status.success": "#74D7A5",
+        "status.warning": "#F4C57F",
+        "status.error": "#F9A3A3",
+        "status.info": "#9DBFFF",
     },
     "light": {
-        "surface.canvas": "#F5F7FA", "surface.panel": "#FFFFFF",
-        "surface.raised": "#E8EDF3", "surface.input": "#FFFFFF",
-        "border.subtle": "#5F6F80", "text.primary": "#142334",
-        "text.secondary": "#35485E", "text.muted": "#4D6175",
-        "accent.primary": "#006E85", "accent.secondary": "#166F4B",
-        "status.success": "#136B43", "status.warning": "#875400",
-        "status.error": "#A12E36", "status.info": "#2457A3",
+        "surface.canvas": "#F5F7FA",
+        "surface.panel": "#FFFFFF",
+        "surface.raised": "#E8EDF3",
+        "surface.input": "#FFFFFF",
+        "border.subtle": "#5F6F80",
+        "text.primary": "#142334",
+        "text.secondary": "#35485E",
+        "text.muted": "#4D6175",
+        "accent.primary": "#006E85",
+        "accent.secondary": "#166F4B",
+        "status.success": "#136B43",
+        "status.warning": "#875400",
+        "status.error": "#A12E36",
+        "status.info": "#2457A3",
     },
 }
 TOKENS: dict[str, str] = THEMES[DEFAULT_THEME]
@@ -46,6 +67,7 @@ def theme_tokens(theme: str = DEFAULT_THEME) -> dict[str, str]:
     if theme not in THEMES:
         raise ValueError(f"unsupported CFDX theme: {theme!r}")
     return THEMES[theme]
+
 
 _STYLE_TEMPLATE = """
 QMainWindow, QWidget {
@@ -335,8 +357,14 @@ def apply_workbench_theme(window: object, theme: str = DEFAULT_THEME) -> None:
     }
     for role, token in roles.items():
         palette.setColor(role, QColor(tokens[token]))
-    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
-        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(tokens["text.muted"]))
+    for role in (
+        QPalette.ColorRole.Text,
+        QPalette.ColorRole.WindowText,
+        QPalette.ColorRole.ButtonText,
+    ):
+        palette.setColor(
+            QPalette.ColorGroup.Disabled, role, QColor(tokens["text.muted"])
+        )
 
     window.setPalette(palette)
     window.setStyleSheet(workbench_stylesheet(theme))

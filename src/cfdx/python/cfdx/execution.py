@@ -9,7 +9,10 @@ from threading import Lock
 
 from .boundary_setup import validate_boundary_definition
 from .convergence_evidence import (
-    ConvergenceEvidence, EvidenceError, baseline_signatures, load_run_evidence,
+    ConvergenceEvidence,
+    EvidenceError,
+    baseline_signatures,
+    load_run_evidence,
 )
 from .metrics import SolverMetrics, SolverMetricsParser
 from .monitors import MonitorSample, MonitorSeries
@@ -22,8 +25,6 @@ from .session import CFDXSession, SimulationState
 class ExecutionError:
     returncode: int
     command: tuple[str, ...]
-
-
 
 
 class ExecutionController:

@@ -3,6 +3,7 @@
 Diagnostic only. No normalization to a solver convergence certificate.
 Every row follows the original CFDX cell ordering on the originating mesh.
 """
+
 from __future__ import annotations
 
 import math
@@ -16,8 +17,10 @@ from pathlib import Path
 import numpy as np
 
 MAX_MAP_BYTES = 512 * 1024 * 1024 + 8192
-ROW_DTYPE = np.dtype([("momentum", "<f8"), ("mass", "<f8"),
-                      ("streak", "<u2"), ("valid", "u1")], align=False)
+ROW_DTYPE = np.dtype(
+    [("momentum", "<f8"), ("mass", "<f8"), ("streak", "<u2"), ("valid", "u1")],
+    align=False,
+)
 assert ROW_DTYPE.itemsize == 19
 
 
@@ -38,14 +41,20 @@ class CellFieldMap:
     def __init__(self, path: str | Path, max_bytes: int = MAX_MAP_BYTES):
         self.path = Path(path)
         self._mapping = None
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        flags = (
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        )
         try:
             fd = os.open(self.path, flags)
         except OSError as exc:
             raise CellMapError(f"cannot safely open map: {exc}") from exc
         try:
             info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_size < 36 or info.st_size > max_bytes:
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_size < 36
+                or info.st_size > max_bytes
+            ):
                 raise CellMapError("map must be a regular file within its size budget")
             self._mapping = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)
         finally:
@@ -71,10 +80,16 @@ class CellFieldMap:
         raw = self._mapping
         if raw[:8] != b"CFDXMAP1":
             raise CellMapError("unsupported CFDX cell map format")
-        self.n_cells, self.n_faces, size, self.reference_tolerance = struct.unpack_from("<QQId", raw, 8)
-        if not (0 < self.n_cells <= 5_000_000 and self.n_faces > 0 and
-                0 < size <= 4096 and math.isfinite(self.reference_tolerance) and
-                self.reference_tolerance > 0):
+        self.n_cells, self.n_faces, size, self.reference_tolerance = struct.unpack_from(
+            "<QQId", raw, 8
+        )
+        if not (
+            0 < self.n_cells <= 5_000_000
+            and self.n_faces > 0
+            and 0 < size <= 4096
+            and math.isfinite(self.reference_tolerance)
+            and self.reference_tolerance > 0
+        ):
             raise CellMapError("invalid cell map header or tolerance")
         pos = 36 + size
         if pos > len(raw):
@@ -88,11 +103,11 @@ class CellFieldMap:
         previous = 0
         record_bytes = self.n_cells * ROW_DTYPE.itemsize
         while pos < len(raw):
-            marker = raw[pos:pos + 4]
+            marker = raw[pos : pos + 4]
             if marker == b"CFND":
                 if pos + 12 > len(raw):
                     break  # live, unfinished end marker
-                accepted, = struct.unpack_from("<Q", raw, pos + 4)
+                (accepted,) = struct.unpack_from("<Q", raw, pos + 4)
                 if accepted < previous or pos + 12 != len(raw):
                     raise CellMapError("invalid end marker")
                 self.complete = True
@@ -107,9 +122,13 @@ class CellFieldMap:
             end = pos + 13 + record_bytes + 4
             if end > len(raw):
                 break  # half-written frame is never visible
-            iteration, = struct.unpack_from("<Q", raw, pos + 4)
+            (iteration,) = struct.unpack_from("<Q", raw, pos + 4)
             comparable = raw[pos + 12]
-            if iteration <= previous or comparable not in (0, 1) or raw[end-4:end] != b"DONE":
+            if (
+                iteration <= previous
+                or comparable not in (0, 1)
+                or raw[end - 4 : end] != b"DONE"
+            ):
                 raise CellMapError("invalid or uncommitted cell frame")
             self.frames.append(CellMapFrame(iteration, pos + 13, bool(comparable)))
             previous = iteration
@@ -128,12 +147,15 @@ class CellFieldMap:
 
     def rows(self, iteration: int | None = None):
         frame = self.frame(iteration)
-        rows = np.frombuffer(self._mapping, dtype=ROW_DTYPE,
-                             count=self.n_cells, offset=frame.offset)
+        rows = np.frombuffer(
+            self._mapping, dtype=ROW_DTYPE, count=self.n_cells, offset=frame.offset
+        )
         if np.any(rows["valid"] > 1):
             raise CellMapError("invalid per-cell valid flag")
         valid = rows["valid"] == 1
-        if np.any(~np.isfinite(rows["momentum"][valid])) or np.any(rows["momentum"][valid] < 0):
+        if np.any(~np.isfinite(rows["momentum"][valid])) or np.any(
+            rows["momentum"][valid] < 0
+        ):
             raise CellMapError("invalid full-cell momentum residual")
         if np.any(~np.isfinite(rows["mass"][valid])) or np.any(rows["mass"][valid] < 0):
             raise CellMapError("invalid full-cell mass defect")
@@ -149,12 +171,17 @@ class CellFieldMap:
         valid = rows["valid"] == 1
         values = np.full(self.n_cells, np.nan, dtype=np.float64)
         if metric == "momentum":
-            values[valid] = np.log10(np.maximum(rows["momentum"][valid] /
-                                                self.reference_tolerance, 1e-12))
+            values[valid] = np.log10(
+                np.maximum(rows["momentum"][valid] / self.reference_tolerance, 1e-12)
+            )
             return values, (-2.0, 4.0), "log10(momentum defect / reference)"
         if metric == "mass":
             values[valid] = np.log10(np.maximum(rows["mass"][valid], 1e-18))
-            return values, (-12.0, 0.0), "log10(|mass imbalance|) [units depend on case]"
+            return (
+                values,
+                (-12.0, 0.0),
+                "log10(|mass imbalance|) [units depend on case]",
+            )
         if metric == "persistence":
             values[valid] = rows["streak"][valid]
             return values, (0.0, 10.0), "non-decreasing accepted transitions"
@@ -165,8 +192,10 @@ class CellFieldMap:
         valid = rows["valid"] == 1
         scores = rows["momentum"][valid]
         return {
-            "format": "CFDXMAP1", "iteration": self.frame(iteration).iteration,
-            "n_cells": self.n_cells, "assessed": int(valid.sum()),
+            "format": "CFDXMAP1",
+            "iteration": self.frame(iteration).iteration,
+            "n_cells": self.n_cells,
+            "assessed": int(valid.sum()),
             "above_reference": int(np.sum(scores > self.reference_tolerance)),
             "persistent": int(np.sum(rows["streak"][valid] >= 3)),
             "unassessed": int((~valid).sum()),

@@ -3,6 +3,7 @@
 This module never opens projects, deserializes executable content, or scans
 folders. Only successfully loaded/saved project paths are recorded by Qt.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +11,9 @@ from pathlib import Path
 MAX_RECENTS = 8
 
 
-def normalize_recent_projects(raw: object, *, require_existing: bool = True) -> tuple[str, ...]:
+def normalize_recent_projects(
+    raw: object, *, require_existing: bool = True
+) -> tuple[str, ...]:
     """Deduplicate, validate and bound settings entries without globbing."""
     if not isinstance(raw, (list, tuple)):
         return ()
@@ -20,7 +23,10 @@ def normalize_recent_projects(raw: object, *, require_existing: bool = True) -> 
         if not isinstance(value, str) or not 0 < len(value) <= 4096 or "\x00" in value:
             continue
         candidate = Path(value).expanduser()
-        if not candidate.is_absolute() or candidate.suffix.lower() not in {".h5", ".cfdx"}:
+        if not candidate.is_absolute() or candidate.suffix.lower() not in {
+            ".h5",
+            ".cfdx",
+        }:
             continue
         try:
             # Never offer symlinks as reusable entry points to a case.

@@ -5,14 +5,15 @@ stages), whereas `convergence.json` holds the incompressible flow history.
 Neither a clean process exit, a shrinking residual, nor an old file qualifies
 an execution. This module never invents numerical tolerances.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 MetricValue = tuple[str, float]
@@ -33,7 +34,12 @@ def file_signature(path: Path) -> Signature | None:
         return None
     if not path.is_file():
         raise EvidenceError(f"evidence path is not a regular file: {path.name}")
-    return (int(stat.st_dev), int(stat.st_ino), int(stat.st_size), int(stat.st_mtime_ns))
+    return (
+        int(stat.st_dev),
+        int(stat.st_ino),
+        int(stat.st_size),
+        int(stat.st_mtime_ns),
+    )
 
 
 def baseline_signatures(directory: Path | None) -> dict[str, Signature | None]:
@@ -41,8 +47,10 @@ def baseline_signatures(directory: Path | None) -> dict[str, Signature | None]:
     if directory is None:
         return {}
     root = Path(directory)
-    return {name: file_signature(root / name)
-            for name in ("execution.json", "convergence.json")}
+    return {
+        name: file_signature(root / name)
+        for name in ("execution.json", "convergence.json")
+    }
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -58,20 +66,27 @@ def _reject_constant(value: str) -> object:
     raise EvidenceError(f"non-finite JSON numeric literal: {value}")
 
 
-def _read_json(path: Path, baseline: Mapping[str, Signature | None], max_bytes: int) -> tuple[dict, str]:
+def _read_json(
+    path: Path, baseline: Mapping[str, Signature | None], max_bytes: int
+) -> tuple[dict, str]:
     before = file_signature(path)
     if before is None:
         raise EvidenceError(f"{path.name} is missing")
     if before == baseline.get(path.name):
         raise EvidenceError(f"{path.name} belongs to a previous run (unchanged)")
     if before[2] <= 0 or before[2] > max_bytes:
-        raise EvidenceError(f"{path.name} exceeds the bounded evidence read ({max_bytes} bytes)")
+        raise EvidenceError(
+            f"{path.name} exceeds the bounded evidence read ({max_bytes} bytes)"
+        )
     raw = path.read_bytes()
     if len(raw) != before[2] or file_signature(path) != before:
         raise EvidenceError(f"{path.name} changed while it was inspected")
     try:
-        payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object,
-                             parse_constant=_reject_constant)
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise EvidenceError(f"{path.name} is not valid UTF-8 JSON: {exc}") from exc
     if not isinstance(payload, dict):
@@ -140,17 +155,25 @@ def load_run_evidence(
     """
     if baseline is None or set(baseline) != {"execution.json", "convergence.json"}:
         raise EvidenceError("pre-run artifact baseline is required")
-    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1024:
+    if (
+        isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes < 1024
+    ):
         raise ValueError("max_bytes must be at least 1024")
     if process_exit_code not in (0, 1, 2):
         raise EvidenceError("not a recognized CFDX production-solver exit code")
     root = Path(output_dir)
     execution, execution_hash = _read_json(root / "execution.json", baseline, max_bytes)
-    convergence, convergence_hash = _read_json(root / "convergence.json", baseline, max_bytes)
+    convergence, convergence_hash = _read_json(
+        root / "convergence.json", baseline, max_bytes
+    )
     _format_check(execution, "CFDX-EXECUTION", "execution.json")
     _format_check(convergence, "CFDX-CONVERGENCE", "convergence.json")
     if execution.get("process_exit_code") != process_exit_code:
-        raise EvidenceError("execution.json process_exit_code disagrees with the process")
+        raise EvidenceError(
+            "execution.json process_exit_code disagrees with the process"
+        )
     if execution["iterations"] != convergence["iterations"]:
         raise EvidenceError("execution and convergence iteration counts disagree")
     declared = execution.get("artifacts")
@@ -160,7 +183,9 @@ def load_run_evidence(
     if overall and not flow:
         raise EvidenceError("overall solver cannot converge if flow did not converge")
     if overall != (process_exit_code == 0):
-        raise EvidenceError("overall convergence flag disagrees with production exit semantics")
+        raise EvidenceError(
+            "overall convergence flag disagrees with production exit semantics"
+        )
     reason = execution.get("convergence_reason")
     status = execution.get("convergence_status")
     if not isinstance(reason, str) or len(reason) > 4096:
@@ -176,9 +201,13 @@ def load_run_evidence(
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             raise EvidenceError(f"history[{index}] is not an object")
-        iteration = _nonnegative_int(row.get("iteration"), f"history[{index}].iteration")
+        iteration = _nonnegative_int(
+            row.get("iteration"), f"history[{index}].iteration"
+        )
         if iteration <= last_iteration or iteration > convergence["iterations"]:
-            raise EvidenceError("history iterations are not strictly increasing or exceed run count")
+            raise EvidenceError(
+                "history iterations are not strictly increasing or exceed run count"
+            )
         for metric, value in row.items():
             if metric == "iteration" or value is None or isinstance(value, (bool, str)):
                 continue
@@ -186,14 +215,21 @@ def load_run_evidence(
                 if not math.isfinite(value):
                     raise EvidenceError(f"non-finite history[{index}].{metric}")
             elif isinstance(value, list):
-                if any(not isinstance(item, (int, float)) or isinstance(item, bool)
-                       or not math.isfinite(item) for item in value if item is not None):
+                if any(
+                    not isinstance(item, (int, float))
+                    or isinstance(item, bool)
+                    or not math.isfinite(item)
+                    for item in value
+                    if item is not None
+                ):
                     raise EvidenceError(f"invalid numeric history[{index}].{metric}")
             else:
                 raise EvidenceError(f"unsupported history[{index}].{metric} value")
         last_iteration = iteration
     if overall and last_iteration != convergence["iterations"]:
-        raise EvidenceError("converged history does not reach its declared final iteration")
+        raise EvidenceError(
+            "converged history does not reach its declared final iteration"
+        )
     latest = rows[-1] if rows else {}
     metrics: list[MetricValue] = []
     for name, value in latest.items():

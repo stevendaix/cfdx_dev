@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from cfdx.gui_3d import PyVistaQtView
 from cfdx.visualization_pipeline import VisualizationOperation, VisualizationPipeline
 
@@ -61,7 +60,9 @@ class ViewDouble:
 
 def test_failed_filter_keeps_pipeline_and_existing_scene_unchanged():
     view = ViewDouble()
-    candidate = VisualizationPipeline().append(VisualizationOperation.threshold("missing", 0, 1))
+    candidate = VisualizationPipeline().append(
+        VisualizationOperation.threshold("missing", 0, 1)
+    )
     with pytest.raises(KeyError, match="missing"):
         PyVistaQtView._render_visualization(view, candidate)
     assert view.plotter.clears == 0

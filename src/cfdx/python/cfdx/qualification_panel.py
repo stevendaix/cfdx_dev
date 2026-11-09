@@ -2,18 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
-import subprocess
 import re
-
-from .qualification_center import (
-    STATUSES,
-    QualificationCase,
-    QualificationRegistry,
-    discover_qualification_registry,
-    read_qualification_registry,
-)
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -29,6 +20,14 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+)
+
+from .qualification_center import (
+    STATUSES,
+    QualificationCase,
+    QualificationRegistry,
+    discover_qualification_registry,
+    read_qualification_registry,
 )
 
 
@@ -97,7 +96,9 @@ class QualificationCenterPanel(QWidget):
         layout.addWidget(self.summary)
         self.table = QTableWidget(0, 5, self)
         self.table.setObjectName("workbench.qualification.table")
-        self.table.setHorizontalHeaderLabels(("Case ID", "Case", "Domain", "Declared status", "CI proof"))
+        self.table.setHorizontalHeaderLabels(
+            ("Case ID", "Case", "Domain", "Declared status", "CI proof")
+        )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -108,7 +109,9 @@ class QualificationCenterPanel(QWidget):
         self.details = QPlainTextEdit()
         self.details.setObjectName("workbench.qualification.details")
         self.details.setReadOnly(True)
-        self.details.setPlaceholderText("Select a case to inspect its recorded criteria.")
+        self.details.setPlaceholderText(
+            "Select a case to inspect its recorded criteria."
+        )
         layout.addWidget(self.details, 2)
         self.message = QLabel("")
         self.message.setObjectName("workbench.qualification.message")
@@ -139,24 +142,38 @@ class QualificationCenterPanel(QWidget):
 
     def open_evidence_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open commit-bound CFDX evidence manifest", "", "JSON (*.json)")
+            self, "Open commit-bound CFDX evidence manifest", "", "JSON (*.json)"
+        )
         if filename:
             try:
                 self.load_evidence_manifest(filename)
-            except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                json.JSONDecodeError,
+            ) as exc:
                 self.message.setText(f"CI evidence rejected: {exc}")
 
     def load_evidence_manifest(self, source: str | Path) -> None:
         if self.registry is None:
             raise ValueError("load the case registry before evidence")
         source = Path(source)
-        if source.is_symlink() or not source.is_file() or source.stat().st_size > 2 * 1024 * 1024:
+        if (
+            source.is_symlink()
+            or not source.is_file()
+            or source.stat().st_size > 2 * 1024 * 1024
+        ):
             raise ValueError("unsafe or oversized CI manifest")
         data = json.loads(source.read_text(encoding="utf-8"))
         sha = data.get("commit_sha")
-        if (data.get("format") != "CFDX-CI-QUALIFICATION-EVIDENCE" or
-            data.get("schema_version") != 1 or
-            not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)):
+        if (
+            data.get("format") != "CFDX-CI-QUALIFICATION-EVIDENCE"
+            or data.get("schema_version") != 1
+            or not isinstance(sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", sha)
+        ):
             raise ValueError("invalid CI manifest schema or commit")
         entries = data.get("cases")
         if not isinstance(entries, list):
@@ -167,13 +184,17 @@ class QualificationCenterPanel(QWidget):
             if not isinstance(item, dict) or item.get("case_id") not in allowed:
                 raise ValueError("unknown qualification case")
             key = item["case_id"]
-            if key in proofs or item.get("proof_status") not in ("PASS_EVIDENCED", "UNVERIFIED"):
+            if key in proofs or item.get("proof_status") not in (
+                "PASS_EVIDENCED",
+                "UNVERIFIED",
+            ):
                 raise ValueError("duplicate or invalid case proof")
             proofs[key] = item["proof_status"]
         self._proofs = proofs
         self._proof_commit = sha
         self.message.setText(
-            f"External CI manifest: {sha[:12]} — not proof for this checkout unless the HEAD matches and original artifacts are trusted")
+            f"External CI manifest: {sha[:12]} — not proof for this checkout unless the HEAD matches and original artifacts are trusted"
+        )
         self.refresh()
 
     def open_registry_dialog(self) -> None:
@@ -218,25 +239,36 @@ class QualificationCenterPanel(QWidget):
         self.table.setRowCount(len(cases))
         for row, case in enumerate(cases):
             proof = self._proofs.get(case.id, "UNVERIFIED")
-            for col, value in enumerate((case.id, case.name, case.domain, case.status, proof)):
+            for col, value in enumerate(
+                (case.id, case.name, case.domain, case.status, proof)
+            ):
                 item = QTableWidgetItem(value)
                 if col == 0:
                     item.setData(Qt.ItemDataRole.UserRole, case.id)
                 if col == 3:
-                    item.setToolTip("Status from registry only; never a current-HEAD certificate")
+                    item.setToolTip(
+                        "Status from registry only; never a current-HEAD certificate"
+                    )
                 if col == 4:
-                    item.setToolTip(f"Claimed external CI proof at {self._proof_commit or 'unknown SHA'}; reverify artifacts on exact HEAD")
+                    item.setToolTip(
+                        f"Claimed external CI proof at {self._proof_commit or 'unknown SHA'}; reverify artifacts on exact HEAD"
+                    )
                 self.table.setItem(row, col, item)
         self.table.setSortingEnabled(True)
         counts = self.registry.counts()
-        count_text = " · ".join(f"{key}: {count}" for key, count in counts.items() if count)
+        count_text = " · ".join(
+            f"{key}: {count}" for key, count in counts.items() if count
+        )
         self.summary.setText(
             f"Showing {len(cases)} / {len(self.registry.cases)} cases · "
             f"Registry declarations: {count_text}"
         )
         target_row = next(
-            (row for row in range(self.table.rowCount())
-             if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == previous),
+            (
+                row
+                for row in range(self.table.rowCount())
+                if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == previous
+            ),
             0 if cases else -1,
         )
         if target_row >= 0:

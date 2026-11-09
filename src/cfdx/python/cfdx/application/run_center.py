@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..execution import ExecutionController
 from ..convergence_evidence import ConvergenceEvidence
+from ..execution import ExecutionController
 from ..metrics import SolverMetrics
 from ..probe_stream import ProbeStreamSample
 from ..runner import ProcessResult

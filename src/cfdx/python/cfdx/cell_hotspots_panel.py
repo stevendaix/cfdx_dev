@@ -3,6 +3,7 @@
 The sparse top-K overlay is never presented as a full-cell heatmap or a
 physical convergence certificate. A bounded trace is parsed on a worker thread.
 """
+
 from __future__ import annotations
 
 import json
@@ -10,8 +11,16 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QLabel,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .cell_convergence import CellConvergenceError, read_cell_trace
@@ -50,13 +59,22 @@ class _MapJob(QRunnable):
     def run(self):
         try:
             diagnostic = CellFieldMap(self.source)
-            if (Path(diagnostic.mesh_source).resolve() != Path(self.mesh).resolve() or
-                    diagnostic.n_cells != self.n_cells):
-                raise CellMapError("full map mesh is incompatible with selected top-K trace")
+            if (
+                Path(diagnostic.mesh_source).resolve() != Path(self.mesh).resolve()
+                or diagnostic.n_cells != self.n_cells
+            ):
+                raise CellMapError(
+                    "full map mesh is incompatible with selected top-K trace"
+                )
             values, clim, title = diagnostic.scalar(self.metric, self.iteration)
-            payload = {"mesh_source": diagnostic.mesh_source,
-                       "n_cells": diagnostic.n_cells, "iteration": self.iteration,
-                       "values": values, "clim": clim, "title": title}
+            payload = {
+                "mesh_source": diagnostic.mesh_source,
+                "n_cells": diagnostic.n_cells,
+                "iteration": self.iteration,
+                "values": values,
+                "clim": clim,
+                "title": title,
+            }
             diagnostic.close()
             self.events.finished.emit(self.revision, payload, None)
         except (CellMapError, OSError, ValueError, RuntimeError) as exc:
@@ -114,20 +132,22 @@ class CellHotspotsPanel(QWidget):
         choices.addWidget(self.metric_choice)
         self.table = QTableWidget(0, 7, self)
         self.table.setObjectName("workbench.cell_hotspots.table")
-        self.table.setHorizontalHeaderLabels((
-            "Cell", "Momentum / RHS", "|mass defect|", "Non-decrease", "X", "Y", "Z"
-        ))
+        self.table.setHorizontalHeaderLabels(
+            ("Cell", "Momentum / RHS", "|mass defect|", "Non-decrease", "X", "Y", "Z")
+        )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._select_cell)
-        self.history_note = QLabel("Select a cell to see only its recorded top-K snapshots.")
+        self.history_note = QLabel(
+            "Select a cell to see only its recorded top-K snapshots."
+        )
         self.history_note.setWordWrap(True)
         self.history_table = QTableWidget(0, 4, self)
         self.history_table.setObjectName("workbench.cell_hotspots.history")
-        self.history_table.setHorizontalHeaderLabels((
-            "Accepted iter", "Momentum / RHS", "|mass defect|", "Non-decrease"
-        ))
+        self.history_table.setHorizontalHeaderLabels(
+            ("Accepted iter", "Momentum / RHS", "|mass defect|", "Non-decrease")
+        )
         self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.history_table.horizontalHeader().setStretchLastSection(True)
         self.history_table.setMaximumHeight(150)
@@ -202,7 +222,9 @@ class CellHotspotsPanel(QWidget):
                 self.table.setRowCount(0)
                 self.history_table.setRowCount(0)
                 self.export_button.setEnabled(False)
-                self.status.setText("Cell trace no longer exists; waiting for a new native write.")
+                self.status.setText(
+                    "Cell trace no longer exists; waiting for a new native write."
+                )
             return  # Solver has not yet written its opt-in header.
         except OSError as exc:
             self.status.setText(f"Cannot inspect trace: {exc}")
@@ -216,7 +238,9 @@ class CellHotspotsPanel(QWidget):
             self.table.setRowCount(0)
             self.history_table.setRowCount(0)
             self.export_button.setEnabled(False)
-            self.status.setText("Trace exceeds 32 MiB: increase --cell-hotspots-every or inspect via CLI.")
+            self.status.setText(
+                "Trace exceeds 32 MiB: increase --cell-hotspots-every or inspect via CLI."
+            )
             return
         self._revision += 1
         revision = self._revision
@@ -232,7 +256,9 @@ class CellHotspotsPanel(QWidget):
         if revision != self._revision or self._source is None:
             return  # The operator selected another file in the meantime.
         if error:
-            self.status.setText(f"Diagnostic rejected (no unverified data displayed): {error}")
+            self.status.setText(
+                f"Diagnostic rejected (no unverified data displayed): {error}"
+            )
             self.trace = None
             self.frame_choice.clear()
             self.table.setRowCount(0)
@@ -255,7 +281,9 @@ class CellHotspotsPanel(QWidget):
         self.frame_choice.blockSignals(True)
         self.frame_choice.clear()
         for frame in trace.frames:
-            self.frame_choice.addItem(f"Accepted iteration {frame.iteration}", frame.iteration)
+            self.frame_choice.addItem(
+                f"Accepted iteration {frame.iteration}", frame.iteration
+            )
         if selected is not None:
             found = self.frame_choice.findData(selected)
             if found >= 0:
@@ -271,23 +299,31 @@ class CellHotspotsPanel(QWidget):
         if self.trace is None:
             return None
         iteration = self.frame_choice.currentData()
-        return next((frame for frame in self.trace.frames if frame.iteration == iteration), None)
+        return next(
+            (frame for frame in self.trace.frames if frame.iteration == iteration), None
+        )
 
     def _show_frame(self, *_args) -> None:
         frame = self._current_frame()
         trace = self.trace
         self.table.setRowCount(0)
         self.history_table.setRowCount(0)
-        self.history_note.setText("Select a cell to see its actually recorded samples (gaps are unknown).")
+        self.history_note.setText(
+            "Select a cell to see its actually recorded samples (gaps are unknown)."
+        )
         if frame is None or trace is None:
             return
         metric = self.metric_choice.currentData() or "momentum"
         ranked = frame.ranked(metric, 72)
         self.table.setRowCount(len(ranked))
         for row, cell in enumerate(ranked):
-            columns = (cell.cell_id, f"{cell.momentum_scaled:.5g}",
-                       f"{cell.mass_imbalance_abs:.5g}", cell.nondecrease_streak,
-                       *(f"{coord:.6g}" for coord in cell.center))
+            columns = (
+                cell.cell_id,
+                f"{cell.momentum_scaled:.5g}",
+                f"{cell.mass_imbalance_abs:.5g}",
+                cell.nondecrease_streak,
+                *(f"{coord:.6g}" for coord in cell.center),
+            )
             for col, value in enumerate(columns):
                 item = QTableWidgetItem(str(value))
                 if col == 0:
@@ -299,8 +335,14 @@ class CellHotspotsPanel(QWidget):
             native_map = self._source.with_name("cell_convergence_map.bin")
             if native_map.is_file():
                 revision = self._map_revision
-                job = _MapJob(revision, native_map, frame.iteration, metric,
-                              trace.mesh_source, trace.n_cells)
+                job = _MapJob(
+                    revision,
+                    native_map,
+                    frame.iteration,
+                    metric,
+                    trace.mesh_source,
+                    trace.n_cells,
+                )
                 self._map_jobs[revision] = job
                 job.events.finished.connect(self._map_finished)
                 self._pool.start(job)
@@ -310,7 +352,9 @@ class CellHotspotsPanel(QWidget):
         if revision != self._map_revision or self.trace is None:
             return
         if error:
-            self.status.setText("Full-cell map unavailable; sparse hotspots remain: " + error)
+            self.status.setText(
+                "Full-cell map unavailable; sparse hotspots remain: " + error
+            )
         else:
             self.full_map_selected.emit(payload)
 
@@ -324,10 +368,16 @@ class CellHotspotsPanel(QWidget):
             history = self.trace.observed_history(cell.cell_id)
             self.history_table.setRowCount(len(history))
             for line, (accepted_iter, sample) in enumerate(history):
-                values = (accepted_iter, f"{sample.momentum_scaled:.5g}",
-                          f"{sample.mass_imbalance_abs:.5g}", sample.nondecrease_streak)
+                values = (
+                    accepted_iter,
+                    f"{sample.momentum_scaled:.5g}",
+                    f"{sample.mass_imbalance_abs:.5g}",
+                    sample.nondecrease_streak,
+                )
                 for column, value in enumerate(values):
-                    self.history_table.setItem(line, column, QTableWidgetItem(str(value)))
+                    self.history_table.setItem(
+                        line, column, QTableWidgetItem(str(value))
+                    )
             self.history_note.setText(
                 f"Cell {cell.cell_id} • {len(history)} recorded snapshots. "
                 "Missing snapshots are unknown; the streak itself was computed by the solver "
@@ -339,13 +389,20 @@ class CellHotspotsPanel(QWidget):
         if self.trace is None:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export CFDX cell hotspot diagnostic", "cell_hotspots_report.json", "JSON (*.json)"
+            self,
+            "Export CFDX cell hotspot diagnostic",
+            "cell_hotspots_report.json",
+            "JSON (*.json)",
         )
         if not path:
             return
         try:
-            Path(path).write_text(json.dumps(self.trace.to_dict(), indent=2,
-                                             sort_keys=True, allow_nan=False) + "\n",
-                                  encoding="utf-8")
+            Path(path).write_text(
+                json.dumps(
+                    self.trace.to_dict(), indent=2, sort_keys=True, allow_nan=False
+                )
+                + "\n",
+                encoding="utf-8",
+            )
         except (OSError, ValueError) as exc:
             self.status.setText(f"Cannot export diagnostic report: {exc}")

@@ -3,18 +3,21 @@
 import math
 
 import pytest
-
 from cfdx.convergence_diagnostics import (
-    analyze_monitor_series, metric_group,
+    analyze_monitor_series,
+    metric_group,
 )
 from cfdx.monitors import MonitorSample, MonitorSeries
 
 
 def build_series(values, name="momentum_residual_relative"):
-    return MonitorSeries("solver", [
-        MonitorSample(i, float(i), {name: value})
-        for i, value in enumerate(values, 1)
-    ])
+    return MonitorSeries(
+        "solver",
+        [
+            MonitorSample(i, float(i), {name: value})
+            for i, value in enumerate(values, 1)
+        ],
+    )
 
 
 def test_descending_physical_residual_is_not_a_pass_certificate():
@@ -48,12 +51,15 @@ def test_metric_categories_are_not_falsely_equated():
 
 
 def test_missing_measurements_do_not_get_forward_filled():
-    series = MonitorSeries("solver", [
-        MonitorSample(1, 0.0, {"momentum_residual_relative": 1.0}),
-        MonitorSample(2, 0.0, {"continuity_normalized": 1e-3}),
-        MonitorSample(3, 0.0, {"momentum_residual_relative": 0.1}),
-        MonitorSample(4, 0.0, {"momentum_residual_relative": 0.01}),
-    ])
+    series = MonitorSeries(
+        "solver",
+        [
+            MonitorSample(1, 0.0, {"momentum_residual_relative": 1.0}),
+            MonitorSample(2, 0.0, {"continuity_normalized": 1e-3}),
+            MonitorSample(3, 0.0, {"momentum_residual_relative": 0.1}),
+            MonitorSample(4, 0.0, {"momentum_residual_relative": 0.01}),
+        ],
+    )
     result = {m.name: m for m in analyze_monitor_series(series)}
     assert result["momentum_residual_relative"].count == 3
     assert result["continuity_normalized"].count == 1
@@ -78,18 +84,26 @@ def test_non_finite_or_bad_limits_are_rejected():
 
 
 def test_latest_metric_slope_not_distorted_by_old_unrelated_cfl():
-    series = MonitorSeries("solver", [
-        MonitorSample(i, float(i), {"CFL": 0.6, "momentum_residual_relative": 10 ** (-i)})
-        for i in range(1, 16)
-    ])
+    series = MonitorSeries(
+        "solver",
+        [
+            MonitorSample(
+                i, float(i), {"CFL": 0.6, "momentum_residual_relative": 10 ** (-i)}
+            )
+            for i in range(1, 16)
+        ],
+    )
     rows = analyze_monitor_series(series, window=6)
     assert len(rows) == 1 and rows[0].count == 6
     assert rows[0].trend == "DECREASING"
 
 
 def test_out_of_order_sample_is_not_silent_divergence():
-    series = MonitorSeries("solver", [
-        MonitorSample(i, float(i), {"momentum_residual_relative": 10 ** (-i)})
-        for i in (1, 3, 4, 8, 10)
-    ])
+    series = MonitorSeries(
+        "solver",
+        [
+            MonitorSample(i, float(i), {"momentum_residual_relative": 10 ** (-i)})
+            for i in (1, 3, 4, 8, 10)
+        ],
+    )
     assert analyze_monitor_series(series)[0].decades_per_iteration == pytest.approx(-1)

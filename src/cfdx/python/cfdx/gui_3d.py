@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .case_inspector import CaseFileSummary, inspect_cfdx_file
+from .cell_convergence import sampled_cell_scalar_map
 from .mesh_topology import validate_cell_topology, validate_surface_topology
 from .selection import parse_selection_id, selection_label
-from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
-from .theme import TOKENS
-from .cell_convergence import sampled_cell_scalar_map
 from .surface_streaming import read_surface_preview
+from .theme import TOKENS
+from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
 from .volume_partitions import read_volume_partition
 
 try:
@@ -41,14 +41,18 @@ class _SurfaceJob(QRunnable if QRunnable is not None else object):
             stat = self.path.stat()
             current = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
             if current != self.signature:
-                raise RuntimeError("mesh changed while constructing progressive surface preview")
+                raise RuntimeError(
+                    "mesh changed while constructing progressive surface preview"
+                )
             self.events.done.emit(self.revision, result, None)
         except Exception as exc:
             self.events.done.emit(self.revision, None, str(exc))
 
 
 class _VolumeJob(QRunnable if QRunnable is not None else object):
-    def __init__(self, revision: int, path: Path, start_cell: int, count: int, field: str | None):
+    def __init__(
+        self, revision: int, path: Path, start_cell: int, count: int, field: str | None
+    ):
         super().__init__()
         self.revision, self.path, self.start_cell = revision, path, start_cell
         self.count, self.field = count, field
@@ -56,8 +60,9 @@ class _VolumeJob(QRunnable if QRunnable is not None else object):
 
     def run(self):
         try:
-            result = read_volume_partition(self.path, self.start_cell,
-                                           count=self.count, field=self.field)
+            result = read_volume_partition(
+                self.path, self.start_cell, count=self.count, field=self.field
+            )
             self.events.done.emit(self.revision, result, None)
         except Exception as exc:
             self.events.done.emit(self.revision, None, str(exc))
@@ -219,7 +224,9 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.reset_camera()
         self.plotter.render()
 
-    def load_progressive_surface(self, source: str, *, summary: CaseFileSummary | None = None) -> None:
+    def load_progressive_surface(
+        self, source: str, *, summary: CaseFileSummary | None = None
+    ) -> None:
         """Schedule a safe, decimated surface-only preview off the Qt UI thread.
 
         This is never a full-volume field load: sample counts/coverage are
@@ -242,8 +249,14 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         job.events.done.connect(self._on_surface_preview)
         self._preview_pool.start(job)
 
-    def load_progressive_volume(self, source: str, *, start_cell: int = 0,
-                                count: int = 128, field: str | None = None) -> None:
+    def load_progressive_volume(
+        self,
+        source: str,
+        *,
+        start_cell: int = 0,
+        count: int = 128,
+        field: str | None = None,
+    ) -> None:
         """Schedule one true volume tile, never materialize the entire mesh."""
         path = Path(source)
         if not path.is_file() or path.is_symlink():
@@ -264,8 +277,14 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             return
         try:
             from pathlib import Path
+
             stat = Path(piece.source).stat()
-            if (stat.st_dev,stat.st_ino,stat.st_size,stat.st_mtime_ns) != piece.source_identity:
+            if (
+                stat.st_dev,
+                stat.st_ino,
+                stat.st_size,
+                stat.st_mtime_ns,
+            ) != piece.source_identity:
                 raise RuntimeError("volume tile source changed before rendering")
             tile = piece.as_pyvista(self._pv)
             self.plotter.disable_picking()
@@ -282,17 +301,22 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self._selected_field = piece.field_name
             self._rendered_scalars = piece.field_name
             self._visualization_pipeline = VisualizationPipeline()
-            self.plotter.add_mesh(tile, scalars=piece.field_name,
-                                  name="workbench.volume_partition", show_edges=True)
+            self.plotter.add_mesh(
+                tile,
+                scalars=piece.field_name,
+                name="workbench.volume_partition",
+                show_edges=True,
+            )
             self.plotter.reset_camera()
             self.plotter.render()
         except Exception as exc:
             self.volume_partition_failed.emit(str(exc))
             return
-        first, last = piece.original_cell_ids[[0,-1]]
+        first, last = piece.original_cell_ids[[0, -1]]
         self.volume_partition_ready.emit(
             f"Real volume tile {first}-{last} of {piece.total_cells:,} CFDX cells "
-            f"({piece.fraction:.2%} of source, not full-volume or GPU qualification)")
+            f"({piece.fraction:.2%} of source, not full-volume or GPU qualification)"
+        )
 
     def _on_surface_preview(self, revision: int, preview, error) -> None:
         self._preview_jobs.pop(revision, None)
@@ -320,18 +344,24 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self._rendered_dataset = mesh
             self._rendered_scalars = "CFDX_sampled_patch_index"
             self.plotter.add_mesh(
-                mesh, scalars="CFDX_sampled_patch_index", cmap="tab20",
-                name="workbench.progressive_surface_sample", show_scalar_bar=True,
-                scalar_bar_args={"title":"Sampled patch ID"},
+                mesh,
+                scalars="CFDX_sampled_patch_index",
+                cmap="tab20",
+                name="workbench.progressive_surface_sample",
+                show_scalar_bar=True,
+                scalar_bar_args={"title": "Sampled patch ID"},
             )
             self.plotter.reset_camera()
             self.plotter.render()
             self.progressive_preview_ready.emit(
                 f"Surface LOD: {len(preview.original_face_ids):,} / "
                 f"{preview.n_boundary_faces:,} boundary faces "
-                f"({preview.coverage:.2%}); NO full-volume fields or cell map")
+                f"({preview.coverage:.2%}); NO full-volume fields or cell map"
+            )
         except Exception as exc:
-            self.progressive_preview_failed.emit(f"surface preview rendering failed: {exc}")
+            self.progressive_preview_failed.emit(
+                f"surface preview rendering failed: {exc}"
+            )
 
     @staticmethod
     def patch_actor_id(stable_id: str) -> str:
@@ -600,10 +630,15 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
 
         mesh_path = self._loaded_mesh_for_hotspots
         if mesh_path is None:
-            raise RuntimeError("Load the source CFDX mesh or matching DAT checkpoint before locating hotspots")
+            raise RuntimeError(
+                "Load the source CFDX mesh or matching DAT checkpoint before locating hotspots"
+            )
         if mesh_path != Path(trace.mesh_source).resolve():
-            raise ValueError("Hotspot source mesh differs from the currently displayed mesh")
+            raise ValueError(
+                "Hotspot source mesh differs from the currently displayed mesh"
+            )
         from .cell_convergence import cell_trace_metric_name
+
         title = cell_trace_metric_name(metric)
         samples = frame.ranked(metric, 72)
         self.plotter.remove_actor("workbench.cell_hotspots", render=False)
@@ -634,17 +669,29 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                     upper += margin
                 clim = (lower, upper)
             self.plotter.add_mesh(
-                overlay_copy, scalars=field_name, name="workbench.cell_hotspots.map",
-                cmap="coolwarm", show_scalar_bar=True, reset_camera=False,
-                scalar_bar_args={"title": title + " (sampled only)"}, nan_color="#5b6472",
-                opacity=0.92, clim=clim,
+                overlay_copy,
+                scalars=field_name,
+                name="workbench.cell_hotspots.map",
+                cmap="coolwarm",
+                show_scalar_bar=True,
+                reset_camera=False,
+                scalar_bar_args={"title": title + " (sampled only)"},
+                nan_color="#5b6472",
+                opacity=0.92,
+                clim=clim,
             )
             centers = np.asarray([cell.center for cell in samples], dtype=float)
             points = self._pv.PolyData(centers)
-            points.point_data["CFDX_cell_id"] = np.asarray([cell.cell_id for cell in samples], dtype=np.int64)
+            points.point_data["CFDX_cell_id"] = np.asarray(
+                [cell.cell_id for cell in samples], dtype=np.int64
+            )
             self.plotter.add_mesh(
-                points, name="workbench.cell_hotspots", color="#ffffff",
-                render_points_as_spheres=True, point_size=6, reset_camera=False,
+                points,
+                name="workbench.cell_hotspots",
+                color="#ffffff",
+                render_points_as_spheres=True,
+                point_size=6,
+                reset_camera=False,
             )
         else:
             centers = np.asarray([cell.center for cell in samples], dtype=float)
@@ -654,12 +701,22 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 "mass": "mass_imbalance_abs",
                 "persistence": "nondecrease_streak",
             }[metric]
-            points.point_data[field] = np.asarray([getattr(cell, field) for cell in samples], dtype=float)
-            points.point_data["CFDX_cell_id"] = np.asarray([cell.cell_id for cell in samples], dtype=np.int64)
+            points.point_data[field] = np.asarray(
+                [getattr(cell, field) for cell in samples], dtype=float
+            )
+            points.point_data["CFDX_cell_id"] = np.asarray(
+                [cell.cell_id for cell in samples], dtype=np.int64
+            )
             self.plotter.add_mesh(
-                points, scalars=field, name="workbench.cell_hotspots", cmap="coolwarm",
-                render_points_as_spheres=True, point_size=14, show_scalar_bar=True,
-                scalar_bar_args={"title": title + " (sampled only)"}, reset_camera=False,
+                points,
+                scalars=field,
+                name="workbench.cell_hotspots",
+                cmap="coolwarm",
+                render_points_as_spheres=True,
+                point_size=14,
+                show_scalar_bar=True,
+                scalar_bar_args={"title": title + " (sampled only)"},
+                reset_camera=False,
             )
         self._hotspot_trace = trace
         self._hotspot_frame = frame
@@ -671,12 +728,18 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
 
         mesh_path = self._loaded_mesh_for_hotspots
         if mesh_path is None or mesh_path != Path(trace.mesh_source).resolve():
-            raise ValueError("Open the matching original CFDX mesh before selecting the cell")
+            raise ValueError(
+                "Open the matching original CFDX mesh before selecting the cell"
+            )
         center = np.asarray([cell.center], dtype=float)
         point = self._pv.PolyData(center)
         self.plotter.add_mesh(
-            point, name="workbench.cell_hotspot.selected", color="#ffffff",
-            render_points_as_spheres=True, point_size=24, reset_camera=False,
+            point,
+            name="workbench.cell_hotspot.selected",
+            color="#ffffff",
+            render_points_as_spheres=True,
+            point_size=24,
+            reset_camera=False,
         )
         # Move the camera toward the actual cell position while preserving its
         # viewing direction. This is not a guessed VTK cell index: the overlay
@@ -690,11 +753,13 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             direction = np.asarray([1.0, 1.0, 1.0])
             length = float(np.linalg.norm(direction))
         bounds = self.plotter.bounds
-        span = np.asarray((bounds[1]-bounds[0], bounds[3]-bounds[2],
-                           bounds[5]-bounds[4]), dtype=float)
+        span = np.asarray(
+            (bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4]),
+            dtype=float,
+        )
         diagonal = float(np.linalg.norm(span))
         distance = max(diagonal * 0.08, 1e-6)
-        camera.position = tuple(center[0] + (direction/length) * distance)
+        camera.position = tuple(center[0] + (direction / length) * distance)
         camera.focal_point = tuple(center[0])
         self.plotter.reset_camera_clipping_range()
         self.plotter.render()
@@ -702,33 +767,49 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
     def show_full_cell_map(self, payload) -> None:
         """Display stable, quantitative blue/red scale on original cell IDs only."""
         import numpy as np
+
         mesh = self._loaded_mesh_for_hotspots
         if mesh is None or mesh != Path(payload["mesh_source"]).resolve():
-            raise RuntimeError("load the exact originating CFDX mesh before showing full-cell map")
-        native = self._hotspot_overlay_dataset(type("_Cells", (), {"n_cells": payload["n_cells"]})())
+            raise RuntimeError(
+                "load the exact originating CFDX mesh before showing full-cell map"
+            )
+        native = self._hotspot_overlay_dataset(
+            type("_Cells", (), {"n_cells": payload["n_cells"]})()
+        )
         if native is None:
-            raise RuntimeError("full field colouring requires a compatible volumetric DAT dataset")
+            raise RuntimeError(
+                "full field colouring requires a compatible volumetric DAT dataset"
+            )
         values = np.asarray(payload["values"], dtype=np.float64)
         if values.shape != (native.n_cells,):
             raise ValueError("full-cell map field does not match the source volume")
         overlay = native.copy(deep=False)
         overlay.cell_data["CFDX_full_cell_convergence"] = values
         self.plotter.add_mesh(
-            overlay, scalars="CFDX_full_cell_convergence",
-            name="workbench.cell_hotspots.full_map", cmap="coolwarm",
-            nan_color="#59616e", show_scalar_bar=True,
+            overlay,
+            scalars="CFDX_full_cell_convergence",
+            name="workbench.cell_hotspots.full_map",
+            cmap="coolwarm",
+            nan_color="#59616e",
+            show_scalar_bar=True,
             scalar_bar_args={"title": payload["title"]},
-            clim=payload["clim"], reset_camera=False)
+            clim=payload["clim"],
+            reset_camera=False,
+        )
         self.plotter.render()
 
     def show_simulation_difference(self, left: str, right: str, field: str) -> None:
         """Only a small identical-grid field may be rendered as signed delta."""
-        from .simulation_compare import compare_scalar_fields
         import h5py
         import numpy as np
+
+        from .simulation_compare import compare_scalar_fields
+
         report = compare_scalar_fields(left, right, field)
         if report.cells > 250_000:
-            raise RuntimeError("volume difference display limited to 250,000 cells; use streaming statistics")
+            raise RuntimeError(
+                "volume difference display limited to 250,000 cells; use streaming statistics"
+            )
         if self._loaded_mesh_for_hotspots is None or self._dat_dataset is None:
             raise RuntimeError("load the original matching DAT volumetric mesh first")
         if self._loaded_mesh_for_hotspots.resolve() != Path(left).resolve():
@@ -741,10 +822,14 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         delta = rhs - lhs
         mesh = self._dat_dataset.copy(deep=False)
         mesh.cell_data["CFDX_signed_difference"] = delta
-        self.plotter.add_mesh(mesh, scalars="CFDX_signed_difference", cmap="coolwarm",
-                              name="workbench.compare.signed_delta",
-                              scalar_bar_args={"title": f"Δ {report.field} [{report.units}]"},
-                              reset_camera=False)
+        self.plotter.add_mesh(
+            mesh,
+            scalars="CFDX_signed_difference",
+            cmap="coolwarm",
+            name="workbench.compare.signed_delta",
+            scalar_bar_args={"title": f"Δ {report.field} [{report.units}]"},
+            reset_camera=False,
+        )
         self.plotter.render()
 
     def set_field(self, field: str) -> None:

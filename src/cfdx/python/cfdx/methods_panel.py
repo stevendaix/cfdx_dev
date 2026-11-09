@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
-    QPushButton, QVBoxLayout, QWidget,
+    QComboBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .modern_methods import (
-    METHODS, compare_methods, method_by_key, method_families, search_methods,
+    METHODS,
+    compare_methods,
+    method_by_key,
+    method_families,
+    search_methods,
 )
 
 
@@ -27,7 +38,9 @@ class MethodsPanel(QWidget):
         form = QFormLayout()
         self.search = QLineEdit()
         self.search.setObjectName("workbench.methods.search")
-        self.search.setPlaceholderText("Search method, preconditioner or qualification...")
+        self.search.setPlaceholderText(
+            "Search method, preconditioner or qualification..."
+        )
         layout.addWidget(self.search)
         self.integration = QComboBox()
         self.integration.setObjectName("workbench.methods.integration")
@@ -112,8 +125,10 @@ class MethodsPanel(QWidget):
     def _update_comparison_button(self, *_args) -> None:
         left, right = self.method.currentData(), self.compare_with.currentData()
         self.compare_button.setEnabled(
-            isinstance(left, str) and isinstance(right, str)
-            and bool(right) and left != right
+            isinstance(left, str)
+            and isinstance(right, str)
+            and bool(right)
+            and left != right
         )
 
     def _compare(self) -> None:

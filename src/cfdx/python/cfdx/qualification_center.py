@@ -61,7 +61,10 @@ class QualificationRegistry:
         )
 
     def counts(self) -> dict[str, int]:
-        return {status: sum(case.status == status for case in self.cases) for status in STATUSES}
+        return {
+            status: sum(case.status == status for case in self.cases)
+            for status in STATUSES
+        }
 
     def policy_for(self, status: str) -> str:
         return dict(self.policy)[status]
@@ -112,7 +115,10 @@ def read_qualification_registry(source: str | Path) -> QualificationRegistry:
         object_pairs_hook=_unique_json_keys,
         parse_constant=_reject_json_constant,
     )
-    if not isinstance(raw, dict) or raw.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
+    if (
+        not isinstance(raw, dict)
+        or raw.get("schema_version") != SUPPORTED_SCHEMA_VERSION
+    ):
         raise ValueError("unsupported qualification registry schema version")
     campaign = _bounded_string(raw.get("campaign"), "campaign")
     policies = raw.get("status_policy")
@@ -140,7 +146,9 @@ def read_qualification_registry(source: str | Path) -> QualificationRegistry:
         name = _bounded_string(item.get("case"), f"case[{index}].case")
         status = _bounded_string(item.get("status"), f"case[{index}].status")
         if status not in STATUSES:
-            raise ValueError(f"unsupported qualification status for {case_id}: {status}")
+            raise ValueError(
+                f"unsupported qualification status for {case_id}: {status}"
+            )
         details = tuple(
             (key, _bounded_string(value, f"{case_id}.{key}", allow_empty=True))
             for key, value in item.items()
@@ -152,9 +160,11 @@ def read_qualification_registry(source: str | Path) -> QualificationRegistry:
 
 def discover_qualification_registry(start: str | Path | None = None) -> Path | None:
     """Find the existing repository registry; do not generate a second copy."""
-    roots = [Path(start).resolve()] if start is not None else [
-        Path.cwd().resolve(), Path(__file__).resolve()
-    ]
+    roots = (
+        [Path(start).resolve()]
+        if start is not None
+        else [Path.cwd().resolve(), Path(__file__).resolve()]
+    )
     for root in roots:
         for parent in (root, *root.parents):
             candidate = parent / REGISTRY_RELATIVE_PATH

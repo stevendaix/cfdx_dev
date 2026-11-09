@@ -1,4 +1,5 @@
 """Optional CI Qt tests for the actual connected Mission Control widgets."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -6,12 +7,14 @@ import importlib.util
 import pytest
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_overview_live_checks_palette_and_window_lifecycle(tmp_path, monkeypatch):
-    from PySide6.QtCore import QSettings
-    from PySide6.QtWidgets import QApplication, QDockWidget
     from cfdx.session import CFDXSession
     from cfdx.workbench import CFDXWorkbenchWindow
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication, QDockWidget
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     app = QApplication.instance() or QApplication(["cfdx-mission-control-qt"])
@@ -40,6 +43,8 @@ def test_overview_live_checks_palette_and_window_lifecycle(tmp_path, monkeypatch
     assert sum(len(rows) for rows in bus._subscribers.values()) >= 3
     window.close()
     app.processEvents()
-    assert all(callback not in bus._subscribers[event]
-               for event, callback in window._event_subscriptions)
+    assert all(
+        callback not in bus._subscribers[event]
+        for event, callback in window._event_subscriptions
+    )
     settings.clear()

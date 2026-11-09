@@ -19,7 +19,7 @@ if str(_PACKAGE_ROOT) in sys.path:
     sys.path.remove(str(_PACKAGE_ROOT))
 sys.path.insert(0, str(_PACKAGE_ROOT))
 
-from cfdx.qualification_center import (  # noqa: E402
+from cfdx.qualification_center import (
     STATUSES,
     discover_qualification_registry,
     read_qualification_registry,
@@ -50,8 +50,13 @@ def main(argv: list[str] | None = None) -> int:
             "total_cases": len(registry.cases),
             "counts": registry.counts(),
             "filtered_cases": [
-                {"id": case.id, "case": case.name, "domain": case.domain,
-                 "declared_status": case.status, "head_evidence": "unverified"}
+                {
+                    "id": case.id,
+                    "case": case.name,
+                    "domain": case.domain,
+                    "declared_status": case.status,
+                    "head_evidence": "unverified",
+                }
                 for case in cases
             ],
         }

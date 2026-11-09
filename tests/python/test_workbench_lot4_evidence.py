@@ -5,28 +5,38 @@ import sys
 from pathlib import Path
 
 import pytest
+from cfdx.convergence_evidence import (
+    EvidenceError,
+    baseline_signatures,
+    load_run_evidence,
+)
 
 from cfdx import CFDXSession, ExecutionController, SolverRunner
-from cfdx.convergence_evidence import (
-    EvidenceError, baseline_signatures, load_run_evidence,
-)
 
 
 def _documents(*, code=0, flow=True, overall=True, iterations=3):
     execution = {
-        "format": "CFDX-EXECUTION", "schema_version": 1,
-        "process_exit_code": code, "converged": overall,
-        "iterations": iterations, "convergence_reason": "native solver stage gate",
+        "format": "CFDX-EXECUTION",
+        "schema_version": 1,
+        "process_exit_code": code,
+        "converged": overall,
+        "iterations": iterations,
+        "convergence_reason": "native solver stage gate",
         "convergence_status": 2 if overall else -5,
         "artifacts": {"restart_dat": True, "convergence_json": True},
     }
     convergence = {
-        "format": "CFDX-CONVERGENCE", "schema_version": 1,
-        "converged": flow, "iterations": iterations,
+        "format": "CFDX-CONVERGENCE",
+        "schema_version": 1,
+        "converged": flow,
+        "iterations": iterations,
         "history": [
-            {"iteration": index, "momentum_equation_residual_relative": 10 ** -index,
-             "continuity_normalized": 10 ** (-index - 1),
-             "velocity_change_inf": 0.001 / index}
+            {
+                "iteration": index,
+                "momentum_equation_residual_relative": 10**-index,
+                "continuity_normalized": 10 ** (-index - 1),
+                "velocity_change_inf": 0.001 / index,
+            }
             for index in range(1, iterations + 1)
         ],
     }
@@ -39,7 +49,9 @@ def _write(root: Path, execution, flow):
     (root / "convergence.json").write_text(json.dumps(flow), encoding="utf-8")
 
 
-def test_fresh_native_artifacts_expose_physical_evidence_without_qualifying_it(tmp_path):
+def test_fresh_native_artifacts_expose_physical_evidence_without_qualifying_it(
+    tmp_path,
+):
     baseline = baseline_signatures(tmp_path)
     _write(tmp_path, *_documents())
     evidence = load_run_evidence(tmp_path, process_exit_code=0, baseline=baseline)
@@ -59,20 +71,34 @@ def test_stage_fail_cannot_be_masked_by_converged_incompressible_flow(tmp_path):
     assert evidence.flow_converged
 
 
-@pytest.mark.parametrize("mutation, error", [
-    (lambda e, f: e.update({"format": "OTHER"}), "format"),
-    (lambda e, f: e.update({"converged": "true"}), "boolean"),
-    (lambda e, f: e.update({"process_exit_code": 1}), "disagrees"),
-    (lambda e, f: e.update({"iterations": 100}), "iteration counts"),
-    (lambda e, f: e.update({"artifacts": {"convergence_json": False}}), "artifact"),
-    (lambda e, f: f.update({"history": []}), "no final flow metrics"),
-    (lambda e, f: f["history"].append(dict(f["history"][0])), "strictly increasing"),
-    (lambda e, f: f["history"][-1].update({"continuity_normalized": float('inf')}), "non-finite"),
-    (lambda e, f: f.update({"schema_version": 2}), "schema"),
-    (lambda e, f: f.update({"converged": False}), "cannot converge"),
-    (lambda e, f: f["history"][0].update({"pressure_residual": float("inf")}), "non-finite"),
-    (lambda e, f: f["history"].pop(), "final iteration"),
-])
+@pytest.mark.parametrize(
+    "mutation, error",
+    [
+        (lambda e, f: e.update({"format": "OTHER"}), "format"),
+        (lambda e, f: e.update({"converged": "true"}), "boolean"),
+        (lambda e, f: e.update({"process_exit_code": 1}), "disagrees"),
+        (lambda e, f: e.update({"iterations": 100}), "iteration counts"),
+        (lambda e, f: e.update({"artifacts": {"convergence_json": False}}), "artifact"),
+        (lambda e, f: f.update({"history": []}), "no final flow metrics"),
+        (
+            lambda e, f: f["history"].append(dict(f["history"][0])),
+            "strictly increasing",
+        ),
+        (
+            lambda e, f: f["history"][-1].update(
+                {"continuity_normalized": float("inf")}
+            ),
+            "non-finite",
+        ),
+        (lambda e, f: f.update({"schema_version": 2}), "schema"),
+        (lambda e, f: f.update({"converged": False}), "cannot converge"),
+        (
+            lambda e, f: f["history"][0].update({"pressure_residual": float("inf")}),
+            "non-finite",
+        ),
+        (lambda e, f: f["history"].pop(), "final iteration"),
+    ],
+)
 def test_artifact_contradictions_fail_closed(tmp_path, mutation, error):
     execution, flow = _documents()
     mutation(execution, flow)
@@ -106,7 +132,9 @@ def test_duplicate_json_keys_rejected(tmp_path):
     execution, flow = _documents()
     _write(tmp_path, execution, flow)
     path = tmp_path / "execution.json"
-    text = path.read_text().replace('"converged": true', '"converged": true, "converged": true')
+    text = path.read_text().replace(
+        '"converged": true', '"converged": true, "converged": true'
+    )
     path.write_text(text)
     with pytest.raises(EvidenceError, match="duplicate"):
         load_run_evidence(tmp_path, process_exit_code=0, baseline=base)
@@ -118,7 +146,9 @@ def test_unbounded_data_is_rejected_before_read(tmp_path):
     execution["padding"] = "x" * 4096
     _write(tmp_path, execution, flow)
     with pytest.raises(EvidenceError, match="bounded evidence read"):
-        load_run_evidence(tmp_path, process_exit_code=0, baseline=baseline, max_bytes=1024)
+        load_run_evidence(
+            tmp_path, process_exit_code=0, baseline=baseline, max_bytes=1024
+        )
 
 
 def _run_script(tmp_path, code, *, fresh=True, overall=True, flow=True):
@@ -129,11 +159,17 @@ def _run_script(tmp_path, code, *, fresh=True, overall=True, flow=True):
     script.write_text(
         "import json, sys\nfrom pathlib import Path\n"
         "p = Path(sys.argv[1])\n"
-        + ("(p / 'execution.json').write_text(json.dumps(" + repr(execution) + "))\n"
-           "(p / 'convergence.json').write_text(json.dumps(" + repr(convergence) + "))\n"
-           if fresh else "")
+        + (
+            "(p / 'execution.json').write_text(json.dumps(" + repr(execution) + "))\n"
+            "(p / 'convergence.json').write_text(json.dumps("
+            + repr(convergence)
+            + "))\n"
+            if fresh
+            else ""
+        )
         + "print('Iteration 3 Time = 0.5 residual p = 1e-5', flush=True)\n"
-        + f"raise SystemExit({code})\n", encoding="utf-8",
+        + f"raise SystemExit({code})\n",
+        encoding="utf-8",
     )
     session = CFDXSession()
     session.case.execution.output_dir = str(output)

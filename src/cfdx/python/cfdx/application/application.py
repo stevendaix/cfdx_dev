@@ -81,8 +81,14 @@ class Application:
 
     def _case_signature(self) -> tuple[int, int, int, int, int, int]:
         session = self.session
-        return (id(session), session.case_revision, session.mesh_revision,
-                session.physics_revision, session.numerics_revision, self._edit_generation)
+        return (
+            id(session),
+            session.case_revision,
+            session.mesh_revision,
+            session.physics_revision,
+            session.numerics_revision,
+            self._edit_generation,
+        )
 
     @property
     def state(self) -> ApplicationState:
@@ -97,7 +103,8 @@ class Application:
             diagnostics=self.diagnostics,
             results=self.results,
             validation_performed=checked,
-            validation_current=checked and self._validation_signature == self._case_signature(),
+            validation_current=checked
+            and self._validation_signature == self._case_signature(),
             validation_with_mesh=self._validation_with_mesh if checked else False,
         )
 

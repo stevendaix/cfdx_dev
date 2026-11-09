@@ -106,11 +106,15 @@ _CAPABILITY_DEFS = (
         (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
     ),
     Capability(
-        "workbench.action.clip", "Clip", 3,
+        "workbench.action.clip",
+        "Clip",
+        3,
         (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
     ),
     Capability(
-        "workbench.action.threshold", "Threshold", 3,
+        "workbench.action.threshold",
+        "Threshold",
+        3,
         (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
     ),
     Capability("workbench.action.run", "Run", 1, (PREREQUISITES["idle"],)),

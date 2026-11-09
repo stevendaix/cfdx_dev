@@ -148,26 +148,43 @@ def test_clip_and_threshold_are_replayable_and_source_safe():
     result = pipeline.evaluate(source)
     assert source.history == ()
     assert result.history == (
-        ("clip", {"normal": (0, 1, 0), "origin": (0.5, 0, 0),
-                  "invert": True, "inplace": False}),
-        ("threshold", {"value": (-2.0, 2.0), "scalars": "p",
-                       "invert": False, "preference": "cell"}),
+        (
+            "clip",
+            {
+                "normal": (0, 1, 0),
+                "origin": (0.5, 0, 0),
+                "invert": True,
+                "inplace": False,
+            },
+        ),
+        (
+            "threshold",
+            {
+                "value": (-2.0, 2.0),
+                "scalars": "p",
+                "invert": False,
+                "preference": "cell",
+            },
+        ),
     )
     assert pipeline.operations[0].kind == "clip"
 
 
-@pytest.mark.parametrize("operation", [
-    lambda: VisualizationOperation.threshold("p", 2, 1),
-    lambda: VisualizationOperation.threshold("p", float("nan"), 1),
-    lambda: VisualizationOperation.threshold("p", 0, float("inf")),
-    lambda: VisualizationOperation.threshold("", 0, 1),
-    lambda: VisualizationOperation.clip((float("nan"), 0, 1)),
-    lambda: VisualizationOperation.clip((0, 0, 0)),
-    lambda: VisualizationOperation.clip(origin=(0, float("inf"), 0)),
-    lambda: VisualizationOperation.clip(invert="yes"),
-    lambda: VisualizationOperation.glyph("U", float("inf")),
-    lambda: VisualizationOperation.slice((0, 0, float("nan"))),
-])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda: VisualizationOperation.threshold("p", 2, 1),
+        lambda: VisualizationOperation.threshold("p", float("nan"), 1),
+        lambda: VisualizationOperation.threshold("p", 0, float("inf")),
+        lambda: VisualizationOperation.threshold("", 0, 1),
+        lambda: VisualizationOperation.clip((float("nan"), 0, 1)),
+        lambda: VisualizationOperation.clip((0, 0, 0)),
+        lambda: VisualizationOperation.clip(origin=(0, float("inf"), 0)),
+        lambda: VisualizationOperation.clip(invert="yes"),
+        lambda: VisualizationOperation.glyph("U", float("inf")),
+        lambda: VisualizationOperation.slice((0, 0, float("nan"))),
+    ],
+)
 def test_new_filters_fail_closed_on_invalid_physics(operation):
     with pytest.raises(ValueError):
         operation()

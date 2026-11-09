@@ -104,7 +104,9 @@ def main() -> int:
         help="PNG path to write (default: artifacts/cfdx-workbench.png)",
     )
     parser.add_argument(
-        "--theme", choices=("black", "graphite", "light"), default="black",
+        "--theme",
+        choices=("black", "graphite", "light"),
+        default="black",
         help="Appearance for the deterministic GUI screenshot",
     )
     args = parser.parse_args()

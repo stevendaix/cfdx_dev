@@ -3,6 +3,7 @@
 This is *data streaming* (metadata, numeric statistics and previews). It is not
 a VTK volume streaming renderer, which requires piece-aware topology readers.
 """
+
 from __future__ import annotations
 
 import math
@@ -42,7 +43,10 @@ def _field(h5, name: str):
         raise ValueError("only one-dimensional numeric cell fields are supported")
     if data.size == 0:
         raise ValueError("empty field")
-    if data.chunks is not None and math.prod(data.chunks) * data.dtype.itemsize > MAX_BLOCK_BYTES:
+    if (
+        data.chunks is not None
+        and math.prod(data.chunks) * data.dtype.itemsize > MAX_BLOCK_BYTES
+    ):
         raise ValueError("HDF5 chunk decompression exceeds the streaming budget")
     return data
 
@@ -77,16 +81,28 @@ def field_catalog(path: str | Path, *, max_fields: int = 4096) -> tuple[str, ...
     return tuple(sorted(found))
 
 
-def stream_field_statistics(path: str | Path, name: str, *,
-                            max_block_bytes: int = MAX_BLOCK_BYTES,
-                            preview_count: int = 64) -> FieldStatistics:
-    if not (1024 <= max_block_bytes <= MAX_BLOCK_BYTES) or not (1 <= preview_count <= MAX_PREVIEW):
+def stream_field_statistics(
+    path: str | Path,
+    name: str,
+    *,
+    max_block_bytes: int = MAX_BLOCK_BYTES,
+    preview_count: int = 64,
+) -> FieldStatistics:
+    if not (1024 <= max_block_bytes <= MAX_BLOCK_BYTES) or not (
+        1 <= preview_count <= MAX_PREVIEW
+    ):
         raise ValueError("invalid streaming memory or preview budget")
     with h5py.File(path, "r") as h5:
         field = _field(h5, name)
         before = (field.shape, field.dtype.str)
         block = max(1, max_block_bytes // field.dtype.itemsize)
-        n, finite_count, total, minimum, maximum = int(field.size), 0, 0.0, math.inf, -math.inf
+        n, finite_count, total, minimum, maximum = (
+            int(field.size),
+            0,
+            0.0,
+            math.inf,
+            -math.inf,
+        )
         samples = []
         interval = max(1, math.ceil(n / preview_count))
         for start in range(0, n, block):
@@ -109,7 +125,14 @@ def stream_field_statistics(path: str | Path, name: str, *,
             units = units.decode("utf-8")
         if not isinstance(units, str) or len(units) > 128:
             raise ValueError("invalid field units")
-        return FieldStatistics(name, (n,), units, n, finite_count,
-                               minimum if finite_count else None,
-                               maximum if finite_count else None,
-                               total / finite_count if finite_count else None, tuple(samples))
+        return FieldStatistics(
+            name,
+            (n,),
+            units,
+            n,
+            finite_count,
+            minimum if finite_count else None,
+            maximum if finite_count else None,
+            total / finite_count if finite_count else None,
+            tuple(samples),
+        )

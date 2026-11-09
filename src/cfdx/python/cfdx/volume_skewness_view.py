@@ -13,13 +13,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget, QTableWidgetItem,
     QSlider,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
 )
 
-from .volume_mesh_quality import VolumeSkewnessReport, analyze_cfdx_volume_skewness
 from .mesh_health import summarize_mesh_health
+from .volume_mesh_quality import VolumeSkewnessReport, analyze_cfdx_volume_skewness
 
 
 class VolumeSkewnessDialog(QDialog):
@@ -161,7 +162,9 @@ class VolumeSkewnessDialog(QDialog):
         layout.addWidget(self._quality_overview)
         self._worst_table = QTableWidget(0, 3, self)
         self._worst_table.setObjectName("volume_skewness.worst_cells")
-        self._worst_table.setHorizontalHeaderLabels(("Cell ID", "Skewness", "Non-orthogonality [deg]"))
+        self._worst_table.setHorizontalHeaderLabels(
+            ("Cell ID", "Skewness", "Non-orthogonality [deg]")
+        )
         self._worst_table.setMaximumHeight(165)
         self._worst_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self._worst_table)
@@ -189,10 +192,13 @@ class VolumeSkewnessDialog(QDialog):
         for row, cell_id in enumerate(order):
             cell = int(cell_id)
             self._cell_selector.addItem(f"Cell {cell} · {scores[cell]:.4g}", cell)
-            for col, text in enumerate((
-                str(cell), f"{self.report.cell_skewness[cell]:.7g}",
-                f"{self.report.cell_non_orthogonality_deg[cell]:.7g}",
-            )):
+            for col, text in enumerate(
+                (
+                    str(cell),
+                    f"{self.report.cell_skewness[cell]:.7g}",
+                    f"{self.report.cell_non_orthogonality_deg[cell]:.7g}",
+                )
+            ):
                 self._worst_table.setItem(row, col, QTableWidgetItem(text))
         self._cell_selector.blockSignals(False)
         self._show_selected_cell()
@@ -203,7 +209,9 @@ class VolumeSkewnessDialog(QDialog):
         self._metric_thresholds[self._quality_metric] = self._threshold
         self._quality_metric = name
         self._threshold_spin.blockSignals(True)
-        self._threshold_spin.setRange(0.001, 180.0 if name == "non-orthogonality" else 10.0)
+        self._threshold_spin.setRange(
+            0.001, 180.0 if name == "non-orthogonality" else 10.0
+        )
         self._threshold_spin.setSuffix(" deg" if name == "non-orthogonality" else "")
         self._threshold_spin.setValue(self._metric_thresholds[name])
         self._threshold_spin.blockSignals(False)
@@ -221,11 +229,17 @@ class VolumeSkewnessDialog(QDialog):
         ).astype(np.uint8)
         self._metric_thresholds[self._quality_metric] = self._threshold
         summary = summarize_mesh_health(
-            self.report, source_file="inspected volume", file_signature=(0, 0, 0, 0),
+            self.report,
+            source_file="inspected volume",
+            file_signature=(0, 0, 0, 0),
             skewness_alert=self._metric_thresholds["skewness"],
             non_orthogonality_alert_deg=self._metric_thresholds["non-orthogonality"],
         )
-        dist = summary.non_orthogonality if self._quality_metric == "non-orthogonality" else summary.skewness
+        dist = (
+            summary.non_orthogonality
+            if self._quality_metric == "non-orthogonality"
+            else summary.skewness
+        )
         self._quality_overview.setText(
             f"Measured {dist.assessed:,}/{summary.cell_count:,} cells | "
             f"unassessed {dist.unavailable:,} | p95 {dist.p95 if dist.p95 is not None else 'n/a'} | "

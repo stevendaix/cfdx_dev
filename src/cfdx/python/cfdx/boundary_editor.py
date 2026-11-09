@@ -8,9 +8,9 @@ blocked by validate_case until a multi-field solver mapping is certified.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from math import isfinite
-from typing import Mapping
 
 from .boundary_setup import (
     BOUNDARY_FIELD_SPECS,
@@ -19,9 +19,15 @@ from .boundary_setup import (
     VELOCITY_TYPES,
 )
 
-_LEGACY_KEYS = frozenset((
-    "scalar_type", "value", "gradient", "velocity_type", "velocity_value",
-))
+_LEGACY_KEYS = frozenset(
+    (
+        "scalar_type",
+        "value",
+        "gradient",
+        "velocity_type",
+        "velocity_value",
+    )
+)
 _NO_FIELDS = frozenset(("symmetry", "periodic", "interface", "empty"))
 
 
@@ -35,21 +41,50 @@ class BoundaryPreset:
 
 
 BOUNDARY_PRESETS = (
-    BoundaryPreset("Velocity inlet", "inlet", "velocity", "FIXED_VALUE",
-                   "Prescribe the velocity components; confirm magnitude and flow direction."),
-    BoundaryPreset("Pressure outlet", "outlet", "pressure", "FIXED_VALUE",
-                   "Prescribe an outlet pressure; verify the pressure reference and possible backflow."),
-    BoundaryPreset("No-slip wall", "wall", "velocity", "FIXED_VALUE",
-                   "Set wall velocity to zero for a stationary no-slip wall."),
-    BoundaryPreset("Moving wall", "wall", "velocity", "FIXED_VALUE",
-                   "Set a physically justified, nonzero wall velocity."),
-    BoundaryPreset("Symmetry", "symmetry", None, None,
-                   "Geometric symmetry; do not invent scalar or velocity values."),
+    BoundaryPreset(
+        "Velocity inlet",
+        "inlet",
+        "velocity",
+        "FIXED_VALUE",
+        "Prescribe the velocity components; confirm magnitude and flow direction.",
+    ),
+    BoundaryPreset(
+        "Pressure outlet",
+        "outlet",
+        "pressure",
+        "FIXED_VALUE",
+        "Prescribe an outlet pressure; verify the pressure reference and possible backflow.",
+    ),
+    BoundaryPreset(
+        "No-slip wall",
+        "wall",
+        "velocity",
+        "FIXED_VALUE",
+        "Set wall velocity to zero for a stationary no-slip wall.",
+    ),
+    BoundaryPreset(
+        "Moving wall",
+        "wall",
+        "velocity",
+        "FIXED_VALUE",
+        "Set a physically justified, nonzero wall velocity.",
+    ),
+    BoundaryPreset(
+        "Symmetry",
+        "symmetry",
+        None,
+        None,
+        "Geometric symmetry; do not invent scalar or velocity values.",
+    ),
 )
 
 
 def _number(value: object, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not isfinite(value)
+    ):
         raise ValueError(f"{name} must be a finite real number")
     return float(value)
 
@@ -57,13 +92,26 @@ def _number(value: object, name: str) -> float:
 def _mode(field: str, mode: str) -> str:
     if field not in FIELD_SPECS:
         raise ValueError(f"unsupported field: {field!r}")
-    allowed = VELOCITY_TYPES if field == "velocity" else SCALAR_TYPES + (("WALL_K_ZERO",) if field == "k" else ("WALL_OMEGA_SST",) if field == "omega" else ())
+    allowed = (
+        VELOCITY_TYPES
+        if field == "velocity"
+        else SCALAR_TYPES
+        + (
+            ("WALL_K_ZERO",)
+            if field == "k"
+            else ("WALL_OMEGA_SST",)
+            if field == "omega"
+            else ()
+        )
+    )
     if mode not in allowed:
         raise ValueError(f"unsupported {field} condition: {mode!r}")
     return mode
 
 
-def condition_for_field(boundary: Mapping[str, object], field: str) -> dict[str, object]:
+def condition_for_field(
+    boundary: Mapping[str, object], field: str
+) -> dict[str, object]:
     """Return stored condition for exactly one selected field, if present."""
     if field not in FIELD_SPECS:
         raise ValueError(f"unsupported field: {field!r}")
@@ -77,8 +125,12 @@ def condition_for_field(boundary: Mapping[str, object], field: str) -> dict[str,
 
 
 def _canonical_condition(
-    field: str, mode: str, *, value: object = 0.0,
-    gradient: object = 0.0, velocity: object = (0.0, 0.0, 0.0),
+    field: str,
+    mode: str,
+    *,
+    value: object = 0.0,
+    gradient: object = 0.0,
+    velocity: object = (0.0, 0.0, 0.0),
 ) -> dict[str, object]:
     mode = _mode(field, mode)
     if field == "velocity":
@@ -131,7 +183,9 @@ def apply_boundary_condition(
         field, mode, value=value, gradient=gradient, velocity=velocity
     )
     old_fields = previous.get("fields", [])
-    if not isinstance(old_fields, list) or any(not isinstance(item, str) for item in old_fields):
+    if not isinstance(old_fields, list) or any(
+        not isinstance(item, str) for item in old_fields
+    ):
         raise ValueError("existing boundary fields are invalid")
     if len(old_fields) != len(set(old_fields)):
         raise ValueError("duplicate boundary fields")
@@ -148,7 +202,9 @@ def apply_boundary_condition(
     staged = previous.get("field_conditions", {})
     if not isinstance(staged, dict):
         raise ValueError("existing field conditions must be a mapping")
-    conditions = {name: dict(entry) for name, entry in staged.items() if isinstance(entry, dict)}
+    conditions = {
+        name: dict(entry) for name, entry in staged.items() if isinstance(entry, dict)
+    }
     for name in old_fields:
         if name not in conditions:
             legacy = condition_for_field(previous, name)
@@ -169,5 +225,11 @@ def boundary_runtime_support(boundary: Mapping[str, object]) -> tuple[bool, str]
     if not isinstance(fields, list):
         return False, "invalid field list"
     if len(fields) > 1 or boundary.get("field_conditions"):
-        return False, "multi-field boundaries require explicit native CaseSetup export before CLI execution"
-    return True, "single-field editor contract (native HDF5 CaseSetup bridge not certified)"
+        return (
+            False,
+            "multi-field boundaries require explicit native CaseSetup export before CLI execution",
+        )
+    return (
+        True,
+        "single-field editor contract (native HDF5 CaseSetup bridge not certified)",
+    )

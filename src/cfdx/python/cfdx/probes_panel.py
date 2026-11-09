@@ -27,9 +27,9 @@ from .application import Application, ApplicationStateChanged, ProbeSampleReceiv
 from .application.commands import ConfigureProbes
 from .probe import Probe, ProbeCatalog, ProbeField
 from .probe_plot import create_probe_plot, update_probe_plot
-from .theme import DEFAULT_THEME, style_scientific_plot
 from .probe_validation import ProbeSample, ProbeSeries
 from .session import SimulationState
+from .theme import DEFAULT_THEME, style_scientific_plot
 
 _FIELD_CHOICES = [field.cli for field in ProbeField]
 _MAX_LIVE_SAMPLES_PER_PROBE = 2000

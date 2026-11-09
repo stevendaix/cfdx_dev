@@ -8,8 +8,8 @@ Inputs are validated before any VTK/PyVista algorithm is invoked.
 from __future__ import annotations
 
 import math
-from numbers import Real
 from dataclasses import dataclass, replace
+from numbers import Real
 from typing import Any
 
 
@@ -110,8 +110,11 @@ class VisualizationOperation:
         cls, scalars: str, minimum: float, maximum: float, *, invert: bool = False
     ) -> VisualizationOperation:
         return cls(
-            kind="threshold", scalars=scalars,
-            minimum=minimum, maximum=maximum, invert=invert,
+            kind="threshold",
+            scalars=scalars,
+            minimum=minimum,
+            maximum=maximum,
+            invert=invert,
         )
 
     def apply(self, dataset: Any) -> Any:
@@ -125,13 +128,17 @@ class VisualizationOperation:
             return dataset.slice(normal=self.normal)
         if self.kind == "clip":
             return dataset.clip(
-                normal=self.normal, origin=self.origin,
-                invert=self.invert, inplace=False,
+                normal=self.normal,
+                origin=self.origin,
+                invert=self.invert,
+                inplace=False,
             )
         if self.kind == "threshold":
             return dataset.threshold(
-                value=(self.minimum, self.maximum), scalars=self.scalars,
-                invert=self.invert, preference="cell",
+                value=(self.minimum, self.maximum),
+                scalars=self.scalars,
+                invert=self.invert,
+                preference="cell",
             )
         array = dataset.point_data.get(self.scalars)
         if array is None:

@@ -3,18 +3,28 @@
 Only the application/event layer owns scientific state. The panel never
 synthesizes solver data, launches arbitrary files or certifies a CFD result.
 """
+
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
-    QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .application.state import ApplicationState
@@ -44,18 +54,25 @@ class OperationsOverviewPanel(QWidget):
         self.project_label = QLabel("No project snapshot", self)
         self.project_label.setObjectName("workbench.overview.project")
         self.project_label.setWordWrap(True)
-        self.project_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.project_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
 
         cards = QWidget(self)
         card_layout = QGridLayout(cards)
         card_layout.setSpacing(8)
         self.configuration_card, self.configuration_value = self._create_card(
-            "Configuration", "—", "workbench.overview.configuration")
+            "Configuration", "—", "workbench.overview.configuration"
+        )
         self.checks_card, self.checks_value = self._create_card(
-            "Setup checks", "Unverified", "workbench.overview.checks")
+            "Setup checks", "Unverified", "workbench.overview.checks"
+        )
         self.evidence_card, self.evidence_value = self._create_card(
-            "Solver evidence", "No certificate", "workbench.overview.evidence")
-        for index, card in enumerate((self.configuration_card, self.checks_card, self.evidence_card)):
+            "Solver evidence", "No certificate", "workbench.overview.evidence"
+        )
+        for index, card in enumerate(
+            (self.configuration_card, self.checks_card, self.evidence_card)
+        ):
             card_layout.addWidget(card, 0, index)
         self.detail = QLabel("No case evidence loaded", self)
         self.detail.setObjectName("workbench.overview.detail")
@@ -69,18 +86,25 @@ class OperationsOverviewPanel(QWidget):
         self.findings.setMinimumHeight(145)
         self.info_label = QLabel(
             "Workflow COMPLETE means configuration recorded, not a scientifically "
-            "qualified simulation. Physical validation remains independent.", self
+            "qualified simulation. Physical validation remains independent.",
+            self,
         )
         self.info_label.setWordWrap(True)
         self.info_label.setProperty("role", "secondary")
 
         self.check_button = QPushButton("Check case", self)
         self.check_button.setObjectName("workbench.overview.check")
-        self.check_button.setToolTip("Run the current CFDX setup validator; this does not execute the solver")
-        self.check_button.clicked.connect(lambda _checked=False: self.check_requested.emit())
+        self.check_button.setToolTip(
+            "Run the current CFDX setup validator; this does not execute the solver"
+        )
+        self.check_button.clicked.connect(
+            lambda _checked=False: self.check_requested.emit()
+        )
         self.mesh_button = QPushButton("Inspect mesh", self)
         self.mesh_button.setObjectName("workbench.overview.mesh")
-        self.mesh_button.clicked.connect(lambda _checked=False: self.open_mesh_requested.emit())
+        self.mesh_button.clicked.connect(
+            lambda _checked=False: self.open_mesh_requested.emit()
+        )
         self.navigate_button = QPushButton("Open selected", self)
         self.navigate_button.setObjectName("workbench.overview.navigate")
         self.navigate_button.clicked.connect(self._navigate_selected)
@@ -89,7 +113,12 @@ class OperationsOverviewPanel(QWidget):
         self.export_button.clicked.connect(self._export_snapshot)
         self.export_button.setEnabled(False)
         actions = QHBoxLayout()
-        for button in (self.check_button, self.mesh_button, self.navigate_button, self.export_button):
+        for button in (
+            self.check_button,
+            self.mesh_button,
+            self.navigate_button,
+            self.export_button,
+        ):
             actions.addWidget(button)
 
         layout = QVBoxLayout(self)
@@ -106,7 +135,9 @@ class OperationsOverviewPanel(QWidget):
         layout.addWidget(self.info_label)
         self.apply_theme(DEFAULT_THEME)
 
-    def _create_card(self, title: str, initial: str, object_name: str) -> tuple[QFrame, QLabel]:
+    def _create_card(
+        self, title: str, initial: str, object_name: str
+    ) -> tuple[QFrame, QLabel]:
         frame = QFrame(self)
         frame.setObjectName(object_name)
         frame.setProperty("role", "dashboardCard")
@@ -127,7 +158,9 @@ class OperationsOverviewPanel(QWidget):
         if self.snapshot is not None:
             self._fill_findings(self.snapshot)
 
-    def update_state(self, state: ApplicationState, *, run=None, mesh_catalog_loaded: bool = False) -> None:
+    def update_state(
+        self, state: ApplicationState, *, run=None, mesh_catalog_loaded: bool = False
+    ) -> None:
         snapshot = build_operations_overview(
             state, run=run, mesh_catalog_loaded=mesh_catalog_loaded
         )
@@ -136,16 +169,25 @@ class OperationsOverviewPanel(QWidget):
             snapshot.project + ("  •  modified" if snapshot.unsaved_changes else "")
         )
         self.project_label.setToolTip(snapshot.project_path or "Unsaved in-memory case")
-        self.configuration_value.setText(f"{snapshot.configured_sections}/{snapshot.section_count} recorded")
-        self.checks_value.setText({
-            "passed": "Passed (setup)", "warnings": "Warnings", "errors": "Errors",
-            "stale": "Check outdated", "not_checked": "Not checked",
-        }[snapshot.check_state])
-        self.evidence_value.setText({
-            "converged": "Converged (solver)",
-            "not_converged": "Not converged",
-            "missing_or_unverified": "Not verified",
-        }[snapshot.solver_evidence])
+        self.configuration_value.setText(
+            f"{snapshot.configured_sections}/{snapshot.section_count} recorded"
+        )
+        self.checks_value.setText(
+            {
+                "passed": "Passed (setup)",
+                "warnings": "Warnings",
+                "errors": "Errors",
+                "stale": "Check outdated",
+                "not_checked": "Not checked",
+            }[snapshot.check_state]
+        )
+        self.evidence_value.setText(
+            {
+                "converged": "Converged (solver)",
+                "not_converged": "Not converged",
+                "missing_or_unverified": "Not verified",
+            }[snapshot.solver_evidence]
+        )
         self.detail.setText(
             f"{snapshot.execution_state}  •  iteration {snapshot.iteration:,}  •  "
             f"time {snapshot.physical_time:g}  •  {snapshot.results_frames} result frame(s)  •  "
@@ -175,7 +217,9 @@ class OperationsOverviewPanel(QWidget):
             if finding.key == previous_key:
                 self.findings.setCurrentItem(item)
         if not snapshot.findings:
-            item = QListWidgetItem("No pending overview actions. Consult independent V&V before qualification.")
+            item = QListWidgetItem(
+                "No pending overview actions. Consult independent V&V before qualification."
+            )
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.findings.addItem(item)
         elif self.findings.currentRow() < 0:
@@ -202,18 +246,32 @@ class OperationsOverviewPanel(QWidget):
         dest = Path(filename)
         temporary: Path | None = None
         try:
-            payload = json.dumps(self.snapshot.to_dict(), ensure_ascii=False,
-                                 sort_keys=True, indent=2, allow_nan=False) + "\n"
+            payload = (
+                json.dumps(
+                    self.snapshot.to_dict(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                    allow_nan=False,
+                )
+                + "\n"
+            )
             # Use a sibling temporary file + atomic rename: partial reports
             # must never be mistaken for a valid evidence bundle.
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", prefix=".cfdx-overview-",
-                suffix=".tmp", dir=dest.parent, delete=False
+                mode="w",
+                encoding="utf-8",
+                prefix=".cfdx-overview-",
+                suffix=".tmp",
+                dir=dest.parent,
+                delete=False,
             ) as handle:
                 temporary = Path(handle.name)
                 handle.write(payload)
             os.replace(temporary, dest)
-            self.info_label.setText(f"Snapshot exported: {dest.name} (not a physics qualification)")
+            self.info_label.setText(
+                f"Snapshot exported: {dest.name} (not a physics qualification)"
+            )
         except (OSError, ValueError) as exc:
             self.info_label.setText(f"Could not export snapshot: {exc}")
         finally:

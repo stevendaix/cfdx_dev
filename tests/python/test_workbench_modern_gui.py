@@ -7,10 +7,10 @@ import pytest
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="Qt optional")
 def test_methods_and_boundaries_are_navigable_without_solver_evidence():
-    from cfdx.gui import create_application
-    from cfdx.setup_panel import CaseSetupPanel
-    from cfdx.methods_panel import MethodsPanel
     from cfdx.case import Case
+    from cfdx.gui import create_application
+    from cfdx.methods_panel import MethodsPanel
+    from cfdx.setup_panel import CaseSetupPanel
 
     app = create_application(["cfdx-methods-smoke"])
     case = Case()
@@ -48,12 +48,12 @@ def test_methods_and_boundaries_are_navigable_without_solver_evidence():
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="Qt optional")
 def test_black_default_appearance_switch_and_layout_reset(tmp_path, monkeypatch):
+    from cfdx.session import CFDXSession
+    from cfdx.theme import THEMES
+    from cfdx.workbench import CFDXWorkbenchWindow
     from PySide6.QtCore import QSettings
     from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication, QPushButton
-    from cfdx.session import CFDXSession
-    from cfdx.workbench import CFDXWorkbenchWindow
-    from cfdx.theme import THEMES
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     app = QApplication.instance() or QApplication(["cfdx-appearance-smoke"])
@@ -74,7 +74,10 @@ def test_black_default_appearance_switch_and_layout_reset(tmp_path, monkeypatch)
     window.theme_actions["light"].trigger()
     assert window._theme == "light"
     assert settings.value("appearance/theme") == "light"
-    assert window.palette().color(QPalette.ColorRole.Window).name() == THEMES["light"]["surface.canvas"].lower()
+    assert (
+        window.palette().color(QPalette.ColorRole.Window).name()
+        == THEMES["light"]["surface.canvas"].lower()
+    )
     window.theme_actions["graphite"].trigger()
     assert window._theme == "graphite"
     window._set_workspace("validate")
@@ -91,8 +94,8 @@ def test_black_default_appearance_switch_and_layout_reset(tmp_path, monkeypatch)
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="Qt optional")
 def test_methods_search_and_comparison_never_write_case():
-    from cfdx.gui import create_application
     from cfdx.case import Case
+    from cfdx.gui import create_application
     from cfdx.methods_panel import MethodsPanel
 
     app = create_application(["cfdx-methods-filter-test"])

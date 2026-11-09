@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
-
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -24,12 +22,12 @@ from .case_inspector import (
     read_hdf5_dataset_sample,
     read_hdf5_dataset_statistics,
 )
+from .mesh_health import analyze_mesh_health_file, mesh_health_text
 from .mesh_quality import (
     SURFACE_QUALITY_MAX_FACES,
     analyze_cfdx_surface_file,
 )
 from .volume_skewness_view import VolumeSkewnessDialog
-from .mesh_health import analyze_mesh_health_file, mesh_health_text
 
 
 class _QualityTaskSignals(QObject):
@@ -49,7 +47,8 @@ class _QualityTask(QRunnable):
     def run(self) -> None:
         try:
             result = analyze_mesh_health_file(
-                self.path, expected_signature=self.signature,
+                self.path,
+                expected_signature=self.signature,
             )
         except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
             self.signals.ready.emit(self.job_id, None, str(exc))
@@ -291,9 +290,13 @@ class CaseFilePanel(QWidget):
         if error is not None:
             self.preview.setPlainText(f"Mesh health analysis failed: {error}")
             return
-        if (snapshot.source_file != str(self.summary.path)
-                or snapshot.file_signature != self.summary.file_signature):
-            self.preview.setPlainText("Mesh health result ignored: inspected file changed")
+        if (
+            snapshot.source_file != str(self.summary.path)
+            or snapshot.file_signature != self.summary.file_signature
+        ):
+            self.preview.setPlainText(
+                "Mesh health result ignored: inspected file changed"
+            )
             return
         self._mesh_health_snapshot = snapshot
         self.mesh_health_export.setEnabled(True)
@@ -308,21 +311,30 @@ class CaseFilePanel(QWidget):
             stat = source.stat()
             identity = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
             if identity != snapshot.file_signature:
-                raise RuntimeError("source mesh has changed; recalculate the quality report")
+                raise RuntimeError(
+                    "source mesh has changed; recalculate the quality report"
+                )
         except (OSError, RuntimeError) as exc:
             self.preview.setPlainText(f"Mesh audit export rejected: {exc}")
             self.mesh_health_export.setEnabled(False)
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export mesh quality evidence", "cfdx-mesh-health.json", "JSON (*.json)"
+            self,
+            "Export mesh quality evidence",
+            "cfdx-mesh-health.json",
+            "JSON (*.json)",
         )
         if not path:
             return
         try:
             import json
             from pathlib import Path
+
             Path(path).write_text(
-                json.dumps(snapshot.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n",
+                json.dumps(
+                    snapshot.to_dict(), indent=2, sort_keys=True, allow_nan=False
+                )
+                + "\n",
                 encoding="utf-8",
             )
         except (OSError, ValueError, TypeError) as exc:

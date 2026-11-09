@@ -22,12 +22,15 @@ from .capabilities import (
     evaluate_capability,
     get_capability,
 )
+from .recent_projects import normalize_recent_projects, remember_recent_project
 from .selection import parse_selection_id, selection_label
 from .session import CFDXSession
-from .recent_projects import normalize_recent_projects, remember_recent_project
 from .solver_states import session_state_view
 from .theme import (
-    DEFAULT_THEME, THEME_LABELS, apply_workbench_theme, theme_tokens,
+    DEFAULT_THEME,
+    THEME_LABELS,
+    apply_workbench_theme,
+    theme_tokens,
 )
 from .visualization_pipeline import VisualizationOperation
 
@@ -39,11 +42,11 @@ try:
         QComboBox,
         QDialog,
         QDockWidget,
-        QFrame,
-        QGridLayout,
         QDoubleSpinBox,
         QFileDialog,
         QFormLayout,
+        QFrame,
+        QGridLayout,
         QHBoxLayout,
         QLabel,
         QLineEdit,
@@ -68,13 +71,13 @@ except ImportError:  # pragma: no cover
 if QMainWindow is not object:
     from .case_file_panel import CaseFilePanel
     from .gui_3d import PyVistaQtView
+    from .industrial_tools_panel import IndustrialToolsPanel
     from .mesh_browser_panel import MeshBrowserPanel
     from .methods_panel import MethodsPanel
-    from .industrial_tools_panel import IndustrialToolsPanel
     from .operations_overview_panel import OperationsOverviewPanel
     from .probes_panel import ProbesPanel
-    from .qualification_panel import QualificationCenterPanel
     from .properties_panel import PropertiesPanel
+    from .qualification_panel import QualificationCenterPanel
     from .results_panel import ResultsPanel
     from .run_center_panel import RunCenterPanel
     from .setup_panel import CaseSetupPanel
@@ -233,11 +236,15 @@ if QMainWindow is not object:
                     )
                 elif self._kind == "threshold":
                     operation = VisualizationOperation.threshold(
-                        self.field_combo.currentText(), self.min_spin.value(),
-                        self.max_spin.value(), invert=self.invert_check.isChecked(),
+                        self.field_combo.currentText(),
+                        self.min_spin.value(),
+                        self.max_spin.value(),
+                        invert=self.invert_check.isChecked(),
                     )
                 else:
-                    raise ValueError(f"unsupported visualization operation: {self._kind}")
+                    raise ValueError(
+                        f"unsupported visualization operation: {self._kind}"
+                    )
             except ValueError as exc:
                 self.error_label.setText(str(exc))
                 return
@@ -295,7 +302,9 @@ if QMainWindow is not object:
             # Snapshot deterministic initial layout before restoring user preferences.
             self._default_dock_state = self.saveState()
             selected = str(self._settings.value("appearance/theme", DEFAULT_THEME))
-            self._apply_theme(selected if selected in THEME_LABELS else DEFAULT_THEME, persist=False)
+            self._apply_theme(
+                selected if selected in THEME_LABELS else DEFAULT_THEME, persist=False
+            )
             self._restore_layout()
             self._set_workspace(str(self._settings.value("workspace", "setup")))
             self._refresh_action_availability()
@@ -434,18 +443,22 @@ if QMainWindow is not object:
             group = QActionGroup(self)
             group.setExclusive(True)
             self.workspace_actions: dict[str, QAction] = {}
-            for index, (workspace, label) in enumerate((
-                ("overview", "Overview"),
-                ("setup", "Setup"),
-                ("mesh", "Mesh"),
-                ("run", "Run"),
-                ("analyze", "Analyze"),
-                ("validate", "Validate"),
-            )):
+            for index, (workspace, label) in enumerate(
+                (
+                    ("overview", "Overview"),
+                    ("setup", "Setup"),
+                    ("mesh", "Mesh"),
+                    ("run", "Run"),
+                    ("analyze", "Analyze"),
+                    ("validate", "Validate"),
+                )
+            ):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.workspace.{workspace}")
                 action.setCheckable(True)
-                action.setShortcut("Ctrl+0" if workspace == "overview" else f"Ctrl+{index}")
+                action.setShortcut(
+                    "Ctrl+0" if workspace == "overview" else f"Ctrl+{index}"
+                )
                 group.addAction(action)
                 toolbar.addAction(action)
                 control = toolbar.widgetForAction(action)
@@ -589,11 +602,17 @@ if QMainWindow is not object:
                 # lifecycle as File/Open; never execute arbitrary files.
                 for file_path in self._recent_project_paths():
                     label = f"Recent project: {Path(file_path).name}"
-                    if needle and needle not in label.casefold() and needle not in file_path.casefold():
+                    if (
+                        needle
+                        and needle not in label.casefold()
+                        and needle not in file_path.casefold()
+                    ):
                         continue
                     action = QAction(label, dialog)
                     action.triggered.connect(
-                        lambda _checked=False, path=file_path: self._open_case_path(path)
+                        lambda _checked=False, path=file_path: self._open_case_path(
+                            path
+                        )
                     )
                     item = QListWidgetItem(label)
                     item.setToolTip(file_path)
@@ -702,10 +721,14 @@ if QMainWindow is not object:
                 self._open_case_path(path)
 
         def _recent_project_paths(self) -> tuple[str, ...]:
-            return normalize_recent_projects(self._settings.value("recent/projects", []))
+            return normalize_recent_projects(
+                self._settings.value("recent/projects", [])
+            )
 
         def _remember_project(self, path: str | Path) -> None:
-            recent = remember_recent_project(path, self._settings.value("recent/projects", []))
+            recent = remember_recent_project(
+                path, self._settings.value("recent/projects", [])
+            )
             self._settings.setValue("recent/projects", list(recent))
 
         def _refresh_recent_menu(self) -> None:
@@ -724,7 +747,9 @@ if QMainWindow is not object:
             else:
                 self.recent_menu.addSeparator()
                 clear = self.recent_menu.addAction("Clear recent projects")
-                clear.triggered.connect(lambda: self._settings.remove("recent/projects"))
+                clear.triggered.connect(
+                    lambda: self._settings.remove("recent/projects")
+                )
 
         def _open_case_path(self, path: str | Path) -> None:
             """Guarded shared loader for both Open and Open Recent actions."""
@@ -795,37 +820,50 @@ if QMainWindow is not object:
         def _export_native_boundary_case(self) -> None:
             """Explicit native bridge. Never silently rewrite the editor case."""
             from .native_boundary_bridge import write_native_boundary_case
+
             project = self.application.project_path
             if not project:
                 self.statusBar().showMessage("Save/open a native CFDX case first")
                 return
             target, _ = QFileDialog.getSaveFileName(
-                self, "Export separate native solver case", "exported.native.cfdx.h5",
-                "Native CFDX Case (*.cfdx.h5)")
+                self,
+                "Export separate native solver case",
+                "exported.native.cfdx.h5",
+                "Native CFDX Case (*.cfdx.h5)",
+            )
             if not target:
                 return
             try:
-                result = write_native_boundary_case(project, target,
-                                                    self.session.case.boundaries)
+                result = write_native_boundary_case(
+                    project, target, self.session.case.boundaries
+                )
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 self.statusBar().showMessage(f"Native BC export rejected: {exc}")
             else:
                 self.statusBar().showMessage(
-                    f"Native boundary case exported: {result}; select it explicitly for a solver run")
+                    f"Native boundary case exported: {result}; select it explicitly for a solver run"
+                )
 
-        def _show_volume_partition(self, source: str, start: int,
-                                   count: int, field: str | None) -> None:
+        def _show_volume_partition(
+            self, source: str, start: int, count: int, field: str | None
+        ) -> None:
             if self.view3d is None:
                 self.statusBar().showMessage("3D backend unavailable (VTK/Qt required)")
                 return
             try:
-                self.view3d.load_progressive_volume(source,start_cell=start,count=count,field=field)
-            except (ValueError,OSError,RuntimeError) as exc:
+                self.view3d.load_progressive_volume(
+                    source, start_cell=start, count=count, field=field
+                )
+            except (ValueError, OSError, RuntimeError) as exc:
                 self.statusBar().showMessage(f"Volume tile refused: {exc}")
             else:
-                self.statusBar().showMessage(f"Reading actual CFDX volume tile {start}-{start+count-1}")
+                self.statusBar().showMessage(
+                    f"Reading actual CFDX volume tile {start}-{start + count - 1}"
+                )
 
-        def _show_simulation_difference(self, left: str, right: str, field: str) -> None:
+        def _show_simulation_difference(
+            self, left: str, right: str, field: str
+        ) -> None:
             if self.view3d is None:
                 self.statusBar().showMessage("3D backend unavailable")
                 return
@@ -834,7 +872,9 @@ if QMainWindow is not object:
             except (OSError, ValueError, RuntimeError, KeyError, ImportError) as exc:
                 self.statusBar().showMessage(f"3D comparison rejected: {exc}")
             else:
-                self.statusBar().showMessage(f"Displaying signed difference for {field}")
+                self.statusBar().showMessage(
+                    f"Displaying signed difference for {field}"
+                )
 
         def _save_case(self) -> None:
             path = (
@@ -894,7 +934,9 @@ if QMainWindow is not object:
             self.overview_panel.check_requested.connect(self._check_case)
             self.overview_panel.open_mesh_requested.connect(self._open_mesh)
             self._add_dock(
-                "Mission Control", "workbench.dock.overview", self.overview_panel,
+                "Mission Control",
+                "workbench.dock.overview",
+                self.overview_panel,
                 Qt.DockWidgetArea.RightDockWidgetArea,
             )
             self.workflow_tree = QTreeWidget()
@@ -934,10 +976,18 @@ if QMainWindow is not object:
             )
 
             self.industrial_tools = IndustrialToolsPanel(self)
-            self.industrial_tools.show_difference.connect(self._show_simulation_difference)
-            self.industrial_tools.volume_partition_requested.connect(self._show_volume_partition)
-            self._add_dock("Industrial data / Compare", "workbench.dock.industrial",
-                           self.industrial_tools, Qt.DockWidgetArea.RightDockWidgetArea)
+            self.industrial_tools.show_difference.connect(
+                self._show_simulation_difference
+            )
+            self.industrial_tools.volume_partition_requested.connect(
+                self._show_volume_partition
+            )
+            self._add_dock(
+                "Industrial data / Compare",
+                "workbench.dock.industrial",
+                self.industrial_tools,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
 
             self.visualization_operations = QListWidget()
             self.visualization_operations.setObjectName(
@@ -1031,11 +1081,20 @@ if QMainWindow is not object:
                 renderer = PyVistaQtView()
                 self.view3d = renderer
                 self.view3d.selection_changed.connect(self._mesh_view_selection_changed)
-                self.view3d.progressive_preview_ready.connect(self._on_progressive_preview_ready)
-                self.view3d.volume_partition_ready.connect(self._on_volume_partition_ready)
-                self.view3d.volume_partition_failed.connect(self._on_volume_partition_failed)
+                self.view3d.progressive_preview_ready.connect(
+                    self._on_progressive_preview_ready
+                )
+                self.view3d.volume_partition_ready.connect(
+                    self._on_volume_partition_ready
+                )
+                self.view3d.volume_partition_failed.connect(
+                    self._on_volume_partition_failed
+                )
                 self.view3d.progressive_preview_failed.connect(
-                    lambda error: self.statusBar().showMessage(f"Surface preview unavailable: {error}"))
+                    lambda error: self.statusBar().showMessage(
+                        f"Surface preview unavailable: {error}"
+                    )
+                )
             except RuntimeError as exc:
                 renderer = QLabel(f"3D renderer unavailable\n\n{exc}")
                 self.view3d = None
@@ -1112,12 +1171,24 @@ if QMainWindow is not object:
             cards_layout = QGridLayout(cards)
             cards_layout.setContentsMargins(0, 14, 0, 0)
             cards_layout.setHorizontalSpacing(12)
-            for index, (heading, description, label, target) in enumerate((
-                ("01  Configure", "Set models and boundary conditions", "Open setup", "setup"),
-                ("02  Inspect", "Explore mesh and patches", "Open mesh", "mesh"),
-                ("03  Solve", "Monitor real solver evidence", "Open run", "run"),
-                ("04  Qualify", "Review cross-domain qualification", "Open validation", "validate"),
-            )):
+            for index, (heading, description, label, target) in enumerate(
+                (
+                    (
+                        "01  Configure",
+                        "Set models and boundary conditions",
+                        "Open setup",
+                        "setup",
+                    ),
+                    ("02  Inspect", "Explore mesh and patches", "Open mesh", "mesh"),
+                    ("03  Solve", "Monitor real solver evidence", "Open run", "run"),
+                    (
+                        "04  Qualify",
+                        "Review cross-domain qualification",
+                        "Open validation",
+                        "validate",
+                    ),
+                )
+            ):
                 card = QFrame(cards)
                 card.setProperty("role", "dashboardCard")
                 card.setObjectName(f"workbench.viewport.card.{target}")
@@ -1132,7 +1203,9 @@ if QMainWindow is not object:
                 button = QPushButton(label, card)
                 button.setObjectName(f"workbench.viewport.go.{target}")
                 button.clicked.connect(
-                    lambda _checked=False, workspace=target: self._set_workspace(workspace)
+                    lambda _checked=False, workspace=target: self._set_workspace(
+                        workspace
+                    )
                 )
                 card_layout.addWidget(button)
                 cards_layout.addWidget(card, index // 2, index % 2)
@@ -1197,7 +1270,8 @@ if QMainWindow is not object:
                 self.view3d.show_full_cell_map(payload)
                 self._show_viewport()
                 self.statusBar().showMessage(
-                    f"Full per-cell diagnostics: accepted iteration {payload['iteration']} (not qualification)")
+                    f"Full per-cell diagnostics: accepted iteration {payload['iteration']} (not qualification)"
+                )
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Full cell map rejected: {exc}")
 
@@ -1395,10 +1469,8 @@ if QMainWindow is not object:
                     is_vector = len(shape) == 2 and shape[1] == 3
                     # Do not offer multi-component arrays as scalar
                     # thresholds; PyVista requires explicit components there.
-                    is_scalar = len(shape) <= 1 or (
-                        len(shape) == 2 and shape[1] == 1
-                    )
-                    if (is_vector if vector else is_scalar):
+                    is_scalar = len(shape) <= 1 or (len(shape) == 2 and shape[1] == 1)
+                    if is_vector if vector else is_scalar:
                         names.add(str(name))
             return sorted(names, key=str.casefold)
 
@@ -1446,12 +1518,15 @@ if QMainWindow is not object:
                     self.view3d.slice(normal=operation.normal)
                 elif mode == "clip":
                     self.view3d.clip(
-                        normal=operation.normal, origin=operation.origin,
+                        normal=operation.normal,
+                        origin=operation.origin,
                         invert=operation.invert,
                     )
                 elif mode == "threshold":
                     self.view3d.threshold(
-                        operation.scalars, operation.minimum, operation.maximum,
+                        operation.scalars,
+                        operation.minimum,
+                        operation.maximum,
                         invert=operation.invert,
                     )
                 else:
@@ -1493,7 +1568,9 @@ if QMainWindow is not object:
                 elif operation.kind == "slice":
                     details += f" — normal {operation.normal}"
                 elif operation.kind == "clip":
-                    details += f" — normal {operation.normal}, origin {operation.origin}"
+                    details += (
+                        f" — normal {operation.normal}, origin {operation.origin}"
+                    )
                 elif operation.kind == "threshold":
                     details += (
                         f" — {operation.scalars} in "
@@ -1704,7 +1781,9 @@ if QMainWindow is not object:
             self.setStatusBar(status)
             self.setup_indicator = QLabel("Setup: not checked", status)
             self.setup_indicator.setObjectName("workbench.status.setup")
-            self.setup_indicator.setToolTip("CFDX setup validator status; not a physical qualification")
+            self.setup_indicator.setToolTip(
+                "CFDX setup validator status; not a physical qualification"
+            )
             self.solver_indicator = QLabel("Solver: no certificate", status)
             self.solver_indicator.setObjectName("workbench.status.solver")
             self.solver_indicator.setToolTip(
@@ -1767,25 +1846,34 @@ if QMainWindow is not object:
             """Project, run and mesh provenance from the shared application."""
             if not hasattr(self, "overview_panel"):
                 return
-            run = self.application.run_center.state if self.application.run_center else None
+            run = (
+                self.application.run_center.state
+                if self.application.run_center
+                else None
+            )
             self.overview_panel.update_state(
-                state, run=run,
+                state,
+                run=run,
                 mesh_catalog_loaded=self.application.mesh_catalog is not None,
             )
             snapshot = self.overview_panel.snapshot
             if snapshot is not None and hasattr(self, "setup_indicator"):
-                self.setup_indicator.setText({
-                    "passed": "Setup: checked",
-                    "warnings": "Setup: warnings",
-                    "errors": "Setup: errors",
-                    "stale": "Setup: outdated",
-                    "not_checked": "Setup: unchecked",
-                }[snapshot.check_state])
-                self.solver_indicator.setText({
-                    "converged": "Solver: converged",
-                    "not_converged": "Solver: not converged",
-                    "missing_or_unverified": "Solver: unverified",
-                }[snapshot.solver_evidence])
+                self.setup_indicator.setText(
+                    {
+                        "passed": "Setup: checked",
+                        "warnings": "Setup: warnings",
+                        "errors": "Setup: errors",
+                        "stale": "Setup: outdated",
+                        "not_checked": "Setup: unchecked",
+                    }[snapshot.check_state]
+                )
+                self.solver_indicator.setText(
+                    {
+                        "converged": "Solver: converged",
+                        "not_converged": "Solver: not converged",
+                        "missing_or_unverified": "Solver: unverified",
+                    }[snapshot.solver_evidence]
+                )
                 tokens = theme_tokens(self._theme)
                 check_color = {
                     "passed": tokens["status.success"],
@@ -1795,12 +1883,18 @@ if QMainWindow is not object:
                     "not_checked": tokens["text.muted"],
                 }[snapshot.check_state]
                 solver_color = (
-                    tokens["status.success"] if snapshot.solver_evidence == "converged"
-                    else tokens["status.error"] if snapshot.solver_evidence == "not_converged"
+                    tokens["status.success"]
+                    if snapshot.solver_evidence == "converged"
+                    else tokens["status.error"]
+                    if snapshot.solver_evidence == "not_converged"
                     else tokens["text.muted"]
                 )
-                self.setup_indicator.setStyleSheet(f"color: {check_color}; padding: 0 8px;")
-                self.solver_indicator.setStyleSheet(f"color: {solver_color}; padding: 0 8px;")
+                self.setup_indicator.setStyleSheet(
+                    f"color: {check_color}; padding: 0 8px;"
+                )
+                self.solver_indicator.setStyleSheet(
+                    f"color: {solver_color}; padding: 0 8px;"
+                )
 
         def _state_changed(self, event) -> None:
             state = event.state
