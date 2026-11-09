@@ -32,7 +32,7 @@ class SurfacePreview:
 
 def _safe_dataset(h5, name, rank, kind, max_chunk_bytes=4 * 1024 * 1024):
     if not isinstance(h5.get(name, getlink=True), h5py.HardLink):
-        raise ValueError(f"missing or untrusted HDF5 dataset {name}")
+        raise ValueError(f"missing or untrusted HDF5 dataset {name}")  # noqa: TRY004
     ds = h5.get(name)
     if (
         not isinstance(ds, h5py.Dataset)
