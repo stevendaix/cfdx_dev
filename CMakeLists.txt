@@ -724,6 +724,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
     add_cfdx_test(test_geometry_invariants tests/unit/test_geometry_invariants.cpp)
     add_cfdx_test(test_dat_restart_identity tests/unit/test_dat_restart_identity.cpp)
+    add_cfdx_test(test_sst_openfoam_wall_reference_v7 tests/unit/test_sst_openfoam_wall_reference_v7.cpp)
+    add_cfdx_test(test_sst_openfoam_wall_audit_v7 tests/unit/test_sst_openfoam_wall_audit_v7.cpp)
+    add_cfdx_test(test_v7_post_sst_momentum tests/unit/test_v7_post_sst_momentum.cpp)
+    add_cfdx_test(test_v7_hilo_solver_restart tests/unit/test_v7_hilo_solver_restart.cpp)
     add_cfdx_test(test_mesh_family_volumes tests/numerical/test_mesh_family_volumes.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
@@ -1913,4 +1917,11 @@ if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
         test_coupled_comparison_v5_protocol
         PROPERTIES LABELS "schur;benchmark;unit;v5"
     )
+endif()
+
+# V7: portable double-double scalar assembly (no wide long double needed).
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_portable_double_double_v7 tests/unit/test_portable_double_double_v7.cpp)
+    set_tests_properties(test_portable_double_double_v7 PROPERTIES
+        LABELS "pressure;assembly;precision;portability")
 endif()
