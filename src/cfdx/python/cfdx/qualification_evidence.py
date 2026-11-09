@@ -71,7 +71,7 @@ def qualification_evidence_manifest(registry_path, evidence_root, commit_sha: st
                         if not isinstance(check, dict) or not isinstance(
                             check.get("name"), str
                         ):
-                            raise ValueError("malformed physical check")
+                            raise ValueError("malformed physical check")  # noqa: TRY004
                         measured, limit = check.get("error"), check.get("limit")
                         if any(
                             isinstance(x, bool)
