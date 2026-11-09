@@ -69,6 +69,22 @@ int main() {
         outlet.pressure=123.0;
         validate_production_incompressible_boundary(outlet,PatchType::OUTLET);
     });
+    run_case("zero_gradient_open_inlet_is_supported_without_hidden_velocity", [] {
+        BoundarySpec inlet;
+        inlet.patch_name = "in";
+        inlet.type = BCType::INLET;
+        inlet.value_type = BCValueType::ZERO_GRADIENT;
+        validate_production_incompressible_boundary(inlet, PatchType::INLET);
+        inlet.velocity_magnitude = 1.0;
+        EXPECT_THROW(
+            validate_production_incompressible_boundary(inlet, PatchType::INLET),
+            std::invalid_argument);
+        inlet.velocity_magnitude = 0.0;
+        inlet.source_type_name = "mass-flow-inlet";
+        EXPECT_THROW(
+            validate_production_incompressible_boundary(inlet, PatchType::INLET),
+            std::invalid_argument);
+    });
     run_case("symmetry_requires_matching_mesh_patch", [] {
         BoundarySpec bc;
         bc.patch_name="symmetry";
