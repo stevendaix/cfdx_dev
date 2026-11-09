@@ -1393,6 +1393,16 @@ int main(int argc, char** argv)
             controls.pressure_compensated_assembly=flag("pressure_compensated_assembly");
             controls.pressure_compensated_refinement_diagnostic=flag("pressure_compensated_refinement_diagnostic");
             controls.pressure_high_low_production=flag("pressure_high_low_production");
+            controls.joint_globalization_v13_experimental=
+                flag("v13_joint_globalization");
+            controls.monotone_global_merit_v14_experimental=
+                flag("v14_monotone_global_merit");
+            if (controls.monotone_global_merit_v14_experimental)
+                std::cout << "V14 strictly contracting physical U,p,k,omega,nu_t merit: "
+                             "EXPERIMENTAL; rollback, all physical gates unchanged\n";
+            if (controls.joint_globalization_v13_experimental)
+                std::cout << "V13 joint U,p,k,omega post-SST trial guard: "
+                             "EXPERIMENTAL, physical gates unchanged\n";
             controls.require_post_sst_momentum_reassembly=
                 flag("v7_post_sst_momentum_gate");
             controls.require_global_nonlinear_certificate_v8 =
@@ -1408,6 +1418,42 @@ int main(int argc, char** argv)
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
             controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
             controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
+            // Experimental PCD research knobs are an explicit HDF5 contract.
+            // Reject them on SIMPLE/SIMPLEC or another Schur instead of silently
+            // ignoring a method that the case requests. These affect only the
+            // preconditioner, not the FV equations or the physical tolerances.
+            const bool is_pcd_coupled =
+                controls.algorithm == PressureVelocityAlgorithm::COUPLED &&
+                controls.coupling.schur_model == CoupledSchurModel::PCD;
+            const auto pcd_flag = [&](const char* name, bool& destination) {
+                if (raw.find(name) == raw.end()) return;
+                if (!is_pcd_coupled)
+                    throw std::invalid_argument(
+                        std::string(name) + " requires COUPLED with PCD Schur");
+                destination = flag(name);
+                std::cout << "PCD research " << name << "="
+                          << (destination ? 1 : 0)
+                          << " (preconditioner only, physics criteria unchanged)\n";
+            };
+            pcd_flag("pcd_fp_row_equilibration_experimental",
+                     controls.coupling.pcd_fp_row_equilibration_experimental);
+            pcd_flag("pcd_fp_quality_guard_experimental",
+                     controls.coupling.pcd_fp_quality_guard_experimental);
+            pcd_flag("pcd_fp_second_pass_experimental",
+                     controls.coupling.pcd_fp_second_pass_experimental);
+            pcd_flag("pcd_fp_recirculation_anchor_experimental",
+                     controls.coupling.pcd_fp_recirculation_anchor_experimental);
+            if (const auto it=raw.find("pcd_fp_bisided_basis_file_experimental");
+                it!=raw.end()) {
+                if (!is_pcd_coupled || it->second.empty())
+                    throw std::invalid_argument("V14 Fp basis requires COUPLED/PCD and a path");
+                controls.coupling.pcd_fp_bisided_basis_file_experimental=it->second;
+                std::cout << "V14 Fp certified bilateral deflation enabled: "
+                             "exact current CSR required; preconditioner only\n";
+            }
+
+            pcd_flag("pcd_lumped_mass_commutator_experimental",
+                     controls.coupling.pcd_lumped_mass_commutator_experimental);
             // V21 opt-in for the existing hysteretic relaxation controller.
             // It uses momentum/flux coupling, not projected continuity, for
             // alpha_p whenever V19 full-flux SIMPLE is active.

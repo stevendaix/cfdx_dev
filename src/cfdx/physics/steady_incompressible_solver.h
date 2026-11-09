@@ -29,7 +29,10 @@
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_compensated_assembly.h"
 #include "cfdx/physics/pcd_fp_equilibration.h"
+#include "cfdx/physics/pcd_fp_strong_component_anchor.h"
 #include "cfdx/physics/pcd_fp_capture.h"
+#include "cfdx/physics/pcd_fp_bisided_basis_v13.h"
+#include "cfdx/physics/pcd_fp_deflated_quality_v14.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/pressure_continuity_line_search.h"
 #include "cfdx/physics/convection_continuation.h"
@@ -42,6 +45,8 @@
 #include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
 #include "cfdx/physics/global_nonlinear_residual_v8.h"
+#include "cfdx/physics/global_nonlinear_acceptance_v13.h"
+#include "cfdx/physics/global_nonlinear_contraction_v14.h"
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
@@ -317,6 +322,15 @@ struct IncompressibleSolverControls {
     // Reassembles momentum after SST and both SST equations on the returned
     // state; all existing acceptance gates remain mandatory.
     bool require_global_nonlinear_certificate_v8 = false;
+    // V13 opt-in: reject a complete U,p,k,omega trial when a reassembled
+    // physical component grows severely relative to the last accepted state.
+    // Requires a steady SST solve, V8 and post-SST residual reconstruction.
+    // Convergence thresholds are NOT changed.
+    bool joint_globalization_v13_experimental = false;
+    // V14 stronger opt-in: require a strict decrease of the independent
+    // post-SST global merit between COMMITTED states at identical operator.
+    // Never accept by the numerical linear solver's reported residual.
+    bool monotone_global_merit_v14_experimental = false;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     IncompressibleTransientControls transient;
     V17PseudoMomentumControls pseudo_momentum;
@@ -890,6 +904,17 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    if (c.monotone_global_merit_v14_experimental &&
+        !c.joint_globalization_v13_experimental)
+        throw std::invalid_argument("V14 monotone physical merit requires V13 joint globalization");
+    if (c.joint_globalization_v13_experimental &&
+        (!c.require_global_nonlinear_certificate_v8 ||
+         !c.require_post_sst_momentum_reassembly ||
+         !c.sst_runtime || c.transient.enabled ||
+         c.nonlinear_retry.max_retries == 0))
+        throw std::invalid_argument(
+            "V13 global trial guard requires steady SST, V8 global residual, "
+            "post-SST momentum reconstruction and nonlinear retries");
     // V4 checkpoints contain U, p, phi and norm references, not the
     // committed deferred-TVD history or a full nonmonotone merit window.
     // Such a restart would not reproduce the nonlinear iteration map.
@@ -3390,6 +3415,8 @@ struct PcdPressureOperators {
     std::unique_ptr<cfdx::core::Preconditioner> laplacian_preconditioner;
     std::unique_ptr<cfdx::core::Preconditioner> convection_diffusion_preconditioner;
     std::unique_ptr<PcdFpEquilibration> convection_diffusion_equilibrated;
+    std::unique_ptr<PcdFpStrongComponentAnchor> convection_diffusion_anchored;
+    std::unique_ptr<PcdFpBiNullspaceV13> convection_diffusion_bisided;
 };
 
 inline cfdx::core::SparseMatrix impose_pcd_reference_row(
@@ -3600,16 +3627,20 @@ inline bool nested_schur_pressure_solve_usable(
     const cfdx::core::Vector& x,
     std::size_t expected_size)
 {
-    if (result.status == cfdx::core::SolverStatus::CONVERGED)
-        return true;
-    if (result.status != cfdx::core::SolverStatus::MAX_ITER_REACHED)
+    // A solver status is not a substitute for inspecting the actual vector.
+    // In particular, CONVERGED must NOT let an out-of-shape/nonfinite nested
+    // preconditioner image contaminate the outer FGMRES Arnoldi basis.
+    if (result.status != cfdx::core::SolverStatus::CONVERGED &&
+        result.status != cfdx::core::SolverStatus::MAX_ITER_REACHED)
         return false;
     if (x.size() != expected_size || !x.is_valid())
         return false;
     for (std::size_t i = 0; i < x.size(); ++i)
         if (!std::isfinite(x(i)))
             return false;
-    return true;
+    return std::isfinite(result.residual) &&
+           std::isfinite(result.residual_relative) &&
+           result.residual >= 0.0 && result.residual_relative >= 0.0;
 }
 
 inline cfdx::core::SolverResult solve_coupled_momentum_continuity(

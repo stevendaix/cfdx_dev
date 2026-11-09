@@ -1,10 +1,12 @@
 #include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -68,6 +70,31 @@ int main() {
         options.max_action_amplification = -1.0;
         CoupledBlockSchurAMGPreconditioner pre(2, options);
         EXPECT_TRUE(!pre.setup(A));
+    });
+    run_case("nested_schur_guard_checks_actual_vector_even_if_converged", [&] {
+        SolverResult reported{};
+        reported.status = SolverStatus::CONVERGED;
+        reported.residual = 1e-14;
+        reported.residual_relative = 1e-12;
+        Vector valid(2, 0.0);
+        EXPECT_TRUE(cfdx::physics::nested_schur_pressure_solve_usable(
+            reported, valid, 2));
+        EXPECT_TRUE(!cfdx::physics::nested_schur_pressure_solve_usable(
+            reported, valid, 3));
+        valid(1) = std::numeric_limits<double>::quiet_NaN();
+        EXPECT_TRUE(!cfdx::physics::nested_schur_pressure_solve_usable(
+            reported, valid, 2));
+        valid(1) = 0.0;
+        reported.residual_relative = std::numeric_limits<double>::infinity();
+        EXPECT_TRUE(!cfdx::physics::nested_schur_pressure_solve_usable(
+            reported, valid, 2));
+        reported.residual_relative = 1e-12;
+        reported.status = SolverStatus::MAX_ITER_REACHED;
+        EXPECT_TRUE(cfdx::physics::nested_schur_pressure_solve_usable(
+            reported, valid, 2));
+        reported.status = SolverStatus::DIVERGED;
+        EXPECT_TRUE(!cfdx::physics::nested_schur_pressure_solve_usable(
+            reported, valid, 2));
     });
     std::cout << "Schur catastrophic action guard PASS\n";
     return run_all();
