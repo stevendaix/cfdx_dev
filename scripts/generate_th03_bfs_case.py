@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import hashlib
+import shutil
 import sys
 from pathlib import Path
 
@@ -229,19 +229,30 @@ def validate_solver_selection(algorithm: str, schur: str | None,
         raise ValueError("algorithm must be simple, simplec or coupled")
     if algorithm != "coupled":
         if schur is not None or preconditioner is not None:
-            raise ValueError("segregated BFS must not request a Schur or coupled preconditioner")
+            raise ValueError(
+                "segregated BFS must not request a Schur or coupled preconditioner"
+            )
         return
     if schur not in SCHUR_MODELS:
         raise ValueError("coupled BFS requires one of six explicit Schur models")
     if preconditioner not in COUPLED_PRECONDITIONERS:
-        raise ValueError("coupled BFS requires an explicit supported preconditioner policy")
+        raise ValueError(
+            "coupled BFS requires an explicit supported preconditioner policy"
+        )
     if preconditioner == "braess_sarazin" and schur != "block_local":
         raise ValueError("Braess-Sarazin requires block_local Schur")
 
 
-def make_setup(height: float, reynolds: float, velocity: float,
-               *, algorithm: str = "simple", schur: str | None = None,
-               preconditioner: str | None = None, iterations: int = 250) -> str:
+def make_setup(
+    height: float,
+    reynolds: float,
+    velocity: float,
+    *,
+    algorithm: str = "simple",
+    schur: str | None = None,
+    preconditioner: str | None = None,
+    iterations: int = 250,
+) -> str:
     validate_solver_selection(algorithm, schur, preconditioner)
     if iterations < 1 or iterations > 100000:
         raise ValueError("BFS iteration budget must be in [1,100000]")
@@ -354,28 +365,30 @@ def make_setup(height: float, reynolds: float, velocity: float,
             family="gradient", configuration_key="numerics.gradient.gauss"
         ),
         NumericalSelection(
-            family="convection", configuration_key="numerics.convection.second_order_upwind"
+            family="convection",
+            configuration_key="numerics.convection.second_order_upwind",
         ),
         NumericalSelection(
-            family="pressure_velocity", configuration_key=f"pressure_velocity.{algorithm}"
+            family="pressure_velocity",
+            configuration_key=f"pressure_velocity.{algorithm}",
         ),
-        NumericalSelection(
-            family="linear_solver", configuration_key="linear.fgmres"
-        ),
+        NumericalSelection(family="linear_solver", configuration_key="linear.fgmres"),
     ]
     if algorithm == "coupled":
-        selections.append(NumericalSelection(
-            family="schur", configuration_key=f"schur.{schur}"
-        ))
+        selections.append(
+            NumericalSelection(family="schur", configuration_key=f"schur.{schur}")
+        )
         if preconditioner != "auto":
-            selections.append(NumericalSelection(
-                family="preconditioner",
-                configuration_key=f"preconditioner.{preconditioner}"
-            ))
+            selections.append(
+                NumericalSelection(
+                    family="preconditioner",
+                    configuration_key=f"preconditioner.{preconditioner}",
+                )
+            )
     setup.numerics.selection = NumericalSelectionConfig(
         entries=selections,
         required_families=["gradient", "convection", "pressure_velocity"]
-            + (["schur"] if algorithm == "coupled" else []),
+        + (["schur"] if algorithm == "coupled" else []),
     )
     return json.dumps(setup.model_dump(mode="json"))
 
@@ -426,8 +439,13 @@ def write_case(
             "source_case_path": "",
             "source_case_name": "TH03_debug_only",
             "case_setup_json": make_setup(
-                height, reynolds, velocity, algorithm=algorithm, schur=schur,
-                preconditioner=preconditioner, iterations=iterations
+                height,
+                reynolds,
+                velocity,
+                algorithm=algorithm,
+                schur=schur,
+                preconditioner=preconditioner,
+                iterations=iterations,
             ),
         }.items():
             h5.attrs[key] = value
@@ -454,8 +472,13 @@ def write_case(
 
 
 def reconfigure_bfs_reference_case(
-    source_path: Path, output_path: Path, *, algorithm: str,
-    schur: str | None, preconditioner: str | None, iterations: int,
+    source_path: Path,
+    output_path: Path,
+    *,
+    algorithm: str,
+    schur: str | None,
+    preconditioner: str | None,
+    iterations: int,
 ) -> dict:
     """Change only numerical selection and certificate opt-ins on an existing BFS case.
 
@@ -472,36 +495,64 @@ def reconfigure_bfs_reference_case(
     with h5py.File(source_path, "r") as source:
         if source.attrs.get("format") != "CFDX-HDF5-mesh-v1":
             raise ValueError("unsupported BFS HDF5 source format")
-        if any(not source.attrs.get(key) for key in
-               ("topology_hash", "geometry_hash", "case_setup_json")):
-            raise ValueError("BFS reference input requires mesh fingerprint and case setup")
+        if any(
+            not source.attrs.get(key)
+            for key in ("topology_hash", "geometry_hash", "case_setup_json")
+        ):
+            raise ValueError(
+                "BFS reference input requires mesh fingerprint and case setup"
+            )
         setup = json.loads(source.attrs["case_setup_json"])
         numerics = setup.get("numerics")
         if not isinstance(numerics, dict):
-            raise ValueError("reference input has no numerical configuration")
+            raise TypeError("reference input has no numerical configuration")
         selection = numerics.get("selection")
-        if not isinstance(selection, dict) or not isinstance(selection.get("entries"), list):
-            raise ValueError("reference input has no explicit numerical selection")
+        if not isinstance(selection, dict) or not isinstance(
+            selection.get("entries"), list
+        ):
+            raise TypeError("reference input has no explicit numerical selection")
         entries = selection["entries"]
-        retained = [x for x in entries if x.get("family") not in
-                    ("pressure_velocity", "schur", "preconditioner")]
-        if not any(x.get("family") == "convection" and
-                   x.get("configuration_key") in (
-                       "numerics.convection.second_order_upwind",
-                       "numerics.convection.tvd.vanleer", "numerics.convection.tvd.vanalbada",
-                       "numerics.convection.tvd.mc", "numerics.convection.tvd.superbee")
-                   for x in retained):
-            raise ValueError("reference input must explicitly use a bounded order-two scheme")
-        retained.append({"family":"pressure_velocity",
-                         "configuration_key":f"pressure_velocity.{algorithm}"})
+        retained = [
+            x
+            for x in entries
+            if x.get("family") not in ("pressure_velocity", "schur", "preconditioner")
+        ]
+        if not any(
+            x.get("family") == "convection"
+            and x.get("configuration_key")
+            in (
+                "numerics.convection.second_order_upwind",
+                "numerics.convection.tvd.vanleer",
+                "numerics.convection.tvd.vanalbada",
+                "numerics.convection.tvd.mc",
+                "numerics.convection.tvd.superbee",
+            )
+            for x in retained
+        ):
+            raise ValueError(
+                "reference input must explicitly use a bounded order-two scheme"
+            )
+        retained.append(
+            {
+                "family": "pressure_velocity",
+                "configuration_key": f"pressure_velocity.{algorithm}",
+            }
+        )
         if algorithm == "coupled":
-            retained.append({"family":"schur", "configuration_key":f"schur.{schur}"})
+            retained.append({"family": "schur", "configuration_key": f"schur.{schur}"})
             if preconditioner != "auto":
-                retained.append({"family":"preconditioner",
-                                 "configuration_key":f"preconditioner.{preconditioner}"})
+                retained.append(
+                    {
+                        "family": "preconditioner",
+                        "configuration_key": f"preconditioner.{preconditioner}",
+                    }
+                )
         selection["entries"] = retained
-        required = [x for x in selection.get("required_families", [])
-                    if x not in ("schur", "preconditioner")]
+        required = [
+            x
+            for x in selection.get("required_families", [])
+            if x not in ("schur", "preconditioner")
+        ]
         if algorithm == "coupled":
             required.append("schur")
         selection["required_families"] = list(dict.fromkeys(required))
@@ -509,22 +560,32 @@ def reconfigure_bfs_reference_case(
         raw_settings = numerics.setdefault("raw_settings", {})
         raw_settings["v8_global_nonlinear_residual"] = "true"
         raw_settings["v7_post_sst_momentum_gate"] = "true"
-        topology, geometry = str(source.attrs["topology_hash"]), str(source.attrs["geometry_hash"])
+        topology, geometry = (
+            str(source.attrs["topology_hash"]),
+            str(source.attrs["geometry_hash"]),
+        )
         n_cells, n_faces = int(source.attrs["n_cells"]), int(source.attrs["n_faces"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source_path, output_path)
-    with h5py.File(output_path,"r+") as configured:
+    with h5py.File(output_path, "r+") as configured:
         configured.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
         assert str(configured.attrs["topology_hash"]) == topology
         assert str(configured.attrs["geometry_hash"]) == geometry
-    return {"path": str(output_path), "cells": n_cells, "faces": n_faces,
-            "topology_hash": topology, "geometry_hash": geometry,
-            "algorithm": algorithm, "schur": schur,
-            "preconditioner": preconditioner,
-            "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
-            "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
-            "physical_qualification": "NOT_QUALIFIED",
-            "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified"}
+    return {
+        "path": str(output_path),
+        "cells": n_cells,
+        "faces": n_faces,
+        "topology_hash": topology,
+        "geometry_hash": geometry,
+        "algorithm": algorithm,
+        "schur": schur,
+        "preconditioner": preconditioner,
+        "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
+        "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+        "physical_qualification": "NOT_QUALIFIED",
+        "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified",
+    }
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -539,7 +600,9 @@ def main():
         default=0.0,
         help="tanh clustering at y=0,h,8h, 0 means uniform",
     )
-    parser.add_argument("--algorithm", choices=("simple", "simplec", "coupled"), default="simple")
+    parser.add_argument(
+        "--algorithm", choices=("simple", "simplec", "coupled"), default="simple"
+    )
     parser.add_argument("--schur", choices=SCHUR_MODELS)
     parser.add_argument("--preconditioner", choices=COUPLED_PRECONDITIONERS)
     parser.add_argument("--iterations", type=int, default=250)
@@ -553,8 +616,10 @@ def main():
                 ny=args.ny,
                 step_cells=args.step_cells,
                 wall_stretch=args.wall_stretch,
-                algorithm=args.algorithm, schur=args.schur,
-                preconditioner=args.preconditioner, iterations=args.iterations,
+                algorithm=args.algorithm,
+                schur=args.schur,
+                preconditioner=args.preconditioner,
+                iterations=args.iterations,
             ),
             indent=2,
         )

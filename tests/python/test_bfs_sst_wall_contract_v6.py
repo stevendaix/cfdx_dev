@@ -9,8 +9,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = (
-    Path(__file__).resolve().parents[2]
-    / "scripts/qualify_bfs_sst_wall_contract_v6.py"
+    Path(__file__).resolve().parents[2] / "scripts/qualify_bfs_sst_wall_contract_v6.py"
 )
 spec = importlib.util.spec_from_file_location(
     "qualify_bfs_sst_wall_contract_v6", SCRIPT
