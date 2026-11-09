@@ -201,7 +201,7 @@ def apply_boundary_condition(
         return result
     staged = previous.get("field_conditions", {})
     if not isinstance(staged, dict):
-        raise ValueError("existing field conditions must be a mapping")
+        raise ValueError("existing field conditions must be a mapping")  # noqa: TRY004
     conditions = {
         name: dict(entry) for name, entry in staged.items() if isinstance(entry, dict)
     }
