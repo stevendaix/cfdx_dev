@@ -10,8 +10,8 @@ convergence. No synthetic empirical observations are produced.
 from __future__ import annotations
 
 import argparse
-import json
 import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
