@@ -4533,6 +4533,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_pcd) {
+        // Trace the actual nested PCD Kp/Fp solves independently of the global
+        // (expensive) coupled assembly summary. This is read-only evidence.
+        const bool pcd_inner_trace = [] {
+            const char* v = std::getenv("CFDX_BFS_PCD_INNER_TRACE");
+            return v != nullptr && std::string(v) == "1";
+        }();
         auto pcd_ops = std::make_shared<PcdPressureOperators>(
             assemble_pcd_pressure_operators(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
@@ -4581,13 +4587,52 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
         pcd_ops->laplacian_preconditioner =
             prepare_pcd_solver(pcd_ops->laplacian, controls.pcd_laplacian_linear_solver, false);
+        if (controls.coupling.pcd_fp_recirculation_anchor_experimental &&
+            controls.coupling.pcd_fp_row_equilibration_experimental)
+            throw std::invalid_argument(
+                "PCD Fp recirculation anchor and row equilibration cannot be combined");
+        if (controls.coupling.pcd_fp_recirculation_anchor_experimental) {
+            pcd_ops->convection_diffusion_anchored =
+                std::make_unique<PcdFpStrongComponentAnchor>(
+                    anchor_pcd_fp_strong_components(pcd_ops->convection_diffusion));
+            std::cerr << "COUPLED_PCD_FP_AUX_ANCHORS count="
+                      << pcd_ops->convection_diffusion_anchored->anchored_rows.size()
+                      << " rows=";
+            for (const auto row : pcd_ops->convection_diffusion_anchored->anchored_rows)
+                std::cerr << row << ",";
+            std::cerr << " original_operator_unchanged=1\n";
+        }
+        if (!controls.coupling.pcd_fp_bisided_basis_file_experimental.empty()) {
+            if (!pcd_ops->convection_diffusion_anchored ||
+                controls.coupling.pcd_fp_row_equilibration_experimental ||
+                controls.coupling.pcd_fp_second_pass_experimental ||
+                controls.coupling.pcd_lumped_mass_commutator_experimental ||
+                controls.pcd_convection_diffusion_linear_solver.krylov !=
+                    cfdx::core::KrylovModel::FGMRES)
+                throw std::invalid_argument(
+                    "V14 bilateral Fp deflation requires the anchor and FGMRES; no scaling, second pass or commutator");
+            pcd_ops->convection_diffusion_bisided =
+                std::make_unique<PcdFpBiNullspaceV13>(
+                    load_pcd_fp_bisided_basis_v13(
+                        controls.coupling.pcd_fp_bisided_basis_file_experimental,
+                        pcd_ops->convection_diffusion));
+            std::cerr << "COUPLED_PCD_BILATERAL_V14 modes="
+                      << pcd_ops->convection_diffusion_bisided->left.size()
+                      << " left_defect="
+                      << pcd_ops->convection_diffusion_bisided->max_left_defect
+                      << " right_defect="
+                      << pcd_ops->convection_diffusion_bisided->max_right_defect
+                      << " original_fp_unchanged=1\n";
+        }
         if (controls.coupling.pcd_fp_row_equilibration_experimental)
             pcd_ops->convection_diffusion_equilibrated =
                 std::make_unique<PcdFpEquilibration>(
                     equilibrate_pcd_fp_rows(pcd_ops->convection_diffusion));
-        const auto& fp_solve_matrix = pcd_ops->convection_diffusion_equilibrated
-            ? pcd_ops->convection_diffusion_equilibrated->matrix
-            : pcd_ops->convection_diffusion;
+        const auto& fp_solve_matrix = pcd_ops->convection_diffusion_anchored
+            ? pcd_ops->convection_diffusion_anchored->matrix
+            : pcd_ops->convection_diffusion_equilibrated
+                ? pcd_ops->convection_diffusion_equilibrated->matrix
+                : pcd_ops->convection_diffusion;
         pcd_ops->convection_diffusion_preconditioner =
             prepare_pcd_solver(
                 fp_solve_matrix, controls.pcd_convection_diffusion_linear_solver, true);
@@ -4607,7 +4652,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                       << "\n";
         }
 
-        const auto solve_kp = [pcd_ops, controls](
+        const auto solve_kp = [pcd_ops, controls, pcd_inner_trace](
             const Vector& rhs, Vector& x) {
             const auto& matrix = pcd_ops->laplacian;
             // A complete PCD commutator validates Kp^{-1} against a separate
@@ -4624,6 +4669,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const int restart = std::min<int>(
                 controls.pcd_laplacian_linear_solver.gmres_restart,
                 static_cast<int>(matrix.n_rows()));
+            const Vector kp_initial = x;
             cfdx::core::SolverResult result;
             if (controls.pcd_laplacian_linear_solver.krylov ==
                 cfdx::core::KrylovModel::CG) {
@@ -4649,23 +4695,30 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument(
                     "unsupported PCD Laplacian Krylov model");
             }
-            if (controls.diagnostics.coupled_matrix_summary) {
+            const auto kp_quality = pcd_fp_true_residual(
+                matrix, rhs, kp_initial, x);
+            const bool kp_usable = nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
+            if (controls.diagnostics.coupled_matrix_summary || pcd_inner_trace) {
                 std::cerr << "COUPLED_NESTED_PCD_KP"
                           << " requested_tolerance=" << controls.pcd_laplacian_tolerance
                           << " effective_tolerance=" << kp_effective_tolerance
                           << " status=" << static_cast<int>(result.status)
                           << " iterations=" << result.iterations
-                          << " true_residual=" << result.residual
-                          << " true_relative=" << result.residual_relative << "\n";
+                          << " reported_residual=" << result.residual
+                          << " reported_relative=" << result.residual_relative
+                          << " independent_true_l2=" << kp_quality.final_l2
+                          << " independent_true_relative_rhs=" << kp_quality.relative_rhs
+                          << " independent_true_linf=" << kp_quality.final_linf
+                          << " accepted=" << (kp_usable ? 1 : 0) << "\n";
             }
-            return nested_schur_pressure_solve_usable(
-                result, x, matrix.n_rows());
+            return kp_usable;
         };
 
         // Exact nested-system capture: the production CSR, RHS and warm start,
         // BEFORE equilibration, for identical offline ILU0/AMG comparisons.
         // Never alter the Schur action or the outer nonlinear acceptance gate.
-        const auto solve_fp = [pcd_ops, controls](
+        const auto solve_fp = [pcd_ops, controls, pcd_inner_trace](
             const Vector& rhs, Vector& x) {
             const auto& original_matrix = pcd_ops->convection_diffusion;
             if (const char* prefix = std::getenv("CFDX_PCD_FP_CAPTURE_PREFIX")) {
@@ -4677,13 +4730,24 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         original_matrix, rhs, x);
                 }
             }
-            const auto& solving_matrix = pcd_ops->convection_diffusion_equilibrated
-                ? pcd_ops->convection_diffusion_equilibrated->matrix
-                : original_matrix;
-            const Vector solving_rhs = pcd_ops->convection_diffusion_equilibrated
-                ? pcd_fp_scaled_rhs(rhs,
-                    pcd_ops->convection_diffusion_equilibrated->row_multipliers)
-                : rhs;
+            const auto& solving_matrix = pcd_ops->convection_diffusion_anchored
+                ? pcd_ops->convection_diffusion_anchored->matrix
+                : pcd_ops->convection_diffusion_equilibrated
+                    ? pcd_ops->convection_diffusion_equilibrated->matrix
+                    : original_matrix;
+            const Vector compatible_rhs = pcd_ops->convection_diffusion_bisided
+                ? pcd_ops->convection_diffusion_bisided->compatible_rhs(rhs) : rhs;
+            const Vector solving_rhs = pcd_ops->convection_diffusion_bisided
+                ? compatible_rhs : pcd_ops->convection_diffusion_anchored
+                ? pcd_ops->convection_diffusion_anchored->rhs(rhs)
+                : pcd_ops->convection_diffusion_equilibrated
+                    ? pcd_fp_scaled_rhs(rhs,
+                        pcd_ops->convection_diffusion_equilibrated->row_multipliers)
+                    : rhs;
+            if (pcd_ops->convection_diffusion_bisided)
+                x=pcd_ops->convection_diffusion_bisided->canonical_solution(x);
+            else if (pcd_ops->convection_diffusion_anchored)
+                pcd_ops->convection_diffusion_anchored->pin_initial(x);
             auto* preconditioner = pcd_ops->convection_diffusion_preconditioner.get();
             // Native AMG can SET UP on this nonsymmetric Fp, then return an
             // image A*M^-1*r amplified by 1e14: stop explicitly before a
@@ -4721,6 +4785,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 static_cast<int>(solving_matrix.n_rows()));
             const Vector x_initial = x;
             const auto solve_once = [&](Vector& iterate) {
+                if (pcd_ops->convection_diffusion_bisided) {
+                    const auto& projector=*pcd_ops->convection_diffusion_bisided;
+                    cfdx::core::LinearOperator op;
+                    op.size=original_matrix.n_rows();
+                    op.apply=[&](const Vector& in, Vector& out) {
+                        out=projector.deflated_matvec(original_matrix,in);
+                    };
+                    op.apply_fp64=op.apply;
+                    // FGMRES handles a variable anchored ILU/AMG action; its
+                    // operator is the certified full-rank low-rank update.
+                    return solve_fgmres(op,solving_rhs,iterate,restart,
+                        controls.pcd_convection_diffusion_max_iterations,
+                        controls.pcd_convection_diffusion_tolerance,
+                        preconditioner);
+                }
                 if (controls.pcd_convection_diffusion_linear_solver.krylov ==
                     cfdx::core::KrylovModel::GMRES)
                     return solve_gmres(solving_matrix, solving_rhs, iterate, restart,
@@ -4736,7 +4815,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument("PCD convection-diffusion requires GMRES or FGMRES");
             };
             auto result = solve_once(x);
+            if (pcd_ops->convection_diffusion_bisided)
+                x=pcd_ops->convection_diffusion_bisided->canonical_solution(x);
             auto quality = pcd_fp_true_residual(original_matrix, rhs, x_initial, x);
+            auto auxiliary_quality = pcd_ops->convection_diffusion_bisided
+                ? pcd_fp_deflated_true_residual_v14(
+                      original_matrix,*pcd_ops->convection_diffusion_bisided,
+                      solving_rhs,x_initial,x)
+                : pcd_fp_true_residual(
+                      solving_matrix,solving_rhs,x_initial,x);
             // Also preserve the first three troublesome production RHS. The
             // first Krylov RHS can be easy even when later Schur actions fail.
             if (const char* prefix = std::getenv("CFDX_PCD_FP_CAPTURE_DIFFICULT_PREFIX")) {
@@ -4750,12 +4837,40 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 }
             }
             const auto usable = [&](const cfdx::core::SolverResult& candidate,
-                                    const PcdFpTrueResidual& q) {
-                return nested_schur_pressure_solve_usable(
-                           candidate, x, original_matrix.n_rows()) &&
-                       std::isfinite(q.relative_rhs) &&
-                       (!controls.coupling.pcd_fp_quality_guard_experimental ||
-                        q.relative_rhs <= 1e-3);
+                                    const PcdFpTrueResidual& q,
+                                    const PcdFpTrueResidual& aq) {
+                const bool vector_ok = nested_schur_pressure_solve_usable(
+                    candidate, x, original_matrix.n_rows());
+                if (pcd_ops->convection_diffusion_bisided) {
+                    // The original incompatible component is NOT discarded
+                    // from evidence or the outer coupled physical system.
+                    const auto& projector=*pcd_ops->convection_diffusion_bisided;
+                    const double projected=projector.projected_residual_relative(
+                        original_matrix,rhs,x);
+                    return vector_ok && candidate.status==SolverStatus::CONVERGED &&
+                        std::isfinite(aq.relative_rhs) &&
+                        aq.relative_rhs <= controls.pcd_convection_diffusion_tolerance &&
+                        std::isfinite(projected) &&
+                        projected<=controls.pcd_convection_diffusion_tolerance &&
+                        std::isfinite(q.relative_rhs) &&
+                        q.final_l2 <= q.initial_l2;
+                }
+                if (pcd_ops->convection_diffusion_anchored) {
+                    // This is explicitly a PCD preconditioner approximation.
+                    // The auxiliary residual must reach the ORIGINAL inner
+                    // tolerance; original Fp is singular and cannot meet it.
+                    // Reject any action that increases the original true
+                    // residual, and never report the auxiliary one as original.
+                    return vector_ok && candidate.status == SolverStatus::CONVERGED &&
+                        std::isfinite(aq.relative_rhs) &&
+                        aq.relative_rhs <= controls.pcd_convection_diffusion_tolerance &&
+                        std::isfinite(q.initial_l2) && q.initial_l2 > 0.0 &&
+                        std::isfinite(q.final_l2) &&
+                        q.final_l2 < 0.999 * q.initial_l2;
+                }
+                return vector_ok && std::isfinite(q.relative_rhs) &&
+                    (!controls.coupling.pcd_fp_quality_guard_experimental ||
+                     q.relative_rhs <= 1e-3);
             };
             if (controls.coupling.pcd_fp_second_pass_experimental &&
                 result.status == SolverStatus::MAX_ITER_REACHED &&
@@ -4776,10 +4891,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         retry_result, x, original_matrix.n_rows());
                 if (improved) {
                     quality = retry_quality;
+                    auxiliary_quality = pcd_fp_true_residual(
+                        solving_matrix, solving_rhs, x_initial, x);
                     result = retry_result;
                 } else {
                     x = best_x;
                     quality = best_quality;
+                    auxiliary_quality = pcd_fp_true_residual(
+                        solving_matrix, solving_rhs, x_initial, x);
                     result = best_result;
                 }
                 if (controls.diagnostics.coupled_matrix_summary)
@@ -4789,8 +4908,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                               << " returned_true_relative_rhs=" << quality.relative_rhs
                               << " retry_iterations=" << retry_result.iterations << "\n";
             }
-            const bool accepted = usable(result, quality);
-            if (controls.diagnostics.coupled_matrix_summary)
+            const bool accepted = usable(result, quality, auxiliary_quality);
+            if (controls.diagnostics.coupled_matrix_summary || pcd_inner_trace)
                 std::cerr << "COUPLED_NESTED_PCD_FP"
                           << " status=" << static_cast<int>(result.status)
                           << " iterations=" << result.iterations
@@ -4801,6 +4920,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " original_true_relative_rhs=" << quality.relative_rhs
                           << " original_true_relative_initial=" << quality.relative_initial
                           << " original_true_linf=" << quality.final_linf
+                          << " bilateral_deflation=" << (pcd_ops->convection_diffusion_bisided ? 1 : 0)
+                          << " left_incompatible_floor=" << (pcd_ops->convection_diffusion_bisided
+                              ? pcd_ops->convection_diffusion_bisided->incompatibility_relative(rhs) : 0.0)
+                          << " projected_original_true_relative=" << (pcd_ops->convection_diffusion_bisided
+                              ? pcd_ops->convection_diffusion_bisided->projected_residual_relative(
+                                  original_matrix,rhs,x) : -1.0)
+                          << " auxiliary_operator=" << (pcd_ops->convection_diffusion_bisided ? "deflated"
+                              : pcd_ops->convection_diffusion_anchored ? "anchored"
+                              : pcd_ops->convection_diffusion_equilibrated ? "equilibrated" : "original")
+                          << " auxiliary_anchored=" << (pcd_ops->convection_diffusion_anchored &&
+                               !pcd_ops->convection_diffusion_bisided ? 1 : 0)
+                          << " preconditioner_anchored=" << (pcd_ops->convection_diffusion_anchored ? 1 : 0)
+                          << " auxiliary_true_relative_rhs=" << auxiliary_quality.relative_rhs
+                          << " auxiliary_anchors=" << (pcd_ops->convection_diffusion_anchored
+                              ? pcd_ops->convection_diffusion_anchored->anchored_rows.size() : 0)
                           << " accepted=" << (accepted ? 1 : 0) << "\n";
             return accepted;
         };
@@ -5688,6 +5822,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     double multisecant_flux_reference=1.0;
     bool multisecant_scales_valid=false;
 
+    GlobalNonlinearContractionLedgerV14 committed_global_merit_v14;
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
     std::size_t adaptive_u_improvement_streak = 0;
@@ -9600,6 +9735,47 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (!h.global_nonlinear_v8.all_finite)
                 throw NonlinearRetryableFailure(
                     "V8 global physical residual has nonfinite components");
+            // The trial has already run full SST and refreshed U,p/phi.
+            // Compare against the LAST COMMITTED history entry only, and
+            // only with the same high-order convection operator. A rejection
+            // propagates to the existing full U/p/phi/SST rollback.
+            if (controls.joint_globalization_v13_experimental &&
+                same_convection_operator_as_previous && !result.history.empty()) {
+                GlobalNonlinearAcceptanceV13 joint;
+                try {
+                    joint = evaluate_global_nonlinear_trial_v13(
+                        result.history.back().global_nonlinear_v8,
+                        h.global_nonlinear_v8, controls.convergence);
+                } catch (const std::invalid_argument& error) {
+                    throw NonlinearRetryableFailure(
+                        std::string("V13 joint state not comparable: ") + error.what());
+                }
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_JOINT_V13 iteration=" << iter
+                              << " growth=" << joint.largest_growth
+                              << " accepted=" << (joint.allowed ? 1 : 0)
+                              << " failed_equation=" << joint.failed_equation
+                              << " qualified=0\n";
+                if (!joint.allowed)
+                    throw NonlinearRetryableFailure(
+                        "V13 joint post-SST physical residual growth: " +
+                        joint.failed_equation);
+            }
+            if (controls.monotone_global_merit_v14_experimental) {
+                const auto contraction=committed_global_merit_v14.evaluate(
+                    h.global_nonlinear_v8,same_convection_operator_as_previous);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_CONTRACTION_TRIAL_V14 iteration=" << iter
+                              << " baseline=" << contraction.baseline
+                              << " old=" << contraction.old_merit
+                              << " new=" << contraction.new_merit
+                              << " ratio=" << contraction.ratio
+                              << " allowed=" << contraction.allowed
+                              << " qualified=0\n";
+                if (!contraction.allowed)
+                    throw NonlinearRetryableFailure(
+                        "V14 independent full-state merit did not contract: retry U,p,SST");
+            }
             nonlinear_metric = std::max(nonlinear_metric,
                 h.global_nonlinear_v8.merit);
             if (controls.diagnostics.iteration_trace)
@@ -10403,6 +10579,35 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 committed_tvd_deferred_valid = true;
             }
             transaction.commit();
+            if (controls.monotone_global_merit_v14_experimental) {
+                committed_global_merit_v14.commit(
+                    h.global_nonlinear_v8,same_convection_operator_as_previous);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_CONTRACTION_COMMITTED_V14 iteration=" << iter
+                              << " committed=" << committed_global_merit_v14.committed_steps()
+                              << " contractions=" << committed_global_merit_v14.contraction_steps()
+                              << " merit=" << h.global_nonlinear_v8.merit
+                              << " converged=" << h.global_nonlinear_v8.converged
+                              << " qualified=0\n";
+            }
+            // Explicit COMMITTED evidence: GLOBAL_NONLINEAR_V8 is printed
+            // while the candidate is still tentative and may subsequently
+            // roll back. Only this marker proves the complete U,p,phi,SST
+            // transaction has been accepted. No physical qualification is
+            // implied by a successful nonlinear update.
+            if (controls.require_global_nonlinear_certificate_v8 &&
+                controls.diagnostics.iteration_trace) {
+                const auto& global = h.global_nonlinear_v8;
+                std::cerr << "GLOBAL_NONLINEAR_COMMITTED_V13 iteration=" << iter
+                          << " U=" << global.momentum.max_active_component_relative
+                          << " p_continuity=" << global.continuity
+                          << " k=" << global.k
+                          << " omega=" << global.omega
+                          << " nut_closure=" << global.eddy_viscosity_closure
+                          << " merit=" << global.merit
+                          << " converged=" << (global.converged ? 1 : 0)
+                          << " qualified=0\n";
+            }
             if (controls.nonlinear_multisecant.method !=
                 NonlinearMultisecantMethod::OFF) {
                 const auto output=pack_nonlinear_state(U,p,mass_flux);
