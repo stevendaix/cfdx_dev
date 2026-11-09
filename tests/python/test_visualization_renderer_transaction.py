@@ -8,8 +8,8 @@ from cfdx.visualization_pipeline import VisualizationOperation, VisualizationPip
 
 
 class Data:
-    point_data = {"p": object()}
-    cell_data = {}
+    point_data = {"p": object()}  # noqa: RUF012
+    cell_data = {}  # noqa: RUF012
 
     def __init__(self, history=()) -> None:
         self.history = history
