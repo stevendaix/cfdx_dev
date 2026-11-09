@@ -5,6 +5,7 @@ benchmark_observables is diagnostic only, and the present CSV lacks the
 Reynolds shear stresses required for a full NASA validation.  Refuse to
 compute a reattachment length from transient/rejected/unfinished states.
 """
+
 from __future__ import annotations
 
 import argparse
