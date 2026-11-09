@@ -16,6 +16,10 @@ def test_short_headless_case(tmp_path: Path) -> None:
     controller.start()
     assert controller.runner._thread is not None
     controller.runner._thread.join(timeout=10)
-    assert session.state.value == "CONVERGED"
+    # A synthetic runner that only prints iteration counters supplies no
+    # native convergence evidence. Successful process exit is STOPPED, not
+    # proof that the CFD solution converged.
+    assert session.state.value == "STOPPED"
+    assert controller.convergence_verdict is None
     assert session.iteration == 2
     assert session.time == 0.2
