@@ -1,0 +1,44 @@
+name: Temporary PR1190 Ruff autofix
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  autofix:
+    if: github.event.pull_request.head.ref == 'fix/naca-bc-coupled-qualification-portfolio-2026-11-08' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - name: Apply Ruff safe fixes and formatting to PR Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade ruff
+          git fetch origin master
+          mapfile -t files < <(git diff --name-only origin/master...HEAD -- '*.py')
+          if ((${#files[@]} == 0)); then
+            echo 'No changed Python files.'
+            exit 0
+          fi
+          ruff check --fix "${files[@]}" || true
+          ruff format "${files[@]}"
+          if git diff --quiet; then
+            echo 'Ruff made no changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${files[@]}"
+          git commit -m 'style: apply Ruff fixes and formatting'
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
