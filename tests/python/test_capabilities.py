@@ -220,7 +220,9 @@ def test_palette_lists_the_registry_and_only_the_registry() -> None:
     assert named_actions - set(CAPABILITIES) == {
         "workbench.action.search",
         "workbench.action.export_native_boundary_case",
+        "workbench.appearance.black",
         "workbench.appearance.graphite",
+        "workbench.appearance.light",
         "workbench.appearance.reset_layout",
     }
 
