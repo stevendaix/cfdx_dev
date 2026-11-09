@@ -66,6 +66,9 @@ NON_FICHE_REPORTS = {
     "CFDX_CODE_CORRECTIONS_COMPLET_2026-10-25.md",
     "CFDX_CODE_ET_VALIDATION_6_VERROUS_2026-10-25.md",
     "CFDX_etat_integration_et_reste_a_faire_2026-10-25.md",
+    # V9 is a campaign/evidence dossier, not a single numerical-method fiche:
+    # its sections 1-9 document the multi-Schur qualification contract.
+    "50-bfs-multi-schur-qualification-v9.md",
 }
 
 # Reference detection (DOI prefix or ISBN). Every character class avoids

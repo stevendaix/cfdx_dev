@@ -117,6 +117,15 @@ class ValidateFichesContractTests(unittest.TestCase):
             write_fiche(Path(tmp), name="07-benchmarks-references.md", text=text)
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
+    def test_v9_bfs_campaign_report_is_exempt_from_method_fiche_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_fiche(
+                Path(tmp),
+                name="50-bfs-multi-schur-qualification-v9.md",
+                text="# V9 BFS campaign report\\n\\n## 1. Scope\\n",
+            )
+            self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
     def test_fiche_without_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             text = valid_fiche_text().replace(DOI_LINE + "\n", "")
