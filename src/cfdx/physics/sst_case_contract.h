@@ -112,9 +112,23 @@ inline void validate_sst_case_prerequisites(
             throw std::invalid_argument("SST case contains an unsupported boundary type on patch '" +
                                         boundary.patch_name + "'");
         if (boundary.type == cfdx::io::BCType::INLET) {
-            // Reuse the exact same validation and derivation used by the solver
-            // when it constructs inlet scalar values.
-            (void)derive_sst_inlet_turbulence_state(boundary, controls);
+            // Explicit k/omega Dirichlet data are the authoritative inlet
+            // turbulence state. Do not additionally require a positive bulk
+            // inlet speed: zero-gradient/zero-velocity inlets are valid for
+            // closed or hydrostatic SST/thermal verification cases.
+            bool fixed_k = false;
+            bool fixed_omega = false;
+            for (const auto& scalar_bc : boundary.sst_scalar_conditions) {
+                if (scalar_bc.type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
+                    continue;
+                if (scalar_bc.field == "k") fixed_k = true;
+                if (scalar_bc.field == "omega") fixed_omega = true;
+            }
+            if (fixed_k != fixed_omega)
+                throw std::invalid_argument(
+                    "SST inlet must prescribe both k and omega, or derive both from inlet turbulence data");
+            if (!fixed_k)
+                (void)derive_sst_inlet_turbulence_state(boundary, controls);
         }
     }
 }
