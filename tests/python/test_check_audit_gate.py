@@ -126,6 +126,15 @@ class ValidateFichesContractTests(unittest.TestCase):
             )
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
+    def test_v10_bfs_diagnostics_report_is_exempt_from_method_fiche_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_fiche(
+                Path(tmp),
+                name="51-bfs-six-schur-production-diagnostics-v10.md",
+                text="# V10 BFS diagnostics report\\n\\n## 1. Scope\\n",
+            )
+            self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
     def test_fiche_without_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             text = valid_fiche_text().replace(DOI_LINE + "\n", "")
