@@ -1,0 +1,112 @@
+name: PR 1193 ruff pre-commit oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Evidence-only : relever les findings Ruff exacts derriere l'echec du job
+# "Pre-commit" (exit 1) sur le head PR #1193 d6b2ed6.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1193_ruff_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1193-ruff-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1193_HEAD: d6b2ed605a5c2a4996829e420daeea59c47fd26b
+  PR1193_BASE: c428039157f0a9c796e8fed9ee31558667d6d16f
+
+jobs:
+  oracle:
+    name: ruff check + format + canonical on PR1193 head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      WDIR: /tmp/pr1193_wt
+      FILES: scripts/qualify_bfs_sst_wall_contract_v6.py tests/python/test_bfs_sst_wall_contract_v6.py
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree PR head
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1193_head=$PR1193_HEAD"
+            echo "purpose=exact ruff findings behind Pre-commit exit 1 on PR #1193 head d6b2ed6"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_meta_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PR1193_HEAD^{commit}" || { echo "::error::PR1193 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1193_HEAD"
+
+      - name: Install ruff and pre-commit
+        run: python3 -m pip install --upgrade ruff pre-commit
+
+      - name: Ruff check replica
+        run: |
+          set +e
+          cd "$WDIR"
+          ruff --version > "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_version_run$GITHUB_RUN_ID.txt"
+          ruff check $FILES > "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_check_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          set -e
+          echo "ruff_check_exit=$rc" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_check_run$GITHUB_RUN_ID.txt"
+
+      - name: Ruff format check replica
+        run: |
+          set +e
+          cd "$WDIR"
+          ruff format --check $FILES > "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_fmt_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          ruff format --diff $FILES >> "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_fmt_run$GITHUB_RUN_ID.txt" 2>&1 || true
+          set -e
+          echo "ruff_format_exit=$rc" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_fmt_run$GITHUB_RUN_ID.txt"
+
+      - name: Generate canonical ruff-fixed copies
+        run: |
+          set +e
+          mkdir -p "$GITHUB_WORKSPACE/$EVID/pr1193_canonical"
+          cp "$WDIR/scripts/qualify_bfs_sst_wall_contract_v6.py" "$GITHUB_WORKSPACE/$EVID/pr1193_canonical/qualify_bfs_sst_wall_contract_v6.py"
+          cp "$WDIR/tests/python/test_bfs_sst_wall_contract_v6.py" "$GITHUB_WORKSPACE/$EVID/pr1193_canonical/test_bfs_sst_wall_contract_v6.py"
+          cd "$GITHUB_WORKSPACE/$EVID/pr1193_canonical"
+          ruff format qualify_bfs_sst_wall_contract_v6.py test_bfs_sst_wall_contract_v6.py > "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_canonical_fmt_run$GITHUB_RUN_ID.txt" 2>&1
+          ruff check --fix qualify_bfs_sst_wall_contract_v6.py test_bfs_sst_wall_contract_v6.py >> "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_canonical_fmt_run$GITHUB_RUN_ID.txt" 2>&1
+          ruff format qualify_bfs_sst_wall_contract_v6.py test_bfs_sst_wall_contract_v6.py >> "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_canonical_fmt_run$GITHUB_RUN_ID.txt" 2>&1
+          ruff check qualify_bfs_sst_wall_contract_v6.py test_bfs_sst_wall_contract_v6.py >> "$GITHUB_WORKSPACE/$EVID/pr1193_ruff_canonical_fmt_run$GITHUB_RUN_ID.txt" 2>&1
+          md5sum qualify_bfs_sst_wall_contract_v6.py test_bfs_sst_wall_contract_v6.py | tee "$GITHUB_WORKSPACE/$EVID/pr1193_canonical_md5_run$GITHUB_RUN_ID.txt"
+          set -e
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1193 ruff oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1193_ruff_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
