@@ -1,5 +1,6 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/production_boundary_contract.h"
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
@@ -27,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -77,6 +79,7 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
+    bool initial_pressure_field = false;
     bool initial_sst_fields = false;
     bool initial_face_mass_flux = false;
     bool experimental_momentum_first_continuation = false;
@@ -84,12 +87,15 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
-    bool cell_hotspots = false;
-    bool cell_map_full = false;
-    std::size_t cell_hotspots_every = 5;
+    // Opt-in exact pressure CSR capture for production BFS and other cases.
+    std::string pressure_replay_prefix;
+    std::vector<std::size_t> pressure_replay_iterations;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
     bool probe_stream = false;
+    bool cell_hotspots = false;
+    bool cell_map_full = false;
+    std::size_t cell_hotspots_every = 5;
 };
 
 std::string encode_probe_name_hex(const std::string& name)
@@ -697,6 +703,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
+        else if (arg == "--initial-pressure-field") o.initial_pressure_field = true;
         else if (arg == "--initial-sst-fields") o.initial_sst_fields = true;
         else if (arg == "--initial-face-mass-flux") o.initial_face_mass_flux = true;
         else if (arg == "--experimental-momentum-first-continuation")
@@ -704,6 +711,14 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
+        else if (arg == "--pressure-replay-prefix")
+            o.pressure_replay_prefix = value("--pressure-replay-prefix");
+        else if (arg == "--pressure-replay-iterations")
+            o.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
+                value("--pressure-replay-iterations"));
+        else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
+        else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
+        else if (arg == "--probe-stream") o.probe_stream = true;
         else if (arg == "--cell-hotspots") o.cell_hotspots = true;
         else if (arg == "--cell-map-full") { o.cell_map_full = true; o.cell_hotspots = true; }
         else if (arg == "--cell-hotspots-every") {
@@ -714,22 +729,22 @@ Options parse(int argc, char** argv)
             if (used != raw.size() || o.cell_hotspots_every < 1 || o.cell_hotspots_every > 100000)
                 throw std::invalid_argument("--cell-hotspots-every must be in [1,100000]");
         }
-        else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
-        else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
-        else if (arg == "--probe-stream") o.probe_stream = true;
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
+                         "  [--initial-pressure-field] (initialize p from /fields/scalar/p; requires imported U)\n"
                          "  [--initial-sst-fields] (initial k and omega from /fields/scalar)\n"
                          "  [--initial-face-mass-flux] (projected /fields/face/mdot; requires initial velocity)\n"
                          "  [--experimental-momentum-first-continuation] (momentum-only then strict SST; NOT qualified)\n"
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
-                         "  [--cell-hotspots] [--cell-hotspots-every N] [--cell-map-full] (full map <=512 MiB)\n"
+                         "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
+                         "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
+                         "  [--cell-hotspots] [--cell-hotspots-every N] [--cell-map-full] (full map <=512 MiB)\n"
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
@@ -744,6 +759,9 @@ Options parse(int argc, char** argv)
         throw std::invalid_argument("--probe-csv requires at least one --probe");
     if (o.probe_stream && o.probes.empty())
         throw std::invalid_argument("--probe-stream requires at least one --probe");
+    if (o.pressure_replay_prefix.empty() != o.pressure_replay_iterations.empty())
+        throw std::invalid_argument(
+            "--pressure-replay-prefix and --pressure-replay-iterations must be supplied together");
     for (std::size_t i = 0; i < o.probes.size(); ++i)
         for (std::size_t j = i + 1; j < o.probes.size(); ++j)
             if (o.probes[i].name == o.probes[j].name)
@@ -798,6 +816,8 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+        if (is_case_hdf5)
+            resolve_production_mesh_patch_types(mesh, case_setup);
         if (options.experimental_sst && !is_case_hdf5)
             throw std::invalid_argument(
                 "production solver: --experimental-sst requires a .cfdx.h5 case");
@@ -838,6 +858,10 @@ int main(int argc, char** argv)
                     "only); use a compressible solver for this case");
         }
 
+        if (options.initial_pressure_field && (!options.initial_velocity_field ||
+            !options.restart.empty() || !is_case_hdf5))
+            throw std::invalid_argument(
+                "--initial-pressure-field requires --initial-velocity-field, HDF5, and no DAT restart");
         if (options.initial_sst_fields && (!options.experimental_sst ||
             !options.restart.empty() || !is_case_hdf5))
             throw std::invalid_argument(
@@ -933,6 +957,46 @@ int main(int argc, char** argv)
         if (options.initial_velocity_field && !case_setup.has_initial_condition)
             initialization.mode = InitializationMode::Provided;
 
+        // A nonuniform pressure seed is useful for high-aspect-ratio BFS
+        // meshes whose first segregated pressure correction is very large.
+        // Import it only on explicit request, after uniform initialization
+        // has been established. The solver still reassembles its own FV
+        // equations and uses every original residual/conservation gate.
+        if (options.initial_pressure_field) {
+            std::vector<std::pair<std::string, ScalarCellField>> scalars;
+            if (!read_scalar_fields_hdf5(mesh_path, scalars))
+                throw std::invalid_argument(
+                    "initial pressure fields cannot be read from case HDF5");
+            const ScalarCellField* imported_p = nullptr;
+            for (const auto& [name, field] : scalars) {
+                if (name != "p") continue;
+                if (imported_p)
+                    throw std::invalid_argument("duplicate imported pressure field");
+                imported_p = &field;
+            }
+            if (!imported_p)
+                throw std::invalid_argument(
+                    "--initial-pressure-field requested but scalar field 'p' is absent");
+            if (imported_p->size() != mesh.n_cells() || imported_p->dimension() != 1)
+                throw std::invalid_argument("imported pressure field shape mismatch");
+            double pmin = std::numeric_limits<double>::infinity();
+            double pmax = -std::numeric_limits<double>::infinity();
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                const double value = (*imported_p)(cell);
+                if (!std::isfinite(value))
+                    throw std::invalid_argument("imported pressure field is not finite");
+                p(cell) = value;
+                pmin = std::min(pmin, value);
+                pmax = std::max(pmax, value);
+            }
+            std::cout << "INITIAL_PRESSURE_FIELD_IMPORTED cells=" << mesh.n_cells()
+                      << " min=" << std::setprecision(17) << pmin
+                      << " max=" << pmax
+                      << " (initial guess only; NOT a convergence certificate)\n";
+        }
+
+        if (is_case_hdf5)
+            validate_production_boundary_unique_names(case_setup);
         VelocityBoundaryConditions ubc;
         ScalarBoundaryConditions pbc;
         for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
@@ -950,6 +1014,9 @@ int main(int argc, char** argv)
                 throw std::invalid_argument(
                     "production solver: case has no boundary condition for mesh patch '" +
                     patch.name + "'");
+            // A physical label must never be silently interpreted as an
+            // unrelated generic zero-gradient condition.
+            validate_production_incompressible_boundary(*bc, patch.type);
 
             // Explicit per-field conditions override the legacy shared value_type.
             // Never infer the pressure boundary from the velocity mode.
@@ -1102,6 +1169,32 @@ int main(int argc, char** argv)
         // its *unscaled true residual* at the original tolerance. This does
         // not relax any of the nonlinear/physical qualification criteria.
         if (is_case_hdf5) {
+            // Auxiliary pressure-space BCs for the PCD Schur model only.
+            // A preconditioner experiment, never a modification of physical p/U BCs.
+            const auto pcd_inflow = case_setup.numerics.raw_settings.find(
+                "pcd_pressure_inflow_dirichlet_experimental");
+            if (pcd_inflow != case_setup.numerics.raw_settings.end()) {
+                if (pcd_inflow->second != "1" ||
+                    controls.algorithm != PressureVelocityAlgorithm::COUPLED ||
+                    controls.coupling.schur_model != CoupledSchurModel::PCD)
+                    throw std::invalid_argument(
+                        "pcd_pressure_inflow_dirichlet_experimental=1 "
+                        "requires COUPLED with PCD Schur");
+                controls.coupling.pcd_pressure_inflow_dirichlet_experimental = true;
+                std::cout << "PCD auxiliary pressure-inflow Dirichlet: experimental "
+                          << "(physical BCs and convergence gates unchanged)\n";
+            }
+            const auto schur_guard = case_setup.numerics.raw_settings.find(
+                "schur_action_growth_guard_experimental");
+            if (schur_guard != case_setup.numerics.raw_settings.end()) {
+                if (schur_guard->second != "1" ||
+                    controls.algorithm != PressureVelocityAlgorithm::COUPLED)
+                    throw std::invalid_argument(
+                        "schur_action_growth_guard_experimental=1 requires COUPLED");
+                controls.coupling.schur_action_growth_guard_experimental = true;
+                std::cout << "COUPLED six-Schur true-matrix action guard: "
+                          << "1e10 (experimental; no fallback)\n";
+            }
             const auto scaling = case_setup.numerics.raw_settings.find(
                 "pressure_linear_scaling");
             if (scaling != case_setup.numerics.raw_settings.end()) {
@@ -1275,6 +1368,8 @@ int main(int argc, char** argv)
                 return result;
             };
             controls.diagnostics.flux_patch_audit=flag("v17_flux_patch_audit");
+            controls.pressure_compensated_assembly=flag("pressure_compensated_assembly");
+            controls.pressure_compensated_refinement_diagnostic=flag("pressure_compensated_refinement_diagnostic");
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
             controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
             controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
@@ -1371,6 +1466,18 @@ int main(int argc, char** argv)
 #else
             throw std::invalid_argument("hybrid face flux requires HDF5-enabled CFDX");
 #endif
+        }
+
+        if (!options.pressure_replay_prefix.empty()) {
+            controls.pressure_replay_prefix = options.pressure_replay_prefix;
+            controls.pressure_replay_iterations = options.pressure_replay_iterations;
+            const std::filesystem::path capture_path(options.pressure_replay_prefix);
+            if (!capture_path.parent_path().empty())
+                std::filesystem::create_directories(capture_path.parent_path());
+            std::cout << "Pressure CSR replay capture enabled: "
+                      << options.pressure_replay_prefix << " ("
+                      << options.pressure_replay_iterations.size()
+                      << " selected iterations; retries can overwrite a capture)\n";
         }
 
         // Own all SST runtime objects in main for the complete solver call.

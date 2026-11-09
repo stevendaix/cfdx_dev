@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import importlib.util
-import sys
 import math
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "scripts" / "naca_wall_radial_comparison.py"
-SCRIPTS = str(ROOT / "scripts")
-if SCRIPTS not in sys.path:
-    sys.path.insert(0, SCRIPTS)
+SCRIPTS = ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+SOURCE = SCRIPTS / "naca_wall_radial_comparison.py"
 SPEC = importlib.util.spec_from_file_location("naca_wall_radial_comparison", SOURCE)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
