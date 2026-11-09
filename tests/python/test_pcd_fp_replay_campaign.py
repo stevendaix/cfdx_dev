@@ -19,7 +19,7 @@ SPEC.loader.exec_module(mod)
 
 
 def row(method, capture, residual=1e-9):
-    return dict(
+    return {
         method=method,
         capture=str(capture),
         rows=3,
@@ -31,7 +31,7 @@ def row(method, capture, residual=1e-9):
         second_attempted=False,
         second_improved=False,
         second_status=0,
-    )
+    }
 
 
 def test_missing_captures_rejected(tmp_path):
