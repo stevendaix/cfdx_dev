@@ -225,7 +225,6 @@ COUPLED_PRECONDITIONERS = (
     "coupled_block_schur",
     "mgr",
     "braess_sarazin",
-
 )
 
 
@@ -593,7 +592,6 @@ def reconfigure_bfs_reference_case(
         "physical_qualification": "NOT_QUALIFIED",
         "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified",
     }
-
 
 
 def main():

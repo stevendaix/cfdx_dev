@@ -1,4 +1,3 @@
-
 """BFS six-Schur software gate, selection and physically unqualified status."""
 
 from __future__ import annotations
