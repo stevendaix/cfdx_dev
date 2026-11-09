@@ -5,7 +5,7 @@ on:
     paths:
       - ".github/workflows/tmp-pr1191-ruff-fix.yml"
 permissions:
-  contents: read
+  contents: write
   actions: read
 jobs:
   ruff-autofix:
@@ -43,3 +43,16 @@ jobs:
           name: pr1191-ruff-fixed
           path: /tmp/ruff-fixed/
           if-no-files-found: error
+      - name: Commit Ruff formatting and safe fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mapfile -t files < <(git diff --name-only origin/master...HEAD -- '*.py')
+          git add -- "${files[@]}"
+          git rm .github/workflows/tmp-pr1191-ruff-fix.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "style: apply Ruff autofixes for PR1191"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
