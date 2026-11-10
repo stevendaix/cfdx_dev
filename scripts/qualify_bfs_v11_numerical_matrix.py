@@ -21,10 +21,9 @@ import sys
 import time
 from pathlib import Path
 
-import h5py
-
 from diagnose_bfs_failure_v10 import classify_log
 from generate_th03_bfs_case import reconfigure_bfs_reference_case
+import h5py
 from qualify_bfs_schur_evidence import validate_bfs_evidence
 
 PROFILES = {
