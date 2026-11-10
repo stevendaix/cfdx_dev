@@ -23,7 +23,8 @@ inline SSTWallOperatorV17 make_sst_wall_operator_v17(
     const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
     const std::vector<std::string>& wall_patches,
     const SstOpenFoamWallTripletV15& triplet,
-    const TurbulenceTransportControls& controls)
+    const TurbulenceTransportControls& controls,
+    bool omega_owner_constraints_v18=false)
 {
     const auto nf=mesh.n_faces(), nc=mesh.n_cells();
     if (nf==0 || nc==0 || wall_patches.empty() ||
@@ -41,6 +42,10 @@ inline SSTWallOperatorV17 make_sst_wall_operator_v17(
     result.momentum_face_mu.assign(nf,-1.);
     result.production.g_by_cell=triplet.production_by_cell;
     result.production.has_wall_cell=triplet.has_wall_cell;
+    if (omega_owner_constraints_v18) {
+        result.production.omega_owner_by_cell=triplet.omega_by_cell;
+        result.production.has_omega_owner_cell=triplet.has_wall_cell;
+    }
     result.production.validate(nc);
     for (const auto& name : wall_patches) {
         if (result.omega_faces.values.count(name))

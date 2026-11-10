@@ -8,7 +8,6 @@ The output carries pressure ``fields/scalar/p`` and, if absent, the explicit
 initial U vector so that --initial-velocity-field --initial-pressure-field
 can import both without changing the mesh, case BCs, or numerical options.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -43,8 +42,7 @@ def read_capture(path: Path) -> tuple[csr_matrix, np.ndarray, dict]:
             raise ValueError("invalid pressure capture dimensions")
         row_offsets = np.fromiter(
             (int(stream.readline().strip(), 16) for _ in range(rows + 1)),
-            dtype=np.int64,
-            count=rows + 1,
+            dtype=np.int64, count=rows + 1,
         )
         column_ids = np.empty(nnz, dtype=np.int32)
         matrix_values = np.empty(nnz, dtype=np.float64)
@@ -58,20 +56,13 @@ def read_capture(path: Path) -> tuple[csr_matrix, np.ndarray, dict]:
             bvalue, xvalue = stream.readline().split()
             rhs[j] = _double_from_hex(bvalue)
             initial[j] = _double_from_hex(xvalue)
-        if (
-            row_offsets[0] != 0
-            or row_offsets[-1] != nnz
+        if (row_offsets[0] != 0 or row_offsets[-1] != nnz
             or np.any(row_offsets[1:] < row_offsets[:-1])
-            or np.any(column_ids < 0)
-            or np.any(column_ids >= rows)
+            or np.any(column_ids < 0) or np.any(column_ids >= rows)
             or not np.isfinite(matrix_values).all()
-            or not np.isfinite(rhs).all()
-            or not np.isfinite(initial).all()
-        ):
+            or not np.isfinite(rhs).all() or not np.isfinite(initial).all()):
             raise ValueError("invalid or non-finite pressure CSR capture")
-        matrix = csr_matrix(
-            (matrix_values, column_ids, row_offsets), shape=(rows, rows)
-        )
+        matrix = csr_matrix((matrix_values, column_ids, row_offsets), shape=(rows, rows))
         # Do not silently treat a non-pressure or incompatible capture as a
         # certificate. Metadata is retained for later provenance checks.
         return matrix, rhs, {"metadata": metadata, "target_tolerance": tolerance}
@@ -92,17 +83,11 @@ def build_seed(case: Path, capture: Path, output: Path, *, blend: float = 1.0) -
             raise ValueError("pressure initialization requires a complete CFDX case")
         setup = json.loads(src.attrs["case_setup_json"])
         raw_u = setup["initial_condition"].get("velocity_vector")
-        if (
-            not isinstance(raw_u, list)
-            or len(raw_u) != 3
-            or not all(np.isfinite(component) for component in raw_u)
+        if not isinstance(raw_u, list) or len(raw_u) != 3 or not all(
+            np.isfinite(component) for component in raw_u
         ):
             raise ValueError("invalid case-declared initial velocity")
-        if (
-            "fields" in src
-            and "scalar" in src["fields"]
-            and "p" in src["fields/scalar"]
-        ):
+        if "fields" in src and "scalar" in src["fields"] and "p" in src["fields/scalar"]:
             raise ValueError("input already has a pressure field; refuse overwrite")
     lu = splu(A.tocsc())
     pressure = lu.solve(b)

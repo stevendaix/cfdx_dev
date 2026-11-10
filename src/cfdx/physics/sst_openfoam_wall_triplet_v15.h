@@ -1,11 +1,10 @@
 #pragma once
 
 // Atomic, comparable OpenFOAM-style wall REFERENCE staged on ONE returned
-// U,k,omega,nu_t state. Not yet an OpenFOAM-equivalent production boundary:
-// the solver must additionally consume the omega and G constraints in BOTH
-// turbulent equations, and nut at the momentum wall face, before claiming it.
-// The three arrays are NEVER published separately. No partial opt-in changes
-// the physical finite-volume operator.
+// U,k,omega,nu_t state. In V17 an explicit experimental adapter can consume
+// nut, omega and G in finite-volume operators; it is NOT equivalent to
+// OpenFOAM's owner-cell constraints, corners or exact nonlinear iteration.
+// This reference remains read-only unless the V17 opt-in is enabled.
 #include "cfdx/physics/sst_openfoam_wall_coupling_v8.h"
 #include <algorithm>
 #include <array>
@@ -23,7 +22,10 @@ struct SstOpenFoamWallTripletV15 {
     std::vector<double> omega_by_face;
     std::vector<double> nut_by_face;
     std::vector<unsigned char> has_wall_face;
+    // Kinematic turbulent production G (m2/s3), NOT the rho*G volume source.
     std::vector<double> production_by_cell;
+    // Area-weighted omega wall reference at corner owners (1/s).
+    std::vector<double> omega_by_cell;
     std::vector<unsigned char> has_wall_cell;
     std::size_t wall_faces = 0;
     std::size_t wall_cells = 0;
@@ -41,7 +43,8 @@ inline SstOpenFoamWallTripletV15 prepare_openfoam_wall_triplet_v15(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& velocity,
     const SSTProductionState& state,
     const std::map<std::string,std::array<double,3>>& fixed_wall_velocity,
-    const TurbulenceTransportControls& controls)
+    const TurbulenceTransportControls& controls,
+    bool v19_corner_equal_face_count=false)
 {
     if (velocity.size()!=mesh.n_cells() || velocity.dimension()!=3 ||
         wall_patches.empty())
@@ -52,8 +55,10 @@ inline SstOpenFoamWallTripletV15 prepare_openfoam_wall_triplet_v15(
     result.nut_by_face.assign(mesh.n_faces(),0.);
     result.has_wall_face.assign(mesh.n_faces(),0);
     result.production_by_cell.assign(mesh.n_cells(),0.);
+    result.omega_by_cell.assign(mesh.n_cells(),0.);
     result.has_wall_cell.assign(mesh.n_cells(),0);
     std::vector<long double> weighted_g(mesh.n_cells(),0.L);
+    std::vector<long double> weighted_omega(mesh.n_cells(),0.L);
     std::vector<long double> total_area(mesh.n_cells(),0.L);
     std::vector<std::size_t> faces_per_cell(mesh.n_cells(),0);
     for (const auto& name:wall_patches) {
@@ -86,8 +91,8 @@ inline SstOpenFoamWallTripletV15 prepare_openfoam_wall_triplet_v15(
             const double tangential=(jump-normal*jump.dot(normal)).mag();
             const double k=state.k(owner), omega=state.omega(owner);
             const double production_proxy=std::min(
-                controls.density*state.nu_t(owner)*state.strain_rate(owner)*state.strain_rate(owner),
-                controls.sst_production_limiter*controls.beta_star*controls.density*k*omega);
+                state.nu_t(owner)*state.strain_rate(owner)*state.strain_rate(owner),
+                controls.sst_production_limiter*controls.beta_star*k*omega);
             const auto point=openfoam_wall_coupling_point_v8(
                 k,controls.molecular_viscosity,normal_distance,tangential,
                 production_proxy);
@@ -98,8 +103,15 @@ inline SstOpenFoamWallTripletV15 prepare_openfoam_wall_triplet_v15(
             result.omega_by_face[face]=point.omega;
             result.nut_by_face[face]=point.nut_spalding;
             result.has_wall_face[face]=1;
-            weighted_g[owner]+=static_cast<long double>(point.production)*area;
-            total_area[owner]+=area;
+            // OpenFOAM Foundation omegaWallFunction::createAveragingWeights
+            // gives 1/N_wall_faces to each face sharing an owner, NOT an
+            // area weight. Preserve the V15 area policy unless explicitly
+            // opting into the OpenFOAM face-count corner policy.
+            const long double w=v19_corner_equal_face_count
+                ? 1.0L : static_cast<long double>(area);
+            weighted_g[owner]+=static_cast<long double>(point.production)*w;
+            weighted_omega[owner]+=static_cast<long double>(point.omega)*w;
+            total_area[owner]+=w;
             ++faces_per_cell[owner];
             ++result.wall_faces;
         }
@@ -111,6 +123,9 @@ inline SstOpenFoamWallTripletV15 prepare_openfoam_wall_triplet_v15(
         if (!(total_area[owner]>0.))
             throw std::invalid_argument("V15 wall triplet: zero weighted owner area");
         result.production_by_cell[owner]=static_cast<double>(weighted_g[owner]/total_area[owner]);
+        result.omega_by_cell[owner]=static_cast<double>(weighted_omega[owner]/total_area[owner]);
+        if (!(result.omega_by_cell[owner]>0.0) || !std::isfinite(result.omega_by_cell[owner]))
+            throw std::runtime_error("V15 wall triplet: invalid weighted omega");
         if (!std::isfinite(result.production_by_cell[owner]))
             throw std::runtime_error("V15 wall triplet: overflow in weighted G");
         result.has_wall_cell[owner]=1;

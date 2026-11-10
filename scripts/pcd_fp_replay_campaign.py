@@ -4,7 +4,6 @@ Each capture is a byte-exact production CSR, RHS and initial iterate. Results
 are diagnostic and never qualify the COUPLED solver or a physical benchmark.
 No silent fallbacks, fictitious convergence, or changed physical thresholds.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -16,15 +15,8 @@ import sys
 from pathlib import Path
 
 METHODS = (
-    "ilu0",
-    "ilu0_equilibrated",
-    "amg",
-    "amg_robust",
-    "amg_equilibrated",
-    "amg_sa",
-    "amg_lines",
-    "amg_semicoarsen",
-    "jacobi",
+    "ilu0", "ilu0_equilibrated", "amg", "amg_robust", "amg_equilibrated",
+    "amg_sa", "amg_lines", "amg_semicoarsen", "jacobi",
 )
 
 
@@ -37,10 +29,7 @@ def digest(path: Path) -> str:
 
 
 def compare(
-    captures: list[Path],
-    executable: Path,
-    *,
-    budget: int = 100,
+    captures: list[Path], executable: Path, *, budget: int = 100,
     tolerance: float = 1e-8,
     runner=subprocess.run,
 ) -> dict:
@@ -54,15 +43,11 @@ def compare(
             raise FileNotFoundError(capture)
         invocation = runner(
             [str(executable), str(capture), str(budget), str(tolerance)],
-            text=True,
-            capture_output=True,
-            check=False,
+            text=True, capture_output=True, check=False,
         )
         if invocation.returncode:
             raise RuntimeError(f"{capture}: replay failed: {invocation.stderr}")
-        rows = [
-            json.loads(line) for line in invocation.stdout.splitlines() if line.strip()
-        ]
+        rows = [json.loads(line) for line in invocation.stdout.splitlines() if line.strip()]
         if len(rows) != len(METHODS) or {r["method"] for r in rows} != set(METHODS):
             raise ValueError(f"{capture}: incomplete or duplicate method report")
         for row in rows:
@@ -77,16 +62,10 @@ def compare(
                 and row["first_true_relative_rhs"] <= tolerance
             )
             record["two_pass_meets_true_tolerance"] = (
-                row["setup_ok"]
-                and row["best_true_relative_rhs"] <= tolerance
-                and (
-                    row["first_status"] == 0
-                    or (
-                        row["second_attempted"]
-                        and row["second_improved"]
-                        and row["second_status"] == 0
-                    )
-                )
+                row["setup_ok"] and row["best_true_relative_rhs"] <= tolerance
+                and (row["first_status"] == 0 or
+                     (row["second_attempted"] and row["second_improved"]
+                      and row["second_status"] == 0))
             )
             records.append(record)
     return {
@@ -120,42 +99,24 @@ def main(argv: list[str] | None = None) -> int:
             captures += sorted(args.capture_dir.glob("*.cfp"))
         if len(captures) != len(set(captures)):
             raise ValueError("duplicate capture paths")
-        report = compare(
-            captures, args.executable, budget=args.budget, tolerance=args.tolerance
-        )
+        report = compare(captures, args.executable, budget=args.budget,
+                         tolerance=args.tolerance)
         args.output_dir.mkdir(parents=True, exist_ok=True)
         (args.output_dir / "pcd_fp_replay.json").write_text(
-            json.dumps(report, indent=2, allow_nan=False) + "\n"
-        )
-        cols = [
-            "capture",
-            "capture_sha256",
-            "rows",
-            "nnz",
-            "method",
-            "setup_ok",
-            "first_iterations",
-            "first_true_relative_rhs",
-            "best_true_relative_rhs",
-            "second_attempted",
-            "second_improved",
-            "first_meets_true_tolerance",
-            "two_pass_meets_true_tolerance",
-            "total_seconds_two_passes",
-            "probe_A_correction_l2",
-            "probe_cosine",
-            "bounded_action_fallbacks",
-            "error",
-        ]
+            json.dumps(report, indent=2, allow_nan=False) + "\n")
+        cols = ["capture", "capture_sha256", "rows", "nnz", "method",
+                "setup_ok", "first_iterations", "first_true_relative_rhs",
+                "best_true_relative_rhs", "second_attempted", "second_improved",
+                "first_meets_true_tolerance", "two_pass_meets_true_tolerance",
+                "total_seconds_two_passes", "probe_A_correction_l2",
+                "probe_cosine", "bounded_action_fallbacks", "error"]
         with (args.output_dir / "pcd_fp_replay.csv").open("w", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(report["records"])
         passes = sum(r["two_pass_meets_true_tolerance"] for r in report["records"])
-        print(
-            f"PCD_FP_REPLAY: captures={len(captures)} entries={len(report['records'])} "
-            f"strict_inner_pass={passes} (NOT physical certification)"
-        )
+        print(f"PCD_FP_REPLAY: captures={len(captures)} entries={len(report['records'])} "
+              f"strict_inner_pass={passes} (NOT physical certification)")
         if args.require_all_true_residuals and passes != len(report["records"]):
             return 2
         return 0

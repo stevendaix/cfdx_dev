@@ -83,14 +83,10 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
     # NOT an implemented OpenFOAM wall-function contract. No string alias
     # or nominal omega factor constitutes an equivalence proof.
     equivalent_wall_functions = False
-
     reasons = [
-        (
-            "CFDX does not provide verified equivalents of OpenFOAM "
-            "nutUSpaldingWallFunction/kqRWallFunction/omegaWallFunction for this case"
-        )
+        "CFDX does not provide verified equivalents of OpenFOAM "
+        "nutUSpaldingWallFunction/kqRWallFunction/omegaWallFunction for this case"
     ]
-
     if raw.get("sst_molecular_wall_diffusion", "false") != "true":
         reasons.append("molecular near-wall diffusion path is legacy/disabled")
     if numerics.get("momentum_scheme") == "first_order":
@@ -107,18 +103,14 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
             raise BFSWallContractError("malformed physical pressure record") from exc
         if not math.isfinite(physical) or not math.isfinite(rounded):
             raise BFSWallContractError("nonfinite physical pressure record")
-        pressure_records.append(
-            {
-                "exact_relative": physical,
-                "stored_fp64_relative": rounded,
-                "substep_pass": physical <= 1e-11 and rounded <= 1e-11,
-            }
-        )
+        pressure_records.append({
+            "exact_relative": physical,
+            "stored_fp64_relative": rounded,
+            "substep_pass": physical <= 1e-11 and rounded <= 1e-11,
+        })
     if not isinstance(convergence, (dict, type(None))):
         raise BFSWallContractError("invalid convergence certificate")
-    nonlinear_converged = (
-        convergence is not None and convergence.get("converged") is True
-    )
+    nonlinear_converged = convergence is not None and convergence.get("converged") is True
     pressure_substeps_pass = bool(pressure_records) and all(
         r["substep_pass"] for r in pressure_records
     )
@@ -138,8 +130,7 @@ def inspect(case: dict[str, Any], log: str = "", convergence: Any = None) -> dic
         "wall_yplus_qualified": False,
         "wall_cf_qualified": False,
         "velocity_profiles_qualified": False,
-        "reasons": reasons
-        + [
+        "reasons": reasons + [
             "need accepted converged momentum, continuity, SST k/omega budgets",
             "need actual native wall-face y+/Cf and independent velocity profiles",
             "need wall-model equivalence or a separately validated resolved-wall comparison",
@@ -165,8 +156,7 @@ def main() -> int:
         log = args.run_log.read_text(encoding="utf-8") if args.run_log else ""
         convergence = (
             json.loads(args.convergence_json.read_text(encoding="utf-8"))
-            if args.convergence_json
-            else None
+            if args.convergence_json else None
         )
         result = inspect(case, log, convergence)
     except (BFSWallContractError, OSError, ValueError) as exc:
@@ -175,9 +165,7 @@ def main() -> int:
     args.output.write_text(
         json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
-    print(
-        "BFS wall/SST: model non-equivalence and missing physical qualification; BLOCKED"
-    )
+    print("BFS wall/SST: model non-equivalence and missing physical qualification; BLOCKED")
     # This is a certification gate, not a preflight which may exit green.
     return 2
 

@@ -5,7 +5,6 @@ algorithm failed or that the experimental physics did not converge.  The
 reported physical stage comes from opt-in BFS_PHASE_V10 markers emitted by the
 C++ production implementation, not the requested Schur model name.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -18,54 +17,33 @@ _PHASE = re.compile(r"\bBFS_PHASE_V10\s+iteration=(\d+).*?\bphase=([A-Z_]+)")
 _ACTUAL_LINEAR_PLAN = re.compile(
     r"\bBFS_PHASE_V10\s+iteration=(\d+)\s+phase=COUPLED_LINEAR_END.*?"
     r"\bactual_krylov=([a-z0-9_]+)\s+actual_preconditioner=([a-z0-9_]+)"
-    r"\s+resolved_schur=([a-z0-9_]+)"
-)
+    r"\s+resolved_schur=([a-z0-9_]+)")
 _NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 _LINEAR_FAILURE = re.compile(
     r"(pressure-correction|coupled momentum-continuity) solve did not converge"
-    r" \(status=(\d+), iterations=(\d+), residual=("
-    + _NUMBER
-    + r"), relative=("
-    + _NUMBER
-    + r")\)"
-)
+    r" \(status=(\d+), iterations=(\d+), residual=(" + _NUMBER +
+    r"), relative=(" + _NUMBER + r")\)")
 _SST_FAILURE = re.compile(r"SST update rejected: ([^\r\n]+)")
-_GLOBAL_FAILURE = re.compile(
-    r"(global nonlinear|post-SST physical momentum|SST residual/boundedness gate failed)[^\r\n]*",
-    re.IGNORECASE,
-)
+_GLOBAL_FAILURE = re.compile(r"(global nonlinear|post-SST physical momentum|SST residual/boundedness gate failed)[^\r\n]*", re.I)
 
 
 def classify_log(content: str, *, execution: str, exit_code: int | None) -> dict:
     """Fail closed; a stopped run has only an observed stage, not convergence."""
     phases = [(m.group(2), int(m.group(1))) for m in _PHASE.finditer(content)]
     resolved_plans = [
-        {
-            "iteration": int(m.group(1)),
-            "actual_krylov": m.group(2),
-            "actual_preconditioner": m.group(3),
-            "resolved_schur": m.group(4),
-        }
+        {"iteration": int(m.group(1)), "actual_krylov": m.group(2),
+         "actual_preconditioner": m.group(3), "resolved_schur": m.group(4)}
         for m in _ACTUAL_LINEAR_PLAN.finditer(content)
     ]
     events: list[tuple[int, str, str, dict]] = []
     for match in _LINEAR_FAILURE.finditer(content):
-        stage = (
-            "PRESSURE" if match.group(1) == "pressure-correction" else "KRYLOV_SCHUR"
-        )
-        events.append(
-            (
-                match.start(),
-                stage,
-                match.group(0),
-                {
-                    "solver_status_code": int(match.group(2)),
-                    "linear_iterations": int(match.group(3)),
-                    "true_residual": float(match.group(4)),
-                    "true_residual_relative": float(match.group(5)),
-                },
-            )
-        )
+        stage = "PRESSURE" if match.group(1) == "pressure-correction" else "KRYLOV_SCHUR"
+        events.append((match.start(), stage, match.group(0), {
+            "solver_status_code": int(match.group(2)),
+            "linear_iterations": int(match.group(3)),
+            "true_residual": float(match.group(4)),
+            "true_residual_relative": float(match.group(5)),
+        }))
     for match in _SST_FAILURE.finditer(content):
         events.append((match.start(), "SST", match.group(0), {}))
     for match in _GLOBAL_FAILURE.finditer(content):
@@ -113,39 +91,27 @@ def diagnose_campaign(path: Path) -> dict:
             continue
         log_file = Path(item["log"])
         if not log_file.is_file():
-            diagnostic = {
-                "first_blocker": "LOG_MISSING",
-                "proof_status": "NOT_QUALIFIED",
-            }
+            diagnostic = {"first_blocker": "LOG_MISSING", "proof_status": "NOT_QUALIFIED"}
             sha = None
         else:
             contents = log_file.read_bytes()
             sha = hashlib.sha256(contents).hexdigest()
-            diagnostic = classify_log(
-                contents.decode("utf-8", "replace"),
-                execution=item.get("execution", "NOT_RUN"),
-                exit_code=item.get("exit_code"),
-            )
-        cases.append(
-            {
-                "case": item["case"],
-                "execution": item.get("execution"),
-                "exit_code": item.get("exit_code"),
-                "wall_seconds": item.get("wall_seconds"),
-                "case_hdf5_sha256": item.get("mesh_sha256"),
-                "binary_sha256": item.get("binary_sha256"),
-                "log_sha256": sha,
-                "nonlinear_v8_proven": item.get("bfs_v8_gate", {}).get(
-                    "nonlinear_v8_proven", False
-                ),
-                "independent_observation": diagnostic,
-            }
-        )
-    return {
-        "schema": "CFDX-BFS-DIAGNOSTIC-MATRIX/v10",
-        "physical_qualification": "NOT_EVALUATED",
-        "cases": cases,
-    }
+            diagnostic = classify_log(contents.decode("utf-8", "replace"),
+                execution=item.get("execution", "NOT_RUN"), exit_code=item.get("exit_code"))
+        cases.append({
+            "case": item["case"],
+            "execution": item.get("execution"),
+            "exit_code": item.get("exit_code"),
+            "wall_seconds": item.get("wall_seconds"),
+            "case_hdf5_sha256": item.get("mesh_sha256"),
+            "binary_sha256": item.get("binary_sha256"),
+            "log_sha256": sha,
+            "nonlinear_v8_proven": item.get("bfs_v8_gate", {}).get("nonlinear_v8_proven", False),
+            "independent_observation": diagnostic,
+        })
+    return {"schema": "CFDX-BFS-DIAGNOSTIC-MATRIX/v10",
+            "physical_qualification": "NOT_EVALUATED",
+            "cases": cases}
 
 
 def main() -> int:
@@ -155,20 +121,12 @@ def main() -> int:
     args = parser.parse_args()
     record = diagnose_campaign(args.campaign)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     for item in record["cases"]:
-        print(
-            item["case"],
-            item["execution"],
-            item["independent_observation"]["first_blocker"],
-        )
-    return (
-        0
-        if record["cases"] and all(x["nonlinear_v8_proven"] for x in record["cases"])
-        else 2
-    )
+        print(item["case"], item["execution"],
+              item["independent_observation"]["first_blocker"])
+    return 0 if record["cases"] and all(
+        x["nonlinear_v8_proven"] for x in record["cases"]) else 2
 
 
 if __name__ == "__main__":
