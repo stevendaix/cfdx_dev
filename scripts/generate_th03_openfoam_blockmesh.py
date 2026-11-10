@@ -425,6 +425,7 @@ def make_case_setup(
     sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
+    openfoam_kqr_wall_v16: bool = False,
     *,
     sst_provisional: bool = False,
     sst_picard_damping: float = 1.0,
@@ -519,7 +520,8 @@ def make_case_setup(
             (SSTScalarBoundaryType.FIXED_VALUE, SSTScalarBoundaryType.FIXED_VALUE)
             if name == "inlet"
             else (
-                SSTScalarBoundaryType.WALL_K_ZERO,
+                (SSTScalarBoundaryType.WALL_KQ_R
+                 if openfoam_kqr_wall_v16 else SSTScalarBoundaryType.WALL_K_ZERO),
                 SSTScalarBoundaryType.WALL_OMEGA_SST,
             )
             if kind == "wall"
@@ -739,6 +741,7 @@ def write_case(
     sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
+    openfoam_kqr_wall_v16: bool = False,
     sst_provisional: bool = False,
     sst_picard_damping: float = 1.0,
     sst_relative_gate: bool = False,
@@ -779,6 +782,7 @@ def write_case(
         sst_omega_first,
         sst_wall_factor,
         sst_inner_iterations,
+        openfoam_kqr_wall_v16=openfoam_kqr_wall_v16,
         sst_provisional=sst_provisional,
         sst_picard_damping=sst_picard_damping,
         sst_relative_gate=sst_relative_gate,
@@ -1001,6 +1005,10 @@ def main() -> int:
         help="Experimental extended-precision local SST residual gate; original FP64 also logged.",
     )
     parser.add_argument(
+        "--openfoam-kqr-wall-v16", action="store_true",
+        help="kqRWallFunction: k zeroGradient, NOT k=0; other OpenFOAM wall laws still separate",
+    )
+    parser.add_argument(
         "--sst-molecular-wall-diffusion",
         action="store_true",
         help="Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.",
@@ -1086,6 +1094,7 @@ def main() -> int:
             sst_omega_first=args.sst_omega_first,
             sst_wall_factor=args.sst_wall_factor,
             sst_inner_iterations=args.sst_inner_iterations,
+            openfoam_kqr_wall_v16=args.openfoam_kqr_wall_v16,
             sst_provisional=args.sst_provisional,
             sst_picard_damping=args.sst_picard_damping,
             sst_relative_gate=args.sst_relative_gate,
