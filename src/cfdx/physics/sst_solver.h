@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cfdx/physics/turbulence_solver.h"
+#include "cfdx/physics/sst_jfnk_v22.h"
+#include "cfdx/physics/sst_anderson_v20.h"
 #include "cfdx/physics/sst_fp64_stall_v14.h"
 #include "cfdx/physics/sst_fp64_stall_v14.h"
 #include "cfdx/physics/scalar_transport_gradient.h"
@@ -365,6 +367,92 @@ inline double sst_linear_tolerance_for_solution_defect(
     return std::max(translated, fp64_floor);
 }
 
+// V19 numerical improvement: iterative refinement of the *unchanged*
+// frozen SST A*x=b in solution units. A large Dirichlet omega wall RHS can
+// dominate ||b||_2 and force a relative Krylov stop while a small interior
+// row is still wrong. Solve D^{-1} A delta = D^{-1}(b-A*x) with D_ii =
+// sum_j |A_ij|, then verify A*(x+delta)-b on ORIGINAL coefficients.
+// This is an opt-in local linear correction, not a nonlinear or physical
+// convergence certificate. Never change the accepted iterate on failure.
+struct SSTEquilibratedDefectCorrectionV19 {
+    bool attempted = false;
+    bool accepted = false;
+    double before = 0.0;
+    double after = 0.0;
+    std::size_t iterations = 0;
+};
+
+inline SSTEquilibratedDefectCorrectionV19 sst_equilibrated_defect_correction_v19(
+    const ScalarEquation& original, cfdx::core::Vector& solution,
+    double defect_tolerance)
+{
+    if (!std::isfinite(defect_tolerance) || !(defect_tolerance > 0.0) ||
+        solution.size() != original.rhs.size() || solution.empty() ||
+        original.diagonal.size() != solution.size() ||
+        original.matrix.n_rows() != solution.size() ||
+        original.matrix.n_cols() != solution.size())
+        throw std::invalid_argument("V19 SST equilibrated correction: invalid equation");
+    SSTEquilibratedDefectCorrectionV19 audit;
+    audit.before = sst_equation_solution_defect(original,solution);
+    audit.after = audit.before;
+    if (audit.before <= defect_tolerance) return audit;
+    audit.attempted=true;
+    ScalarEquation scaled=original;
+    const auto* offsets=original.matrix.row_offsets_data();
+    const auto* columns=original.matrix.columns_data();
+    const auto* values=original.matrix.values_data();
+    auto* scaled_values=scaled.matrix.values_data();
+    for (std::size_t row=0;row<solution.size();++row) {
+        long double rhs=static_cast<long double>(original.rhs(row));
+        long double row_norm=0.0L;
+        for (auto j=offsets[row];j<offsets[row+1];++j) {
+            const auto col=columns[j];
+            if (col>=solution.size() || !std::isfinite(values[j]) ||
+                !std::isfinite(solution(col)))
+                throw std::invalid_argument("V19 SST correction: non-finite original row");
+            rhs-=static_cast<long double>(values[j]) *
+                 static_cast<long double>(solution(col));
+            row_norm+=std::abs(static_cast<long double>(values[j]));
+        }
+        if (!(row_norm>0.0L) || !std::isfinite(rhs) || !std::isfinite(row_norm))
+            throw std::invalid_argument("V19 SST correction: singular or non-finite row");
+        const long double scaled_rhs=rhs/row_norm;
+        if (!std::isfinite(scaled_rhs) ||
+            std::abs(scaled_rhs)>std::numeric_limits<double>::max())
+            throw std::domain_error("V19 SST correction: unrepresentable scaled RHS");
+        scaled.rhs(row)=static_cast<double>(scaled_rhs);
+        for (auto j=offsets[row];j<offsets[row+1];++j)
+            scaled_values[j]=static_cast<double>(
+                static_cast<long double>(values[j])/row_norm);
+        scaled.diagonal[row]=original.diagonal[row]/static_cast<double>(row_norm);
+    }
+    cfdx::core::Vector delta(solution.size(),0.0);
+    const ScalarSolveControls stricter{2000,
+        std::min(1e-12,defect_tolerance*0.01),1.0};
+    const auto linear=solve_scalar_equation(scaled,delta,stricter);
+    audit.iterations=linear.iterations;
+    if (linear.status!=cfdx::core::SolverStatus::CONVERGED) return audit;
+    cfdx::core::Vector candidate=solution;
+    bool changed=false;
+    for (std::size_t i=0;i<solution.size();++i) {
+        if (!std::isfinite(delta(i)) || !std::isfinite(candidate(i)+delta(i)))
+            return audit;
+        const double next=candidate(i)+delta(i);
+        changed |= next!=candidate(i);
+        candidate(i)=next;
+    }
+    if (!changed) return audit;
+    const double after=sst_equation_solution_defect(original,candidate);
+    // Decline even a converged auxiliary correction unless it proves a
+    // substantial decrease on the original matrix and RHS.
+    if (std::isfinite(after) && after<audit.before*0.9) {
+        solution=std::move(candidate);
+        audit.after=after;
+        audit.accepted=true;
+    }
+    return audit;
+}
+
 inline std::pair<double,double> compute_sst_blending(
     double k, double omega, double wall_distance,
     double molecular_viscosity, double beta_star,
@@ -396,6 +484,179 @@ inline std::pair<double,double> compute_sst_blending(
                                 0.0,1.0,0.856);
 }
 
+
+}
+    return report;
+    production = std::move(staged_production);
+    omega_faces = std::move(staged_faces);
+    omega = std::move(staged_omega);
+    }
+        staged_production = std::move(settled_production);
+        staged_faces = std::move(settled_faces);
+            throw std::domain_error("V21 SST owner synchronization: wall target depends on projected omega");
+            64.0*std::numeric_limits<double>::epsilon())
+        if (report.relative_after >
+        // an implicit wall Jacobian; fail closed instead of manufacturing one.
+        // resynchronizations. A target that depends materially on omega needs
+        // Do not hide a coupled wall fixed point with an arbitrary number of
+        }
+                gap/std::max({omega_floor,std::abs(staged_omega(row)),std::abs(target)}));
+            report.relative_after = std::max(report.relative_after,
+            report.maximum_after = std::max(report.maximum_after,gap);
+            const double gap = std::abs(staged_omega(row)-target);
+                throw std::domain_error("V21 SST owner synchronization: invalid refreshed target");
+            if (!std::isfinite(target) || target < omega_floor)
+            const double target = settled_production.omega_owner_by_cell[row];
+            if (!owner_mask[row]) continue;
+        for (std::size_t row = 0; row < omega.size(); ++row) {
+            throw std::domain_error("V21 SST owner synchronization: unstable wall ownership");
+            settled_production.has_omega_owner_cell != owner_mask)
+        if (!settled_production.has_owner_omega_constraints() ||
+        settled_production.validate(k.size());
+        callback(k, staged_omega, settled_faces, settled_production);
+        SSTWallProductionV17 settled_production;
+        ScalarBoundaryFaceValues settled_faces;
+        // must correspond to the *projected* omega, not the original trial.
+        // A second evaluation is essential: the production source G and nu_t
+        }
+            ++report.owners;
+            staged_omega(row) = value;
+            }
+                report.worst_cell = row;
+                report.maximum_before = gap;
+            if (gap >= report.maximum_before) {
+            const double gap = std::abs(previous-value);
+                throw std::domain_error("V21 SST owner synchronization: invalid wall value");
+                !std::isfinite(value) || value < omega_floor)
+            if (!std::isfinite(previous) || previous < omega_floor ||
+            const double previous = staged_omega(row);
+            const double value = staged_production.omega_owner_by_cell[row];
+            if (!owner_mask[row]) continue;
+        for (std::size_t row = 0; row < omega.size(); ++row) {
+        const auto owner_mask = staged_production.has_omega_owner_cell;
+    if (staged_production.has_owner_omega_constraints()) {
+    SSTWallOwnerSyncV21 report;
+    staged_production.validate(k.size());
+    callback(k, staged_omega, staged_faces, staged_production);
+    SSTWallProductionV17 staged_production;
+    ScalarBoundaryFaceValues staged_faces;
+    auto staged_omega = omega;
+        throw std::invalid_argument("V21 SST owner synchronization: invalid inputs");
+        !(omega_floor > 0.0) || !std::isfinite(omega_floor))
+    if (!callback || k.size() == 0 || k.size() != omega.size() ||
+{
+    double omega_floor)
+    SSTWallProductionV17& production,
+    ScalarBoundaryFaceValues& omega_faces,
+    const SSTWallRefreshV17& callback,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+inline SSTWallOwnerSyncV21 sst_synchronize_wall_owner_v21(
+
+};
+    double relative_after = 0.0;
+    double maximum_after = 0.0;
+    double maximum_before = 0.0;
+    std::size_t worst_cell = 0;
+    std::size_t owners = 0;
+struct SSTWallOwnerSyncV21 {
+// Publish no field or wall source until the complete consistency check passes.
+// wall callback whose omega target changes when the owner value changes.
+// project all owner cells on a STAGED field, then refresh again to detect a
+// of any convergence criterion. Refresh k/omega/nu_t/G/face omega together,
+// This optional projection is a constrained nonlinear trial, NOT a relaxation
+//
+// against the original refreshed constraint, never a frozen approximation.
+// after k is updated. The returned-state residual MUST still be evaluated
+// k, hence its omega solution is not generally on the constraint manifold
+// omega_i = omega_wall_i(k,U,...). A frozen scalar solve uses the previous
+// V21: on omegaWallFunction owner cells the PDE row is *replaced* by
+
+}
+    return audit;
+    }
+        ++audit.owners;
+        }
+            audit.worst_cell=i;
+            audit.max_absolute_mismatch=delta;
+        if (delta>audit.max_absolute_mismatch) {
+            throw std::invalid_argument("V18 omega owner audit: non-finite state");
+        if (!std::isfinite(delta))
+        const double delta=std::abs(omega(i)-walls->omega_owner_by_cell[i]);
+        if (!walls->has_omega_owner_cell[i]) continue;
+    for (std::size_t i=0;i<omega.size();++i) {
+    walls->validate(omega.size());
+    if (!walls || !walls->has_owner_omega_constraints()) return audit;
+    SSTWallOwnerConstraintAuditV18 audit;
+{
+    const SSTWallProductionV17* walls)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+inline SSTWallOwnerConstraintAuditV18 sst_wall_owner_audit_v18(
+};
+    std::size_t worst_cell=0;
+    double max_absolute_mismatch=0.0;
+    std::size_t owners=0;
+struct SSTWallOwnerConstraintAuditV18 {
+
+}
+    return constrained;
+    equation=std::move(updated);
+    }
+        updated.diagonal[row]=1.0;
+        updated.rhs(row)=walls->omega_owner_by_cell[row];
+            values[j]=cols[j]==row ? 1.0 : 0.0;
+        for (auto j=offsets[row];j<offsets[row+1];++j)
+        if (!walls->has_omega_owner_cell[row]) continue;
+    for (std::size_t row=0;row<n;++row) {
+    auto* values=updated.matrix.values_data();
+    auto updated=equation;
+    }
+        ++constrained;
+            throw std::invalid_argument("V18 omega owner constraint: missing diagonal");
+        if (!diagonal_found)
+            diagonal_found |= cols[j]==row;
+        for (auto j=offsets[row];j<offsets[row+1];++j)
+        bool diagonal_found=false;
+        if (!walls->has_omega_owner_cell[row]) continue;
+    for (std::size_t row=0;row<n;++row) {
+    std::size_t constrained=0;
+    const auto* cols=equation.matrix.columns_data();
+    const auto* offsets=equation.matrix.row_offsets_data();
+    // not permission to manufacture a new graph without informing Krylov.
+    // BEFORE modifying any coefficient. A missing diagonal is an error,
+    // Transactional: check diagonal presence for every constrained row
+        throw std::invalid_argument("V18 omega owner constraint: malformed equation");
+        equation.diagonal.size()!=n)
+    if (equation.matrix.n_rows()!=n || equation.matrix.n_cols()!=n ||
+    walls->validate(n);
+    const auto n=equation.rhs.size();
+    if (!walls || !walls->has_owner_omega_constraints()) return 0;
+{
+    ScalarEquation& equation, const SSTWallProductionV17* walls)
+inline std::size_t sst_apply_omega_owner_constraints_v18(
+// different operator could incorrectly certify the returned SST state.
+// Reassembly must call this same routine: otherwise a small residual of a
+// CURRENT omega equation, retaining every other row and the original RHS.
+// only Dirichlet values at wall faces. Apply an exact row constraint to the
+// The OpenFOAM omegaWallFunction manipulates the owner-cell equations, not
+    }
+        return !has_omega_owner_cell.empty();
+    bool has_owner_omega_constraints() const noexcept {
+                throw std::invalid_argument("V18 omega owner constraint: invalid value");
+                 !std::isfinite(omega_owner_by_cell[i])))
+                (!has_wall_cell[i] || !(omega_owner_by_cell[i]>0.) ||
+            if (has_omega_owner_cell[i] &&
+        for (std::size_t i=0;owner_enabled && i<n;++i)
+            throw std::invalid_argument("V18 omega owner constraint: invalid size");
+            (omega_owner_by_cell.size()!=n || has_omega_owner_cell.size()!=n))
+        if (owner_enabled &&
+            !has_omega_owner_cell.empty();
+        const bool owner_enabled = !omega_owner_by_cell.empty() ||
+    std::vector<unsigned char> has_omega_owner_cell;
+    std::vector<double> omega_owner_by_cell;
+    // Empty vectors mean the V17 behaviour is preserved exactly.
+    // Dirichlet value, this replaces the owner ROW of the omega equation.
+    // V18 experimental owner-cell omega constraint. Unlike a boundary face
 // V17: a wall-production constraint is expressed per unit carrier mass
 // (m2/s3), not as the volume-integrated source rho*G. It is intentionally
 // optional; the legacy SST operator stays unchanged when this is absent.
@@ -546,6 +807,7 @@ inline TurbulenceTransportResult solve_sst_transport(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
             omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
             nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+        sst_apply_omega_owner_constraints_v18(eqw,wall_production);
 
         // Relative mode converts the requested dimensionless tolerance into
         // each field's physical solution units before the Krylov solve.
@@ -602,6 +864,32 @@ inline TurbulenceTransportResult solve_sst_transport(
         } else {
             rk=solve_scalar_equation(eqk,k_solution,k_sc);
             rw=solve_scalar_equation(eqw,omega_solution,omega_sc);
+        }
+        if (controls.sst_equilibrated_defect_correction_v19) {
+            double omega_step=0.0;
+            for (std::size_t i=0;i<n;++i)
+                omega_step=std::max(omega_step,std::abs(omega_solution(i)-oldw(i)));
+            if (omega_step<=1e-5) {
+                const auto before=omega_solution;
+                const auto correction=sst_equilibrated_defect_correction_v19(
+                    eqw,omega_solution,tolerance);
+                if (correction.accepted) {
+                    for (std::size_t i=0;i<n;++i) {
+                        if (!(omega_solution(i)>=controls.omega_min) ||
+                            !std::isfinite(omega_solution(i))) {
+                            omega_solution=before;
+                            break;
+                        }
+                    }
+                }
+                if (std::getenv("CFDX_SST_DIAGNOSTICS") && correction.attempted)
+                    std::cerr << "SST_EQUILIBRATED_DEFECT_V19"
+                              << " before=" << correction.before
+                              << " after=" << sst_equation_solution_defect(eqw,omega_solution)
+                              << " accepted=" << (correction.accepted &&
+                                   sst_equation_solution_defect(eqw,omega_solution)<correction.before)
+                              << " iterations=" << correction.iterations << '\n';
+            }
         }
         result.last_k_linear_status = rk.status;
         result.last_second_linear_status = rw.status;
@@ -676,7 +964,10 @@ struct SSTNonlinearResidualSample {
     double omega_local_roundoff_gap = std::numeric_limits<double>::quiet_NaN();
 };
 
-inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
+// V22: a single FV assembly is the source of BOTH the scalar convergence
+// certificate and the matrix-free coupled SST nonlinear residual. No alternate
+// source formula, wall closure or gradient operator is introduced here.
+inline std::pair<ScalarEquation,ScalarEquation> sst_reassembled_equations_v22(
     const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
@@ -715,14 +1006,102 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
         ? sst_face_diffusion_coefficients(mesh,geometry,gamma_w,omega_bcs,
                                           omega_face_values,controls)
         : std::vector<double>{};
-    const auto eqk=assemble_scalar_equation(
+    auto eqk=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
         nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
         nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
-    const auto eqw=assemble_scalar_equation(
+    auto eqw=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
         omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega,
         nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+    sst_apply_omega_owner_constraints_v18(eqw,wall_production);
+    return {std::move(eqk),std::move(eqw)};
+}
+
+// V22 signed, per-ROW nonlinear residual. Unlike a scalar max certificate this
+// retains the full vector [Rk,Romega] needed by J*v. The fixed nonlinear
+// state is assembled afresh at each trial, using the production FV equations.
+struct SSTCoupledResidualV22 {
+    std::vector<double> values;
+    std::vector<double> row_norms;
+    std::vector<double> local_scales;
+    std::vector<double> diagonal;
+};
+
+inline SSTCoupledResidualV22 sst_coupled_residual_v22(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs,
+    const ScalarBoundaryConditions& omega_bcs,
+    const ScalarBoundaryFaceValues* omega_face_values,
+    const SSTWallProductionV17* wall_production = nullptr)
+{
+    const auto eq = sst_reassembled_equations_v22(
+        mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,controls,
+        k_bcs,omega_bcs,omega_face_values,wall_production);
+    const std::size_t n=mesh.n_cells();
+    SSTCoupledResidualV22 out;
+    out.values.resize(2*n);
+    out.row_norms.resize(2*n);
+    out.local_scales.resize(2*n);
+    out.diagonal.resize(2*n);
+    for (std::size_t part=0;part<2;++part) {
+        const auto& equation=part==0?eq.first:eq.second;
+        const auto& field=part==0?k:omega;
+        const double floor=part==0?controls.k_min:controls.omega_min;
+        const auto* offsets=equation.matrix.row_offsets_data();
+        const auto* cols=equation.matrix.columns_data();
+        const auto* vals=equation.matrix.values_data();
+        for (std::size_t i=0;i<n;++i) {
+            long double signed_sum=-static_cast<long double>(equation.rhs(i));
+            double row_norm=0.0,diag=0.0,scale=std::max(floor,std::abs(field(i)));
+            for (auto entry=offsets[i];entry<offsets[i+1];++entry) {
+                const auto col=cols[entry];
+                if (col>=n || !std::isfinite(vals[entry]) ||
+                    !std::isfinite(field(col)))
+                    throw std::domain_error("V22 SST vector residual: invalid FV row");
+                signed_sum+=static_cast<long double>(vals[entry])*field(col);
+                row_norm+=std::abs(vals[entry]);
+                if (col==i) diag+=vals[entry];
+                scale=std::max(scale,std::abs(field(col)));
+            }
+            const auto residual=static_cast<double>(signed_sum);
+            if (!(row_norm>0.) || !std::isfinite(row_norm) ||
+                !(scale>0.) || !std::isfinite(scale) || !std::isfinite(residual))
+                throw std::domain_error("V22 SST vector residual: nonfinite physical defect");
+            out.values[part*n+i]=residual;
+            out.row_norms[part*n+i]=row_norm;
+            out.local_scales[part*n+i]=scale;
+            out.diagonal[part*n+i]=diag;
+        }
+    }
+    return out;
+}
+
+inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs,
+    const ScalarBoundaryConditions& omega_bcs,
+    const ScalarBoundaryFaceValues* omega_face_values,
+    const SSTWallProductionV17* wall_production = nullptr)
+{
+    const std::size_t n = mesh.n_cells();
+    const auto equations=sst_reassembled_equations_v22(
+        mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,controls,
+        k_bcs,omega_bcs,omega_face_values,wall_production);
+    const auto& eqk=equations.first;
+    const auto& eqw=equations.second;
     cfdx::core::Vector ks(n), ws(n);
     for(std::size_t i=0;i<n;++i) { ks(i)=k(i); ws(i)=omega(i); }
     const auto k_audit=sst_local_residual_precision_audit(eqk,ks,controls.k_min);
@@ -768,6 +1147,8 @@ struct SSTCellDiscreteBudget {
     double wall_owner_diffusion_flux = 0.0;
     double wall_molecular_diffusion_flux = 0.0;
     std::size_t dirichlet_wall_faces = 0;
+    bool owner_constraint_row = false;
+    double owner_constraint_target = 0.0;
 };
 
 inline double sst_signed_equation_row_residual(
@@ -940,6 +1321,28 @@ sst_reassembled_discrete_cell_budgets(
                                  k_bcs,nullptr,controls,row,controls.k_min);
     auto omega_budget=sst_cell_discrete_budget(mesh,geometry,mass_flux,omega,sw,spw,gamma_w,
                                  omega_bcs,omega_face_values,controls,row,controls.omega_min);
+    }
+        omega_budget.wall_molecular_diffusion_flux=0.;
+        omega_budget.wall_owner_diffusion_flux=0.;
+        omega_budget.wall_orthogonal_flux=0.;
+        omega_budget.dirichlet_wall_faces=0;
+                      std::abs(omega_budget.owner_constraint_target)});
+            std::max({controls.omega_min,std::abs(omega(row)),
+        omega_budget.relative_local=std::abs(omega_budget.full_residual)/
+        omega_budget.closure_error=0.;
+        omega_budget.recomposed=omega_budget.full_residual;
+        omega_budget.implicit_source=omega(row);
+        omega_budget.explicit_source=-omega_budget.owner_constraint_target;
+        omega_budget.diffusion=0.;
+        omega_budget.convection=0.;
+        omega_budget.full_residual=omega(row)-omega_budget.owner_constraint_target;
+        omega_budget.owner_constraint_target=wall_production->omega_owner_by_cell[row];
+        omega_budget.owner_constraint_row=true;
+        // enforced row; they remain separately diagnosable by the raw budget.
+        // Never report the unmodified PDE sources as if they decomposed this
+        // The transport equation is replaced by an owner value constraint.
+        wall_production->has_omega_owner_cell[row]) {
+    if (wall_production && wall_production->has_owner_omega_constraints() &&
     const auto [f1,f2]=compute_sst_blending(k(row),omega(row),wall_distance(row),
         controls.molecular_viscosity,controls.beta_star,cross[row],controls.density,
         controls.sst_sigma_w2);
@@ -966,6 +1369,15 @@ sst_reassembled_discrete_cell_budgets(
         omega_budget.explicit_source+omega_budget.implicit_source-
         (omega_budget.physical_production+omega_budget.physical_destruction+
          omega_budget.physical_cross_diffusion);
+    if (omega_budget.owner_constraint_row) {
+        // Replaced equation: no PDE source decomposition is claimed here.
+        // `owner_constraint_row` tells consumers to read this as an
+        // enforced boundary constraint, not a volume-source balance.
+        omega_budget.physical_production=0.;
+        omega_budget.physical_destruction=0.;
+        omega_budget.physical_cross_diffusion=0.;
+        omega_budget.nonlinear_source_identity_error=0.;
+    }
     return {k_budget,omega_budget};
 }
 
@@ -1014,6 +1426,21 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         throw std::invalid_argument("SST dynamic blending requires SST and valid iteration controls");
     TurbulenceTransportResult result;
     std::size_t consecutive_line_search_stalls=0;
+    };
+        return sync;
+        }
+            refresh_wall(kk,ww);
+        } else {
+                controls.omega_min);
+                kk,ww,*wall_refresh,active_omega_values,active_wall_g,
+            sync=sst_synchronize_wall_owner_v21(
+        if (controls.sst_owner_consistent_projection_v21) {
+        SSTWallOwnerSyncV21 sync;
+    const auto refresh_projected = [&](const auto& kk, auto& ww) {
+            "V21 SST owner projection requires a dynamic wall refresh callback");
+        throw std::invalid_argument(
+    if (controls.sst_owner_consistent_projection_v21 && !wall_refresh)
+    SSTAndersonV20 anderson_v20;
     SSTFp64StallV14 fp64_stall;
     // Refresh exactly one (wall omega, wall G) closure for every candidate
     // k/omega pair. No pre-SST frozen wall source may be passed off as the
@@ -1050,6 +1477,12 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         }
         const auto inner=solve_sst_transport(
             mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,
+            raw_wall_sync=refresh_projected(k,omega);
+        if (controls.sst_owner_consistent_projection_v21)
+        SSTWallOwnerSyncV21 raw_wall_sync;
+        // Re-evaluation later uses the same refreshed omega/G operator.
+        // line search. The old state remains untouched as the merit baseline.
+        // Assemble a wall-consistent *raw Picard proposal* for Anderson and
             k_bcs,omega_bcs,1,tolerance,face_values_now(),sources_now());
         // Optional Armijo-like backtracking on the *returned nonlinear SST
         // equations*, with the pressure/velocity/face flux held fixed.
@@ -1058,12 +1491,211 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         bool line_accepted = true;
         double line_old_merit = std::numeric_limits<double>::quiet_NaN();
         double line_new_merit = std::numeric_limits<double>::quiet_NaN();
-        if (controls.sst_nonlinear_line_search && !inner.converged) {
+        } else if (controls.sst_nonlinear_line_search && !inner.converged) {
+                          << " qualified=0\n";
+                          << " accepted=" << line_accepted
+                          << " new_merit=" << line_new_merit
+                          << " old_merit=" << line_old_merit
+                          << " alpha=" << line_alpha
+                          << " theta=" << best_theta
+                          << "SST_ANDERSON_V20 iteration=" << iter
+                std::cerr << std::scientific << std::setprecision(10)
+                (iter==1||iter%10==0||!line_accepted))
+            if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+            refresh_wall(k,omega);
+            }
+                ++consecutive_line_search_stalls;
+                line_alpha=0.;line_new_merit=line_old_merit;
+                k=old_k;omega=old_w;
+            } else {
+                consecutive_line_search_stalls=0;
+                line_alpha=best_alpha;line_new_merit=best_merit;
+                k=std::move(best_k);omega=std::move(best_w);
+            if (line_accepted) {
+            line_accepted=std::isfinite(best_merit);
+            }
+                }
+                    }
+                        best_alpha=alpha;best_theta=choice==0?0.:accelerated.theta;
+                        best_merit=merit;best_k=k;best_w=omega;
+                        merit<best_merit) {
+                    if (sst_nonlinear_step_reduces_merit(line_old_merit,merit,alpha)&&
+                        controls,k_bcs,omega_bcs,face_values_now(),sources_now()));
+                        mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    const double merit=sst_nonlinear_merit(sst_reassembled_returned_state_residual(
+                    refresh_projected(k,omega);
+                    if (!admissible) continue;
+                    }
+                        k(i)=ck;omega(i)=cw;
+                        }
+                            admissible=false;break;
+                            ck<controls.k_min||cw<controls.omega_min) {
+                        if (!std::isfinite(ck)||!std::isfinite(cw)||
+                        const double cw=old_w(i)+alpha*(tw[i]-old_w(i));
+                        const double ck=old_k(i)+alpha*(tk[i]-old_k(i));
+                    for (std::size_t i=0;i<n;++i) {
+                    bool admissible=true;
+                for (double alpha:{1.,0.5,0.25,0.125,0.0625,0.03125,0.015625,0.0078125}) {
+                const auto& tw=choice==0?gw:accelerated.omega;
+                const auto& tk=choice==0?gk:accelerated.k;
+            for (int choice=0;choice<(accelerated.available?2:1);++choice) {
+            double best_alpha=0.,best_theta=0.;
+            auto best_k=old_k,best_w=old_w;
+            double best_merit=std::numeric_limits<double>::infinity();
+                controls,k_bcs,omega_bcs,face_values_now(),sources_now()));
+                mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+            line_old_merit=sst_nonlinear_merit(sst_reassembled_returned_state_residual(
+            refresh_wall(k,omega);
+            k=old_k;omega=old_w;
+            anderson_v20.record(xk,xw,gk,gw);
+                xk,xw,gk,gw,controls.k_min,controls.omega_min);
+            const auto accelerated=anderson_v20.propose(
+            }
+                gk[i]=raw_k(i);gw[i]=raw_w(i);
+                xk[i]=old_k(i);xw[i]=old_w(i);
+            for (std::size_t i=0;i<n;++i) {
+            std::vector<double> xk(n),xw(n),gk(n),gw(n);
+            const auto raw_k=k,raw_w=omega;
+            // never controls acceptance.
+            // reassembled SST physical residual. The frozen Krylov residual
+            // Both trial families use the *current* wall omega/G and a fully
+            // Safeguard: the two-depth extrapolation is only a proposal.
+
+        } else if (controls.sst_anderson_m2_v20 && !inner.converged) {
+                          << " qualified=0\n";
+                          << " reason=" << newton.reason
+                          << " accepted=" << line_accepted
+                              (best_choice==0 ? "picard" : "jfnk") : "none")
+                          << " selected=" << (line_accepted ?
+                          << " new_merit=" << line_new_merit
+                          << " old_merit=" << line_old_merit
+                          << " alpha=" << line_alpha
+                          << " evaluations=" << newton.function_evaluations
+                          << " linear_true_relative=" << newton.linear_true_relative
+                          << " proposed=" << newton.available
+                          << "SST_JFNK_V22 iteration=" << iter
+                std::cerr << std::scientific << std::setprecision(10)
+                (iter==1 || iter%10==0 || !line_accepted))
+            if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+            }
+                ++consecutive_line_search_stalls;
+                line_alpha=0.;line_new_merit=line_old_merit;
+                k=old_k;omega=old_w;
+            } else {
+                consecutive_line_search_stalls=0;
+                line_alpha=best_alpha;line_new_merit=best_merit;
+                k=std::move(best_k);omega=std::move(best_w);
+            if (line_accepted) {
+            line_accepted=std::isfinite(best_merit);
+            }
+                }
+                    }
+                        // nonlinear field is committed before acceptance.
+                        // Reject this trial only. Neither wall state nor
+                    } catch (const std::exception&) {
+                        }
+                            best_choice=choice;
+                            best_alpha=alpha;
+                            best_k=k;best_w=omega;
+                            best_merit=merit;
+                                line_old_merit,merit,alpha) && merit<best_merit) {
+                        if (sst_nonlinear_step_reduces_merit(
+                                face_values_now(),sources_now()));
+                                wall_distance,controls,k_bcs,omega_bcs,
+                                mesh,geometry,mass_flux,k,omega,strain_rate,
+                            sst_reassembled_returned_state_residual(
+                        const double merit=sst_nonlinear_merit(
+                        refresh_projected(k,omega);
+                    try {
+                    if (!feasible) continue;
+                    }
+                        k(i)=ck;omega(i)=cw;
+                        }
+                            feasible=false;break;
+                            ck<controls.k_min||cw<controls.omega_min) {
+                        if (!std::isfinite(ck)||!std::isfinite(cw)||
+                        const double cw=start_w(i)+alpha*(target_w-start_w(i));
+                        const double ck=start_k(i)+alpha*(target_k-start_k(i));
+                        const double target_w=choice==0?raw_w(i):newton.fields[n+i];
+                        const double target_k=choice==0?raw_k(i):newton.fields[i];
+                    for (std::size_t i=0;i<n;++i) {
+                    bool feasible=true;
+                                  0.015625,0.0078125}) {
+                for (double alpha:{1.,0.5,0.25,0.125,0.0625,0.03125,
+            for (std::size_t choice=0;choice<choices;++choice) {
+            const std::size_t choices=newton.available?2:1;
+            std::size_t best_choice=0;
+            double best_alpha=0.;
+            auto best_k=old_k,best_w=old_w;
+            double best_merit=std::numeric_limits<double>::infinity();
+                full_residual,jctl,diagonal_preconditioner);
+                physical,fixed_scales,n,controls.k_min,controls.omega_min,
+            const auto newton=sst_jfnk_propose_v22(
+            jctl.maximum_backtracks=7;
+            jctl.finite_difference_step=1e-7;
+            jctl.linear_relative_tolerance=0.25; // linear only, NOT SST convergence
+            jctl.krylov_dimension=32;
+            CoupledNewtonKrylovControls jctl;
+            };
+                    controls,k_bcs,omega_bcs,f,g).values;
+                    mesh,geometry,mass_flux,kk,ww,strain_rate,wall_distance,
+                return sst_coupled_residual_v22(
+                }
+                    f=&staging_faces;g=&staging_wall;
+                    staging_wall.validate(n);
+                    (*wall_refresh)(kk,ww,staging_faces,staging_wall);
+                if (wall_refresh) {
+                const SSTWallProductionV17* g=nullptr;
+                const ScalarBoundaryFaceValues* f=omega_face_values;
+                SSTWallProductionV17 staging_wall;
+                ScalarBoundaryFaceValues staging_faces;
+                }
+                    kk(i)=state[i];ww(i)=state[n+i];
+                for (std::size_t i=0;i<n;++i) {
+                auto kk=start_k,ww=start_w;
+            const SSTPhysicalResidualV22 full_residual=[&](const auto& state) {
+            }
+                diagonal_preconditioner[i]=std::clamp(frozen_log_diagonal,0.02,50.0);
+                    throw std::domain_error("V22 SST JFNK: invalid block diagonal");
+                if (!std::isfinite(frozen_log_diagonal))
+                    base_full.diagonal[i]*physical[i]/fixed_scales[i]);
+                const double frozen_log_diagonal=std::abs(
+                // It does not approximate away k/omega derivatives in J*v.
+                // preconditioner for the log-variable Newton system.
+                // Frozen scalar-transport Jacobi is only a LEFT
+                    throw std::domain_error("V22 SST JFNK: unusable fixed FV scale");
+                if (!(fixed_scales[i]>0.) || !std::isfinite(fixed_scales[i]))
+                fixed_scales[i]=base_full.row_norms[i]*base_full.local_scales[i];
+            for (std::size_t i=0;i<2*n;++i) {
+            }
+                physical[n+i]=start_w(i);
+                physical[i]=start_k(i);
+            for (std::size_t i=0;i<n;++i) {
+                                diagonal_preconditioner(2*n);
+            std::vector<double> physical(2*n),fixed_scales(2*n),
+                controls,k_bcs,omega_bcs,face_values_now(),sources_now());
+                mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+            const auto base_full=sst_coupled_residual_v22(
+            line_old_merit=sst_nonlinear_merit(base_sample);
+                mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+            const auto base_sample=sst_reassembled_returned_state_residual(
+            const auto start_k=k,start_w=omega;
+            refresh_projected(k,omega);
+            k=old_k;omega=old_w;
+            const auto raw_k=k,raw_w=omega;
+            // candidate with all wall face values and G refreshed.
+            // system: the final nonlinear merit is always recomputed on the
+            // SST certificate. Fixed row scales only condition the linear
+            // finite differences of the SAME FV assembly as the returned
+            // V22: joint [Rk,Romega] JFNK. The Krylov action is built by
+        if (controls.sst_jfnk_v22_experimental && !inner.converged) {
             auto trial_k=k, trial_w=omega;
             k=old_k; omega=old_w;
             refresh_wall(k,omega);
+            refresh_wall(k,omega);
             const auto starting=sst_reassembled_returned_state_residual(
                 mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                controls,k_bcs,omega_bcs,face_values_now(),sources_now());
                 controls,k_bcs,omega_bcs,face_values_now(),sources_now());
             line_old_merit=sst_nonlinear_merit(starting);
             line_accepted=false;
@@ -1074,6 +1706,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                     k(i)=old_k(i)+alpha*(trial_k(i)-old_k(i));
                     omega(i)=old_w(i)+alpha*(trial_w(i)-old_w(i));
                 }
+                refresh_projected(k,omega);
                 refresh_wall(k,omega);
                 const auto check=sst_reassembled_returned_state_residual(
                     mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
@@ -1112,6 +1745,27 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                 omega(i)=old_w(i)+alpha*(omega(i)-old_w(i));
             }
         }
+                      << " qualified=0\n";
+                      << " line_accepted=" << line_accepted
+                      << " worst_cell=" << raw_wall_sync.worst_cell
+                      << " final_relative=" << final_wall_sync.relative_after
+                      << " final_gap=" << final_wall_sync.maximum_after
+                      << " trial_gap=" << final_wall_sync.maximum_before
+                      << " initial_gap=" << raw_wall_sync.maximum_before
+                      << " owners=" << final_wall_sync.owners
+                      << "SST_OWNER_SYNC_V21 iteration=" << iter
+            std::cerr << std::scientific << std::setprecision(12)
+            (iter==1 || iter%100==0 || iter==max_iterations))
+            controls.sst_owner_consistent_projection_v21 &&
+        if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+            refresh_wall(k,omega);
+        else
+            final_wall_sync=refresh_projected(k,omega);
+        if (controls.sst_owner_consistent_projection_v21 && line_accepted)
+        SSTWallOwnerSyncV21 final_wall_sync;
+        // again to document the exact state used by the residual certificate.
+        // lies on the owner constraint manifold; refresh both G and omega
+        // Never modify a rejected old state. Any accepted candidate already
         refresh_wall(k,omega);
         const auto k_change = sst_field_update_diagnostic(
             old_k, k, controls.k_min);
@@ -1137,6 +1791,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             controls.sst_scale_aware_convergence ||
             controls.sst_picard_damping < 1.0 ||
             controls.sst_nonlinear_line_search ||
+            controls.sst_jfnk_v22_experimental ||
+            controls.sst_anderson_m2_v20 ||
             std::getenv("CFDX_SST_DIAGNOSTICS") != nullptr;
         SSTNonlinearResidualSample returned;
         if (must_audit_returned) {
@@ -1146,6 +1802,21 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             result.k_residual = returned.k_raw_inf;
             result.second_residual = returned.omega_raw_inf;
         }
+        }
+                      << " qualified=0\n";
+                      << " worst_cell=" << audit.worst_cell
+                      << " max_absolute_mismatch=" << audit.max_absolute_mismatch
+                      << " owners=" << audit.owners
+                      << "SST_WALL_OWNER_CONSTRAINT_V18 iteration=" << iter
+            std::cerr << std::scientific << std::setprecision(12)
+            const auto audit=sst_wall_owner_audit_v18(omega,sources_now());
+            (iter==1 || iter%100==0 || iter==max_iterations)) {
+            std::getenv("CFDX_SST_DIAGNOSTICS") &&
+        if (sources_now() && sources_now()->has_owner_omega_constraints() &&
+        // OpenFOAM or experimental BFS qualification certificate.
+        // pair, including corner area weights. Never count this as an
+        // unconstrained PDE. The target is refreshed on the SAME trial k/w
+        // V18: distinguish the exact owner equation from residuals of the
         // V16: expensive on-demand physical row budget, with no effect on the
         // solver path or any convergence gate. Compare exact full A*x-b with
         // separate advection, diffusion, production and destruction terms.
@@ -1189,6 +1860,48 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                     << " wall_owner_flux=" << b.wall_owner_diffusion_flux
                     << " wall_molecular_flux=" << b.wall_molecular_diffusion_flux
                     << " qualified=0\n";
+            }
+        }
+        // V20 read-only row-forensic comparison: the same discrete production
+        // operator and dynamically refreshed omega/G wall state are used for
+        // every sample. Guarded for small meshes to prevent accidental O(n^2)
+        // diagnostics on the 20k-cell BFS qualification mesh.
+        if (std::getenv("CFDX_SST_ASSEMBLY_TRACE_V20") && n<=4096 &&
+            must_audit_returned &&
+            (iter==1 || iter==2 || iter%100==0 || iter==max_iterations)) {
+            // V21: print the currently worst reassembled k/omega cells as
+            // well as the historical 77/357/369/426 probes. This matters
+            // after owner projection: the dominant defect can move into an
+            // adjacent *unconstrained* transport row (e.g. BFS cell 363).
+            // Diagnostic only, with no effect on assembly or acceptance.
+            const std::array<std::size_t, 7> audit_rows{{
+                77,357,363,369,426,returned.k_worst_cell,returned.omega_worst_cell}};
+            for (std::size_t j=0; j<audit_rows.size(); ++j) {
+                const std::size_t row=audit_rows[j];
+                if (row>=n || std::find(audit_rows.begin(),
+                   audit_rows.begin()+static_cast<std::ptrdiff_t>(j),row)
+                   !=audit_rows.begin()+static_cast<std::ptrdiff_t>(j)) continue;
+                const auto budgets=sst_reassembled_discrete_cell_budgets(
+                    mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    controls,k_bcs,omega_bcs,face_values_now(),row,sources_now());
+                for (const auto& item : {
+                        std::pair<const char*,SSTCellDiscreteBudget>{"k",budgets.first},
+                        std::pair<const char*,SSTCellDiscreteBudget>{"omega",budgets.second}}) {
+                    const auto& b=item.second;
+                    std::cerr << std::scientific << std::setprecision(12)
+                              << "SST_ASSEMBLY_V20 iteration=" << iter
+                              << " field=" << item.first << " cell=" << row
+                              << " convection=" << b.convection
+                              << " diffusion=" << b.diffusion
+                              << " production=" << b.physical_production
+                              << " destruction=" << b.physical_destruction
+                              << " cross=" << b.physical_cross_diffusion
+                              << " balance=" << b.full_residual
+                              << " closure_error=" << b.closure_error
+                              << " source_identity=" << b.nonlinear_source_identity_error
+                              << " constrained=" << b.owner_constraint_row
+                              << " qualified=0\n";
+                }
             }
         }
         // Opt-in diagnostics: dk/domega describe the DAMPED returned state,
@@ -1249,7 +1962,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         // With zero accepted step the old state is returned unchanged. A
         // continued repeat will reassemble the same operator indefinitely.
         // Exit early as UNCONVERGED; the carrier transaction will roll back.
-        if (controls.sst_nonlinear_line_search &&
+        if ((controls.sst_nonlinear_line_search || controls.sst_anderson_m2_v20 ||
+             controls.sst_jfnk_v22_experimental) &&
             consecutive_line_search_stalls >= 8 && !inner.converged) {
             if (std::getenv("CFDX_SST_DIAGNOSTICS"))
                 std::cerr << "SST_LINESEARCH_STAGNATED iteration=" << iter
