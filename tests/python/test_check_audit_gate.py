@@ -135,7 +135,9 @@ class ValidateFichesContractTests(unittest.TestCase):
             )
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
-    def test_v11_v13_v14_bfs_campaign_reports_are_exempt_from_method_fiche_template(self):
+    def test_v11_v13_v14_bfs_campaign_reports_are_exempt_from_method_fiche_template(
+        self,
+    ):
         report_names = (
             "52-bfs-v11-pression-pcd-sst.md",
             "53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md",
