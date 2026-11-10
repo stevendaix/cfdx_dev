@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "src/cfdx/python"))
 from generate_th03_openfoam_blockmesh import make_structured_mesh, write_case
-from qualify_bfs_v11_numerical_matrix import (  # noqa: E402
+from qualify_bfs_v11_numerical_matrix import (
     PROFILES,
     case_physics_signature,
     joint_returned_residual_summary,
