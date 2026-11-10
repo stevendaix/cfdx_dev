@@ -33,6 +33,7 @@
 #include "cfdx/physics/pcd_fp_capture.h"
 #include "cfdx/physics/pcd_fp_bisided_basis_v13.h"
 #include "cfdx/physics/pcd_fp_deflated_quality_v14.h"
+#include "cfdx/physics/pcd_fp_basis_registry_v15.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/pressure_continuity_line_search.h"
 #include "cfdx/physics/convection_continuation.h"
@@ -42,6 +43,7 @@
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/sst_openfoam_wall_audit_v7.h"
 #include "cfdx/physics/sst_openfoam_wall_coupling_v8.h"
+#include "cfdx/physics/sst_openfoam_wall_triplet_v15.h"
 #include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
 #include "cfdx/physics/global_nonlinear_residual_v8.h"
@@ -305,6 +307,12 @@ struct SSTProductionRuntime {
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
     bool allow_bounded_provisional_transport = false;
+    // V15 staged reference. Refuses incomplete per-face/cell values, promoted
+    // only on a fully accepted carrier+SST outer transaction. NO physical
+    // wall-function substitution; all three production operators must still
+    // be integrated/qualified before enabling such a substitution.
+    bool stage_openfoam_wall_triplet_v15 = false;
+    std::optional<SstOpenFoamWallTripletV15> committed_wall_triplet_v15;
 };
 
 struct IncompressibleSolverControls {
@@ -4602,7 +4610,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 std::cerr << row << ",";
             std::cerr << " original_operator_unchanged=1\n";
         }
-        if (!controls.coupling.pcd_fp_bisided_basis_file_experimental.empty()) {
+        const bool basis_by_directory =
+            !controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental.empty();
+        const bool basis_by_file =
+            !controls.coupling.pcd_fp_bisided_basis_file_experimental.empty();
+        if (basis_by_directory && basis_by_file)
+            throw std::invalid_argument("V15 select Fp basis directory OR single file, not both");
+        if (controls.coupling.pcd_fp_full_rank_action_v15_experimental &&
+            !basis_by_directory && !basis_by_file)
+            throw std::invalid_argument("V15 full-rank Fp action needs a certified basis source");
+        if (basis_by_directory || basis_by_file) {
             if (!pcd_ops->convection_diffusion_anchored ||
                 controls.coupling.pcd_fp_row_equilibration_experimental ||
                 controls.coupling.pcd_fp_second_pass_experimental ||
@@ -4613,11 +4630,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     "V14 bilateral Fp deflation requires the anchor and FGMRES; no scaling, second pass or commutator");
             pcd_ops->convection_diffusion_bisided =
                 std::make_unique<PcdFpBiNullspaceV13>(
-                    load_pcd_fp_bisided_basis_v13(
-                        controls.coupling.pcd_fp_bisided_basis_file_experimental,
-                        pcd_ops->convection_diffusion));
+                    basis_by_directory
+                        ? load_pcd_fp_basis_registry_v15(
+                            controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental,
+                            pcd_ops->convection_diffusion)
+                        : load_pcd_fp_bisided_basis_v13(
+                            controls.coupling.pcd_fp_bisided_basis_file_experimental,
+                            pcd_ops->convection_diffusion));
             std::cerr << "COUPLED_PCD_BILATERAL_V14 modes="
                       << pcd_ops->convection_diffusion_bisided->left.size()
+                      << " basis_registry=" << (basis_by_directory ? 1 : 0)
+                      << " full_rank_action=" << (controls.coupling.pcd_fp_full_rank_action_v15_experimental ? 1 : 0)
                       << " left_defect="
                       << pcd_ops->convection_diffusion_bisided->max_left_defect
                       << " right_defect="
@@ -4735,18 +4758,28 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 : pcd_ops->convection_diffusion_equilibrated
                     ? pcd_ops->convection_diffusion_equilibrated->matrix
                     : original_matrix;
+            const bool full_rank_deflation =
+                controls.coupling.pcd_fp_full_rank_action_v15_experimental &&
+                static_cast<bool>(pcd_ops->convection_diffusion_bisided);
             const Vector compatible_rhs = pcd_ops->convection_diffusion_bisided
                 ? pcd_ops->convection_diffusion_bisided->compatible_rhs(rhs) : rhs;
-            const Vector solving_rhs = pcd_ops->convection_diffusion_bisided
+            // V14 discarded W^T rhs and the matching Z component.  The
+            // resulting PCD map annihilated all left-null directions. V15
+            // optional full-rank action uses the ORIGINAL rhs with the
+            // regularised *auxiliary* operator (Fp + W Z^T), never with the
+            // singular original Fp. Outer coupled A,b are untouched.
+            const Vector solving_rhs = full_rank_deflation ? rhs
+                : pcd_ops->convection_diffusion_bisided
                 ? compatible_rhs : pcd_ops->convection_diffusion_anchored
                 ? pcd_ops->convection_diffusion_anchored->rhs(rhs)
                 : pcd_ops->convection_diffusion_equilibrated
                     ? pcd_fp_scaled_rhs(rhs,
                         pcd_ops->convection_diffusion_equilibrated->row_multipliers)
                     : rhs;
-            if (pcd_ops->convection_diffusion_bisided)
+            if (pcd_ops->convection_diffusion_bisided && !full_rank_deflation)
                 x=pcd_ops->convection_diffusion_bisided->canonical_solution(x);
-            else if (pcd_ops->convection_diffusion_anchored)
+            else if (!pcd_ops->convection_diffusion_bisided &&
+                     pcd_ops->convection_diffusion_anchored)
                 pcd_ops->convection_diffusion_anchored->pin_initial(x);
             auto* preconditioner = pcd_ops->convection_diffusion_preconditioner.get();
             // Native AMG can SET UP on this nonsymmetric Fp, then return an
@@ -4815,7 +4848,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument("PCD convection-diffusion requires GMRES or FGMRES");
             };
             auto result = solve_once(x);
-            if (pcd_ops->convection_diffusion_bisided)
+            if (pcd_ops->convection_diffusion_bisided && !full_rank_deflation)
                 x=pcd_ops->convection_diffusion_bisided->canonical_solution(x);
             auto quality = pcd_fp_true_residual(original_matrix, rhs, x_initial, x);
             auto auxiliary_quality = pcd_ops->convection_diffusion_bisided
@@ -4921,6 +4954,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " original_true_relative_initial=" << quality.relative_initial
                           << " original_true_linf=" << quality.final_linf
                           << " bilateral_deflation=" << (pcd_ops->convection_diffusion_bisided ? 1 : 0)
+                          << " full_rank_action=" << (full_rank_deflation ? 1 : 0)
                           << " left_incompatible_floor=" << (pcd_ops->convection_diffusion_bisided
                               ? pcd_ops->convection_diffusion_bisided->incompatibility_relative(rhs) : 0.0)
                           << " projected_original_true_relative=" << (pcd_ops->convection_diffusion_bisided
@@ -5150,33 +5184,31 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
     }
 
-    // Keep coupled-solver failures visible. Do not replace a failed Schur
-    // setup by identity-preconditioned GMRES: that would hide the defect in
-    // the production preconditioner and make the numerical gate non-diagnostic.
-    if (result.status != SolverStatus::CONVERGED)
-        return result;
+    // Recompute the independent true residual even for a failed Krylov
+    // attempt. An FGMRES status is not an independent measurement of A*x-b.
+    const auto krylov_status_before_certificate = result.status;
+    const double krylov_reported_before_certificate = result.residual_relative;
 
     // Independently recompute ||b-Ax|| after the linear solve.  The Krylov
     // result already carries a true residual, but keeping an explicit
     // post-solve matrix check here makes the coupled algebraic gate independent
     // from the nonlinear FV diagnostics and exposes any stale/inconsistent
     // solver bookkeeping.
-    double coupled_matrix_residual_sq = 0.0;
-    double coupled_rhs_norm_sq = 0.0;
+    long double coupled_matrix_residual = 0.0L;
+    long double coupled_rhs_norm = 0.0L;
     for (std::size_t row = 0; row < A.n_rows(); ++row) {
-        double ax = 0.0;
+        long double ax = 0.0L;
         const auto rb = A.row_offsets_data()[row];
         const auto re = A.row_offsets_data()[row + 1];
         for (std::size_t k = rb; k < re; ++k)
-            ax += A.values_data()[k] * x(A.columns_data()[k]);
-        const double r = b(row) - ax;
-        coupled_matrix_residual_sq += r * r;
-        coupled_rhs_norm_sq += b(row) * b(row);
+            ax += static_cast<long double>(A.values_data()[k]) * x(A.columns_data()[k]);
+        coupled_matrix_residual = std::hypot(
+            coupled_matrix_residual, static_cast<long double>(b(row)) - ax);
+        coupled_rhs_norm = std::hypot(
+            coupled_rhs_norm, static_cast<long double>(b(row)));
     }
-    const double coupled_matrix_residual = std::sqrt(coupled_matrix_residual_sq);
-    const double coupled_rhs_norm = std::sqrt(coupled_rhs_norm_sq);
-    const double coupled_matrix_relative =
-        coupled_matrix_residual / (coupled_rhs_norm > 0.0 ? coupled_rhs_norm : 1.0);
+    const double coupled_matrix_relative = static_cast<double>(
+        coupled_matrix_residual / (coupled_rhs_norm > 0.0L ? coupled_rhs_norm : 1.0L));
     if (!std::isfinite(coupled_matrix_residual) ||
         !std::isfinite(coupled_matrix_relative)) {
         result.status = SolverStatus::DIVERGED;
@@ -5187,8 +5219,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // The independently recomputed residual is the authoritative algebraic
     // gate. Never accept a Krylov-reported convergence if b-Ax is still above
     // the requested coupled linear tolerance.
-    result.residual = coupled_matrix_residual;
+    result.residual = static_cast<double>(coupled_matrix_residual);
     result.residual_relative = coupled_matrix_relative;
+    if (diagnostics.coupled_matrix_summary) {
+        std::cerr << "COUPLED_LINEAR_INDEPENDENT_V15"
+                  << " krylov_status=" << static_cast<int>(krylov_status_before_certificate)
+                  << " krylov_reported=" << krylov_reported_before_certificate
+                  << " long_double_true_relative=" << coupled_matrix_relative
+                  << " target=" << tolerance << "\n";
+    }
+    if (krylov_status_before_certificate != SolverStatus::CONVERGED)
+        return result;
     if (coupled_matrix_relative > tolerance) {
         result.status = SolverStatus::DIVERGED;
         return result;
@@ -5197,7 +5238,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
                   << coupled_matrix_residual
                   << " relative=" << coupled_matrix_relative
-                  << " gmres_reported=" << result.residual
+                  << " gmres_reported=" << krylov_reported_before_certificate
                   << "\n";
     }
 
@@ -9428,6 +9469,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         mesh, geometry, U, p);
         }
         SSTProductionStepResult sst_step;
+        std::optional<SstOpenFoamWallTripletV15> pending_wall_triplet_v15;
         MomentumResidualCertificate v8_refreshed_momentum =
             momentum_component_certificate;
         double sst_nu_t_relative_change = 0.0;
@@ -9542,6 +9584,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
+            // One physical candidate -> one complete (nut,G,omega) reference.
+            // This is stored only on outer transaction commit, never on a
+            // rejected SST or rejected U/p/flux candidate. Reference-only:
+            // none of the three FV boundary operators is changed in V15.
+            if (controls.sst_runtime->stage_openfoam_wall_triplet_v15) {
+                pending_wall_triplet_v15 = prepare_openfoam_wall_triplet_v15(
+                    mesh,geometry,controls.sst_runtime->wall_omega_sst_patches,
+                    U,*controls.sst_runtime->state,fixed_velocity_values,
+                    controls.sst_runtime->transport);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "SST_WALL_TRIPLET_STAGED_V15 iteration=" << iter
+                              << " faces=" << pending_wall_triplet_v15->wall_faces
+                              << " owners=" << pending_wall_triplet_v15->wall_cells
+                              << " corner_owners=" << pending_wall_triplet_v15->corner_cells
+                              << " momentum_applied=0 sst_applied=0 qualified=0\n";
+            }
             if (sst_step.provisional)
                 std::cerr << "SST_PROVISIONAL_OUTER iteration=" << iter
                           << " inner_iterations=" << sst_step.transport.iterations
@@ -10579,6 +10637,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 committed_tvd_deferred_valid = true;
             }
             transaction.commit();
+            if (pending_wall_triplet_v15 && controls.sst_runtime) {
+                controls.sst_runtime->committed_wall_triplet_v15 =
+                    std::move(pending_wall_triplet_v15);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "SST_WALL_TRIPLET_COMMITTED_V15 iteration=" << iter
+                              << " faces=" << controls.sst_runtime->committed_wall_triplet_v15->wall_faces
+                              << " physical_operator_modified=0 qualified=0\n";
+            }
             if (controls.monotone_global_merit_v14_experimental) {
                 committed_global_merit_v14.commit(
                     h.global_nonlinear_v8,same_convection_operator_as_previous);
