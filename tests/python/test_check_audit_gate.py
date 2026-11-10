@@ -143,7 +143,9 @@ class ValidateFichesContractTests(unittest.TestCase):
         )
         for name in report_names:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
-                write_fiche(Path(tmp), name=name, text="# BFS campaign evidence report\n")
+                write_fiche(
+                    Path(tmp), name=name, text="# BFS campaign evidence report\n"
+                )
                 self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
     def test_fiche_without_reference_is_rejected(self):
