@@ -97,6 +97,14 @@ struct CouplingControls {
     // The matrix-free solve changes ONLY the PCD action, never the coupled FV
     // system. No automatic basis reuse when numerical coefficients change.
     std::string pcd_fp_bisided_basis_file_experimental;
+    // V15: select a CURRENT, independently certified basis from a directory
+    // keyed by the exact Fp CSR coefficient fingerprint.  No stale fallback.
+    std::string pcd_fp_bisided_basis_directory_v15_experimental;
+    // V15: invert Fp + W Z^T on the FULL auxiliary right-hand side.  Unlike
+    // the V14 projected action, this preserves the deficient Schur directions
+    // so that the preconditioner need not map left-null vectors to zero.
+    bool pcd_fp_full_rank_action_v15_experimental = false;
+
     // Preconditioner-only A/B: pressure-space Dirichlet data on actual
     // inflow faces, including mixed-in/out farfield patches. The physical
     // momentum/continuity BCs and the Schur matrix A are NOT modified.

@@ -1452,6 +1452,15 @@ int main(int argc, char** argv)
                              "exact current CSR required; preconditioner only\n";
             }
 
+            if (const auto it=raw.find("pcd_fp_bisided_basis_directory_v15_experimental");
+                it!=raw.end()) {
+                if (!is_pcd_coupled || it->second.empty())
+                    throw std::invalid_argument("V15 Fp directory requires COUPLED/PCD and a path");
+                controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental=it->second;
+                std::cout << "V15 Fp exact-CSR certificate registry: fail closed on new coefficient fingerprint\n";
+            }
+            pcd_flag("pcd_fp_full_rank_action_v15_experimental",
+                     controls.coupling.pcd_fp_full_rank_action_v15_experimental);
             pcd_flag("pcd_lumped_mass_commutator_experimental",
                      controls.coupling.pcd_lumped_mass_commutator_experimental);
             // V21 opt-in for the existing hysteretic relaxation controller.
@@ -1844,6 +1853,20 @@ int main(int argc, char** argv)
                     boundary_contract, mesh, sst_geometry, nullptr);
             }
             controls.sst_runtime = &experimental_sst_runtime;
+            if (is_case_hdf5) {
+                const auto it=case_setup.numerics.raw_settings.find(
+                    "v15_stage_openfoam_wall_triplet_reference");
+                if (it!=case_setup.numerics.raw_settings.end()) {
+                    if (it->second!="true" && it->second!="false")
+                        throw std::invalid_argument(
+                            "v15_stage_openfoam_wall_triplet_reference must be true or false");
+                    experimental_sst_runtime.stage_openfoam_wall_triplet_v15 =
+                        it->second=="true";
+                    if (experimental_sst_runtime.stage_openfoam_wall_triplet_v15)
+                        std::cout << "V15 atomic wall triplet staged at accepted states; "
+                                     "REFERENCE ONLY; no FV wall operator changed\n";
+                }
+            }
             solver_restart_fields.k = &experimental_sst_state->k;
             solver_restart_fields.omega = &experimental_sst_state->omega;
             std::cerr

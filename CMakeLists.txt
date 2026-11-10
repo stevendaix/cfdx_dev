@@ -1434,6 +1434,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_pcd_fp_bisided_basis_v13 tests/unit/test_pcd_fp_bisided_basis_v13.cpp)
     add_cfdx_test(test_global_nonlinear_acceptance_v13 tests/unit/test_global_nonlinear_acceptance_v13.cpp)
     add_cfdx_test(test_pcd_bilateral_deflation_v14 tests/unit/test_pcd_bilateral_deflation_v14.cpp)
+    add_cfdx_test(test_pcd_full_rank_action_v15 tests/unit/test_pcd_full_rank_action_v15.cpp)
+    add_cfdx_test(test_sst_wall_triplet_v15 tests/unit/test_sst_wall_triplet_v15.cpp)
     add_cfdx_test(test_global_nonlinear_contraction_v14 tests/unit/test_global_nonlinear_contraction_v14.cpp)
     add_cfdx_test(test_sst_wall_triplet_cell_audit_v13 tests/unit/test_sst_wall_triplet_cell_audit_v13.cpp)
     add_cfdx_test(test_sst_fp64_stall_v14 tests/unit/test_sst_fp64_stall_v14.cpp)

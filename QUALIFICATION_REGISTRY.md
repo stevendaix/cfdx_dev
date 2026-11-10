@@ -76,3 +76,14 @@ exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-par
 ### État BFS V14 — 2026-11-09
 
 Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.
