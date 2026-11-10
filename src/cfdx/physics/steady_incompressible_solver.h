@@ -56,7 +56,6 @@
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
-#include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
 #include "cfdx/cfdx/core/utils/convergence_monitor.h"
 #include <algorithm>
@@ -311,19 +310,18 @@ struct SSTProductionRuntime {
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
     bool allow_bounded_provisional_transport = false;
+    bool omega_wall_corner_face_count_v19 = false;
+    // per wall FACE. V15/V17 retain their area-weighted policy otherwise.
+    // V19 explicit OpenFOAM Foundation corner policy: equal contributions
+    bool omega_wall_owner_constraints_v18 = false;
+    // V17 branch is otherwise unchanged. Not OpenFOAM equivalent by itself.
+    // including area-weighted shared/corner cells. The boundary face-only
+    // V18 additional, disabled by default: replace omega rows at owners,
     // V15 staged reference. Refuses incomplete per-face/cell values, promoted
     // only on a fully accepted carrier+SST outer transaction. NO physical
     // wall-function substitution; all three production operators must still
     // be integrated/qualified before enabling such a substitution.
     // Experimental opt-in: consume per-face nut in momentum and dynamic
-    // omega/G wall fields in SST. This is not verified OpenFOAM equivalence.
-    bool active_openfoam_wall_operator_v17 = false;
-    bool stage_openfoam_wall_triplet_v15 = false;
-    std::optional<SstOpenFoamWallTripletV15> committed_wall_triplet_v15;
-};
-
-struct IncompressibleSolverControls {
-    InitializationControls initialization;
     // Opt-in only. The production RANS selector remains fail-closed; supplying
     // this runtime explicitly opts the caller into the SST-coupled path.
     SSTProductionRuntime* sst_runtime = nullptr;
@@ -4615,6 +4613,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         if (controls.coupling.pcd_fp_recirculation_anchor_experimental &&
             controls.coupling.pcd_fp_row_equilibration_experimental)
             throw std::invalid_argument(
+            };
+
+        pcd_ops->laplacian_preconditioner =
+                throw std::invalid_argument(
+            prepare_pcd_solver(pcd_ops->laplacian, controls.pcd_laplacian_linear_solver, false);
+        if (controls.coupling.pcd_fp_recirculation_anchor_experimental &&
+            controls.coupling.pcd_fp_row_equilibration_experimental)
+            throw std::invalid_argument(
                 "PCD Fp recirculation anchor and row equilibration cannot be combined");
         if (controls.coupling.pcd_fp_recirculation_anchor_experimental) {
             pcd_ops->convection_diffusion_anchored =
@@ -4646,7 +4652,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 controls.coupling.pcd_lumped_mass_commutator_experimental ||
                 controls.pcd_convection_diffusion_linear_solver.krylov !=
                     cfdx::core::KrylovModel::FGMRES)
-                throw std::invalid_argument(
                     "V14 bilateral Fp deflation requires the anchor and FGMRES; no scaling, second pass or commutator");
             pcd_ops->convection_diffusion_bisided =
                 std::make_unique<PcdFpBiNullspaceV13>(
@@ -5033,14 +5038,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         };
 
         auto pcd = std::make_unique<PcdSchurApproximation>(
-            pcd_ops->mass, pcd_ops->laplacian, pcd_ops->convection_diffusion,
-            std::move(solve_kp), std::move(solve_fp),
-            std::nullopt,
-            has_fixed_pressure ? std::optional<std::size_t>()
-                               : std::optional<std::size_t>(reference_cell),
-            controls.coupling.pcd_lumped_mass_commutator_experimental
-                ? PcdSchurActionMode::LumpedMassCommutator
-                : PcdSchurActionMode::LegacySingleConvectionDiffusionInverse);
         // Evidence-only: expose the production operators to the
         // coupled_assembly_callback when one is installed (kept alive via
         // evidence_pcd_ops past this branch scope).
@@ -5288,6 +5285,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " signed=" << continuity_row_signed
                   << " cell=" << continuity_row_cell
                   << " status=" << static_cast<int>(result.status)
+        }
+        std::cerr << "COUPLED_PRE_RELAXATION_CONTINUITY_ROW"
+                  << " linf=" << std::scientific << std::setprecision(8)
+                  << continuity_row_linf
+                  << " signed=" << continuity_row_signed
+                  << " cell=" << continuity_row_cell
+                  << " status=" << static_cast<int>(result.status)
                   << " iterations=" << result.iterations
                   << " reported_relative=" << result.residual_relative
                   << "\n";
@@ -5366,14 +5370,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (!std::isfinite(coupled_matrix_residual) ||
         !std::isfinite(coupled_matrix_relative)) {
         result.status = SolverStatus::DIVERGED;
-        result.residual = std::numeric_limits<double>::infinity();
-        result.residual_relative = std::numeric_limits<double>::infinity();
-        return result;
-    }
-    // The independently recomputed residual is the authoritative algebraic
-    // gate. Never accept a Krylov-reported convergence if b-Ax is still above
-    // the requested coupled linear tolerance.
-    result.residual = static_cast<double>(coupled_matrix_residual);
     result.residual_relative = coupled_matrix_relative;
     if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_LINEAR_INDEPENDENT_V15"
@@ -6339,6 +6335,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // momentum, then post-SST residuals use the final candidate wall state.
         std::optional<SSTWallOperatorV17> active_wall_operator_v17;
         if (controls.sst_runtime && controls.sst_runtime->active_openfoam_wall_operator_v17) {
+        // Momentum predictor uses the conservative corrected flux from the
+        // previous outer iteration. This preserves the SIMPLE phi state.
+
+                controls.sst_runtime->omega_wall_owner_constraints_v18);
+                ref,controls.sst_runtime->transport,
+        // A Picard step uses the previous accepted wall state to assemble
+        // momentum, then post-SST residuals use the final candidate wall state.
+        std::optional<SSTWallOperatorV17> active_wall_operator_v17;
+        if (controls.sst_runtime && controls.sst_runtime->active_openfoam_wall_operator_v17) {
             std::map<std::string,std::array<double,3>> wall_velocity;
             for (const auto& [name,bc] : velocity_bcs)
                 if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
@@ -6361,16 +6366,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ? controls.density * controls.kinematic_viscosity : -1.0,
                     active_wall_face_mu_v17);
             transpose_force = viscous_face_flux_divergence(mesh, geometry, stress_flux);
-            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
-                body_x(cell) += transpose_force(cell,0);
-                body_y(cell) += transpose_force(cell,1);
-                body_z(cell) += transpose_force(cell,2);
-            }
-        }
-
-        if (controls.momentum_assembly_forensic_callback)
-            controls.momentum_assembly_forensic_callback(
-                iter, p, grad_p, U, mass_flux, mu_eff);
         if (controls.momentum_predictor_callback)
             controls.momentum_predictor_callback(iter, mu_eff, U, mass_flux);
 
@@ -6551,19 +6546,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=COUPLED_LINEAR_BEGIN\n";
+        std::optional<Field<double,Location::FACE>> v20_relaxed_pressure_flux;
+
+        if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
+            // V10: opt-in, phase-only evidence.  This is deliberately outside
+            // the solver's residual/acceptance logic and cannot certify it.
+            // V10: phase-only evidence; never consumed by convergence logic.
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=COUPLED_LINEAR_BEGIN\n";
                           << " phase=COUPLED_LINEAR_BEGIN\\n";
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
-                controls.kinematic_viscosity,
-                controls.pressure_reference_cell,
-                controls.pressure_reference_value,
-                controls.coupling.coupled_max_iterations,
-                controls.coupling.coupled_linear_tolerance,
-                controls.diagnostics,
-                controls.coupling.schur_model,
-                controls.coupled_linear_solver,
-                controls,
+                U, p, &result.coupled_linear_plan);
+            result.coupled_linear_plan_resolved = true;
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=COUPLED_LINEAR_END status="
+                          << static_cast<int>(coupled_result.status)
+                          << " iterations=" << coupled_result.iterations
+                          << " true_relative=" << coupled_result.residual_relative
                 retry_controller.alpha_u(effective_alpha_u),
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
@@ -6581,16 +6584,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 // Report the stalled linear state in scientific notation.
                 // std::to_string truncates to six fixed decimals, so a
-                // MAX_ITER stall printed as "residual=0.000000" hid the
-                // plateau level and made the failure impossible to calibrate
-                // against the coupled linear gate or the nested PCD budget.
-                const auto coupled_linear_failure_value = [](double value) {
-                    std::ostringstream out;
-                    out << std::scientific << std::setprecision(6) << value;
-                    return out.str();
-                };
-                throw NonlinearRetryableFailure(
-                    "solve_steady_incompressible: coupled momentum-continuity solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(coupled_result.status)) +
                     ", iterations=" + std::to_string(coupled_result.iterations) +
                     ", residual=" + coupled_linear_failure_value(coupled_result.residual) +
@@ -7639,18 +7632,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " phase=PRESSURE_LINEAR_BEGIN\n";
                           << " phase=PRESSURE_LINEAR_BEGIN\\n";
             std::unique_ptr<SparseMatrix> reduced_pressure_matrix;
+                            ? controls.pressure_linear_tolerance
+                            : linear_tolerance).result;
+                };
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " corrector=" << corr
+                          << " phase=PRESSURE_LINEAR_BEGIN\n";
+                          << " phase=PRESSURE_LINEAR_BEGIN\\n";
+            std::unique_ptr<SparseMatrix> reduced_pressure_matrix;
             std::unique_ptr<Vector> reduced_pressure_rhs;
             const SparseMatrix* solved_pressure_matrix = &A;
-            const Vector* solved_pressure_rhs = &b;
-            if (has_fixed_pressure_boundary ||
-                use_projected_pressure_null_space) {
-                // With a prescribed pressure boundary the pressure-correction
-                // operator is SPD. For pure Neumann pressure, an explicitly
-                // requested constant null-space model instead keeps the
-                // singular operator and projects the CG/GMRES Krylov space.
-                for (std::size_t row = 0; row < nc; ++row)
-                    for (const auto& [col, value] : rows[row])
-                        A.push_back(row, col, value);
                 A.finalize();
                 rp = solve_pressure_system(A, b, p_corr);
             } else if (nc == 1) {
@@ -7978,6 +7970,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Rhie-Chow face flux or any nonlinear convergence gate.
             if (controls.pressure_compensated_refinement_diagnostic &&
                 rp.status != cfdx::core::SolverStatus::CONVERGED &&
+                          << " local_gate_pass=" << diagnostic.valid
+                          << " qualified=0\n";
+            }
+            // Opt-in high/low refinement on the EXACT assembled production
+            // matrix. This is an observation only: a reduced split CSR
+            // residual cannot certify the actual FP64 pressure field, its
+            // Rhie-Chow face flux or any nonlinear convergence gate.
+            if (controls.pressure_compensated_refinement_diagnostic &&
+                rp.status != cfdx::core::SolverStatus::CONVERGED &&
                 has_fixed_pressure_boundary &&
                 solved_pressure_matrix->n_rows() == nc &&
                 iter == 1 && corr == 0) {
@@ -8187,16 +8188,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 if (controls.momentum_assembly_forensic_callback) {
                     const auto& matrix = *solved_pressure_matrix;
-                    const auto& rhs = *solved_pressure_rhs;
-                    double rhs_linf = 0.0;
-                    double diagonal_min = std::numeric_limits<double>::infinity();
-                    double diagonal_max = 0.0;
-                    double row_sum_linf = 0.0;
-                    double row_abs_sum_linf = 0.0;
-                    std::size_t rhs_cell = 0;
-                    std::size_t diagonal_cell = 0;
-                    std::size_t nonfinite_matrix = 0;
-                    std::size_t nonfinite_rhs = 0;
                     const auto* offsets = matrix.row_offsets_data();
                     const auto* columns = matrix.columns_data();
                     const auto* values = matrix.values_data();
@@ -9707,6 +9698,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         controls.sst_runtime->omega_face_values,U,
                         controls.sst_runtime->state->k,fixed_velocity_values,
                         controls.sst_runtime->transport);
+                          << " yplus_viscous_proxy_max=" << (wall_audit.velocity_proxy_faces
+                              ? wall_audit.max_viscous_yplus_proxy : -1.0)
+                          << " qualified=0\n";
+                try {
+                    const auto openfoam=audit_openfoam_omega_wall_reference(
+                        mesh,geometry,controls.sst_runtime->wall_omega_sst_patches,
+                        controls.sst_runtime->omega_face_values,U,
+                        controls.sst_runtime->state->k,fixed_velocity_values,
+                        controls.sst_runtime->transport);
                     std::cerr << "OPENFOAM_OMEGA_WALL_REFERENCE iteration=" << iter
                               << " faces=" << openfoam.face_count
                               << " yplus_k_min=" << openfoam.minimum_k_based_y_plus
@@ -9756,6 +9756,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " qualified=0\n";
                 }
             }
+                controls.sst_runtime->omega_wall_owner_constraints_v18);
+                        ref,controls.sst_runtime->transport,
+                        controls.sst_runtime->omega_wall_corner_face_count_v19);
+                        U,trial,fixed_velocity_values,controls.sst_runtime->transport,
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=SST_TRANSPORT_BEGIN budget="
@@ -9792,14 +9796,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     omega_faces=std::move(wall.omega_faces);
                     production=std::move(wall.production);
                 };
-            }
-                          << " target=" << controls.sst_runtime->transport_tolerance << "\\n";
-            sst_step = advance_sst_production_iterate_transactionally(
-                mesh, U, p, mass_flux, *controls.sst_runtime->state,
-                controls.sst_runtime->transport, fixed_velocity_values,
-                controls.sst_runtime->wall_patch_names,
-                controls.sst_runtime->k_boundary_conditions,
-                controls.sst_runtime->omega_boundary_conditions,
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=SST_TRANSPORT_END committed=" << sst_step.committed
+                          << " converged=" << sst_step.transport.converged
+                          << " iterations=" << sst_step.transport.iterations
+                          << " k_residual=" << sst_step.transport.k_residual
+                          << " omega_residual=" << sst_step.transport.second_residual
                 controls.sst_runtime->max_transport_iterations,
                 controls.sst_runtime->transport_tolerance,
                 &controls.sst_runtime->omega_face_values,
@@ -9820,6 +9823,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
+                    controls.sst_runtime->omega_wall_corner_face_count_v19);
+                    controls.sst_runtime->transport,
+                controls.sst_runtime->omega_wall_owner_constraints_v18);
+                    ref,controls.sst_runtime->transport,
+                    controls.sst_runtime->omega_wall_corner_face_count_v19);
+                    controls.sst_runtime->transport,
             if (controls.sst_runtime->active_openfoam_wall_operator_v17) {
                 const auto ref=prepare_openfoam_wall_triplet_v15(
                     mesh,geometry,controls.sst_runtime->wall_omega_sst_patches,
@@ -9849,28 +9858,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     std::cerr << "SST_WALL_TRIPLET_STAGED_V15 iteration=" << iter
                               << " faces=" << pending_wall_triplet_v15->wall_faces
                               << " owners=" << pending_wall_triplet_v15->wall_cells
-                              << " corner_owners=" << pending_wall_triplet_v15->corner_cells
-                              << " momentum_applied=0 sst_applied=0 qualified=0\n";
-            }
-            if (sst_step.provisional)
-                std::cerr << "SST_PROVISIONAL_OUTER iteration=" << iter
-                          << " inner_iterations=" << sst_step.transport.iterations
-                          << " k_candidate_residual=" << sst_step.transport.k_residual
-                          << " omega_candidate_residual=" << sst_step.transport.second_residual
-                          << " qualified=0\n";
-            // Turbulence convergence is an additional gate; it never relaxes
-            // the existing carrier residual, continuity, or QoI criteria.
-            if (!std::isfinite(sst_step.transport.k_residual) ||
-                !std::isfinite(sst_step.transport.second_residual) ||
-                sst_step.transport.nonfinite_bound_events != 0)
-                throw NonlinearRetryableFailure(
-                    "solve_steady_incompressible: SST residual/boundedness gate failed");
-            // The transport solver's converged flag is based on its linear
-            // solver status, bound audit, and field-update criterion. Its raw
-            // equation residuals have dimensional scales and must not be mixed
-            // directly with the normalized carrier convergence metric.
             if (!sst_attempt_snapshot)
                 throw std::logic_error("SST production attempt is missing its state snapshot");
+            sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
+                *sst_attempt_snapshot, *controls.sst_runtime->state,
+                controls.kinematic_viscosity);
+            // The previous residual was assembled BEFORE SST changed nu_t.
+            // Rebuild all three physical carrier equations with the NEW eddy
+            // viscosity and the SAME accepted trial U, p, Rhie-Chow flux.
+            // This is an independent nonlinear coupling gate, not a change
+            // to the transport/SST equations or their convergence tolerance.
+            if (controls.require_post_sst_momentum_reassembly ||
+                controls.require_global_nonlinear_certificate_v8) {
+                std::vector<double> trial_mu(mesh.n_cells());
+                for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+                    trial_mu[cell]=controls.density*(
+                        controls.kinematic_viscosity+
+                        controls.sst_runtime->state->nu_t(cell));
+                    if (!std::isfinite(trial_mu[cell]) || !(trial_mu[cell]>0.0))
+                        throw NonlinearRetryableFailure(
+                            "post-SST momentum reassembly: invalid updated viscosity");
+                }
             sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
                 *sst_attempt_snapshot, *controls.sst_runtime->state,
                 controls.kinematic_viscosity);
@@ -10117,26 +10125,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         if (controls.convection_continuation.enabled &&
             outer_high_order_fraction == 1.0 && iter > 1 &&
-            convection_high_order_fraction(controls.convection_continuation,
-                                           iter - 1) < 1.0) {
-            // Do not inherit a residual or stagnation history from the
-            // incomplete UPWIND/deferred-correction operator.
-            convergence_monitor = cfdx::core::ConvergenceMonitor(monitor_controls);
-        }
-        if (controls.require_post_sst_momentum_reassembly) {
-            // Feed the cross-equation state into the nonlinear monitor too.
-            // Otherwise the independent SST gate could reject convergence
-            // while the reported global nonlinear merit silently tracked
-            // only the old-viscosity momentum operator.
-            nonlinear_metric=std::max(nonlinear_metric,
-                h.post_sst_momentum_rhs_relative);
-            h.nonlinear_convergence_metric=nonlinear_metric;
-        }
-        const auto convergence_report = convergence_monitor.update({
-            iter,
-            nonlinear_metric,
-            h.continuity_normalized,
-            std::move(qoi_values)});
         const bool sst_residual_gate = !controls.sst_runtime ||
             (sst_step.committed && !sst_step.provisional &&
              sst_step.transport.converged &&
