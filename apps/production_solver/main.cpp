@@ -1827,7 +1827,11 @@ int main(int argc, char** argv)
                       << sst_controls.sst_linear_relaxation << " (default 0.7)\n";
             for (const auto& setting : {std::pair<const char*,bool*>{
                      "sst_compensated_residual_gate", &sst_controls.sst_compensated_residual_gate},
-                     {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search}}) {
+                     {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search},
+                     {"sst_anderson_m2_v20_experimental", &sst_controls.sst_anderson_m2_v20},
+                     {"sst_jfnk_v22_experimental", &sst_controls.sst_jfnk_v22_experimental},
+                     {"sst_owner_consistent_projection_v21_experimental",
+                      &sst_controls.sst_owner_consistent_projection_v21}}) {
                 const auto found=case_setup.numerics.raw_settings.find(setting.first);
                 if (found != case_setup.numerics.raw_settings.end()) {
                     if (found->second != "true" && found->second != "false")
@@ -1849,6 +1853,15 @@ int main(int argc, char** argv)
             std::cout << "SST molecular boundary diffusion: "
                       << (sst_controls.sst_molecular_wall_diffusion ? "experimental" : "legacy")
                       << " (only fixed-value wall faces; no wall function)\n";
+            const auto correction_v19=case_setup.numerics.raw_settings.find(
+                "v19_sst_equilibrated_defect_correction_experimental");
+            if (correction_v19!=case_setup.numerics.raw_settings.end()) {
+                if (correction_v19->second!="enabled" && correction_v19->second!="disabled")
+                    throw std::invalid_argument(
+                        "v19_sst_equilibrated_defect_correction_experimental must be enabled or disabled");
+                sst_controls.sst_equilibrated_defect_correction_v19 =
+                    correction_v19->second=="enabled";
+            }
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
@@ -2001,6 +2014,37 @@ int main(int argc, char** argv)
                     boundary_contract, mesh, sst_geometry, nullptr);
             }
             controls.sst_runtime = &experimental_sst_runtime;
+                      << " (experimental, NOT OpenFOAM qualified)\n";
+                      << experimental_sst_runtime.omega_wall_corner_face_count_v19
+                      << " omega corner equal-faces="
+                      << sst_controls.sst_equilibrated_defect_correction_v19
+            std::cout << "V19 SST equilibrated correction="
+            }
+                }
+                    experimental_sst_runtime.omega_wall_corner_face_count_v19=true;
+                            "V19 corner face-count policy requires V18 omega-owner constraints");
+                        throw std::invalid_argument(
+                    if (!experimental_sst_runtime.omega_wall_owner_constraints_v18)
+                if (corner_v19->second=="enabled") {
+                        "v19_omega_corner_equal_faces_experimental must be enabled or disabled");
+                    throw std::invalid_argument(
+                if (corner_v19->second!="enabled" && corner_v19->second!="disabled")
+            if (corner_v19!=case_setup.numerics.raw_settings.end()) {
+                "v19_omega_corner_equal_faces_experimental");
+            const auto corner_v19=case_setup.numerics.raw_settings.find(
+                                 "returned residual recomputed; OpenFOAM-equivalence=NOT_CERTIFIED\n";
+                                 "area-weighted corner targets, equation rows and "
+                    std::cout << "V18 experimental omega OWNER constraint active; "
+                    experimental_sst_runtime.omega_wall_owner_constraints_v18=true;
+                            "V18 owner omega constraints require V17 atomic wall operator");
+                    if (!experimental_sst_runtime.active_openfoam_wall_operator_v17)
+                if (owner_wall_v18->second=="enabled") {
+                        "v18_omega_wall_owner_constraints_experimental must be enabled or disabled");
+                    throw std::invalid_argument(
+                if (owner_wall_v18->second!="enabled" && owner_wall_v18->second!="disabled")
+            if (owner_wall_v18!=case_setup.numerics.raw_settings.end()) {
+                "v18_omega_wall_owner_constraints_experimental");
+            const auto owner_wall_v18=case_setup.numerics.raw_settings.find(
             if (is_case_hdf5) {
                 const auto it=case_setup.numerics.raw_settings.find(
                     "v15_stage_openfoam_wall_triplet_reference");

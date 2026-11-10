@@ -1430,6 +1430,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
+    add_cfdx_test(test_sst_jfnk_v22 tests/unit/test_sst_jfnk_v22.cpp)
+    add_cfdx_test(test_sst_wall_owner_sync_v21 tests/unit/test_sst_wall_owner_sync_v21.cpp)
+    add_cfdx_test(test_sst_anderson_v20 tests/unit/test_sst_anderson_v20.cpp)
+    add_cfdx_test(test_sst_equilibrated_v19 tests/unit/test_sst_equilibrated_v19.cpp)
+    add_cfdx_test(test_sst_wall_owner_v18 tests/unit/test_sst_wall_owner_v18.cpp)
     add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
     add_cfdx_test(test_pcd_fp_bisided_basis_v13 tests/unit/test_pcd_fp_bisided_basis_v13.cpp)
     add_cfdx_test(test_global_nonlinear_acceptance_v13 tests/unit/test_global_nonlinear_acceptance_v13.cpp)
@@ -1964,6 +1969,13 @@ if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
         test_coupled_comparison_v5_protocol
         PROPERTIES LABELS "schur;benchmark;unit;v5"
     )
+endif()
+
+# V7: portable double-double scalar assembly (no wide long double needed).
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_portable_double_double_v7 tests/unit/test_portable_double_double_v7.cpp)
+    set_tests_properties(test_portable_double_double_v7 PROPERTIES
+        LABELS "pressure;assembly;precision;portability")
 endif()
 
 # V7: portable double-double scalar assembly (no wide long double needed).
