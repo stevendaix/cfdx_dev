@@ -10,7 +10,6 @@ terms, SIMPLEC response and velocity update), physical convergence, or SST.
 The captured CSR has no cryptographic mesh identity: exact graph matching is
 verified but source/mesh provenance remains an additional required contract.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -21,9 +20,10 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from audit_bfs_compensated_pressure import compensated_residual, two_sum_update
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import splu
+
+from audit_bfs_compensated_pressure import compensated_residual, two_sum_update
 from seed_bfs_pressure_from_capture import read_capture
 
 
@@ -35,9 +35,8 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_capture_checksum(
-    path: Path, matrix: csr_matrix, rhs: np.ndarray, expected_footer: str
-) -> None:
+def verify_capture_checksum(path: Path, matrix: csr_matrix, rhs: np.ndarray,
+                            expected_footer: str) -> None:
     """Reproduce the native cfdx linear capture's FNV64 bit-pattern checksum.
 
     A footer copied from another file is not an integrity check. The native
@@ -80,9 +79,7 @@ def verify_capture_checksum(
         raise ValueError("captured CSR checksum mismatch")
 
 
-def read_split(
-    path: Path, count: int, expected_checksum: str
-) -> tuple[np.ndarray, np.ndarray]:
+def read_split(path: Path, count: int, expected_checksum: str) -> tuple[np.ndarray, np.ndarray]:
     with path.open(encoding="ascii") as stream:
         if stream.readline().strip() != "CFDX_PRESSURE_SPLIT_V1":
             raise ValueError("invalid CFDX pressure-split magic")
@@ -95,18 +92,12 @@ def read_split(
             if len(tokens) != 2:
                 raise ValueError("truncated or malformed high/low row")
             high[row], low[row] = (float.fromhex(word) for word in tokens)
-        if (
-            stream.read().strip()
-            or not np.isfinite(high).all()
-            or not np.isfinite(low).all()
-        ):
+        if stream.read().strip() or not np.isfinite(high).all() or not np.isfinite(low).all():
             raise ValueError("extra or nonfinite pressure-split data")
     return high, low
 
 
-def read_mesh(
-    path: Path, pressure_patch: str
-) -> tuple[int, np.ndarray, np.ndarray, np.ndarray]:
+def read_mesh(path: Path, pressure_patch: str) -> tuple[int, np.ndarray, np.ndarray, np.ndarray]:
     with h5py.File(path, "r") as mesh:
         required = ("owner", "neighbour", "patch_face_offsets", "patch_face_ids")
         if not all(key in mesh for key in required):
@@ -121,36 +112,23 @@ def read_mesh(
         if len(patches) + 1 != len(offsets) or patches.count(pressure_patch) != 1:
             raise ValueError("missing or ambiguous pressure Dirichlet outlet patch")
         i = patches.index(pressure_patch)
-        outlet_faces = face_ids[int(offsets[i]) : int(offsets[i + 1])]
+        outlet_faces = face_ids[int(offsets[i]):int(offsets[i + 1])]
     nf = len(owner)
-    if (
-        n < 2
-        or len(neighbour) != nf
-        or len(outlet_faces) == 0
-        or np.any(owner < 0)
-        or np.any(owner >= n)
-        or np.any(neighbour < -1)
-        or np.any(neighbour >= n)
-        or np.any((neighbour >= 0) & (neighbour == owner))
-        or np.any(outlet_faces < 0)
-        or np.any(outlet_faces >= nf)
-        or len(np.unique(outlet_faces)) != len(outlet_faces)
-        or np.any(neighbour[outlet_faces] != -1)
-    ):
+    if (n < 2 or len(neighbour) != nf or len(outlet_faces) == 0 or
+            np.any(owner < 0) or np.any(owner >= n) or
+            np.any(neighbour < -1) or np.any(neighbour >= n) or
+            np.any((neighbour >= 0) & (neighbour == owner)) or
+            np.any(outlet_faces < 0) or np.any(outlet_faces >= nf) or
+            len(np.unique(outlet_faces)) != len(outlet_faces) or
+            np.any(neighbour[outlet_faces] != -1)):
         raise ValueError("invalid FV topology or pressure boundary face list")
     return n, owner, neighbour, outlet_faces
 
 
 def verify_face_operator(
-    matrix: csr_matrix,
-    rhs: np.ndarray,
-    high: np.ndarray,
-    low: np.ndarray,
-    owner: np.ndarray,
-    neighbour: np.ndarray,
-    outlet_faces: np.ndarray,
-    *,
-    target_tolerance: float,
+    matrix: csr_matrix, rhs: np.ndarray, high: np.ndarray, low: np.ndarray,
+    owner: np.ndarray, neighbour: np.ndarray, outlet_faces: np.ndarray,
+    *, target_tolerance: float,
 ) -> dict:
     """Check CSR/real-mesh edge bijection and reconstruct pressure flux divergence.
 
@@ -163,23 +141,13 @@ def verify_face_operator(
     a.sum_duplicates()
     a.sort_indices()
     n = a.shape[0]
-    if (
-        n < 2
-        or a.shape != (n, n)
-        or len(rhs) != n
-        or len(high) != n
-        or len(low) != n
-        or len(owner) != len(neighbour)
-        or not (np.isfinite(target_tolerance) and target_tolerance > 0)
-        or not np.isfinite(a.data).all()
-        or not np.isfinite(rhs).all()
-        or not np.isfinite(high).all()
-        or not np.isfinite(low).all()
-        or np.any(owner < 0)
-        or np.any(owner >= n)
-        or np.any(neighbour < -1)
-        or np.any(neighbour >= n)
-    ):
+    if (n < 2 or a.shape != (n, n) or len(rhs) != n or len(high) != n or
+            len(low) != n or len(owner) != len(neighbour) or
+            not (np.isfinite(target_tolerance) and target_tolerance > 0) or
+            not np.isfinite(a.data).all() or not np.isfinite(rhs).all() or
+            not np.isfinite(high).all() or not np.isfinite(low).all() or
+            np.any(owner < 0) or np.any(owner >= n) or
+            np.any(neighbour < -1) or np.any(neighbour >= n)):
         raise ValueError("invalid or nonfinite pressure operator/FV topology")
     internal = np.flatnonzero(neighbour >= 0)
     origins, destinations = owner[internal], neighbour[internal]
@@ -187,44 +155,37 @@ def verify_face_operator(
         raise ValueError("missing or degenerate internal FV faces")
     # Check *both directions* and the complete sparsity graph. This prevents
     # inventing a physical face based on a CSR edge that is not in the mesh.
-    directed = np.concatenate((origins * n + destinations, destinations * n + origins))
+    directed = np.concatenate((origins * n + destinations,
+                               destinations * n + origins))
     if len(np.unique(directed)) != len(directed):
         raise ValueError("multiple physical faces for one matrix adjacency")
     coo = a.tocoo()
     off = coo.row != coo.col
     graph = coo.row[off].astype(np.int64) * n + coo.col[off]
-    if len(graph) != len(directed) or not np.array_equal(
-        np.sort(graph), np.sort(directed)
-    ):
+    if len(graph) != len(directed) or not np.array_equal(np.sort(graph), np.sort(directed)):
         raise ValueError("CSR off-diagonal graph differs from real FV faces")
     forward = np.asarray(a[origins, destinations]).ravel()
     reverse = np.asarray(a[destinations, origins]).ravel()
-    if (
-        np.any(forward >= 0.0)
-        or np.any(reverse >= 0.0)
-        or not np.allclose(forward, reverse, rtol=1e-12, atol=0.0)
-    ):
+    if (np.any(forward >= 0.0) or np.any(reverse >= 0.0) or
+            not np.allclose(forward, reverse, rtol=1e-12, atol=0.0)):
         raise ValueError("pressure CSR is not a symmetric M-matrix on FV faces")
     dtype = np.longdouble
     row_sums = np.empty(n, dtype=dtype)
     row_abs = np.empty(n, dtype=dtype)
     for i in range(n):
-        values = a.data[a.indptr[i] : a.indptr[i + 1]].astype(dtype)
+        values = a.data[a.indptr[i]:a.indptr[i + 1]].astype(dtype)
         row_sums[i] = np.sum(values, dtype=dtype)
         row_abs[i] = np.sum(np.abs(values), dtype=dtype)
     anchored = row_sums > row_abs * dtype(1e-11)
     if np.any(row_sums < -row_abs * dtype(1e-11)):
         raise ValueError("pressure matrix has negative boundary leakage")
-    if (
-        len(outlet_faces) != int(np.count_nonzero(anchored))
-        or np.any(neighbour[outlet_faces] != -1)
-        or len(np.unique(outlet_faces)) != len(outlet_faces)
-    ):
+    if (len(outlet_faces) != int(np.count_nonzero(anchored)) or
+            np.any(neighbour[outlet_faces] != -1) or
+            len(np.unique(outlet_faces)) != len(outlet_faces)):
         raise ValueError("pressure anchor count != actual Dirichlet outlet faces")
     boundary_owner = owner[outlet_faces]
-    if len(np.unique(boundary_owner)) != len(boundary_owner) or not np.array_equal(
-        np.sort(boundary_owner), np.flatnonzero(anchored)
-    ):
+    if (len(np.unique(boundary_owner)) != len(boundary_owner) or
+            not np.array_equal(np.sort(boundary_owner), np.flatnonzero(anchored))):
         raise ValueError("pressure anchor cells differ from outlet face owners")
     h = high.astype(dtype)
     l = low.astype(dtype)
@@ -247,8 +208,8 @@ def verify_face_operator(
     if not scale > 0:
         raise ValueError("zero RHS cannot support a relative-residual certificate")
     face_defect = rhs.astype(dtype) - divergence
-    original = np.sqrt(np.sum(residual**2, dtype=dtype)) / scale
-    face_norm = np.sqrt(np.sum(face_defect**2, dtype=dtype)) / scale
+    original = np.sqrt(np.sum(residual ** 2, dtype=dtype)) / scale
+    face_norm = np.sqrt(np.sum(face_defect ** 2, dtype=dtype)) / scale
     identity = np.max(np.abs(face_defect - residual))
     # Do not equate linear balance with complete physical pressure correction:
     # one cannot infer the original predictor flux from an A*x=b capture.
@@ -256,8 +217,8 @@ def verify_face_operator(
         "schema": "cfdx-bfs-implicit-fv-pressure-face-audit/v1",
         "status": "IMPLICIT_PRESSURE_FACES_ONLY_NOT_FULL_RHIE_CHOW",
         "cells": n,
-        "internal_fv_faces": len(internal),
-        "outlet_pressure_faces": len(outlet_faces),
+        "internal_fv_faces": int(len(internal)),
+        "outlet_pressure_faces": int(len(outlet_faces)),
         "csr_nonzeros": int(a.nnz),
         "csr_face_topology_bijection": True,
         "relative_original_compensated_residual": float(original),
@@ -267,9 +228,7 @@ def verify_face_operator(
         "unchanged_original_tolerance": float(target_tolerance),
         "original_csr_linear_gate_pass": bool(original <= target_tolerance),
         "real_mesh_implicit_face_gate_pass": bool(face_norm <= target_tolerance),
-        "implicit_face_linear_gate_pass": bool(
-            original <= target_tolerance and face_norm <= target_tolerance
-        ),
+        "implicit_face_linear_gate_pass": bool(original <= target_tolerance and face_norm <= target_tolerance),
         "actual_rhie_chow_predictor_and_nonorth_flux_replayed": False,
         "cell_velocity_and_pressure_update_replayed": False,
         "mesh_capture_cryptographic_binding_proven": False,
@@ -279,16 +238,9 @@ def verify_face_operator(
 
 
 def refine_implicit_faces(
-    matrix: csr_matrix,
-    rhs: np.ndarray,
-    high: np.ndarray,
-    low: np.ndarray,
-    owner: np.ndarray,
-    neighbour: np.ndarray,
-    outlet_faces: np.ndarray,
-    *,
-    target_tolerance: float,
-    iterations: int,
+    matrix: csr_matrix, rhs: np.ndarray, high: np.ndarray, low: np.ndarray,
+    owner: np.ndarray, neighbour: np.ndarray, outlet_faces: np.ndarray,
+    *, target_tolerance: float, iterations: int,
 ) -> dict:
     """Offline LU refinement of REAL FV topology's implicit pressure action.
 
@@ -299,16 +251,8 @@ def refine_implicit_faces(
     if not 0 <= iterations <= 3:
         raise ValueError("FV face diagnostic refinement budget must be 0..3")
     high, low = high.copy(), low.copy()
-    before = verify_face_operator(
-        matrix,
-        rhs,
-        high,
-        low,
-        owner,
-        neighbour,
-        outlet_faces,
-        target_tolerance=target_tolerance,
-    )
+    before = verify_face_operator(matrix, rhs, high, low, owner, neighbour,
+                                  outlet_faces, target_tolerance=target_tolerance)
     observations = [before]
     if iterations:
         # A double-precision LU supplies only the directional correction;
@@ -330,23 +274,13 @@ def refine_implicit_faces(
             if not np.isfinite(delta).all():
                 raise ArithmeticError("nonfinite FV pressure refinement")
             two_sum_update(high, low, delta)
-            now = verify_face_operator(
-                matrix,
-                rhs,
-                high,
-                low,
-                owner,
-                neighbour,
-                outlet_faces,
-                target_tolerance=target_tolerance,
-            )
+            now = verify_face_operator(matrix, rhs, high, low, owner, neighbour,
+                                       outlet_faces, target_tolerance=target_tolerance)
             observations.append(now)
             if now["relative_real_mesh_implicit_face_defect"] > (
                 observations[-2]["relative_real_mesh_implicit_face_defect"] * 1.01
             ):
-                raise ArithmeticError(
-                    "FV pressure refinement increased the true face defect"
-                )
+                raise ArithmeticError("FV pressure refinement increased the true face defect")
     final = observations[-1]
     return {
         "schema": "cfdx-bfs-implicit-face-refinement/v1",
@@ -354,12 +288,10 @@ def refine_implicit_faces(
         "refinement_count": iterations,
         "observations": observations,
         "final_implicit_face_gate_pass": final["implicit_face_linear_gate_pass"],
-        "final_real_mesh_implicit_face_gate_pass": final[
-            "real_mesh_implicit_face_gate_pass"
-        ],
+        "final_real_mesh_implicit_face_gate_pass": final["real_mesh_implicit_face_gate_pass"],
         "original_csr_and_face_operator_conflict": bool(
-            final["real_mesh_implicit_face_gate_pass"]
-            and not final["original_csr_linear_gate_pass"]
+            final["real_mesh_implicit_face_gate_pass"] and
+            not final["original_csr_linear_gate_pass"]
         ),
         "final_original_csr_residual": final["relative_original_compensated_residual"],
         "no_production_state_or_rhie_chow_flux_modified": True,
@@ -374,12 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--pressure-patch", default="outlet")
-    parser.add_argument(
-        "--refinements",
-        type=int,
-        default=0,
-        help="offline face-residual LU corrections (0..3), never production",
-    )
+    parser.add_argument("--refinements", type=int, default=0,
+                        help="offline face-residual LU corrections (0..3), never production")
     args = parser.parse_args(argv)
     a, rhs, meta = read_capture(args.capture)
     checksum = args.capture.read_text(encoding="ascii").splitlines()[-1].strip()
@@ -388,27 +316,15 @@ def main(argv: list[str] | None = None) -> int:
     n, owner, neighbour, outlet = read_mesh(args.mesh, args.pressure_patch)
     if n != a.shape[0]:
         raise ValueError("mesh and captured pressure matrix have different sizes")
-    report = refine_implicit_faces(
-        a,
-        rhs,
-        high,
-        low,
-        owner,
-        neighbour,
-        outlet,
-        target_tolerance=meta["target_tolerance"],
-        iterations=args.refinements,
-    )
+    report = refine_implicit_faces(a, rhs, high, low, owner, neighbour, outlet,
+                                  target_tolerance=meta["target_tolerance"],
+                                  iterations=args.refinements)
     report["provenance"] = {
-        "mesh_sha256": sha256(args.mesh),
-        "capture_sha256": sha256(args.capture),
-        "split_sha256": sha256(args.split),
-        "split_capture_checksum": checksum,
+        "mesh_sha256": sha256(args.mesh), "capture_sha256": sha256(args.capture),
+        "split_sha256": sha256(args.split), "split_capture_checksum": checksum,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(
-        json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
+    args.out.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2, allow_nan=False))
     return 0 if report["final_implicit_face_gate_pass"] else 2
 

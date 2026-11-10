@@ -83,6 +83,13 @@ struct TurbulenceTransportControls {
     // Experimental, opt-in: backtracking that MUST reduce the fully
     // reassembled SST local equation defect; never relaxes final gates.
     bool sst_nonlinear_line_search = false;
+    bool sst_anderson_m2_v20 = false; // experimental, unchanged convergence criteria
+    // V21 experimental: synchronize owner omega constraint with CURRENT k
+    // and refresh wall omega/nu_t/G atomically on every nonlinear candidate.
+    bool sst_owner_consistent_projection_v21 = false;
+    // V22 experimental: a joint SST [k,omega] matrix-free Newton candidate
+    // with full FV reassembly and positivity/physical-residual globalization.
+    bool sst_jfnk_v22_experimental = false;
     // Existing scalar solve blends candidate and old state with 0.7.
     // Expose the same parameter (default preserved) for a controlled
     // 0.7 / 0.9 / 1.0 contract study; 1.0 performs no post-solve damping.
@@ -91,6 +98,11 @@ struct TurbulenceTransportControls {
     // k and omega boundary diffusion; never use owner-cell eddy viscosity
     // as the face viscosity. Does NOT implement an omega wall function.
     bool sst_molecular_wall_diffusion = false;
+    // V19 opt-in: solve the exact frozen SST equation as an equilibrated
+    // CORRECTION when the ordinary scalar solve stalls near its strict gate.
+    // The candidate is retained only if the original unscaled row defect
+    // contracts; no model equation, nonlinear tolerance or gate is changed.
+    bool sst_equilibrated_defect_correction_v19 = false;
 
     // Opt-in affine-exact near-wall cross-diffusion gradients on skewed meshes,
     // selecting the dimension-aware transport-boundaries WLS variant. The
@@ -296,6 +308,10 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||
+       (c.sst_anderson_m2_v20 && (c.sst_picard_damping != 1.0 || c.sst_nonlinear_line_search)) ||
+       (c.sst_jfnk_v22_experimental &&
+           (c.sst_anderson_m2_v20 || c.sst_nonlinear_line_search ||
+            c.sst_picard_damping != 1.0)) ||
        c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
         throw std::invalid_argument("invalid turbulence controls");

@@ -87,3 +87,31 @@ Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliai
 - Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
 - Seuils numériques et physiques inchangés ; aucun push GitHub.
 - Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.
+
+## BFS Driver–Seegmiller — V13 (2026-11-09)
+
+**Non qualifié physiquement.** Les captures Fp du BFS réduit (712 cellules)
+montrent des noyaux numériques bilatéraux (2 modes, puis 1 avec Dirichlet
+expérimental) et un RHS incompatible à `6.27946816675e-2` en norme relative.
+Le résidu Fp original ne peut être certifié par la seule projection. Le garde
+non linéaire U,p,k,omega,nu_t reste expérimental / opt-in. Un premier état
+BFS Block-local a été commis sans converger : U `5.275372423e-1`, continuité
+`1.760025754e-3`. L'audit de paroi `omega,nut,G` est indépendant mais ne
+remplace aucune fonction de paroi OpenFOAM. Les campagnes complètes des six
+Schur, les trois maillages de référence et les mesures `x_r/h,Cf` restent à
+exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md`.
+
+### État BFS V14 — 2026-11-09
+
+Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.

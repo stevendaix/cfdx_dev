@@ -448,6 +448,7 @@ def make_setup(
                 )
             )
     setup.numerics.selection = NumericalSelectionConfig(
+            + (["schur"] if algorithm == "coupled" else []),
         entries=selections,
         required_families=["gradient", "convection", "pressure_velocity"]
         + (["schur"] if algorithm == "coupled" else []),
@@ -500,6 +501,8 @@ def write_case(
             "source_version": "bfs-smoke-v1",
             "source_case_path": "",
             "source_case_name": "TH03_debug_only",
+                preconditioner=preconditioner, iterations=iterations
+                height, reynolds, velocity, algorithm=algorithm, schur=schur,
             "case_setup_json": make_setup(
                 height,
                 reynolds,
@@ -533,6 +536,40 @@ def write_case(
     }
 
 
+            "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified"}
+            "physical_qualification": "NOT_QUALIFIED",
+            "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+            "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
+            "preconditioner": preconditioner,
+            "algorithm": algorithm, "schur": schur,
+            "topology_hash": topology, "geometry_hash": geometry,
+    return {"path": str(output_path), "cells": n_cells, "faces": n_faces,
+    with h5py.File(output_path,"r+") as configured:
+        topology, geometry = str(source.attrs["topology_hash"]), str(source.attrs["geometry_hash"])
+                    if x not in ("schur", "preconditioner")]
+        required = [x for x in selection.get("required_families", [])
+                                 "configuration_key":f"preconditioner.{preconditioner}"})
+                retained.append({"family":"preconditioner",
+            retained.append({"family":"schur", "configuration_key":f"schur.{schur}"})
+                         "configuration_key":f"pressure_velocity.{algorithm}"})
+        retained.append({"family":"pressure_velocity",
+            raise ValueError("reference input must explicitly use a bounded order-two scheme")
+                   for x in retained):
+                       "numerics.convection.tvd.mc", "numerics.convection.tvd.superbee")
+                       "numerics.convection.tvd.vanleer", "numerics.convection.tvd.vanalbada",
+                       "numerics.convection.second_order_upwind",
+                   x.get("configuration_key") in (
+        if not any(x.get("family") == "convection" and
+                    ("pressure_velocity", "schur", "preconditioner")]
+        retained = [x for x in entries if x.get("family") not in
+            raise ValueError("reference input has no explicit numerical selection")
+        if not isinstance(selection, dict) or not isinstance(selection.get("entries"), list):
+            raise ValueError("reference input has no numerical configuration")
+            raise ValueError("BFS reference input requires mesh fingerprint and case setup")
+               ("topology_hash", "geometry_hash", "case_setup_json")):
+        if any(not source.attrs.get(key) for key in
+    schur: str | None, preconditioner: str | None, iterations: int,
+    source_path: Path, output_path: Path, *, algorithm: str,
 def reconfigure_bfs_reference_case(
     source_path: Path,
     output_path: Path,
@@ -663,6 +700,7 @@ def main():
         default=0.0,
         help="tanh clustering at y=0,h,8h, 0 means uniform",
     )
+    parser.add_argument("--algorithm", choices=("simple", "simplec", "coupled"), default="simple")
     parser.add_argument(
         "--algorithm", choices=("simple", "simplec", "coupled"), default="simple"
     )
@@ -679,6 +717,8 @@ def main():
                 ny=args.ny,
                 step_cells=args.step_cells,
                 wall_stretch=args.wall_stretch,
+                preconditioner=args.preconditioner, iterations=args.iterations,
+                algorithm=args.algorithm, schur=args.schur,
                 algorithm=args.algorithm,
                 schur=args.schur,
                 preconditioner=args.preconditioner,
