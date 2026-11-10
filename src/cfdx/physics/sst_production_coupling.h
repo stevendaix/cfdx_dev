@@ -640,6 +640,13 @@ inline SSTRuntimeBoundaryContract make_sst_runtime_boundary_contract(
                     target.emplace(patch.patch_name, ScalarBoundaryCondition{
                         ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0});
                     break;
+                case cfdx::io::SSTScalarBoundaryType::WALL_KQ_R:
+                    if (condition.field != "k")
+                        throw std::invalid_argument(
+                            "WALL_KQ_R is only valid for the SST k field");
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0});
+                    break;
                 case cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO:
                     if (condition.field != "k")
                         throw std::invalid_argument(
