@@ -5,13 +5,11 @@ benchmark_observables is diagnostic only, and the present CSV lacks the
 Reynolds shear stresses required for a full NASA validation.  Refuse to
 compute a reattachment length from transient/rejected/unfinished states.
 """
-
 from __future__ import annotations
 
 import argparse
 import csv
 import hashlib
-import itertools
 import json
 import math
 from pathlib import Path
@@ -30,18 +28,11 @@ def _number(cell: dict, name: str) -> float:
     return v
 
 
-def cf_and_reattachment(
-    faces_csv: Path, *, rho: float, u_ref: float, step_height: float
-) -> dict:
+def cf_and_reattachment(faces_csv: Path, *, rho: float, u_ref: float,
+                        step_height: float) -> dict:
     """Return strictly diagnostic Cf and zero-crossing; never a physical PASS."""
-    if not (
-        math.isfinite(rho)
-        and rho > 0
-        and math.isfinite(u_ref)
-        and u_ref > 0
-        and math.isfinite(step_height)
-        and step_height > 0
-    ):
+    if not (math.isfinite(rho) and rho > 0 and math.isfinite(u_ref)
+            and u_ref > 0 and math.isfinite(step_height) and step_height > 0):
         raise ValueError("invalid physical reference units")
     rows: list[tuple[float, float]] = []
     methods = set()
@@ -53,9 +44,7 @@ def cf_and_reattachment(
             # The step's vertical wall belongs to lowerWall but its tau_x is
             # NOT streamwise bottom-wall skin friction.  Keep only horizontal
             # downstream wall faces with a predominantly vertical normal.
-            if x < 0 or abs(_number(item, "area_y_m2")) < 0.95 * _number(
-                item, "area_m2"
-            ):
+            if x < 0 or abs(_number(item, "area_y_m2")) < 0.95 * _number(item, "area_m2"):
                 continue
             method = item["wall_shear_method"]
             if method == "not_available_non_dirichlet_wall":
@@ -67,10 +56,10 @@ def cf_and_reattachment(
     rows.sort(key=lambda item: item[0])
     if len(rows) < 4 or len({x for x, _ in rows}) != len(rows):
         raise ValueError("insufficient distinct downstream wall faces for Cf")
-    if any(x2 <= x1 for (x1, _), (x2, _) in itertools.pairwise(rows)):
+    if any(x2 <= x1 for (x1, _), (x2, _) in zip(rows, rows[1:])):
         raise ValueError("nonmonotone downstream wall geometry")
     zero_crossings = []
-    for (x0, y0), (x1, y1) in itertools.pairwise(rows):
+    for (x0, y0), (x1, y1) in zip(rows, rows[1:]):
         if y0 < 0.0 <= y1:
             crossing = x1 if y1 == 0.0 else x0 - y0 * (x1 - x0) / (y1 - y0)
             zero_crossings.append(crossing)
@@ -83,28 +72,24 @@ def cf_and_reattachment(
         "wall_shear_methods": sorted(methods),
         "reattachment_x_over_h_diagnostic": xr,
         "reattachment_error_vs_driver_seegmiller": (
-            xr - EXPERIMENTAL_XR_H if xr is not None else None
-        ),
+            xr - EXPERIMENTAL_XR_H if xr is not None else None),
         "experimental_xr_over_h": EXPERIMENTAL_XR_H,
         "experimental_uncertainty_x_over_h": EXPERIMENTAL_XR_UNCERTAINTY,
         "physical_certification": "NOT_QUALIFIED_FIRST_ORDER_SHEAR_AND_NO_GRID_GCI",
     }
 
 
-def extract_velocity_profiles(
-    cells_csv: Path, *, step_height: float, u_ref: float
-) -> dict:
-    data: list[tuple[float, float, float, float]] = []
+def extract_velocity_profiles(cells_csv: Path, *, step_height: float,
+                              u_ref: float) -> dict:
+    data: list[tuple[float,float,float,float]] = []
     with cells_csv.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
-            data.append(
-                (
-                    _number(row, "x_m") / step_height,
-                    _number(row, "y_m") / step_height,
-                    _number(row, "u_x_m_s") / u_ref,
-                    _number(row, "u_y_m_s") / u_ref,
-                )
-            )
+            data.append((
+                _number(row, "x_m") / step_height,
+                _number(row, "y_m") / step_height,
+                _number(row, "u_x_m_s") / u_ref,
+                _number(row, "u_y_m_s") / u_ref,
+            ))
     if not data:
         raise ValueError("no cellwise velocity fields")
     result = {}
@@ -112,45 +97,27 @@ def extract_velocity_profiles(
         # Select a unique computational x station, keeping all vertical cells;
         # the reported station offset is explicit, never masked as interpolation.
         x_station = min((x for x, _, _, _ in data), key=lambda x: abs(x - station))
-        points = sorted(
-            (y, ux, uy) for x, y, ux, uy in data if abs(x - x_station) < 1e-9
-        )
+        points = sorted((y, ux, uy) for x, y, ux, uy in data
+                        if abs(x - x_station) < 1e-9)
         if len(points) < 2:
             raise ValueError("insufficient cells in profile station")
         result[f"x_over_h_{station:g}"] = {
-            "requested": station,
-            "actual_x_over_h": x_station,
-            "samples": [
-                {"y_over_h": y, "ux_over_uref": ux, "uy_over_uref": uy}
-                for y, ux, uy in points
-            ],
+            "requested": station, "actual_x_over_h": x_station,
+            "samples": [{"y_over_h": y, "ux_over_uref": ux,
+                         "uy_over_uref": uy} for y, ux, uy in points],
             "reference_comparison": "NOT_EVALUATED_NO_NASA_PROFILE_FILE",
         }
     return result
 
 
-def make_report(
-    *,
-    output_dir: Path,
-    case_path: Path,
-    algorithm: str,
-    schur: str | None,
-    preconditioner: str | None,
-    process_exit_code: int | None,
-    rho: float,
-    u_ref: float,
-    step_height: float,
-) -> dict:
+def make_report(*, output_dir: Path, case_path: Path, algorithm: str,
+                schur: str | None, preconditioner: str | None,
+                process_exit_code: int | None, rho: float, u_ref: float,
+                step_height: float) -> dict:
     fingerprint = hashlib.sha256(case_path.read_bytes()).hexdigest()
-    gate = validate_bfs_evidence(
-        output_dir,
-        process_exit_code,
-        algorithm=algorithm,
-        schur=schur,
-        preconditioner=preconditioner,
-        case_sha256=fingerprint,
-        case_path=case_path,
-    )
+    gate = validate_bfs_evidence(output_dir, process_exit_code,
+        algorithm=algorithm, schur=schur, preconditioner=preconditioner,
+        case_sha256=fingerprint, case_path=case_path)
     result = {
         "schema": "CFDX-BFS-DRIVER-SEEGMILLER/v10",
         "case_sha256": fingerprint,
@@ -171,11 +138,9 @@ def make_report(
     obs = output_dir / "benchmark_observables"
     result["comparison"] = {
         "cf_and_reattachment": cf_and_reattachment(
-            obs / "face_fluxes.csv", rho=rho, u_ref=u_ref, step_height=step_height
-        ),
+            obs / "face_fluxes.csv", rho=rho, u_ref=u_ref, step_height=step_height),
         "velocity_profiles": extract_velocity_profiles(
-            obs / "cell_fields.csv", step_height=step_height, u_ref=u_ref
-        ),
+            obs / "cell_fields.csv", step_height=step_height, u_ref=u_ref),
     }
     result["reason"] = "DIAGNOSTIC_ONLY_NASA_PROFILES_AND_STRESSES_NOT_CHECKED"
     return result
@@ -185,9 +150,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run", type=Path, required=True)
     p.add_argument("--case", type=Path, required=True)
-    p.add_argument(
-        "--algorithm", choices=("simple", "simplec", "coupled"), required=True
-    )
+    p.add_argument("--algorithm", choices=("simple","simplec","coupled"), required=True)
     p.add_argument("--schur", default=None)
     p.add_argument("--preconditioner", default=None)
     p.add_argument("--exit-code", type=int, required=True)
@@ -197,23 +160,14 @@ def main() -> int:
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
     try:
-        report = make_report(
-            output_dir=args.run,
-            case_path=args.case,
-            algorithm=args.algorithm,
-            schur=args.schur,
-            preconditioner=args.preconditioner,
-            process_exit_code=args.exit_code,
-            rho=args.density,
-            u_ref=args.u_ref,
-            step_height=args.step_height,
-        )
+        report = make_report(output_dir=args.run, case_path=args.case,
+            algorithm=args.algorithm, schur=args.schur,
+            preconditioner=args.preconditioner, process_exit_code=args.exit_code,
+            rho=args.density, u_ref=args.u_ref, step_height=args.step_height)
     except (ValueError, KeyError, OSError, ZeroDivisionError) as e:
-        report = {
-            "schema": "CFDX-BFS-DRIVER-SEEGMILLER/v10",
-            "physical_validation": "NOT_QUALIFIED",
-            "reason": f"invalid_evidence:{e}",
-        }
+        report = {"schema": "CFDX-BFS-DRIVER-SEEGMILLER/v10",
+                  "physical_validation": "NOT_QUALIFIED",
+                  "reason": f"invalid_evidence:{e}"}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
     print(report["reason"])

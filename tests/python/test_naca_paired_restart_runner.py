@@ -235,6 +235,36 @@ def test_gci_runner_overrides_ambient_algorithm_and_clears_stale_files(tmp_path,
     assert summary["raw_wall_faces_present"] is False
 
 
+def test_gci_runner_overrides_ambient_algorithm_and_clears_stale_files(tmp_path, monkeypatch):
+    mesh, exe = tmp_path / "mesh.h5", tmp_path / "solver"
+    mesh.touch()
+    exe.touch()
+    output = tmp_path / "runs"
+    output.mkdir()
+    for name in ("force.csv", "raw_wall_faces.csv", "history.csv", "run_summary.json"):
+        (output / name).write_text("STALE")
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["env"] = kwargs["env"]
+        assert not (output / "force.csv").exists()
+        assert not (output / "raw_wall_faces.csv").exists()
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(RUNNER.subprocess, "run", fake_run)
+    monkeypatch.setenv("CFDX_NACA_ALGORITHM", "COUPLED")
+    monkeypatch.setenv("CFDX_NACA_COUPLED_SCHUR", "pcd")
+    status = run_case(mesh, output, exe, 10, 10, convection_scheme="TVD_VANLEER")
+    assert status == 1
+    assert captured["env"]["CFDX_NACA_ALGORITHM"] == "SIMPLE"
+    assert "CFDX_NACA_COUPLED_SCHUR" not in captured["env"]
+    summary = json.loads((output / "run_summary.json").read_text())
+    assert summary["algorithm"] == "SIMPLE"
+    assert summary["scheme"] == "TVD_VANLEER"
+    assert summary["certificate_present"] is False
+    assert summary["raw_wall_faces_present"] is False
+
+
 def test_gci_runner_overrides_ambient_algorithm_and_clears_stale_files(
     tmp_path, monkeypatch
 ):

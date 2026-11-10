@@ -172,9 +172,13 @@ inline OpenFoamWallCouplingAuditV8 audit_openfoam_wall_coupling_v8(
             // internal G field and corner-weighted wall constraints are not
             // identical to this unweighted face-local reference.
             const double k=state.k(owner), omega=state.omega(owner);
-            const double g_local=std::min(c.density*state.nu_t(owner)*
+            // G in omegaWallFunction is a kinematic production rate
+            // (m2/s3). The SST volume source alone multiplies by rho.
+            // Mixing rho*G with G silently changes the wall function when
+            // the reference density is not one.
+            const double g_local=std::min(state.nu_t(owner)*
                     state.strain_rate(owner)*state.strain_rate(owner),
-                c.sst_production_limiter*c.beta_star*c.density*k*omega);
+                c.sst_production_limiter*c.beta_star*k*omega);
             const auto ref=openfoam_wall_coupling_point_v8(
                 k,c.molecular_viscosity,y,tangential,g_local);
             wall_samples.push_back({owner,face,area,ref.omega,ref.nut_spalding,

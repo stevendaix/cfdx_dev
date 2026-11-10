@@ -8,7 +8,6 @@ original matrix, RHS, tolerance, and positive/negative qualification gates.
 The algebraic face balance is a symmetric M-matrix graph decomposition of
 A*x. It is not an independent geometric FV face reconstruction.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -20,6 +19,7 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import splu
+
 from seed_bfs_pressure_from_capture import read_capture
 
 
@@ -41,12 +41,8 @@ def compensated_residual(
     also supports non-symmetric matrices. No external scaling changes A or b.
     """
     n = b.size
-    if (
-        a.shape != (n, n)
-        or hi.shape != (n,)
-        or lo.shape != (n,)
-        or not all(np.isfinite(array).all() for array in (a.data, b, hi, lo))
-    ):
+    if (a.shape != (n, n) or hi.shape != (n,) or lo.shape != (n,)
+        or not all(np.isfinite(array).all() for array in (a.data, b, hi, lo))):
         raise ValueError("non-finite or mismatched pressure inputs")
     dtype = np.longdouble
     ad = a.data.astype(dtype)
@@ -75,11 +71,9 @@ def compensated_residual(
     return residual, row_sums, bool(symmetric)
 
 
+
 def algebraic_face_balance(
-    a: csr_matrix,
-    b: np.ndarray,
-    hi: np.ndarray,
-    lo: np.ndarray,
+    a: csr_matrix, b: np.ndarray, hi: np.ndarray, lo: np.ndarray,
     row_sums: np.ndarray,
 ) -> dict:
     """Independent CSR edge-flux decomposition, not geometric Rhie-Chow.
@@ -112,8 +106,8 @@ def algebraic_face_balance(
             np.sqrt(np.sum(defect * defect, dtype=np.longdouble)) / norm_b
         ),
         "internal_face_flux_pair_global_sum": float(internal_sum),
-        "boundary_leakage_global_sum": float(
-            np.sum(divergence, dtype=np.longdouble) - internal_sum
+        "boundary_leakage_global_sum": float(np.sum(
+            divergence, dtype=np.longdouble) - internal_sum
         ),
         "rhs_global_sum": float(np.sum(bb, dtype=np.longdouble)),
     }
@@ -134,15 +128,9 @@ def two_sum_update(hi: np.ndarray, lo: np.ndarray, delta: np.ndarray) -> None:
     hi[:], lo[:] = updated, leftover
 
 
-def inspect(
-    a: csr_matrix,
-    b: np.ndarray,
-    *,
-    tolerance: float = 1e-11,
-    refinements: int = 2,
-    split_output: Path | None = None,
-    capture_checksum: str | None = None,
-) -> dict:
+def inspect(a: csr_matrix, b: np.ndarray, *, tolerance: float = 1e-11,
+            refinements: int = 2, split_output: Path | None = None,
+            capture_checksum: str | None = None) -> dict:
     if not (math.isfinite(tolerance) and tolerance > 0.0) or not 0 <= refinements <= 8:
         raise ValueError("invalid pressure replay controls")
     if np.finfo(np.longdouble).eps >= np.finfo(np.float64).eps:
@@ -163,20 +151,16 @@ def inspect(
     observations = []
     for iteration in range(refinements + 1):
         residual, row_sums, graph_eligible = compensated_residual(a, b, hi, lo)
-        corrected = float(
-            np.sqrt(np.sum(residual * residual, dtype=np.longdouble))
-            / np.longdouble(b_scale)
-        )
+        corrected = float(np.sqrt(np.sum(residual * residual, dtype=np.longdouble)) /
+                          np.longdouble(b_scale))
         rounded = float(np.linalg.norm(b - a @ hi) / b_scale)
-        observations.append(
-            {
-                "iteration": iteration,
-                "stored_fp64_relative_residual": rounded,
-                "compensated_original_relative_residual": corrected,
-                "compensated_algebraic_gate_passed": corrected <= tolerance,
-                "stored_fp64_gate_passed": rounded <= tolerance,
-            }
-        )
+        observations.append({
+            "iteration": iteration,
+            "stored_fp64_relative_residual": rounded,
+            "compensated_original_relative_residual": corrected,
+            "compensated_algebraic_gate_passed": corrected <= tolerance,
+            "stored_fp64_gate_passed": rounded <= tolerance,
+        })
         if iteration == refinements:
             break
         delta = factor.solve(np.asarray(residual, dtype=np.float64))
@@ -187,13 +171,10 @@ def inspect(
     # Both the internal owner/neighbour graph and boundary leakage come from
     # the original CSR. They match Ax algebraically, but this does not claim
     # that the production face fluxes use the retained low-order components.
-    balance = float(
-        np.sqrt(np.sum(original_residual**2, dtype=np.longdouble))
-        / np.longdouble(b_scale)
-    )
-    face_audit = (
-        algebraic_face_balance(a, b, hi, lo, row_sums) if graph_eligible else None
-    )
+    balance = float(np.sqrt(np.sum(original_residual**2, dtype=np.longdouble)) /
+                    np.longdouble(b_scale))
+    face_audit = (algebraic_face_balance(a, b, hi, lo, row_sums)
+                  if graph_eligible else None)
     if split_output is not None:
         if not graph_eligible or balance > tolerance or not capture_checksum:
             raise ValueError("cannot export uncertified or unlinked pressure split")
@@ -214,20 +195,15 @@ def inspect(
         "original_tolerance_unchanged": tolerance,
         "longdouble_machine_epsilon": float(np.finfo(np.longdouble).eps),
         "pressure_operator_symmetric_m_matrix": graph_eligible,
-        "boundary_row_sum_nonzero_count": int(
-            np.count_nonzero(
-                abs(row_sums) > 1e-13 * np.asarray(abs(a).sum(axis=1)).ravel()
-            )
-        ),
+        "boundary_row_sum_nonzero_count": int(np.count_nonzero(abs(row_sums) >
+            1e-13 * np.asarray(abs(a).sum(axis=1)).ravel())),
         "algebraic_compensated_balance_relative": balance,
         "algebraic_face_audit": face_audit,
         "compensated_split_written": str(split_output) if split_output else None,
         "observations": observations,
         "final_split_low_norm": float(np.linalg.norm(lo)),
         "final_split_high_norm": float(np.linalg.norm(hi)),
-        "original_fp64_pressure_gate_passed": observations[-1][
-            "stored_fp64_gate_passed"
-        ],
+        "original_fp64_pressure_gate_passed": observations[-1]["stored_fp64_gate_passed"],
         "physical_face_flux_certified": False,
         "sst_yplus_cf_reattachment_certified": False,
         "accept_as_production_pressure_correction": False,
@@ -239,41 +215,22 @@ def main() -> int:
     parser.add_argument("--capture", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--refinements", type=int, default=2)
-    parser.add_argument(
-        "--split-output",
-        type=Path,
-        help="optional export of high/low FP64 correction for C++ audit",
-    )
+    parser.add_argument("--split-output", type=Path,
+                        help="optional export of high/low FP64 correction for C++ audit")
     args = parser.parse_args()
     matrix, rhs, meta = read_capture(args.capture)
     checksum = args.capture.read_text(encoding="ascii").splitlines()[-1].strip()
-    if len(checksum) != 16 or not all(
-        ch in "0123456789abcdef" for ch in checksum.lower()
-    ):
+    if len(checksum) != 16 or not all(ch in "0123456789abcdef" for ch in checksum.lower()):
         raise ValueError("capture checksum footer is missing")
-    report = inspect(
-        matrix,
-        rhs,
-        tolerance=meta["target_tolerance"],
-        refinements=args.refinements,
-        split_output=args.split_output,
-        capture_checksum=checksum,
-    )
+    report = inspect(matrix, rhs, tolerance=meta["target_tolerance"],
+                     refinements=args.refinements, split_output=args.split_output,
+                     capture_checksum=checksum)
     report["capture_sha256"] = _sha(args.capture)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
-    print(
-        json.dumps(
-            {
-                "status": report["status"],
-                "observations": report["observations"],
-                "physical_face_flux_certified": False,
-            },
-            allow_nan=False,
-        )
-    )
+    args.output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n",
+                           encoding="utf-8")
+    print(json.dumps({"status": report["status"], "observations": report["observations"],
+                      "physical_face_flux_certified": False}, allow_nan=False))
     return 0
 
 
