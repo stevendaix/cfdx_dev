@@ -10,6 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "scripts"))
+sys.path.append(str(ROOT / "scripts"))
 from generate_2d_validation_meshes import write_mesh
 from import_tmr_naca0012 import convert, main, read_plot3d_2d
 

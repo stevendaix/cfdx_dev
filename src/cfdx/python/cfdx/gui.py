@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from .native_solver_preflight import (
+    check_native_production_case, is_native_production_solver, native_production_command,
+)
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .mesh_model import read_mesh_catalog
@@ -371,6 +374,16 @@ if QApplication is not None:
             if self._case_path is None:
                 raise ValueError("Save the case before Run")
             if is_native_production_solver(solver):
+                output_dir = (self.session.case.execution.output_dir
+                              or self._case_path.parent / "results")
+                iterations = self.session.case.numerics.get("max_iterations", 500)
+                command = native_production_command(
+                    solver, self._case_path, output_dir=output_dir,
+                    max_iterations=iterations,
+                )
+            else:
+                command = [solver, str(self._case_path)]
+            if is_native_production_solver(solver):
                 output_dir = (
                     self.session.case.execution.output_dir
                     or self._case_path.parent / "results"
@@ -708,6 +721,9 @@ if QApplication is not None:
                 mesh = self.mesh_browser.catalog
                 report = validate_case(self.session.case, mesh)
                 if report.ok:
+                    solver = self.session.case.execution.solver
+                    if is_native_production_solver(solver) and self._case_path is not None:
+                        check_native_production_case(self._case_path)
                     solver = self.session.case.execution.solver
                     if (
                         is_native_production_solver(solver)

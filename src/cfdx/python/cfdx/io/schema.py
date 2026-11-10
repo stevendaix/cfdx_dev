@@ -47,6 +47,7 @@ class SSTScalarBoundaryType(str, Enum):
     FIXED_VALUE = "fixed_value"
     ZERO_GRADIENT = "zero_gradient"
     WALL_K_ZERO = "wall_k_zero"
+    WALL_KQ_R = "wall_kq_r"
     WALL_OMEGA_SST = "wall_omega_sst"
     UNKNOWN = "unknown"
 

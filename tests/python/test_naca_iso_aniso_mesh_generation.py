@@ -80,6 +80,16 @@ def test_shear_strength_is_physically_bounded(tmp_path):
 
 @pytest.mark.parametrize("family", ["quasi_isotropic", "anisotropic"])
 def test_valid_n64_generation_end_to_end(family, tmp_path):
+    rows = build_families(
+        tmp_path, levels=(64,), make_hdf5=False, only_family=family
+    )
+    assert [row["n_surface"] for row in rows[family]] == [64]
+    assert rows[family][0]["inverted_or_degenerate_cells"] == 0
+    assert (tmp_path / family / "quality.json").exists()
+
+
+@pytest.mark.parametrize("family", ["quasi_isotropic", "anisotropic"])
+def test_valid_n64_generation_end_to_end(family, tmp_path):
     rows = build_families(tmp_path, levels=(64,), make_hdf5=False, only_family=family)
     assert [row["n_surface"] for row in rows[family]] == [64]
     assert rows[family][0]["inverted_or_degenerate_cells"] == 0

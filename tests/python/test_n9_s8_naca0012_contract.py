@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "scripts"))
+sys.path.append(str(ROOT / "scripts"))
 from import_tmr_naca0012 import infer_dimensions
 
 
