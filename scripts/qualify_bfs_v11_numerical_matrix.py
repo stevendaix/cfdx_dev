@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """BFS V11 controlled numerical A/B (NOT an experimental NASA certification).
 
 Every variant is cloned from the *same* explicit second-order CFDX HDF5 case.
