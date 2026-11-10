@@ -3,7 +3,6 @@
 Not a BFS experimental qualification: true reattachment/Cf/profiles and ALL
 physical convergence gates must be assessed separately. Ignore candidates.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -25,17 +24,7 @@ def certify(log: str, *, minimum_commits: int = 3, max_ratio: float = 0.995) -> 
         if not line.startswith("GLOBAL_CONTRACTION_COMMITTED_V14 "):
             continue
         fields = dict(re.findall(r"(\w+)=([^\s]+)", line))
-        if (
-            not {
-                "iteration",
-                "committed",
-                "contractions",
-                "merit",
-                "converged",
-                "qualified",
-            }
-            <= fields.keys()
-        ):
+        if not {"iteration", "committed", "contractions", "merit", "converged", "qualified"} <= fields.keys():
             raise QualificationError("incomplete committed contraction record")
         try:
             r = {
@@ -54,10 +43,7 @@ def certify(log: str, *, minimum_commits: int = 3, max_ratio: float = 0.995) -> 
             raise QualificationError("unproven physical qualification asserted")
         if records:
             old = records[-1]
-            if (
-                r["iteration"] <= old["iteration"]
-                or r["committed"] != old["committed"] + 1
-            ):
+            if r["iteration"] <= old["iteration"] or r["committed"] != old["committed"] + 1:
                 raise QualificationError("duplicate/noncommitted/skip iteration")
             # A reset of the streak is allowed only on an explicitly observed
             # operator change; this proof requires one identical operator.
@@ -70,9 +56,7 @@ def certify(log: str, *, minimum_commits: int = 3, max_ratio: float = 0.995) -> 
                 raise QualificationError("missing first accepted baseline")
         records.append(r)
     if len(records) < minimum_commits:
-        raise QualificationError(
-            f"only {len(records)} committed states; need {minimum_commits}"
-        )
+        raise QualificationError(f"only {len(records)} committed states; need {minimum_commits}")
     return {
         "schema": "CFDX-BFS-GLOBAL-CONTRACTION-V14",
         "committed": len(records),
@@ -93,24 +77,16 @@ def main() -> int:
     parser.add_argument("--min-commits", type=int, default=3)
     args = parser.parse_args()
     try:
-        result = certify(
-            args.log.read_text(encoding="utf-8", errors="replace"),
-            minimum_commits=args.min_commits,
-        )
+        result = certify(args.log.read_text(encoding="utf-8", errors="replace"),
+                         minimum_commits=args.min_commits)
     except (OSError, QualificationError) as exc:
-        result = {
-            "schema": "CFDX-BFS-GLOBAL-CONTRACTION-V14",
-            "strict_contraction_proved": False,
-            "bfs_driver_seegmiller_qualified": False,
-            "reason": str(exc),
-        }
+        result = {"schema": "CFDX-BFS-GLOBAL-CONTRACTION-V14", "strict_contraction_proved": False,
+                  "bfs_driver_seegmiller_qualified": False, "reason": str(exc)}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         return 3
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     return 0
 
 

@@ -1,5 +1,4 @@
 """V13 numerical SVD truth contract; no PCD / BFS convergence inferred."""
-
 import json
 import struct
 import sys
@@ -42,28 +41,12 @@ def test_two_sided_nonsymmetric_incompatible(tmp_path):
     assert c["matrix"]["numerical_nullity_left"] == 1
     assert c["matrix"]["numerical_nullity_right"] == 1
     assert c["numerical_basis_certified"]
-    assert c["incompatible_rhs_relative"] == pytest.approx(2 / (5**0.5))
-    assert c["original_true_residual_relative_rhs"] == pytest.approx(
-        c["incompatible_rhs_relative"]
-    )
+    assert c["incompatible_rhs_relative"] == pytest.approx(2 / (5 ** 0.5))
+    assert c["original_true_residual_relative_rhs"] == pytest.approx(c["incompatible_rhs_relative"])
     assert c["projected_true_residual_l2"] < 1e-12
     assert not c["original_rhs_compatible_at_1e-8"]
-    assert (
-        main(
-            [
-                "--capture",
-                str(path),
-                "--output",
-                str(tmp_path / "proof.json"),
-                "--require-compatible",
-            ]
-        )
-        == 3
-    )
-    assert (
-        json.loads((tmp_path / "proof.json").read_text())["physical_convergence"]
-        is False
-    )
+    assert main(["--capture", str(path), "--output", str(tmp_path / "proof.json"), "--require-compatible"]) == 3
+    assert json.loads((tmp_path / "proof.json").read_text())["physical_convergence"] is False
 
 
 def test_exact_null_compatible_rhs(tmp_path):
@@ -71,18 +54,7 @@ def test_exact_null_compatible_rhs(tmp_path):
     c = analyze(path)
     assert c["original_rhs_compatible_at_1e-8"]
     assert c["original_true_residual_relative_rhs"] < 1e-12
-    assert (
-        main(
-            [
-                "--capture",
-                str(path),
-                "--output",
-                str(tmp_path / "compatible.json"),
-                "--require-compatible",
-            ]
-        )
-        == 0
-    )
+    assert main(["--capture", str(path), "--output", str(tmp_path / "compatible.json"), "--require-compatible"]) == 0
 
 
 def test_nonsingular_and_empty_nullspace(tmp_path):

@@ -4,7 +4,6 @@ The long-double accumulator is an experiment on an initial pressure-correction
 system; it is NOT a replacement for the production FV pressure equation,
 pressure-face flux update, or any of the strict CFDX convergence gates.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -24,9 +23,7 @@ def extended_residual(A, b, x):
     """Compute b - A*x with explicit extended-precision CSR products and sum."""
     if A.shape[0] != A.shape[1] or b.size != A.shape[0] or x.size != b.size:
         raise ValueError("incompatible CSR/rhs/solution shapes")
-    if not (
-        np.isfinite(A.data).all() and np.isfinite(b).all() and np.isfinite(x).all()
-    ):
+    if not (np.isfinite(A.data).all() and np.isfinite(b).all() and np.isfinite(x).all()):
         raise ValueError("non-finite pressure data")
     wide = np.longdouble
     if np.finfo(wide).eps >= np.finfo(np.float64).eps:
@@ -50,23 +47,19 @@ def audit(capture: Path, passes: int = 2) -> dict:
     x = lu.solve(b).astype(np.longdouble)
     ref = np.linalg.norm(b.astype(np.longdouble))
     if not ref or not np.isfinite(ref):
-        raise ValueError(
-            "zero/nonfinite pressure RHS norm is not supported in this audit"
-        )
+        raise ValueError("zero/nonfinite pressure RHS norm is not supported in this audit")
     results = []
     for step in range(passes + 1):
         wide_r = extended_residual(A, b, x)
         restored_double = np.asarray(x, dtype=np.float64)
-        results.append(
-            {
-                "pass": step,
-                "extended_precision_true_relative": float(np.linalg.norm(wide_r) / ref),
-                "stored_double_true_relative": float(
-                    np.linalg.norm(b - A @ restored_double) / np.linalg.norm(b)
-                ),
-                "extended_pressure_norm_l2": float(np.linalg.norm(x)),
-            }
-        )
+        results.append({
+            "pass": step,
+            "extended_precision_true_relative": float(np.linalg.norm(wide_r) / ref),
+            "stored_double_true_relative": float(
+                np.linalg.norm(b - A @ restored_double) / np.linalg.norm(b)
+            ),
+            "extended_pressure_norm_l2": float(np.linalg.norm(x)),
+        })
         if step != passes:
             # Factorization remains the same: only residual accumulation and
             # solution update have increased precision in this reference audit.

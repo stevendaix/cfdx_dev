@@ -8,12 +8,8 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = (
-    Path(__file__).resolve().parents[2] / "scripts/qualify_bfs_sst_wall_contract_v6.py"
-)
-spec = importlib.util.spec_from_file_location(
-    "qualify_bfs_sst_wall_contract_v6", SCRIPT
-)
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/qualify_bfs_sst_wall_contract_v6.py"
+spec = importlib.util.spec_from_file_location("qualify_bfs_sst_wall_contract_v6", SCRIPT)
 assert spec and spec.loader
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
@@ -24,14 +20,10 @@ def native_case():
     return {
         "turbulence_model": "k_omega_sst",
         "boundary_conditions": [
-            {
-                "patch_name": "lowerWall",
-                "type": "wall",
-                "sst_scalar_conditions": [
-                    {"field": "k", "type": "wall_k_zero"},
-                    {"field": "omega", "type": "wall_omega_sst"},
-                ],
-            },
+            {"patch_name": "lowerWall", "type": "wall", "sst_scalar_conditions": [
+                {"field": "k", "type": "wall_k_zero"},
+                {"field": "omega", "type": "wall_omega_sst"},
+            ]},
         ],
         "numerics": {
             "momentum_scheme": "first_order",
