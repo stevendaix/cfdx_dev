@@ -2,8 +2,10 @@
 
 #include "cfdx/physics/turbulence_solver.h"
 #include "cfdx/physics/sst_fp64_stall_v14.h"
+#include "cfdx/physics/sst_fp64_stall_v14.h"
 #include "cfdx/physics/scalar_transport_gradient.h"
 #include <algorithm>
+#include <functional>
 #include <array>
 #include <cstdlib>
 #include <iostream>
@@ -394,6 +396,30 @@ inline std::pair<double,double> compute_sst_blending(
                                 0.0,1.0,0.856);
 }
 
+// V17: a wall-production constraint is expressed per unit carrier mass
+// (m2/s3), not as the volume-integrated source rho*G. It is intentionally
+// optional; the legacy SST operator stays unchanged when this is absent.
+struct SSTWallProductionV17 {
+    std::vector<double> g_by_cell;
+    std::vector<unsigned char> has_wall_cell;
+
+    void validate(std::size_t n) const {
+        if (g_by_cell.size() != n || has_wall_cell.size() != n)
+            throw std::invalid_argument("V17 SST wall G field size mismatch");
+        for (std::size_t i=0; i<n; ++i)
+            if (has_wall_cell[i] &&
+                (!(g_by_cell[i]>=0.) || !std::isfinite(g_by_cell[i])))
+                throw std::invalid_argument("V17 SST wall G is nonfinite or negative");
+    }
+    double for_cell(std::size_t i) const noexcept {
+        return has_wall_cell[i] ? g_by_cell[i] : -1.0;
+    }
+};
+using SSTWallRefreshV17 = std::function<void(
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>&,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>&,
+    ScalarBoundaryFaceValues&, SSTWallProductionV17&)>;
+
 struct SSTCellSources {
     double sk=0.0, spk=0.0, sw=0.0, spw=0.0;
     double gamma_k=0.0, gamma_w=0.0, nut=0.0;
@@ -401,7 +427,8 @@ struct SSTCellSources {
 
 inline SSTCellSources sst_cell_sources(
     double k, double omega, double strain, double F1, double F2,
-    double grad_k_dot_grad_omega, const TurbulenceTransportControls& c)
+    double grad_k_dot_grad_omega, const TurbulenceTransportControls& c,
+    double wall_g_kinematic = -1.0)
 {
     // std::clamp(NaN, 0, 1) returns NaN, while std::max(finite, NaN)
     // returns the finite argument on common C++ implementations. Thus a
@@ -417,7 +444,11 @@ inline SSTCellSources sst_cell_sources(
     const auto blend=[f1](double a,double b){return f1*a+(1.0-f1)*b;};
     SSTCellSources s;
     s.nut=c.a1*ki/std::max(c.a1*wi,S*f2);
-    const double Pk=std::min(c.density*s.nut*S*S,
+    if (!std::isfinite(wall_g_kinematic))
+        throw std::invalid_argument("SST wall G is nonfinite");
+    const double production_per_mass = wall_g_kinematic >= 0.0
+        ? wall_g_kinematic : s.nut*S*S;
+    const double Pk=std::min(c.density*production_per_mass,
                              c.sst_production_limiter*c.beta_star*c.density*ki*wi);
     s.sk=Pk;
     s.spk=-c.density*c.beta_star*wi;
@@ -462,9 +493,11 @@ inline TurbulenceTransportResult solve_sst_transport(
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
-    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr,
+    const SSTWallProductionV17* wall_production = nullptr)
 {
     validate_turbulence_controls(controls);
+    if (wall_production) wall_production->validate(mesh.n_cells());
     if(controls.model!=TurbulenceModel::SST)
         throw std::invalid_argument("solve_sst_transport requires SST model");
     const std::size_t n=mesh.n_cells();
@@ -492,7 +525,8 @@ inline TurbulenceTransportResult solve_sst_transport(
         cfdx::core::Field<double,cfdx::core::Location::CELL> spk(n,"Spk","kg/m3/s",1),spw(n,"Spw","kg/m3/s",1);
         std::vector<double> gamma_k(n),gamma_w(n);
         for(std::size_t i=0;i<n;++i) {
-            const auto q=sst_cell_sources(k(i),omega(i),strain_rate(i),F1(i),F2(i),cross[i],controls);
+            const auto q=sst_cell_sources(k(i),omega(i),strain_rate(i),F1(i),F2(i),cross[i],controls,
+                wall_production ? wall_production->for_cell(i) : -1.0);
             sk(i)=q.sk; spk(i)=q.spk; sw(i)=q.sw; spw(i)=q.spw;
             gamma_k[i]=q.gamma_k; gamma_w[i]=q.gamma_w;
         }
@@ -549,7 +583,8 @@ inline TurbulenceTransportResult solve_sst_transport(
                 controls.sst_use_wls_boundary_gradients, controls.sst_gradient_dimension);
             for (std::size_t i=0;i<n;++i) {
                 const auto q=sst_cell_sources(k(i),omega(i),strain_rate(i),
-                    F1(i),F2(i),updated_cross[i],controls);
+                    F1(i),F2(i),updated_cross[i],controls,
+                    wall_production ? wall_production->for_cell(i) : -1.0);
                 sk(i)=q.sk;
                 spk(i)=q.spk;
                 gamma_k[i]=q.gamma_k;
@@ -651,9 +686,11 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
     const TurbulenceTransportControls& controls,
     const ScalarBoundaryConditions& k_bcs,
     const ScalarBoundaryConditions& omega_bcs,
-    const ScalarBoundaryFaceValues* omega_face_values)
+    const ScalarBoundaryFaceValues* omega_face_values,
+    const SSTWallProductionV17* wall_production = nullptr)
 {
     const std::size_t n = mesh.n_cells();
+    if (wall_production) wall_production->validate(n);
     const auto cross = sst_boundary_gradient_dot(
         k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values,
         controls.sst_use_wls_boundary_gradients, controls.sst_gradient_dimension);
@@ -666,7 +703,8 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
             k(i),omega(i),wall_distance(i),controls.molecular_viscosity,
             controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
         const auto q=sst_cell_sources(
-            k(i),omega(i),strain_rate(i),f1,f2,cross[i],controls);
+            k(i),omega(i),strain_rate(i),f1,f2,cross[i],controls,
+            wall_production ? wall_production->for_cell(i) : -1.0);
         sk(i)=q.sk; sw(i)=q.sw; spk(i)=q.spk; spw(i)=q.spw;
         gamma_k[i]=q.gamma_k; gamma_w[i]=q.gamma_w;
     }
@@ -877,8 +915,9 @@ sst_reassembled_discrete_cell_budgets(
     const ScalarBoundaryConditions& k_bcs,
     const ScalarBoundaryConditions& omega_bcs,
     const ScalarBoundaryFaceValues* omega_face_values,
-    std::size_t row)
+    std::size_t row, const SSTWallProductionV17* wall_production = nullptr)
 {
+    if (wall_production) wall_production->validate(mesh.n_cells());
     const auto n=mesh.n_cells();
     if (row>=n) throw std::invalid_argument("SST row budget: invalid row");
     const auto cross=sst_boundary_gradient_dot(
@@ -892,7 +931,8 @@ sst_reassembled_discrete_cell_budgets(
             k(i),omega(i),wall_distance(i),controls.molecular_viscosity,
             controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
         const auto s=sst_cell_sources(
-            k(i),omega(i),strain_rate(i),f1,f2,cross[i],controls);
+            k(i),omega(i),strain_rate(i),f1,f2,cross[i],controls,
+            wall_production ? wall_production->for_cell(i) : -1.0);
         sk(i)=s.sk;spk(i)=s.spk;sw(i)=s.sw;spw(i)=s.spw;
         gamma_k[i]=s.gamma_k;gamma_w[i]=s.gamma_w;
     }
@@ -904,7 +944,8 @@ sst_reassembled_discrete_cell_budgets(
         controls.molecular_viscosity,controls.beta_star,cross[row],controls.density,
         controls.sst_sigma_w2);
     const auto source=sst_cell_sources(
-        k(row),omega(row),strain_rate(row),f1,f2,cross[row],controls);
+        k(row),omega(row),strain_rate(row),f1,f2,cross[row],controls,
+        wall_production ? wall_production->for_cell(row) : -1.0);
     const double volume=geometry.cell_volumes[row];
     const double blended_gamma=f1*controls.gamma1+(1.0-f1)*controls.gamma2;
     const double blended_beta=f1*controls.beta1+(1.0-f1)*controls.beta2;
@@ -960,7 +1001,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
     const TurbulenceTransportControls& controls,const ScalarBoundaryConditions& k_bcs={},
     const ScalarBoundaryConditions& omega_bcs={},std::size_t max_iterations=100,double tolerance=1e-8,
-    const ScalarBoundaryFaceValues* omega_face_values=nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values=nullptr,
+    const SSTWallRefreshV17* wall_refresh = nullptr)
 {
     validate_turbulence_controls(controls);
     const std::size_t n=mesh.n_cells();
@@ -973,13 +1015,34 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
     TurbulenceTransportResult result;
     std::size_t consecutive_line_search_stalls=0;
     SSTFp64StallV14 fp64_stall;
+    // Refresh exactly one (wall omega, wall G) closure for every candidate
+    // k/omega pair. No pre-SST frozen wall source may be passed off as the
+    // residual of the returned state.
+    ScalarBoundaryFaceValues active_omega_values;
+    SSTWallProductionV17 active_wall_g;
+    const auto refresh_wall = [&](const auto& kk, const auto& ww) {
+        if (wall_refresh) {
+            active_omega_values = ScalarBoundaryFaceValues{};
+            active_wall_g = SSTWallProductionV17{};
+            (*wall_refresh)(kk, ww, active_omega_values, active_wall_g);
+            active_wall_g.validate(n);
+        }
+    };
+    const auto face_values_now = [&]() -> const ScalarBoundaryFaceValues* {
+        return wall_refresh ? &active_omega_values : omega_face_values;
+    };
+    const auto sources_now = [&]() -> const SSTWallProductionV17* {
+        return wall_refresh ? &active_wall_g : nullptr;
+    };
+    SSTFp64StallV14 fp64_stall;
     for(std::size_t iter=1;iter<=max_iterations;++iter){
         auto old_k=k,old_w=omega;
+        refresh_wall(k,omega);
         cfdx::core::Field<double,cfdx::core::Location::CELL> F1(n,"F1","1",1),F2(n,"F2","1",1);
         // Compute the full-cell gradient contraction once per outer iteration.
         // Recomputing this n-cell vector inside the n-cell loop made this O(n^2).
         const auto cross=sst_boundary_gradient_dot(
-            k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values,
+            k, omega, mesh, geometry, k_bcs,omega_bcs,face_values_now(),
             controls.sst_use_wls_boundary_gradients, controls.sst_gradient_dimension);
         for(std::size_t i=0;i<n;++i){
             const auto b=compute_sst_blending(k(i),omega(i),wall_distance(i),controls.molecular_viscosity,controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
@@ -987,7 +1050,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         }
         const auto inner=solve_sst_transport(
             mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,
-            k_bcs,omega_bcs,1,tolerance,omega_face_values);
+            k_bcs,omega_bcs,1,tolerance,face_values_now(),sources_now());
         // Optional Armijo-like backtracking on the *returned nonlinear SST
         // equations*, with the pressure/velocity/face flux held fixed.
         // It never changes the global conservation or convergence criteria.
@@ -998,9 +1061,10 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         if (controls.sst_nonlinear_line_search && !inner.converged) {
             auto trial_k=k, trial_w=omega;
             k=old_k; omega=old_w;
+            refresh_wall(k,omega);
             const auto starting=sst_reassembled_returned_state_residual(
                 mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
-                controls,k_bcs,omega_bcs,omega_face_values);
+                controls,k_bcs,omega_bcs,face_values_now(),sources_now());
             line_old_merit=sst_nonlinear_merit(starting);
             line_accepted=false;
             // Largest reducing step wins; decline must be present on the
@@ -1010,9 +1074,10 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                     k(i)=old_k(i)+alpha*(trial_k(i)-old_k(i));
                     omega(i)=old_w(i)+alpha*(trial_w(i)-old_w(i));
                 }
+                refresh_wall(k,omega);
                 const auto check=sst_reassembled_returned_state_residual(
                     mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
-                    controls,k_bcs,omega_bcs,omega_face_values);
+                    controls,k_bcs,omega_bcs,face_values_now(),sources_now());
                 const double merit=sst_nonlinear_merit(check);
                 if (sst_nonlinear_step_reduces_merit(line_old_merit,merit,alpha)) {
                     line_alpha=alpha;
@@ -1047,6 +1112,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                 omega(i)=old_w(i)+alpha*(omega(i)-old_w(i));
             }
         }
+        refresh_wall(k,omega);
         const auto k_change = sst_field_update_diagnostic(
             old_k, k, controls.k_min);
         const auto omega_change = sst_field_update_diagnostic(
@@ -1076,7 +1142,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         if (must_audit_returned) {
             returned = sst_reassembled_returned_state_residual(
                 mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
-                controls,k_bcs,omega_bcs,omega_face_values);
+                controls,k_bcs,omega_bcs,face_values_now(),sources_now());
             result.k_residual = returned.k_raw_inf;
             result.second_residual = returned.omega_raw_inf;
         }
@@ -1092,8 +1158,12 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                 throw std::invalid_argument("CFDX_SST_ROW_BUDGET requires a valid zero-based cell index");
             const auto budget=sst_reassembled_discrete_cell_budgets(
                 mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
-                controls,k_bcs,omega_bcs,omega_face_values,
-                static_cast<std::size_t>(requested));
+                // The budget must use exactly the face values used by this
+                // nonlinear candidate; V17 dynamically refreshes omega wall
+                // faces, so the static pre-SST pointer would silently audit a
+                // DIFFERENT equation.
+                controls,k_bcs,omega_bcs,face_values_now(),
+                static_cast<std::size_t>(requested),sources_now());
             for (const auto& item : {std::pair<const char*,SSTCellDiscreteBudget>{"k",budget.first},
                                      {"omega",budget.second}}) {
                 const auto& b=item.second;
@@ -1187,6 +1257,55 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                           << " qualified=0\n";
             break;
         }
+        // The raw k/omega residuals alone do not certify convergence. In a
+        // stiff BFS, they can be < tolerance while the *returned* equations
+        // or field change remain above the same tolerance. Expose each gate
+        // without ever changing the acceptance predicate below.
+        if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+            (iter == 1 || iter % 100 == 0 || iter == max_iterations ||
+             (inner.converged && outer_update_ok && returned_equations_ok))) {
+            std::cerr << std::scientific << std::setprecision(12)
+                      << "SST_ACCEPTANCE_GATES iteration=" << iter
+                      << " inner_converged=" << inner.converged
+                      << " line_accepted=" << line_accepted
+                      << " finite=" << (result.nonfinite_bound_events == 0)
+                      << " outer_update_ok=" << outer_update_ok
+                      << " returned_equations_ok=" << returned_equations_ok
+                      << " dk_absolute=" << dk
+                      << " domega_absolute=" << dw
+                      << " k_returned_row_scaled=" << returned.k_row_scaled
+                      << " omega_returned_row_scaled=" << returned.omega_row_scaled
+                      << " tolerance=" << tolerance
+                      << " qualified_bfs=0\n";
+        }
+        const bool all_sst_gates_ok = inner.converged && line_accepted &&
+            result.nonfinite_bound_events == 0 && outer_update_ok &&
+            returned_equations_ok;
+        if (fp64_stall.observe(dk,dw,all_sst_gates_ok)) {
+            // Fail CLOSED. At a stall the inner linearized solve can be
+            // unconverged, so must_audit_returned may be false. In that case
+            // the old log emitted "inf" placeholders instead of the actual
+            // defects and worst cells. Always sample the RETURNED nonlinear
+            // equations here; this is read-only and cannot promote a state.
+            if (!must_audit_returned)
+                returned = sst_reassembled_returned_state_residual(
+                    mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    controls,k_bcs,omega_bcs,face_values_now(),sources_now());
+            std::cerr << "SST_FP64_PRECISION_STALL_V14 iteration=" << iter
+                      << " identical_steps=" << fp64_stall.identical_unconverged
+                      << " k_returned_row_scaled=" << returned.k_row_scaled
+                      << " omega_returned_row_scaled=" << returned.omega_row_scaled
+                      << " k_local_relative=" << returned.k_local_relative
+                      << " omega_local_relative=" << returned.omega_local_relative
+                      << " k_worst_cell=" << returned.k_worst_cell
+                      << " omega_worst_cell=" << returned.omega_worst_cell
+                      << " k_compensated=" << returned.k_local_compensated
+                      << " omega_compensated=" << returned.omega_local_compensated
+                      << " target=" << tolerance
+                      << " accepted=0 qualified=0\n";
+            break;
+        }
+        if (all_sst_gates_ok) {
         // The raw k/omega residuals alone do not certify convergence. In a
         // stiff BFS, they can be < tolerance while the *returned* equations
         // or field change remain above the same tolerance. Expose each gate
