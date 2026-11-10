@@ -135,6 +135,17 @@ class ValidateFichesContractTests(unittest.TestCase):
             )
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
+    def test_v11_v13_v14_bfs_campaign_reports_are_exempt_from_method_fiche_template(self):
+        report_names = (
+            "52-bfs-v11-pression-pcd-sst.md",
+            "53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md",
+            "54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md",
+        )
+        for name in report_names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                write_fiche(Path(tmp), name=name, text="# BFS campaign evidence report\n")
+                self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
     def test_fiche_without_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             text = valid_fiche_text().replace(DOI_LINE + "\n", "")
