@@ -267,7 +267,8 @@ Run solve_case(
     const VelocityBoundaryConditions& ubc,
     const ScalarBoundaryConditions& pbc,
     double body_force_x,
-    double viscosity = 0.1)
+    double viscosity = 0.1,
+    bool strict_independent_face = false)
 {
     Field<double, Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double, Location::CELL> p(mesh.n_cells(),"p","Pa",1);

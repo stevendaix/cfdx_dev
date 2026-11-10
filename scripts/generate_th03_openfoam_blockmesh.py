@@ -434,6 +434,10 @@ def make_case_setup(
     sst_nonlinear_line_search: bool = False,
     sst_linear_relaxation: float = 0.7,
     sst_molecular_wall_diffusion: bool = False,
+    v19_omega_corner_equal_faces: bool = False,
+    v19_sst_equilibrated_defect: bool = False,
+    v18_omega_owner_cells: bool = False,
+    v17_active_wall_operator: bool = False,
     v17_pressure_line_search: bool = False,
     v17_flux_audit: bool = False,
     v17_pseudo_momentum: bool = False,
@@ -485,6 +489,14 @@ def make_case_setup(
         math.isfinite(sst_linear_relaxation) and 0.0 < sst_linear_relaxation <= 1.0
     ):
         raise ValueError("SST scalar linear relaxation must be finite and in (0,1]")
+    if v19_omega_corner_equal_faces and not v18_omega_owner_cells:
+        raise ValueError("V19 corner equal-faces requires V18 owner omega constraints")
+    if v18_omega_owner_cells and not v17_active_wall_operator:
+        raise ValueError("V18 omega owner cells require V17 active wall operator")
+    if v17_active_wall_operator and not (
+        openfoam_kqr_wall_v16 and sst_molecular_wall_diffusion
+    ):
+        raise ValueError("Active wall operator needs kqR and molecular wall diffusion")
     if sst_nonlinear_line_search and sst_picard_damping != 1.0:
         raise ValueError(
             "SST nonlinear line search and fixed Picard damping are exclusive"
@@ -613,6 +625,18 @@ def make_case_setup(
     setup.numerics.raw_settings["sst_molecular_wall_diffusion"] = str(
         bool(sst_molecular_wall_diffusion)
     ).lower()
+    setup.numerics.raw_settings["v17_openfoam_wall_operator_experimental"] = (
+        "enabled" if v17_active_wall_operator else "disabled"
+    )
+    setup.numerics.raw_settings["v18_omega_wall_owner_constraints_experimental"] = (
+        "enabled" if v18_omega_owner_cells else "disabled"
+    )
+    setup.numerics.raw_settings["v19_sst_equilibrated_defect_correction_experimental"] = (
+        "enabled" if v19_sst_equilibrated_defect else "disabled"
+    )
+    setup.numerics.raw_settings["v19_omega_corner_equal_faces_experimental"] = (
+        "enabled" if v19_omega_corner_equal_faces else "disabled"
+    )
     setup.numerics.raw_settings["v17_pressure_line_search"] = str(
         bool(v17_pressure_line_search)
     ).lower()
@@ -749,6 +773,10 @@ def write_case(
     sst_nonlinear_line_search: bool = False,
     sst_linear_relaxation: float = 0.7,
     sst_molecular_wall_diffusion: bool = False,
+    v17_active_wall_operator: bool = False,
+    v18_omega_owner_cells: bool = False,
+    v19_sst_equilibrated_defect: bool = False,
+    v19_omega_corner_equal_faces: bool = False,
     v17_pressure_line_search: bool = False,
     v17_flux_audit: bool = False,
     v17_pseudo_momentum: bool = False,
@@ -790,6 +818,10 @@ def write_case(
         sst_nonlinear_line_search=sst_nonlinear_line_search,
         sst_linear_relaxation=sst_linear_relaxation,
         sst_molecular_wall_diffusion=sst_molecular_wall_diffusion,
+        v17_active_wall_operator=v17_active_wall_operator,
+        v18_omega_owner_cells=v18_omega_owner_cells,
+        v19_sst_equilibrated_defect=v19_sst_equilibrated_defect,
+        v19_omega_corner_equal_faces=v19_omega_corner_equal_faces,
         v17_pressure_line_search=v17_pressure_line_search,
         v17_flux_audit=v17_flux_audit,
         v17_pseudo_momentum=v17_pseudo_momentum,
@@ -1014,6 +1046,12 @@ def main() -> int:
         help="Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.",
     )
     parser.add_argument(
+    parser.add_argument("--v19-omega-corner-equal-faces", action="store_true")
+    parser.add_argument("--v19-sst-equilibrated-defect", action="store_true")
+        help="Experimental weighted owner-cell omega rows; requires --v17-active-wall-operator.",
+        "--v18-omega-owner-cells", action="store_true",
+        help="Experimental coupled wall nut/G/omega FV operator (requires kqR and molecular diffusion).",
+        "--v17-active-wall-operator", action="store_true",
         "--sst-nonlinear-line-search",
         action="store_true",
         help="Backtrack Picard candidate only when the fully reassembled SST merit decreases.",
@@ -1102,6 +1140,10 @@ def main() -> int:
             sst_nonlinear_line_search=args.sst_nonlinear_line_search,
             sst_linear_relaxation=args.sst_linear_relaxation,
             sst_molecular_wall_diffusion=args.sst_molecular_wall_diffusion,
+            v17_active_wall_operator=args.v17_active_wall_operator,
+            v18_omega_owner_cells=args.v18_omega_owner_cells,
+            v19_sst_equilibrated_defect=args.v19_sst_equilibrated_defect,
+            v19_omega_corner_equal_faces=args.v19_omega_corner_equal_faces,
             v17_pressure_line_search=args.v17_pressure_line_search,
             v17_flux_audit=args.v17_flux_audit,
             v17_pseudo_momentum=args.v17_pseudo_momentum,
