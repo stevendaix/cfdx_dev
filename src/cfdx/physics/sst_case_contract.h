@@ -175,9 +175,10 @@ inline void validate_sst_scalar_boundary_contract(const cfdx::io::CaseSetup& set
         const auto omega_type = types.at("omega");
         switch (boundary.type) {
             case cfdx::io::BCType::WALL:
-                if (k_type != cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO ||
+                if ((k_type != cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO &&
+                     k_type != cfdx::io::SSTScalarBoundaryType::WALL_KQ_R) ||
                     omega_type != cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST)
-                    throw std::invalid_argument("SST wall patch requires WALL_K_ZERO and WALL_OMEGA_SST");
+                    throw std::invalid_argument("SST wall patch requires explicit WALL_K_ZERO or WALL_KQ_R and WALL_OMEGA_SST");
                 break;
             case cfdx::io::BCType::INLET:
                 if (k_type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE ||
