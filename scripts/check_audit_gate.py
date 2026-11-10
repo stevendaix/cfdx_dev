@@ -72,6 +72,11 @@ NON_FICHE_REPORTS = {
     # V10 extends the same BFS campaign with solver-stage diagnostics and
     # fail-closed physical qualification evidence; it is not a new method.
     "51-bfs-six-schur-production-diagnostics-v10.md",
+    # V11/V13/V14 are successive BFS campaign evidence dossiers (A/B runs,
+    # certificates and solver-state diagnostics), not standalone method fiches.
+    "52-bfs-v11-pression-pcd-sst.md",
+    "53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md",
+    "54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md",
 }
 
 # Reference detection (DOI prefix or ISBN). Every character class avoids
