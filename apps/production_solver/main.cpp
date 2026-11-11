@@ -25,7 +25,6 @@
 #include <array>
 #include <cmath>
 #include <csignal>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -92,15 +91,12 @@ struct Options {
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
     std::vector<std::size_t> pressure_replay_iterations;
-    std::string high_low_checkpoint_prefix;
-    bool validate_numerics_only = false;
-    // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
-    bool probe_stream = false;
-    bool cell_hotspots = false;
+    bool probe_stream = false;    bool cell_hotspots = false;
     bool cell_map_full = false;
     std::size_t cell_hotspots_every = 5;
+
 };
 
 std::string encode_probe_name_hex(const std::string& name)
@@ -727,9 +723,6 @@ Options parse(int argc, char** argv)
         else if (arg == "--pressure-replay-iterations")
             o.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
                 value("--pressure-replay-iterations"));
-        else if (arg == "--high-low-checkpoint-prefix")
-            o.high_low_checkpoint_prefix = value("--high-low-checkpoint-prefix");
-        else if (arg == "--validate-numerics-only") o.validate_numerics_only = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--probe-stream") o.probe_stream = true;
@@ -739,7 +732,9 @@ Options parse(int argc, char** argv)
             const auto raw = value("--cell-hotspots-every");
             std::size_t used = 0;
             try { o.cell_hotspots_every = std::stoull(raw, &used); }
-            catch (const std::exception&) { throw std::invalid_argument("invalid --cell-hotspots-every"); }
+            catch (const std::exception&) {
+                throw std::invalid_argument("invalid --cell-hotspots-every");
+            }
             if (used != raw.size() || o.cell_hotspots_every < 1 || o.cell_hotspots_every > 100000)
                 throw std::invalid_argument("--cell-hotspots-every must be in [1,100000]");
         }
@@ -747,7 +742,6 @@ Options parse(int argc, char** argv)
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
-                         "  [--initial-pressure-field] (initialize p from /fields/scalar/p; requires imported U)\n"
                          "  [--initial-pressure-field] (initialize p from /fields/scalar/p; requires imported U)\n"
                          "  [--initial-sst-fields] (initial k and omega from /fields/scalar)\n"
                          "  [--initial-face-mass-flux] (projected /fields/face/mdot; requires initial velocity)\n"
@@ -758,13 +752,10 @@ Options parse(int argc, char** argv)
                          "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
-                         "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
-                         "  [--validate-numerics-only] (validate and print resolved case methods; do not solve)\n"
-                         "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
-                         "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
-                         "  probe field: p | u_x | u_y | u_z | u_mag\n"
-                         "  [--cell-hotspots] [--cell-hotspots-every N] [--cell-map-full] (full map <=512 MiB)\n";
+                         "  probe field: p | u_x | u_y | u_z | u_mag\n";
+            std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
+                         "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
@@ -793,11 +784,6 @@ Options parse(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-    const auto process_started = std::chrono::steady_clock::now();
-    const auto elapsed_wall_seconds = [&]() -> double {
-        return std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - process_started).count();
-    };
     std::signal(SIGINT, handle_stop_signal);
     std::signal(SIGTERM, handle_stop_signal);
     std::filesystem::path execution_output_dir;
@@ -836,8 +822,6 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
-        if (is_case_hdf5)
-            resolve_production_mesh_patch_types(mesh, case_setup);
         if (options.experimental_sst && !is_case_hdf5)
             throw std::invalid_argument(
                 "production solver: --experimental-sst requires a .cfdx.h5 case");
@@ -876,21 +860,6 @@ int main(int argc, char** argv)
                     "production solver: energy_model 'compressible' is not "
                     "solved by this executable (incompressible carrier "
                     "only); use a compressible solver for this case");
-        }
-
-        if (options.initial_pressure_field && (!options.initial_velocity_field ||
-            !options.restart.empty() || !is_case_hdf5))
-            throw std::invalid_argument(
-                "--initial-pressure-field requires --initial-velocity-field, HDF5, and no DAT restart");
-        if (options.validate_numerics_only) {
-            if (!is_case_hdf5)
-                throw std::invalid_argument(
-                    "--validate-numerics-only requires a .cfdx.h5 case");
-            IncompressibleSolverControls selection_controls;
-            apply_explicit_case_numerics(case_setup, selection_controls);
-            std::cout << "Resolved numerical selections:\\n"
-                      << cfdx::core::format_numerics_report(case_setup.numerical_report);
-            return 0;
         }
 
         if (options.initial_pressure_field && (!options.initial_velocity_field ||
@@ -1052,20 +1021,16 @@ int main(int argc, char** argv)
             // A physical label must never be silently interpreted as an
             // unrelated generic zero-gradient condition.
             validate_production_incompressible_boundary(*bc, patch.type);
-            // A physical label must never be silently interpreted as an
-            // unrelated generic zero-gradient condition.
-            validate_production_incompressible_boundary(*bc, patch.type);
+            validate_native_flow_field_overrides(*bc);
 
-            // Explicit per-field conditions override the legacy shared value_type.
-            // Never infer the pressure boundary from the velocity mode.
-            if (const auto* explicit_u = bc->find_field("velocity")) {
-                if (explicit_u->type == "FIXED_VALUE") {
-                    ubc[patch.name] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
-                        {explicit_u->value.at(0), explicit_u->value.at(1), explicit_u->value.at(2)}};
-                } else if (explicit_u->type == "ZERO_GRADIENT") {
+            if (const auto* native_u = bc->find_field("velocity")) {
+                if (native_u->type == "FIXED_VALUE")
+                    ubc[patch.name] = {
+                        VelocityBoundaryCondition::Type::FIXED_VALUE,
+                        {native_u->value[0], native_u->value[1], native_u->value[2]}};
+                else
                     ubc[patch.name] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,
                         {0.0, 0.0, 0.0}};
-                } else throw std::invalid_argument("unsupported native velocity field condition");
             } else if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
@@ -1098,14 +1063,15 @@ int main(int argc, char** argv)
                     patch.name + "'");
             }
 
-            if (const auto* explicit_p = bc->find_field("pressure")) {
-                if (explicit_p->type == "FIXED_VALUE")
-                    pbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE, explicit_p->value.at(0), 0.0};
-                else if (explicit_p->type == "FIXED_GRADIENT")
-                    pbc[patch.name] = {ScalarBoundaryType::FIXED_GRADIENT, 0.0, explicit_p->gradient};
-                else if (explicit_p->type == "ZERO_GRADIENT")
+            if (const auto* native_p = bc->find_field("pressure")) {
+                if (native_p->type == "FIXED_VALUE")
+                    pbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE,
+                        native_p->value[0], 0.0};
+                else if (native_p->type == "FIXED_GRADIENT")
+                    pbc[patch.name] = {ScalarBoundaryType::FIXED_GRADIENT,
+                        0.0, native_p->gradient};
+                else
                     pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
-                else throw std::invalid_argument("unsupported native pressure field condition");
             } else if (bc->value_type == BCValueType::OUTLET_PRESSURE) {
                 pbc[patch.name] = {
                     ScalarBoundaryType::FIXED_VALUE, bc->pressure, 0.0};
@@ -1116,6 +1082,7 @@ int main(int argc, char** argv)
         }
 
         IncompressibleSolverControls controls;
+        double v32_initial_fraction_override=1.0e-6;
         controls.convergence.max_iterations = options.iterations;
         if (is_case_hdf5) {
             apply_explicit_case_numerics(case_setup, controls);
@@ -1229,3 +1196,1342 @@ int main(int argc, char** argv)
                     controls.algorithm != PressureVelocityAlgorithm::COUPLED)
                     throw std::invalid_argument(
                         "schur_action_growth_guard_experimental=1 requires COUPLED");
+                controls.coupling.schur_action_growth_guard_experimental = true;
+                std::cout << "COUPLED six-Schur true-matrix action guard: "
+                          << "1e10 (experimental; no fallback)\n";
+            }
+            const auto scaling = case_setup.numerics.raw_settings.find(
+                "pressure_linear_scaling");
+            if (scaling != case_setup.numerics.raw_settings.end()) {
+                if (scaling->second == "none")
+                    controls.pressure_linear_solver.scaling = LinearScalingModel::None;
+                else if (scaling->second == "row_column")
+                    controls.pressure_linear_solver.scaling = LinearScalingModel::RowColumn;
+                else if (scaling->second == "symmetric_diagonal")
+                    controls.pressure_linear_solver.scaling = LinearScalingModel::SymmetricDiagonal;
+                else
+                    throw std::invalid_argument(
+                        "production solver: pressure_linear_scaling must be "
+                        "none, row_column, or symmetric_diagonal");
+                std::cout << "Pressure algebraic scaling: " << scaling->second
+                          << " (physical true-residual gate retained)\n";
+            }
+            // Pressure and momentum are different linear operators. Keep the
+            // case's global momentum selection, but allow an explicit SPD
+            // pressure-only Krylov/AMG selection on stretched meshes.
+            const auto pressure_krylov = case_setup.numerics.raw_settings.find(
+                "pressure_krylov");
+            if (pressure_krylov != case_setup.numerics.raw_settings.end()) {
+                const auto& v = pressure_krylov->second;
+                if (v == "auto") controls.pressure_linear_solver.krylov = KrylovModel::Auto;
+                else if (v == "cg") controls.pressure_linear_solver.krylov = KrylovModel::CG;
+                else if (v == "gmres") controls.pressure_linear_solver.krylov = KrylovModel::GMRES;
+                else if (v == "fgmres") controls.pressure_linear_solver.krylov = KrylovModel::FGMRES;
+                else if (v == "bicgstab") controls.pressure_linear_solver.krylov = KrylovModel::BiCGStab;
+                else throw std::invalid_argument("invalid pressure_krylov; expected auto, cg, gmres, fgmres or bicgstab");
+                std::cout << "Pressure Krylov: " << v << "\n";
+            }
+            const auto pressure_pc = case_setup.numerics.raw_settings.find(
+                "pressure_preconditioner");
+            if (pressure_pc != case_setup.numerics.raw_settings.end()) {
+                const auto& v = pressure_pc->second;
+                if (v == "auto") controls.pressure_linear_solver.preconditioner = PreconditionerModel::Auto;
+                else if (v == "none") controls.pressure_linear_solver.preconditioner = PreconditionerModel::None;
+                else if (v == "jacobi") controls.pressure_linear_solver.preconditioner = PreconditionerModel::Jacobi;
+                else if (v == "ilu0") controls.pressure_linear_solver.preconditioner = PreconditionerModel::ILU0;
+                else if (v == "anisotropic_line_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::AnisotropicLineAMG;
+                else if (v == "native_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::NativeAMG;
+                else if (v == "smoothed_aggregation_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::SmoothedAggregationAMG;
+                else throw std::invalid_argument("invalid pressure_preconditioner; expected auto, none, jacobi, ilu0, native_amg, anisotropic_line_amg or smoothed_aggregation_amg");
+                std::cout << "Pressure preconditioner: " << v << "\n";
+            }
+            const auto interpolation = case_setup.numerics.raw_settings.find(
+                "pressure_face_interpolation");
+            if (interpolation != case_setup.numerics.raw_settings.end()) {
+                if (interpolation->second == "arithmetic")
+                    controls.pressure_projected_face_interpolation = false;
+                else if (interpolation->second == "projected")
+                    controls.pressure_projected_face_interpolation = true;
+                else throw std::invalid_argument(
+                    "invalid pressure_face_interpolation; expected arithmetic or projected");
+                std::cout << "Pressure face interpolation: "
+                          << interpolation->second << " (SIMPLE-only experimental)\n";
+            }
+            const auto pressure_tol = case_setup.numerics.raw_settings.find(
+                "pressure_linear_tolerance");
+            if (pressure_tol != case_setup.numerics.raw_settings.end()) {
+                std::size_t consumed = 0;
+                double value = 0.0;
+                try { value = std::stod(pressure_tol->second, &consumed); }
+                catch (const std::exception&) { throw std::invalid_argument("invalid pressure_linear_tolerance"); }
+                if (consumed != pressure_tol->second.size() ||
+                    !(value > 0.0) || !std::isfinite(value))
+                    throw std::invalid_argument("invalid pressure_linear_tolerance");
+                controls.pressure_linear_tolerance = value;
+                std::cout << "Pressure true-residual target: " << value
+                          << " (physical conservation gate unchanged)\n";
+            }
+            const auto refine_setting = case_setup.numerics.raw_settings.find(
+                "pressure_iterative_refinement_steps");
+            if (refine_setting != case_setup.numerics.raw_settings.end()) {
+                const auto& value = refine_setting->second;
+                if (value.size() != 1 || value[0] < '0' || value[0] > '8')
+                    throw std::invalid_argument(
+                        "pressure_iterative_refinement_steps must be an integer from 0 to 8");
+                controls.pressure_linear_solver.residual_refinement_steps =
+                    static_cast<std::size_t>(value[0] - '0');
+                std::cout << "Pressure original-system refinement steps: "
+                          << controls.pressure_linear_solver.residual_refinement_steps
+                          << " (opt-in; original FP64 tolerance unchanged)\n";
+            }
+            const auto pressure_budget = case_setup.numerics.raw_settings.find(
+                "pressure_linear_max_iterations");
+            if (pressure_budget != case_setup.numerics.raw_settings.end()) {
+                std::size_t consumed = 0;
+                unsigned long value = 0;
+                try { value = std::stoul(pressure_budget->second, &consumed, 10); }
+                catch (const std::exception&) { throw std::invalid_argument("invalid pressure_linear_max_iterations"); }
+                if (consumed != pressure_budget->second.size() || value < 1 || value > 100000)
+                    throw std::invalid_argument("invalid pressure_linear_max_iterations");
+                controls.pressure_linear_max_iterations = value;
+                std::cout << "Pressure max iterations: " << value << "\n";
+            }
+            // Diagnostic-only iteration cap: shorten a failed coupled solve to
+            // expose the *independently recomputed* U/p block residuals.
+            // This never changes the requested linear tolerance, physical
+            // acceptance or the default 2000-iteration production budget.
+            const auto coupled_diag_budget = case_setup.numerics.raw_settings.find(
+                "coupled_linear_diagnostic_max_iterations_v16");
+            if (coupled_diag_budget != case_setup.numerics.raw_settings.end()) {
+                const auto& raw = coupled_diag_budget->second;
+                std::size_t consumed = 0;
+                unsigned long value = 0;
+                try { value = std::stoul(raw, &consumed, 10); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid coupled_linear_diagnostic_max_iterations_v16");
+                }
+                if (consumed != raw.size() || value < 1 || value > 2000)
+                    throw std::invalid_argument("invalid coupled_linear_diagnostic_max_iterations_v16");
+                controls.coupling.coupled_max_iterations = value;
+                std::cout << "COUPLED_LINEAR_DIAGNOSTIC_BUDGET_V16 iterations=" << value
+                          << " tolerance_unchanged=1 physical_qualification=0\n";
+            }
+            const auto coupled_capture_setting = case_setup.numerics.raw_settings.find(
+                "coupled_diagnostic_capture_prefix_v16");
+            if (coupled_capture_setting != case_setup.numerics.raw_settings.end()) {
+                const auto& raw=coupled_capture_setting->second;
+                if (raw.empty() || raw.size()>1024)
+                    throw std::invalid_argument("invalid coupled_diagnostic_capture_prefix_v16");
+                const auto prefix=std::filesystem::path(raw);
+                const auto recorded=std::make_shared<bool>(false);
+                controls.coupled_assembly_callback=[prefix,recorded](
+                    const CoupledAssemblySnapshot& snapshot) {
+                    if (*recorded) return;
+                    if (!snapshot.matrix || !snapshot.rhs || !snapshot.initial_guess)
+                        throw std::runtime_error("V16 coupled capture: missing production snapshot");
+                    capture_coupled_matrix_v16(*snapshot.matrix,*snapshot.rhs,
+                                               *snapshot.initial_guess,prefix);
+                    *recorded=true;
+                    std::cerr << "COUPLED_MATRIX_CAPTURE_V16 n="
+                              << snapshot.matrix->n_rows()
+                              << " nnz=" << snapshot.matrix->nnz()
+                              << " original_operator_unchanged=1 physical_qualified=0\n";
+                };
+            }
+            const auto restart = case_setup.numerics.raw_settings.find(
+                "pressure_gmres_restart");
+            if (restart != case_setup.numerics.raw_settings.end()) {
+                std::size_t consumed = 0;
+                int value = 0;
+                try {
+                    value = std::stoi(restart->second, &consumed, 10);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument(
+                        "production solver: pressure_gmres_restart must be an integer 1..2048");
+                }
+                if (consumed != restart->second.size() || value < 1 || value > 2048)
+                    throw std::invalid_argument(
+                        "production solver: pressure_gmres_restart must be an integer 1..2048");
+                controls.pressure_linear_solver.gmres_restart = value;
+                std::cout << "Pressure GMRES restart: " << value
+                          << " (linear tolerance unchanged)\n";
+            }
+        }
+        controls.acceleration.adaptive_linear_tolerance =
+            options.adaptive_convergence;
+        controls.acceleration.adaptive_pressure_correctors =
+            options.adaptive_convergence;
+        // N10 diagnostic mode: expose the solver's existing per-iteration
+        // convergence metrics without changing any convergence criterion.
+        // This is intentionally diagnostic-only; the production result still
+        // requires the authoritative convergence gates below.
+        controls.diagnostics.iteration_trace = true;
+        controls.diagnostics.iteration_trace_frequency = 1;
+        if (options.cell_hotspots) {
+            // Never touch existing trace artifacts when diagnostics are OFF.
+            // Reject unsafe destinations instead of following links.
+            const auto trace_path = options.output_dir / "cell_convergence.jsonl";
+            const auto map_path = options.output_dir / "cell_convergence_map.bin";
+            for (const auto& path : {trace_path, map_path}) {
+                if (std::filesystem::is_symlink(path) ||
+                    (std::filesystem::exists(path) && !std::filesystem::is_regular_file(path)))
+                    throw std::invalid_argument("cell convergence output must be a regular file, not a symlink");
+            }
+            controls.diagnostics.cell_convergence_trace_path = trace_path.string();
+            controls.diagnostics.cell_convergence_mesh_source =
+                std::filesystem::absolute(options.mesh).lexically_normal().string();
+            controls.diagnostics.cell_convergence_every = options.cell_hotspots_every;
+            if (options.cell_map_full)
+                controls.diagnostics.cell_convergence_full_map_path = map_path.string();
+        }
+        if (is_case_hdf5) {
+            const auto& raw=case_setup.numerics.raw_settings;
+            const auto flag=[&](const char* name) {
+                const auto it=raw.find(name);
+                if (it==raw.end()) return false;
+                if (it->second!="true" && it->second!="false")
+                    throw std::invalid_argument(std::string(name)+" must be true or false");
+                return it->second=="true";
+            };
+            const auto number=[&](const char* name, double fallback) {
+                const auto it=raw.find(name);
+                if (it==raw.end()) return fallback;
+                std::size_t used=0;
+                double result=0.0;
+                try { result=std::stod(it->second,&used); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument(std::string(name)+" must be a number");
+                }
+                if (used!=it->second.size() || !std::isfinite(result))
+                    throw std::invalid_argument(std::string(name)+" must be finite");
+                return result;
+            };
+            controls.diagnostics.flux_patch_audit=flag("v17_flux_patch_audit");
+            controls.pressure_compensated_assembly=flag("pressure_compensated_assembly");
+            controls.pressure_compensated_refinement_diagnostic=flag("pressure_compensated_refinement_diagnostic");
+            controls.pressure_high_low_production=flag("pressure_high_low_production");
+            controls.require_post_sst_momentum_reassembly=
+                flag("v7_post_sst_momentum_gate");
+            controls.require_global_nonlinear_certificate_v8 =
+                flag("v8_global_nonlinear_residual");
+            controls.joint_globalization_v13_experimental=
+                flag("v13_joint_globalization");
+            controls.monotone_global_merit_v14_experimental=
+                flag("v14_monotone_global_merit");
+            controls.outer_ptc_v31_experimental=
+                flag("v31_outer_coupled_ptc_experimental");
+            controls.outer_ptc_balance_v32_experimental=
+                flag("v32_outer_ptc_balance_experimental");
+            if (controls.outer_ptc_balance_v32_experimental)
+                v32_initial_fraction_override=
+                    number("v32_outer_ptc_initial_fraction_experimental",1.0e-6);
+            if (raw.count("v32_outer_ptc_limit_momentum_experimental"))
+                controls.outer_ptc_balance_momentum_v32=
+                    flag("v32_outer_ptc_limit_momentum_experimental");
+            if (raw.count("v32_outer_ptc_limit_sst_experimental"))
+                controls.outer_ptc_balance_sst_v32=
+                    flag("v32_outer_ptc_limit_sst_experimental");
+            if (controls.monotone_global_merit_v14_experimental)
+                std::cout << "V14 strictly contracting physical U,p,k,omega,nu_t merit: "
+                             "EXPERIMENTAL; rollback, all physical gates unchanged\n";
+            if (controls.joint_globalization_v13_experimental)
+                std::cout << "V13 joint U,p,k,omega post-SST trial guard: "
+                             "EXPERIMENTAL, physical gates unchanged\n";
+            if (controls.require_global_nonlinear_certificate_v8)
+                std::cout << "V8 independent U-p-k-omega residual: "
+                             "EXPERIMENTAL for all Schur variants; no physical tolerances changed\n";
+            if (controls.require_post_sst_momentum_reassembly)
+                std::cout << "V7 cross-equation momentum residual after SST: "
+                             "EXPERIMENTAL physical gate, tolerances unchanged\n";
+            if (controls.pressure_high_low_production)
+                std::cout << "V6 full Rhie-Chow high/low pressure PRODUCTION: EXPERIMENTAL, not BFS-qualified\n";
+            controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
+            controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
+            controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
+            // Experimental PCD research knobs are an explicit HDF5 contract.
+            // Reject them on SIMPLE/SIMPLEC or another Schur instead of silently
+            // ignoring a method that the case requests. These affect only the
+            // preconditioner, not the FV equations or the physical tolerances.
+            const bool is_pcd_coupled =
+                controls.algorithm == PressureVelocityAlgorithm::COUPLED &&
+                controls.coupling.schur_model == CoupledSchurModel::PCD;
+            const auto pcd_flag = [&](const char* name, bool& destination) {
+                if (raw.find(name) == raw.end()) return;
+                if (!is_pcd_coupled)
+                    throw std::invalid_argument(
+                        std::string(name) + " requires COUPLED with PCD Schur");
+                destination = flag(name);
+                std::cout << "PCD research " << name << "="
+                          << (destination ? 1 : 0)
+                          << " (preconditioner only, physics criteria unchanged)\n";
+            };
+            pcd_flag("pcd_fp_row_equilibration_experimental",
+                     controls.coupling.pcd_fp_row_equilibration_experimental);
+            pcd_flag("pcd_fp_quality_guard_experimental",
+                     controls.coupling.pcd_fp_quality_guard_experimental);
+            pcd_flag("pcd_fp_second_pass_experimental",
+                     controls.coupling.pcd_fp_second_pass_experimental);
+            pcd_flag("pcd_fp_recirculation_anchor_experimental",
+                     controls.coupling.pcd_fp_recirculation_anchor_experimental);
+            if (const auto it=raw.find("pcd_fp_bisided_basis_file_experimental");
+                it!=raw.end()) {
+                if (!is_pcd_coupled || it->second.empty())
+                    throw std::invalid_argument("V14 Fp basis requires COUPLED/PCD and a path");
+                controls.coupling.pcd_fp_bisided_basis_file_experimental=it->second;
+                std::cout << "V14 Fp certified bilateral deflation enabled: "
+                             "exact current CSR required; preconditioner only\n";
+            }
+
+            if (const auto it=raw.find("pcd_fp_bisided_basis_directory_v15_experimental");
+                it!=raw.end()) {
+                if (!is_pcd_coupled || it->second.empty())
+                    throw std::invalid_argument("V15 Fp directory requires COUPLED/PCD and a path");
+                controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental=it->second;
+                std::cout << "V15 Fp exact-CSR certificate registry: fail closed on new coefficient fingerprint\n";
+            }
+            pcd_flag("pcd_fp_full_rank_action_v15_experimental",
+                     controls.coupling.pcd_fp_full_rank_action_v15_experimental);
+            pcd_flag("pcd_fp_refine_projected_v16_experimental",
+                     controls.coupling.pcd_fp_refine_projected_v16_experimental);
+            if (raw.find("coupled_monolithic_ilut_fallback_v16_experimental") != raw.end()) {
+                if (controls.algorithm != PressureVelocityAlgorithm::COUPLED)
+                    throw std::invalid_argument(
+                        "V16 monolithic ILUT recovery requires COUPLED");
+                controls.coupling.coupled_monolithic_ilut_fallback_v16_experimental=
+                    flag("coupled_monolithic_ilut_fallback_v16_experimental");
+                if (controls.coupling.coupled_monolithic_ilut_fallback_v16_experimental)
+                    std::cout << "V16 explicit SMALL-SYSTEM monolithic ILUT recovery "
+                                 "enabled; no automatic solver substitution, no relaxed physics\n";
+            }
+            pcd_flag("pcd_lumped_mass_commutator_experimental",
+                     controls.coupling.pcd_lumped_mass_commutator_experimental);
+            // V21 opt-in for the existing hysteretic relaxation controller.
+            // It uses momentum/flux coupling, not projected continuity, for
+            // alpha_p whenever V19 full-flux SIMPLE is active.
+            controls.adaptive_relaxation.enabled=flag("v21_adaptive_relaxation");
+            if (controls.adaptive_relaxation.enabled &&
+                !controls.v19_full_pressure_flux_step)
+                throw std::invalid_argument(
+                    "V21 coupling adaptation requires V19 full pressure flux step");
+            if (controls.adaptive_relaxation.enabled)
+                std::cout << "V21 momentum/flux adaptive relaxation: EXPERIMENTAL\n";
+            if (controls.v19_full_pressure_flux_step)
+                std::cout << "V19 full pressure flux step, relaxed physical pressure: "
+                          << "EXPERIMENTAL, not qualified\n";
+            if (controls.v18_full_flux_pressure_oracle)
+                std::cout << "V18 reference pressure Schur Jacobian: ENABLED "
+                          << "(small-mesh diagnostic only, never qualified)\n";
+            controls.pressure_continuity_line_search.enabled=
+                flag("v17_pressure_line_search");
+            if (controls.pressure_continuity_line_search.enabled)
+                controls.pressure_continuity_line_search.max_trials=12;
+            auto& pseudo=controls.pseudo_momentum;
+            pseudo.enabled=flag("v17_pseudo_momentum");
+            pseudo.initial_cfl=number("v17_pseudo_initial_cfl",pseudo.initial_cfl);
+            pseudo.minimum_cfl=number("v17_pseudo_min_cfl",pseudo.minimum_cfl);
+            pseudo.maximum_cfl=number("v17_pseudo_max_cfl",pseudo.maximum_cfl);
+            pseudo.growth=number("v17_pseudo_growth",pseudo.growth);
+            pseudo.shrink=number("v17_pseudo_shrink",pseudo.shrink);
+            validate_v17_pseudo_momentum_controls(pseudo);
+            if (pseudo.enabled)
+                std::cout << "V17 experimental steady pseudo-momentum: initial CFL="
+                          << pseudo.initial_cfl << " range=[" << pseudo.minimum_cfl
+                          << "," << pseudo.maximum_cfl << "] (not a physical transient)\n";
+            if (controls.diagnostics.flux_patch_audit)
+                std::cout << "V17 authoritative Rhie-Chow patch flux audit enabled\n";
+        }
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+        controls.probes = options.probes;
+        if (options.probe_stream) {
+            controls.probe_callback = [&options](
+                const IncompressibleProbeSample& sample) {
+                const auto probe = std::find_if(
+                    options.probes.begin(), options.probes.end(),
+                    [&sample](const IncompressiblePointProbe& candidate) {
+                        return candidate.name == sample.name;
+                    });
+                if (probe == options.probes.end())
+                    throw std::logic_error(
+                        "probe stream received a sample without a configured probe");
+                std::cout << "CFDX_PROBE_SAMPLE_V1\t"
+                          << encode_probe_name_hex(sample.name) << '\t'
+                          << probe_field_cli(probe->field) << '\t'
+                          << probe_field_unit(probe->field) << '\t'
+                          << sample.iteration << '\t'
+                          << format_probe_csv_value(sample.time) << '\t'
+                          << format_probe_csv_value(sample.value) << '\n'
+                          << std::flush;
+            };
+        }
+
+        // The declared initialization strategy is applied by the solver, before
+        // the first residual is formed. An explicit --restart request therefore
+        // overrides the case-derived uniform state.
+        controls.initialization = initialization;
+        if (!options.restart.empty())
+            controls.initialization.mode = InitializationMode::Restart;
+        if (options.initial_face_mass_flux) {
+#if defined(CFDX_HAS_HDF5) && CFDX_HAS_HDF5
+            const auto fail = [](const char* why) -> void {
+                throw std::invalid_argument(
+                    std::string("hybrid /fields/face/mdot: ") + why);
+            };
+            hid_t file=H5Fopen(mesh_path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+            if (file<0) fail("cannot open HDF5");
+            hid_t ds=H5Dopen2(file,"/fields/face/mdot",H5P_DEFAULT);
+            if (ds<0) { H5Fclose(file); fail("missing dataset"); }
+            hid_t space=H5Dget_space(ds);
+            hsize_t dims[1]={0};
+            if (space<0 || H5Sget_simple_extent_ndims(space)!=1 ||
+                H5Sget_simple_extent_dims(space,dims,nullptr)<0 ||
+                dims[0]!=mesh.n_faces()) {
+                if (space>=0) H5Sclose(space);
+                H5Dclose(ds); H5Fclose(file);
+                fail("invalid face field shape");
+            }
+            controls.initial_face_mass_flux.resize(mesh.n_faces());
+            const auto read_result=H5Dread(ds,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,
+                                        H5P_DEFAULT,controls.initial_face_mass_flux.data());
+            H5Sclose(space); H5Dclose(ds); H5Fclose(file);
+            if (read_result<0) fail("cannot read dataset");
+#else
+            throw std::invalid_argument("hybrid face flux requires HDF5-enabled CFDX");
+#endif
+        }
+
+        if (!options.pressure_replay_prefix.empty()) {
+            controls.pressure_replay_prefix = options.pressure_replay_prefix;
+            controls.pressure_replay_iterations = options.pressure_replay_iterations;
+            const std::filesystem::path capture_path(options.pressure_replay_prefix);
+            if (!capture_path.parent_path().empty())
+                std::filesystem::create_directories(capture_path.parent_path());
+            std::cout << "Pressure CSR replay capture enabled: "
+                      << options.pressure_replay_prefix << " ("
+                      << options.pressure_replay_iterations.size()
+                      << " selected iterations; retries can overwrite a capture)\n";
+        }
+
+        // Own all SST runtime objects in main for the complete solver call.
+        // The default production selector stays fail-closed; this branch can
+        // only be entered through the explicit --experimental-sst opt-in.
+        std::optional<SSTProductionState> experimental_sst_state;
+        SSTProductionRuntime experimental_sst_runtime;
+        DatRestartFields solver_restart_fields{};
+        // The restored Rhie-Chow face mass flux is part of the iteration
+        // state: it is read from the DAT into this caller-owned field and
+        // consumed by the solver after its own initialization transaction.
+        std::optional<Field<double, Location::FACE>> restart_face_flux;
+        if (!options.restart.empty() &&
+            (options.experimental_sst || controls.v19_full_pressure_flux_step)) {
+            // DAT v4 checkpoints created before the optional face_fields
+            // section remain valid for established non-SST restart paths.
+            // Experimental SST and the V19 split pressure/flux policy need
+            // the authoritative mdot to replay the same momentum predictor.
+            // Do not silently reconstruct mdot from U and relaxed p here.
+            restart_face_flux.emplace(mesh.n_faces(), "mdot", "kg/s", 1);
+            solver_restart_fields.face_mass_flux = &*restart_face_flux;
+        }
+        if (options.experimental_sst) {
+            if (production_s2s_radiation_requested(case_setup))
+                throw std::invalid_argument(
+                    "production solver: experimental SST-radiation coupling is "
+                    "not implemented; cannot assert a physical energy balance");
+            if (production_energy_requested(case_setup))
+                (void)require_production_sst_turbulent_prandtl(case_setup);
+
+            TurbulenceTransportControls sst_controls;
+            sst_controls.model = TurbulenceModel::SST;
+            sst_controls.density = controls.density;
+            sst_controls.molecular_viscosity = controls.kinematic_viscosity;
+            const auto damping = case_setup.numerics.raw_settings.find(
+                "sst_picard_damping");
+            if (damping != case_setup.numerics.raw_settings.end()) {
+                std::size_t used = 0;
+                double value=0.0;
+                try { value=std::stod(damping->second, &used); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid sst_picard_damping");
+                }
+                if (used != damping->second.size() ||
+                    !std::isfinite(value) || !(value>0.0 && value<=1.0))
+                    throw std::invalid_argument("sst_picard_damping must be in (0,1]");
+                sst_controls.sst_picard_damping = value;
+                std::cout << "SST Picard damping: " << value
+                          << " (equation and convergence gates unchanged)\n";
+            }
+            const auto relative_gate = case_setup.numerics.raw_settings.find(
+                "sst_scale_aware_convergence");
+            if (relative_gate != case_setup.numerics.raw_settings.end()) {
+                if (relative_gate->second != "true" && relative_gate->second != "false")
+                    throw std::invalid_argument(
+                        "sst_scale_aware_convergence must be true or false");
+                sst_controls.sst_scale_aware_convergence =
+                    relative_gate->second == "true";
+                std::cout << "SST scale-aware convergence: "
+                          << (sst_controls.sst_scale_aware_convergence ? "enabled" : "disabled")
+                          << " (true equation residual, linear and physical gates retained)\n";
+            }
+            const auto sst_newton_setting = case_setup.numerics.raw_settings.find(
+                "sst_omega_newton_sink");
+            if (sst_newton_setting != case_setup.numerics.raw_settings.end()) {
+                if (sst_newton_setting->second != "true" &&
+                    sst_newton_setting->second != "false")
+                    throw std::invalid_argument("sst_omega_newton_sink must be true or false");
+                sst_controls.sst_omega_newton_sink = sst_newton_setting->second == "true";
+                std::cout << "SST omega Newton sink: "
+                          << (sst_controls.sst_omega_newton_sink ? "enabled" : "disabled") << "\n";
+            }
+            const auto sst_gs_setting = case_setup.numerics.raw_settings.find(
+                "sst_sequential_omega_first");
+            if (sst_gs_setting != case_setup.numerics.raw_settings.end()) {
+                if (sst_gs_setting->second != "true" &&
+                    sst_gs_setting->second != "false")
+                    throw std::invalid_argument("sst_sequential_omega_first must be true or false");
+                sst_controls.sst_sequential_omega_first = sst_gs_setting->second == "true";
+                std::cout << "SST omega-first Picard: "
+                          << (sst_controls.sst_sequential_omega_first ? "enabled" : "disabled") << "\n";
+            }
+            const auto sst_wall_setting = case_setup.numerics.raw_settings.find(
+                "sst_wall_omega_factor");
+            if (sst_wall_setting != case_setup.numerics.raw_settings.end()) {
+                if (sst_wall_setting->second != "6" &&
+                    sst_wall_setting->second != "60")
+                    throw std::invalid_argument("sst_wall_omega_factor must be 6 or 60");
+                sst_controls.sst_wall_omega_factor = std::stod(sst_wall_setting->second);
+                std::cout << "SST wall omega face factor: "
+                          << sst_controls.sst_wall_omega_factor
+                          << " (not an OpenFOAM wall function)\n";
+            }
+            const auto sst_linear_relaxation = case_setup.numerics.raw_settings.find(
+                "sst_transport_linear_relaxation");
+            if (sst_linear_relaxation != case_setup.numerics.raw_settings.end()) {
+                std::size_t parsed=0;
+                double alpha=0.0;
+                try { alpha=std::stod(sst_linear_relaxation->second,&parsed); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid sst_transport_linear_relaxation");
+                }
+                if (parsed!=sst_linear_relaxation->second.size() ||
+                    !std::isfinite(alpha) || alpha<=0.0 || alpha>1.0)
+                    throw std::invalid_argument("sst_transport_linear_relaxation must be in (0,1]");
+                sst_controls.sst_linear_relaxation=alpha;
+            }
+            std::cout << "SST scalar post-solve relaxation: "
+                      << sst_controls.sst_linear_relaxation << " (default 0.7)\n";
+            for (const auto& setting : {std::pair<const char*,bool*>{
+                     "sst_compensated_residual_gate", &sst_controls.sst_compensated_residual_gate},
+                     {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search},
+                     {"sst_anderson_m2_v20_experimental", &sst_controls.sst_anderson_m2_v20},
+                     {"sst_jfnk_v22_experimental", &sst_controls.sst_jfnk_v22_experimental},
+                     {"sst_block_preconditioner_v23_experimental",
+                      &sst_controls.sst_block_preconditioner_v23_experimental},
+                     {"sst_branch_preconditioner_v34_experimental",
+                      &sst_controls.sst_branch_preconditioner_v34_experimental},
+                     {"sst_spatial_block_preconditioner_v24_experimental",
+                      &sst_controls.sst_spatial_block_preconditioner_v24_experimental},
+                     {"sst_log_globalization_v25_experimental",
+                      &sst_controls.sst_log_globalization_v25_experimental},
+                     {"sst_smooth_globalization_v26_experimental",
+                      &sst_controls.sst_smooth_globalization_v26_experimental},
+                     {"sst_subspace_trust_v27_experimental",
+                      &sst_controls.sst_subspace_trust_v27_experimental},
+                     {"sst_adaptive_trust_v28_experimental",
+                      &sst_controls.sst_adaptive_trust_v28_experimental},
+                     {"sst_pseudo_transient_v29_experimental",
+                      &sst_controls.sst_pseudo_transient_v29_experimental},
+                     {"sst_coupled_ptc_v30_experimental",
+                      &sst_controls.sst_coupled_ptc_v30_experimental},
+                     {"sst_weighted_wall_matrix_v29_experimental",
+                      &sst_controls.sst_weighted_wall_matrix_v29_experimental},
+                     {"sst_owner_consistent_projection_v21_experimental",
+                      &sst_controls.sst_owner_consistent_projection_v21}}) {
+                const auto found=case_setup.numerics.raw_settings.find(setting.first);
+                if (found != case_setup.numerics.raw_settings.end()) {
+                    if (found->second != "true" && found->second != "false")
+                        throw std::invalid_argument(std::string(setting.first)+" must be true or false");
+                    *setting.second = found->second == "true";
+                    std::cout << "Experimental " << setting.first << "=" << found->second
+                              << " (global physical gates unchanged)\n";
+                }
+            }
+            const auto molecular_wall_diffusion = case_setup.numerics.raw_settings.find(
+                "sst_molecular_wall_diffusion");
+            if (molecular_wall_diffusion != case_setup.numerics.raw_settings.end()) {
+                if (molecular_wall_diffusion->second != "true" &&
+                    molecular_wall_diffusion->second != "false")
+                    throw std::invalid_argument("sst_molecular_wall_diffusion must be true or false");
+                sst_controls.sst_molecular_wall_diffusion =
+                    molecular_wall_diffusion->second == "true";
+            }
+            std::cout << "SST molecular boundary diffusion: "
+                      << (sst_controls.sst_molecular_wall_diffusion ? "experimental" : "legacy")
+                      << " (only fixed-value wall faces; no wall function)\n";
+            const auto correction_v19=case_setup.numerics.raw_settings.find(
+                "v19_sst_equilibrated_defect_correction_experimental");
+            if (correction_v19!=case_setup.numerics.raw_settings.end()) {
+                if (correction_v19->second!="enabled" && correction_v19->second!="disabled")
+                    throw std::invalid_argument(
+                        "v19_sst_equilibrated_defect_correction_experimental must be enabled or disabled");
+                sst_controls.sst_equilibrated_defect_correction_v19 =
+                    correction_v19->second=="enabled";
+            }
+            if (sst_controls.sst_coupled_ptc_v30_experimental)
+                sst_controls.sst_continuation_state_v30 =
+                    &experimental_sst_runtime.coupled_ptc_v30;
+            validate_turbulence_controls(sst_controls);
+
+            const auto boundary_contract =
+                make_sst_runtime_boundary_contract(case_setup);
+            std::vector<std::string> wall_patch_names;
+            for (std::size_t patch_index = 0;
+                 patch_index < mesh.boundary().n_patches(); ++patch_index) {
+                const auto& patch = mesh.boundary().patch(patch_index);
+                const auto* bc = case_setup.find_boundary(patch.name);
+                if (bc == nullptr)
+                    throw std::invalid_argument(
+                        "production solver: SST runtime has no case boundary metadata for patch '" +
+                        patch.name + "'");
+                const bool declared_wall =
+                    bc->type == BCType::WALL ||
+                    bc->value_type == BCValueType::WALL_NO_SLIP ||
+                    bc->value_type == BCValueType::WALL_SLIP ||
+                    bc->value_type == BCValueType::WALL_THERMAL;
+                if (declared_wall) {
+                    if (patch.type != PatchType::WALL)
+                        throw std::invalid_argument(
+                            "production solver: SST case declares wall patch '" +
+                            patch.name + "' but mesh patch is not WALL");
+                    wall_patch_names.push_back(patch.name);
+                }
+            }
+            if (wall_patch_names.empty())
+                throw std::invalid_argument(
+                    "production solver: experimental SST requires at least one "
+                    "explicit wall patch for wall-distance reconstruction");
+
+            std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+            for (const auto& [name, bc] : ubc) {
+                if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    fixed_velocity_values.emplace(
+                        name, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+            }
+
+            const FvGeometry sst_geometry = build_fv_geometry(mesh);
+            if (!options.restart.empty()) {
+                experimental_sst_state.emplace(mesh.n_cells());
+                const auto wall_distance = compute_mesh_cell_wall_distance(
+                    mesh, sst_geometry, wall_patch_names);
+                // Stage and validate U, p, k, omega and derived SST fields
+                // before changing live fields. The solver re-reads the same
+                // checkpoint through its normal initialization transaction.
+                (void)restore_sst_production_state_from_dat(
+                    options.restart.string(), mesh, U, p,
+                    *experimental_sst_state, wall_distance.distance,
+                    sst_controls, fixed_velocity_values);
+            } else {
+                if (!case_setup.has_initial_condition ||
+                    case_setup.initial_condition.scalar_fields.find("k") ==
+                        case_setup.initial_condition.scalar_fields.end() ||
+                    case_setup.initial_condition.scalar_fields.find("omega") ==
+                        case_setup.initial_condition.scalar_fields.end())
+                    throw std::invalid_argument(
+                        "production solver: experimental SST requires explicit "
+                        "initial_condition.scalar_fields.k and .omega, or a DAT restart");
+                experimental_sst_state.emplace(
+                    initialize_sst_production_state_from_mesh(
+                        mesh, case_setup, sst_controls, U,
+                        fixed_velocity_values, wall_patch_names));
+                if (options.initial_sst_fields) {
+                    std::vector<std::pair<std::string,ScalarCellField>> scalars;
+                    if (!read_scalar_fields_hdf5(mesh_path,scalars))
+                        throw std::invalid_argument("hybrid SST fields cannot be read from HDF5");
+                    bool found_k=false, found_omega=false;
+                    for (const auto& [name,field]:scalars) {
+                        if (name!="k" && name!="omega") continue;
+                        if (field.size()!=mesh.n_cells() || field.dimension()!=1)
+                            throw std::invalid_argument("hybrid SST scalar shape mismatch");
+                        bool& found=name=="k" ? found_k : found_omega;
+                        if (found)
+                            throw std::invalid_argument("duplicate hybrid SST scalar");
+                        found=true;
+                        for (std::size_t c=0;c<mesh.n_cells();++c) {
+                            const double value=field(c);
+                            if (!std::isfinite(value) ||
+                                !(value>=(name=="k" ? sst_controls.k_min : sst_controls.omega_min)))
+                                throw std::invalid_argument("hybrid SST field contains an invalid or subfloor value");
+                            if (name=="k") experimental_sst_state->k(c)=value;
+                            else experimental_sst_state->omega(c)=value;
+                        }
+                    }
+                    if (!found_k || !found_omega)
+                        throw std::invalid_argument("hybrid SST requires k and omega datasets");
+                    refresh_sst_production_derived_state_from_mesh(
+                        *experimental_sst_state,mesh,sst_controls,U,
+                        fixed_velocity_values,wall_patch_names);
+                    std::cout << "HYBRID_INITIAL_SST_FIELDS imported nonuniform k and omega"
+                                 " (derived nut refreshed; NOT qualified)\n";
+                }
+            }
+
+            experimental_sst_runtime.state = &*experimental_sst_state;
+            experimental_sst_runtime.transport = sst_controls;
+            experimental_sst_runtime.k_boundary_conditions = boundary_contract.k;
+            experimental_sst_runtime.omega_boundary_conditions = boundary_contract.omega;
+            experimental_sst_runtime.wall_patch_names = wall_patch_names;
+            experimental_sst_runtime.wall_omega_sst_patches =
+                boundary_contract.wall_omega_sst_patches;
+            // Larger SST inner budgets may be needed for high-Re separated
+            // flows. This setting changes only the work budget, never the
+            // fixed 1e-8 acceptance tolerance or conservation gates.
+            std::size_t sst_inner_budget = 100;
+            const auto budget_it = case_setup.numerics.raw_settings.find(
+                "sst_transport_max_iterations");
+            if (budget_it != case_setup.numerics.raw_settings.end()) {
+                const auto& declared = budget_it->second;
+                std::size_t end = 0;
+                unsigned long parsed = 0;
+                try {
+                    parsed = std::stoul(declared, &end, 10);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument(
+                        "SST transport budget must be a decimal integer in [10, 2000]");
+                }
+                if (end != declared.size() || parsed < 10 || parsed > 2000)
+                    throw std::invalid_argument(
+                        "SST transport budget must be a decimal integer in [10, 2000]");
+                sst_inner_budget = static_cast<std::size_t>(parsed);
+            }
+            experimental_sst_runtime.max_transport_iterations = sst_inner_budget;
+            experimental_sst_runtime.transport_tolerance = 1e-8;
+            const auto provisional = case_setup.numerics.raw_settings.find(
+                "sst_outer_provisional");
+            if (provisional != case_setup.numerics.raw_settings.end()) {
+                if (provisional->second == "enabled")
+                    experimental_sst_runtime.allow_bounded_provisional_transport = true;
+                else if (provisional->second != "disabled")
+                    throw std::invalid_argument(
+                        "sst_outer_provisional must be enabled or disabled");
+                std::cout << "SST bounded provisional outer coupling: "
+                          << provisional->second
+                          << " (final SST and conservation gates UNCHANGED)\n";
+            }
+            std::cout << "SST transport max inner iterations "
+                      << sst_inner_budget << " (unchanged tolerance 1e-8)\n";
+            if (!boundary_contract.wall_omega_sst_patches.empty()) {
+                experimental_sst_runtime.omega_face_values =
+                    make_sst_wall_omega_face_values(
+                        mesh, sst_geometry,
+                        boundary_contract.wall_omega_sst_patches, sst_controls);
+                require_supported_sst_runtime_boundaries(
+                    boundary_contract, mesh, sst_geometry,
+                    &experimental_sst_runtime.omega_face_values);
+            } else {
+                require_supported_sst_runtime_boundaries(
+                    boundary_contract, mesh, sst_geometry, nullptr);
+            }
+            controls.sst_runtime = &experimental_sst_runtime;
+            if (controls.outer_ptc_balance_v32_experimental) {
+                experimental_sst_runtime.outer_ptc_balance_v32.fraction=
+                    v32_initial_fraction_override;
+                experimental_sst_runtime.outer_ptc_balance_v32.validate();
+            }
+            if (is_case_hdf5) {
+                const auto it=case_setup.numerics.raw_settings.find(
+                    "v15_stage_openfoam_wall_triplet_reference");
+                if (it!=case_setup.numerics.raw_settings.end()) {
+                    if (it->second!="true" && it->second!="false")
+                        throw std::invalid_argument(
+                            "v15_stage_openfoam_wall_triplet_reference must be true or false");
+                    experimental_sst_runtime.stage_openfoam_wall_triplet_v15 =
+                        it->second=="true";
+                    if (experimental_sst_runtime.stage_openfoam_wall_triplet_v15)
+                        std::cout << "V15 atomic wall triplet staged at accepted states; "
+                                     "REFERENCE ONLY; no FV wall operator changed\n";
+                }
+            }
+            const auto active_wall_v17 = case_setup.numerics.raw_settings.find(
+                "v17_openfoam_wall_operator_experimental");
+            if (active_wall_v17 != case_setup.numerics.raw_settings.end()) {
+                if (active_wall_v17->second != "enabled" &&
+                    active_wall_v17->second != "disabled")
+                    throw std::invalid_argument(
+                        "v17_openfoam_wall_operator_experimental must be enabled or disabled");
+                if (active_wall_v17->second == "enabled") {
+                    if (!sst_controls.sst_molecular_wall_diffusion)
+                        throw std::invalid_argument(
+                            "V17 active wall operator requires sst_molecular_wall_diffusion=true");
+                    if (boundary_contract.wall_omega_sst_patches.size()!=wall_patch_names.size())
+                        throw std::invalid_argument(
+                            "V17 active wall operator requires omegaWallFunction on every WALL patch");
+                    for (const auto& bc : case_setup.boundary_conditions) {
+                        if (bc.type != BCType::WALL) continue;
+                        bool kqr=false;
+                        for (const auto& scalar : bc.sst_scalar_conditions)
+                            if (scalar.field=="k" &&
+                                scalar.type==cfdx::io::SSTScalarBoundaryType::WALL_KQ_R)
+                                kqr=true;
+                        if (!kqr)
+                            throw std::invalid_argument(
+                                "V17 active wall operator requires kqRWallFunction on every WALL patch");
+                        const auto wall_velocity=fixed_velocity_values.find(bc.patch_name);
+                        if (wall_velocity==fixed_velocity_values.end() ||
+                            wall_velocity->second!=std::array<double,3>{0.,0.,0.})
+                            throw std::invalid_argument(
+                                "V17 active wall operator requires explicit stationary noSlip walls");
+                    }
+                    if (controls.pseudo_momentum.enabled || controls.transient.enabled)
+                        throw std::invalid_argument(
+                            "V17 active wall operator supports steady solve without pseudo-momentum only");
+                    experimental_sst_runtime.active_openfoam_wall_operator_v17=true;
+                    std::cout << "V17 ACTIVE wall operator: nut face momentum,"
+                                 " omega face SST and G owner SST."
+                                 " OpenFOAM-equivalence=NOT_CERTIFIED\n";
+                }
+            }
+            const auto owner_wall_v18=case_setup.numerics.raw_settings.find(
+                "v18_omega_wall_owner_constraints_experimental");
+            if (owner_wall_v18!=case_setup.numerics.raw_settings.end()) {
+                if (owner_wall_v18->second!="enabled" && owner_wall_v18->second!="disabled")
+                    throw std::invalid_argument(
+                        "v18_omega_wall_owner_constraints_experimental must be enabled or disabled");
+                if (owner_wall_v18->second=="enabled") {
+                    if (!experimental_sst_runtime.active_openfoam_wall_operator_v17)
+                        throw std::invalid_argument(
+                            "V18 owner omega constraints require V17 atomic wall operator");
+                    experimental_sst_runtime.omega_wall_owner_constraints_v18=true;
+                    std::cout << "V18 experimental omega OWNER constraint active; "
+                                 "area-weighted corner targets, equation rows and "
+                                 "returned residual recomputed; OpenFOAM-equivalence=NOT_CERTIFIED\n";
+                }
+            }
+            const auto corner_v19=case_setup.numerics.raw_settings.find(
+                "v19_omega_corner_equal_faces_experimental");
+            if (corner_v19!=case_setup.numerics.raw_settings.end()) {
+                if (corner_v19->second!="enabled" && corner_v19->second!="disabled")
+                    throw std::invalid_argument(
+                        "v19_omega_corner_equal_faces_experimental must be enabled or disabled");
+                if (corner_v19->second=="enabled") {
+                    if (!experimental_sst_runtime.omega_wall_owner_constraints_v18)
+                        throw std::invalid_argument(
+                            "V19 corner face-count policy requires V18 omega-owner constraints");
+                    experimental_sst_runtime.omega_wall_corner_face_count_v19=true;
+                }
+            }
+            std::cout << "V19 SST equilibrated correction="
+                      << sst_controls.sst_equilibrated_defect_correction_v19
+                      << " omega corner equal-faces="
+                      << experimental_sst_runtime.omega_wall_corner_face_count_v19
+                      << " (experimental, NOT OpenFOAM qualified)\n";
+            solver_restart_fields.k = &experimental_sst_state->k;
+            solver_restart_fields.omega = &experimental_sst_state->omega;
+            std::cerr
+                << "WARNING: experimental SST runtime explicitly enabled. "
+                   "This path is not physically qualified and does not enable "
+                   "the general RANS selector.\n";
+        }
+
+        if (!options.high_low_checkpoint_prefix.empty()) {
+            if (!controls.pressure_high_low_production)
+                throw std::invalid_argument(
+                    "--high-low-checkpoint-prefix requires pressure_high_low_production=true");
+            const std::filesystem::path prefix(options.high_low_checkpoint_prefix);
+            if (!prefix.parent_path().empty())
+                std::filesystem::create_directories(prefix.parent_path());
+            controls.accepted_compensated_iteration_callback =
+                [&options,&experimental_sst_state](
+                    std::size_t iter, const Mesh& mesh,
+                    const Field<double,Location::CELL>& u,
+                    const Field<double,Location::CELL>& p,
+                    const Field<double,Location::FACE>& flux,
+                    const Vector& low) {
+                    if (low.size()!=mesh.n_cells() || flux.size()!=mesh.n_faces())
+                        throw std::logic_error("DAT6 checkpoint: incomplete accepted high/low state");
+                    Field<double,Location::CELL> p_low(mesh.n_cells(),"p_low","Pa",1);
+                    for (std::size_t c=0;c<mesh.n_cells();++c) p_low(c)=low(c);
+                    // The writer's legacy field pointers are mutable, but
+                    // these copies leave the committed solver state untouched.
+                    auto flux_copy=flux;
+                    DatRestartFields fields;
+                    fields.pressure_low=&p_low;
+                    fields.face_mass_flux=&flux_copy;
+                    if (experimental_sst_state) {
+                        fields.k=&experimental_sst_state->k;
+                        fields.omega=&experimental_sst_state->omega;
+                    }
+                    const auto name=options.high_low_checkpoint_prefix +
+                        "_iter" + std::to_string(iter) + ".dat";
+                    write_dat_restart_fields(name,mesh,u,p,fields,iter,0.0);
+                    std::cout << "HILO_DAT6_CHECKPOINT iteration=" << iter
+                              << " file=" << name << " qualified=0\n";
+                };
+            std::cout << "V7 DAT6 accepted-state checkpoint enabled: "
+                      << options.high_low_checkpoint_prefix << " (EXPERIMENTAL)\n";
+        }
+
+        std::cout << "Initialization strategy "
+                  << cfdx::physics::to_string(controls.initialization.mode) << "\n";
+
+        controls.initialized_state_callback =
+            [&](const Mesh& initialized_mesh,
+                const Field<double, Location::CELL>& initialized_u,
+                const Field<double, Location::CELL>& initialized_p) {
+                (void)initialized_p;
+                std::ostringstream initialized_json;
+                initialized_json << "{\n  \"field\": \"U\",\n"
+                                << "  \"location\": \"cell\",\n"
+                                << "  \"stage\": \"after_initialization_before_first_residual\",\n"
+                                << "  \"cell_count\": " << initialized_mesh.n_cells() << ",\n"
+                                << "  \"values\": [";
+                for (std::size_t cell = 0; cell < initialized_u.size(); ++cell) {
+                    if (cell != 0) initialized_json << ",";
+                    initialized_json << "\n    ["
+                                    << json_number(initialized_u(cell, 0)) << ", "
+                                    << json_number(initialized_u(cell, 1)) << ", "
+                                    << json_number(initialized_u(cell, 2)) << "]";
+                }
+                if (initialized_u.size() != 0) initialized_json << "\n  ";
+                initialized_json << "]\n}\n";
+                write_text_file_atomic(
+                    options.output_dir / "initialized_velocity_field.json",
+                    initialized_json.str());
+            };
+
+        controls.iteration_output_callback =
+            [&](std::size_t iteration, double time, const Mesh& state_mesh,
+                const Field<double, Location::CELL>& state_u,
+                const Field<double, Location::CELL>& state_p) {
+                ScalarCellField pressure(state_p);
+                ScalarCellField ux(state_u.size(), "u_x", "m/s");
+                ScalarCellField uy(state_u.size(), "u_y", "m/s");
+                ScalarCellField uz(state_u.size(), "u_z", "m/s");
+                for (std::size_t c = 0; c < state_u.size(); ++c) {
+                    ux(c) = state_u(c, 0);
+                    uy(c) = state_u(c, 1);
+                    uz(c) = state_u(c, 2);
+                }
+                const auto path = options.output_dir /
+                    ("result_" + std::to_string(iteration) + ".vtu");
+                // V21: diagnostics for the actual accepted coupled SST state.
+                // Omitting these cell fields made it impossible to assess
+                // upstream boundary layers, nut, k and omega in the same
+                // snapshot as the velocity. No extra arrays for laminar cases.
+                std::map<std::string, ScalarCellField> cell_fields{
+                    {"p", pressure}, {"u_x", ux}, {"u_y", uy}, {"u_z", uz}};
+                if (experimental_sst_state) {
+                    validate_sst_production_state(*experimental_sst_state,
+                                                  state_mesh.n_cells());
+                    cell_fields.emplace("k", ScalarCellField(experimental_sst_state->k));
+                    cell_fields.emplace("omega", ScalarCellField(experimental_sst_state->omega));
+                    cell_fields.emplace("nu_t", ScalarCellField(experimental_sst_state->nu_t));
+                    cell_fields.emplace("wall_distance", ScalarCellField(experimental_sst_state->wall_distance));
+                    cell_fields.emplace("sst_strain_rate", ScalarCellField(experimental_sst_state->strain_rate));
+                }
+                VtuWriter writer;
+                if (!writer.write(path.string(), state_mesh,
+                                  cell_fields, {}, {}, time, iteration, true))
+                    return false;
+                std::cout << "Iteration " << iteration
+                          << " Time = " << time << "\n";
+                return g_stop_requested == 0;
+            };
+
+        const bool energy_requested = is_case_hdf5 &&
+            production_energy_requested(case_setup);
+        Field<double, Location::CELL> temperature(
+            mesh.n_cells(), "temperature", "K", 1);
+        const bool thermal_restart = energy_requested && !options.restart.empty();
+        if (thermal_restart) {
+            // Validate the complete thermal checkpoint before running the
+            // carrier. The carrier's own initialization subsequently consumes
+            // U/p and its iteration metadata; no live fields are changed here.
+            auto candidate_velocity = U;
+            auto candidate_pressure = p;
+            DatRestartFields fields;
+            fields.temperature = &temperature;
+            read_dat_restart_fields(options.restart.string(), mesh,
+                candidate_velocity, candidate_pressure, fields);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                if (!std::isfinite(temperature(cell)) || !(temperature(cell) > 0.0))
+                    throw std::invalid_argument(
+                        "production solver: restarted temperature must be finite and positive (kelvin)");
+        }
+
+        IncompressibleSolveResult result;
+        bool buoyancy_ran = false;
+        ProductionBuoyancyOuterLoopResult buoyancy_result;
+        if (is_case_hdf5 && production_buoyancy_requested(case_setup)) {
+            // Coupled flow-energy buoyancy iteration (issue #885 step 4):
+            // each outer pass rebuilds the cellwise Boussinesq buoyancy
+            // source from the relaxed temperature, re-solves the carrier
+            // (warm-started from the previous pass), then solves the
+            // energy response - with the energy-S2S fixed point when
+            // radiation is declared - on the new authoritative mass
+            // flux. The blocking verdict is the coupled fixed point,
+            // never an intermediate Picard pass.
+            buoyancy_result = run_production_buoyant_outer_loop(
+                mesh, ubc, pbc, controls, case_setup, U, p,
+                options.restart.string(), thermal_restart ? &temperature : nullptr,
+                options.experimental_sst ? &experimental_sst_runtime : nullptr);
+            result = buoyancy_result.flow;
+            buoyancy_ran = true;
+            std::cout << "Buoyant flow-energy outer loop "
+                      << (buoyancy_result.converged ? "converged"
+                                                    : "NOT converged")
+                      << " outer iterations "
+                      << buoyancy_result.outer_iterations
+                      << " fixed point temperature "
+                      << buoyancy_result.max_temperature_change_normalized
+                      << " velocity "
+                      << buoyancy_result.max_velocity_change_normalized
+                      << " pressure "
+                      << buoyancy_result.max_pressure_change_normalized
+                      << "\n";
+        } else if (options.experimental_momentum_first_continuation) {
+            if (!options.experimental_sst || controls.sst_runtime == nullptr)
+                throw std::invalid_argument(
+                    "--experimental-momentum-first-continuation requires --experimental-sst");
+            if (!options.restart.empty())
+                throw std::invalid_argument(
+                    "--experimental-momentum-first-continuation does not accept a DAT restart");
+            ContinuationControls schedule;
+            schedule.enabled = true;
+            schedule.momentum_only_before_final = true;
+            schedule.upwind_before_final = true;
+            schedule.initial_step = 0.5;
+            schedule.maximum_step = 0.5;
+            schedule.minimum_step = 0.0625;
+            const auto staged = solve_steady_incompressible_continuation(
+                mesh, U, p, ubc, pbc, controls, schedule);
+            for (const auto& stage : staged.stages)
+                std::cout << "V25_CONTINUATION_STAGE target=" << stage.parameter
+                          << " attempts=" << stage.attempts
+                          << " converged=" << (stage.converged ? 1 : 0)
+                          << " full_physics=" <<
+                              (continuation_final_physical_stage(stage.parameter) ? 1 : 0)
+                          << "\n";
+            result = staged.final_solver_result;
+            // A converged intermediate momentum-only stage must never
+            // masquerade as a converged final SST result.
+            if (!staged.converged || staged.final_parameter != 1.0)
+                result.converged = false;
+        } else {
+            result = solve_steady_incompressible(
+                mesh, U, p, ubc, pbc, controls, options.restart.string(),
+                solver_restart_fields);
+        }
+        execution_result = result;
+        const auto execution = options.output_dir / "execution.json";
+        const auto flow_exit_code = execution_exit_code_for_solver(result.converged);
+        // Persist the solver outcome before any secondary artifact is written.
+        // This guarantees that a restart/convergence/probe write failure still
+        // leaves an execution artifact which the catch block can finalize with
+        // the actual process error code (2).
+        write_execution_summary(execution.string(), ExecutionSummary{
+            flow_exit_code,
+            result.converged,
+            result.iterations,
+            static_cast<int>(result.convergence_status),
+            result.convergence_reason,
+            false,
+            false});
+        if (options.wall_forces_quadratic) {
+            if (!result.converged)
+                throw std::runtime_error(
+                    "--wall-forces-quadratic requires a converged flow solution");
+            write_quadratic_wall_forces(
+                mesh, U, p, ubc, pbc,
+                controls.density * controls.kinematic_viscosity,
+                options.output_dir);
+        }
+        if (!options.restart.empty())
+            std::cout << "Restart checkpoint " << options.restart.string() << "\n";
+
+        // T2 production energy stage (capability #885 stage 2, issues
+        // #880 / #118): once the frozen flow has converged, couple it
+        // one-way into the steady energy equation on the solver's
+        // authoritative conservative face mass flux. The stage runs only
+        // for a converged carrier flow: an energy field carried by a
+        // diverged flow is not evidence, and the global exit code below
+        // is flow AND energy. The energy model was already validated
+        // fail-closed right after case load.
+        bool energy_ran = false;
+        ProductionEnergyStageResult energy_result;
+        ProductionS2SOuterLoopResult s2s_outer_result;
+        bool s2s_ran = false;
+        if (buoyancy_ran) {
+            // The buoyant outer loop already produced the coupled energy
+            // response (and, when declared, the energy-S2S fixed point)
+            // on the final carrier solve: no frozen-flow pass is run
+            // again. The artifacts below reuse the loop's recorded
+            // responses; they are gated on the loop having completed at
+            // least one full outer pass, exactly like the frozen-flow
+            // path.
+            energy_ran = buoyancy_result.energy_ran;
+            s2s_ran = buoyancy_result.s2s_ran;
+            energy_result = buoyancy_result.energy;
+            if (s2s_ran)
+                s2s_outer_result = buoyancy_result.s2s;
+            temperature = buoyancy_result.temperature;
+        } else if (energy_requested && result.converged) {
+            const auto energy_geometry = build_fv_geometry(mesh);
+            // Initial temperature: the declared initial condition, else
+            // the case reference temperature. Zero means "not declared"
+            // (stage-1 convention) and falls back to ref_temperature.
+            double initial_temperature = thermal_restart
+                ? temperature(0) : case_setup.ref_temperature;
+            if (!thermal_restart && case_setup.has_initial_condition &&
+                case_setup.initial_condition.temperature != 0.0)
+                initial_temperature =
+                    case_setup.initial_condition.temperature;
+            // Absolute temperature contract: a non-finite or non-positive
+            // value cannot seed the energy stage (whose kernel also rejects
+            // it), so fail the run here with the solver-level message.
+            if (!std::isfinite(initial_temperature) ||
+                !(initial_temperature > 0.0))
+                throw std::invalid_argument(
+                    "production solver: initial temperature must be finite "
+                    "and positive (kelvin)");
+            if (!thermal_restart)
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                    temperature(cell) = initial_temperature;
+            if (production_s2s_radiation_requested(case_setup)) {
+                // External energy-radiation iteration (issue #885 step
+                // 3): energy pass on the frozen flow, S2S radiosity from
+                // the resulting wall temperatures, net radiative fluxes
+                // re-injected with controlled under-relaxation, iterated
+                // until the unrelaxed radiative fixed point and the
+                // wall-temperature stationarity both hold. The verdict
+                // is the coupled fixed point on the frozen flow, never
+                // an intermediate Picard pass.
+                s2s_outer_result = run_production_s2s_energy_outer_loop(
+                    mesh, energy_geometry, case_setup,
+                    result.authoritative_mass_flux, temperature);
+                energy_result = s2s_outer_result.energy;
+                energy_ran = true;
+                s2s_ran = true;
+            } else {
+                // Couple the final *accepted* SST viscosity to energy.
+                // Keep this vector alive until the assembled energy solve
+                // and its independent face-flux audit have finished.
+                std::vector<double> lambda_eff;
+                if (experimental_sst_state)
+                    lambda_eff = build_production_sst_thermal_conductivity(
+                        case_setup, *experimental_sst_state, mesh.n_cells(),
+                        require_production_sst_turbulent_prandtl(case_setup));
+                energy_result = run_production_energy_stage(
+                    mesh, energy_geometry, case_setup,
+                    result.authoritative_mass_flux, temperature, {},
+                    lambda_eff.empty() ? nullptr : &lambda_eff);
+                energy_ran = true;
+            }
+        } else if (energy_requested) {
+            std::cout
+                << "Energy stage skipped: carrier flow did not converge\n";
+        }
+        // Energy artifacts are written from the recorded responses of
+        // whichever path ran (frozen-flow stage or buoyant outer loop),
+        // gated on a completed energy response exactly like the
+        // frozen-flow path.
+        if (energy_ran && temperature.size() == mesh.n_cells()) {
+            write_text_file_atomic(
+                options.output_dir / "energy_convergence.json",
+                energy_convergence_json(energy_result));
+            write_text_file_atomic(
+                options.output_dir / "energy_summary.json",
+                energy_summary_json(energy_result));
+            VtuWriter energy_writer;
+            const auto energy_vtu =
+                options.output_dir / "energy_result_0.vtu";
+            // The VTU is written through a temporary sibling and renamed,
+            // matching the JSON artifacts: a reader never observes a
+            // half-written energy result, whatever the interruption.
+            const auto energy_vtu_tmp =
+                options.output_dir / "energy_result_0.vtu.tmp";
+            if (!energy_writer.write(energy_vtu_tmp.string(), mesh,
+                                     {{"temperature", temperature}},
+                                     {}, {}, 0.0, 0, true))
+                throw std::runtime_error(
+                    "production solver: energy result VTU write failed");
+            std::filesystem::rename(energy_vtu_tmp, energy_vtu);
+            std::cout << "Energy stage "
+                      << (energy_result.converged ? "converged"
+                                                   : "NOT converged")
+                      << " iterations " << energy_result.iterations
+                      // Blocking-gate diagnostics, not the legacy
+                      // normalized audit: global_balance_normalized and
+                      // local_balance_normalized (gross-scale) plus
+                      // max_cell_residual_normalized (per-cell scale) are
+                      // the criteria converged actually requires.
+                      << " conservation global="
+                      << energy_result.global_balance_normalized
+                      << " local=" << energy_result.local_balance_normalized
+                      << " local_cell="
+                      << energy_result.max_cell_residual_normalized
+                      << "\n";
+            std::cout << "Energy gates linear="
+                      << (energy_result.linear_solver_converged ? 1 : 0)
+                      << " global_balance="
+                      << (energy_result.global_energy_balance_passed ? 1 : 0)
+                      << " local_balance="
+                      << (energy_result.local_energy_balance_passed ? 1 : 0)
+                      << " temperature_admissibility="
+                      << (energy_result.temperature_admissibility_passed ? 1 : 0)
+                      << " nonpositive_temperature="
+                      << energy_result.nonpositive_temperature
+                      << " audit_scale=" << energy_result.audit_power_scale
+                      << "\n";
+            std::cout << "Energy temperatures ["
+                      << energy_result.min_temperature << ", "
+                      << energy_result.max_temperature << "] K\n";
+            std::cout << "Energy convergence history "
+                      << (options.output_dir / "energy_convergence.json")
+                             .string()
+                      << "\n";
+            std::cout << "Energy summary "
+                      << (options.output_dir / "energy_summary.json")
+                             .string()
+                      << "\n";
+            std::cout << "Energy result " << energy_vtu.string() << "\n";
+            if (s2s_ran) {
+                write_text_file_atomic(
+                    options.output_dir / "radiation_s2s.json",
+                    radiation_s2s_json(s2s_outer_result));
+                std::cout << "S2S radiation outer loop "
+                          << (s2s_outer_result.converged
+                                  ? "converged"
+                                  : "NOT converged")
+                          << " outer iterations "
+                          << s2s_outer_result.outer_iterations
+                          << " surfaces "
+                          << s2s_outer_result.radiation.surface_count
+                          << " flux fixed point "
+                          << s2s_outer_result
+                                 .max_flux_fixed_point_normalized
+                          << " wall temperature stationarity "
+                          << s2s_outer_result
+                                 .max_wall_temperature_change_normalized
+                          << " balance_normalized "
+                          << s2s_outer_result.radiation.balance_normalized
+                          << " surface_identity_normalized "
+                          << s2s_outer_result.radiation
+                                 .max_surface_identity_normalized
+                          << "\n";
+                std::cout << "S2S last wall temperature lag "
+                          << s2s_outer_result.max_wall_temperature_lag
+                          << " K\n";
+                std::cout << "S2S radiation summary "
+                          << (options.output_dir / "radiation_s2s.json")
+                                 .string()
+                          << "\n";
+            }
+        }
+        // Native benchmark fields are emitted only from the accepted final
+        // solver state, never from the intermediate p-only iteration VTU.
+        // A failed flow remains marked unqualified in the manifest; the
+        // exports are still useful for diagnosing why it failed.
+        if (options.benchmark_export) {
+            const auto evidence = write_thermohydraulic_observables(
+                options.output_dir / "benchmark_observables",
+                mesh, U, p, result.authoritative_mass_flux, ubc,
+                controls.density, controls.kinematic_viscosity,
+                experimental_sst_state ? &*experimental_sst_state : nullptr,
+                energy_ran ? &temperature : nullptr);
+            std::cout << "Benchmark raw evidence: " << evidence.cells
+                      << " cells, global face-flux mass imbalance="
+                      << evidence.global_mass_imbalance_relative << "\n";
+        }
+        const bool overall_converged =
+            result.converged &&
+            (!buoyancy_ran || buoyancy_result.converged) &&
+            (!energy_requested ||
+             (energy_ran && energy_result.converged &&
+              (!s2s_ran || s2s_outer_result.converged)));
+        const auto solver_exit_code =
+            execution_exit_code_for_solver(overall_converged);
+        auto overall_status = result.convergence_status;
+        std::string overall_reason = result.convergence_reason;
+        if (result.converged && !overall_converged) {
+            overall_status = cfdx::core::ConvergenceStatus::DIVERGED;
+            if (energy_ran && !energy_result.temperature_admissibility_passed)
+                overall_reason = "energy temperature admissibility gate failed";
+            else if (energy_ran && !energy_result.converged)
+                overall_reason = "energy stage linear or conservation gate failed";
+            else if (s2s_ran && !s2s_outer_result.converged)
+                overall_reason = "energy-radiation fixed point did not converge";
+            else if (buoyancy_ran && !buoyancy_result.converged)
+                overall_reason = "flow-energy buoyancy fixed point did not converge";
+            else
+                overall_reason = "requested energy stage did not complete";
+        }
+
+        const auto dat = options.output_dir / "restart.dat";
+        DatRestartFields checkpoint_fields;
+        if (energy_ran)
+            checkpoint_fields.temperature = &temperature;
+        if (experimental_sst_state) {
+            // The experimental opt-in owns k and omega for the whole run, so
+            // the final checkpoint persists them under their stable DAT v4
+            // named fields. Without this wiring a persisted SST case can
+            // initialize but never restart: the staged DAT reader requires
+            // the named k and omega fields whenever the active runtime
+            // requests them.
+            checkpoint_fields.k = &experimental_sst_state->k;
+            checkpoint_fields.omega = &experimental_sst_state->omega;
+        }
+        // Persist the authoritative face mass flux so the next run replays
+        // the same iteration sequence instead of re-deriving a different
+        // initial flux from the restored U and p.
+        if (result.authoritative_mass_flux.dimension() == 1 &&
+            result.authoritative_mass_flux.size() == mesh.n_faces())
+            checkpoint_fields.face_mass_flux = &result.authoritative_mass_flux;
+        write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+                                 result.iterations, 0.0);
+        const auto convergence = options.output_dir / "convergence.json";
+        write_convergence_history(convergence.string(), result);
+        write_execution_summary(execution.string(), ExecutionSummary{
+            solver_exit_code,
+            overall_converged,
+            result.iterations,
+            static_cast<int>(overall_status),
+            overall_reason,
+            std::filesystem::is_regular_file(dat),
+            std::filesystem::is_regular_file(convergence)});
+        std::cout << "Checkpoint " << dat.string() << "\n";
+        std::cout << "Convergence history " << convergence.string() << "\n";
+        std::cout << "Execution summary " << execution.string() << "\n";
+
+        if (!options.probe_csv.empty()) {
+            write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+            std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+                      << result.probe_samples.size() << " samples)\n";
+        }
+
+        std::cout << "Converged " << (overall_converged ? "YES" : "NO")
+                  << " Iterations " << result.iterations << "\n";
+        return solver_exit_code;
+    } catch (const std::exception& exc) {
+        std::cerr << "CFDX production solver error: " << exc.what() << "\n";
+        if (!execution_output_dir.empty()) {
+            try {
+                const auto execution = execution_output_dir / "execution.json";
+                const bool has_restart =
+                    std::filesystem::is_regular_file(execution_output_dir / "restart.dat");
+                const bool has_convergence =
+                    std::filesystem::is_regular_file(execution_output_dir / "convergence.json");
+                write_execution_summary(execution.string(), ExecutionSummary{
+                    kExecutionExitError,
+                    false,
+                    execution_result.has_value() ? execution_result->iterations : 0,
+                    static_cast<int>(cfdx::core::ConvergenceStatus::DIVERGED),
+                    exc.what(),
+                    has_restart,
+                    has_convergence});
+            } catch (const std::exception& summary_exc) {
+                std::cerr << "CFDX production solver: failed to persist execution summary: "
+                          << summary_exc.what() << "\n";
+            }
+        }
+        return kExecutionExitError;
+    }
+}

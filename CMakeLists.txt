@@ -1814,6 +1814,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 LABELS "diagnostics;integration;convergence"
                 ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
                 TIMEOUT 90)
+            # V36 meshio-free end-to-end trace qualification on a generated
+            # native HDF5 quick mesh. Software-only, never a physical BFS PASS.
+            add_test(NAME test_cell_hotspots_native_hdf5_v36
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_cell_hotspots_native_hdf5_v36.py)
+            set_tests_properties(test_cell_hotspots_native_hdf5_v36 PROPERTIES
+                LABELS "diagnostics;integration;native;regression"
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/bfs_re200_n16.h5;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+                FIXTURES_REQUIRED cfdx_validation_meshes_quick
+                TIMEOUT 100)
             add_test(NAME test_production_solver_e2e
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)

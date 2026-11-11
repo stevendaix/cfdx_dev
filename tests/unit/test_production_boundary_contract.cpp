@@ -102,5 +102,45 @@ int main() {
         bc.velocity_vector={1.0,std::numeric_limits<double>::quiet_NaN(),0.0};
         EXPECT_THROW(validate_production_incompressible_boundary(bc,PatchType::INLET),std::invalid_argument);
     });
+    run_case("v36_explicit_velocity_pressure_fields_map_with_strict_physical_roles", [] {
+        BoundarySpec inlet;
+        inlet.patch_name="in";
+        inlet.type=BCType::INLET;
+        inlet.value_type=BCValueType::FIXED;
+        inlet.field_conditions["velocity"] = NativeFieldBoundary{"FIXED_VALUE", {44.2,0.0,0.0}, 0.0};
+        validate_production_incompressible_boundary(inlet, PatchType::INLET);
+        validate_native_flow_field_overrides(inlet);
+        inlet.field_conditions["velocity"].value={44.2,0.0};
+        EXPECT_THROW(validate_native_flow_field_overrides(inlet), std::invalid_argument);
+        inlet.field_conditions["velocity"].value={44.2,0.0,0.0};
+        inlet.field_conditions["velocity"].type="ZERO_GRADIENT";
+        EXPECT_THROW(validate_native_flow_field_overrides(inlet), std::invalid_argument);
+        BoundarySpec outlet;
+        outlet.patch_name="out";
+        outlet.type=BCType::PRESSURE_OUTLET;
+        outlet.value_type=BCValueType::OUTLET_PRESSURE;
+        outlet.field_conditions["pressure"] = NativeFieldBoundary{"FIXED_VALUE", {0.0}, 0.0};
+        validate_native_flow_field_overrides(outlet);
+        outlet.field_conditions["pressure"].type="ZERO_GRADIENT";
+        EXPECT_THROW(validate_native_flow_field_overrides(outlet), std::invalid_argument);
+        outlet.field_conditions["pressure"].type="FIXED_VALUE";
+        outlet.field_conditions["pressure"].value={std::numeric_limits<double>::quiet_NaN()};
+        EXPECT_THROW(validate_native_flow_field_overrides(outlet), std::invalid_argument);
+    });
+    run_case("v36_no_slip_and_pressure_boundary_roles_reject_conflicts", [] {
+        BoundarySpec wall;
+        wall.patch_name="wall";
+        wall.type=BCType::WALL;
+        wall.value_type=BCValueType::WALL_NO_SLIP;
+        wall.field_conditions["velocity"] = NativeFieldBoundary{"FIXED_VALUE", {1,0,0}, 0};
+        EXPECT_THROW(validate_native_flow_field_overrides(wall), std::invalid_argument);
+        wall.field_conditions["velocity"].value={0,0,0};
+        validate_native_flow_field_overrides(wall);
+        wall.field_conditions["pressure"] = NativeFieldBoundary{"FIXED_GRADIENT", {}, 0.5};
+        validate_native_flow_field_overrides(wall);
+        wall.field_conditions["pressure"].type="FIXED_VALUE";
+        wall.field_conditions["pressure"].value={120.0};
+        EXPECT_THROW(validate_native_flow_field_overrides(wall), std::invalid_argument);
+    });
     return run_all();
 }

@@ -123,38 +123,6 @@ struct CouplingControls {
     // Shared diagnostic across BlockLocal, PCD, LSC, BFBt, SIMPLE and
     // SIMPLEC Schur. Off by default; no silent substitution on rejection.
     bool schur_action_growth_guard_experimental = false;
-    // Diagnostic A/B only: align the nested pressure operators' gauge column
-    // with the monolithic eliminated gauge column. No production default change.
-    bool pcd_consistent_gauge_experimental = false;
-    // Research diagnostics only: exact row scaling of Fp and guarded nested
-    // actions. These change only the Schur preconditioner, not FV equations.
-    bool pcd_fp_row_equilibration_experimental = false;
-    bool pcd_fp_quality_guard_experimental = false;
-    bool pcd_fp_second_pass_experimental = false;
-    // Experimental Fp-only strong-component anchor. The coupled FV matrix,
-    // physical pressure gauge and nonlinear gates are unchanged.
-    bool pcd_fp_recirculation_anchor_experimental = false;
-    // Opt-in certified nonsymmetric Fp deflation. Must carry a LEFT/RIGHT
-    // basis file whose coefficient fingerprint matches the CURRENT Fp.
-    // The matrix-free solve changes ONLY the PCD action, never the coupled FV
-    // system. No automatic basis reuse when numerical coefficients change.
-    std::string pcd_fp_bisided_basis_file_experimental;
-    // V15: select a CURRENT, independently certified basis from a directory
-    // keyed by the exact Fp CSR coefficient fingerprint.  No stale fallback.
-    std::string pcd_fp_bisided_basis_directory_v15_experimental;
-    // V15: invert Fp + W Z^T on the FULL auxiliary right-hand side.  Unlike
-    // the V14 projected action, this preserves the deficient Schur directions
-    // so that the preconditioner need not map left-null vectors to zero.
-    bool pcd_fp_full_rank_action_v15_experimental = false;
-
-    // Preconditioner-only A/B: pressure-space Dirichlet data on actual
-    // inflow faces, including mixed-in/out farfield patches. The physical
-    // momentum/continuity BCs and the Schur matrix A are NOT modified.
-    // Off by default until NACA/N9/BFS full physical A/B qualification.
-    bool pcd_pressure_inflow_dirichlet_experimental = false;
-    // Shared diagnostic across BlockLocal, PCD, LSC, BFBt, SIMPLE and
-    // SIMPLEC Schur. Off by default; no silent substitution on rejection.
-    bool schur_action_growth_guard_experimental = false;
     // Serial, small-subdomain, experimental RAS/weighted Schwarz for COUPLED
     // with BlockLocal Schur. Explicit opt-in; setup failure is fatal rather
     // than silently replaced by AMG. No MPI / coarse-space scaling claim.
