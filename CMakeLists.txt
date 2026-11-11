@@ -1454,21 +1454,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")
     add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
     add_cfdx_test(test_pcd_pressure_inflow_boundary tests/validation/test_pcd_pressure_inflow_boundary.cpp)
-    add_test(NAME test_pcd_fp_replay_capture COMMAND test_pcd_fp_replay --self-test)
-    set_tests_properties(test_pcd_fp_replay_capture PROPERTIES LABELS "pcd;linalg;replay")
-    add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
-    add_cfdx_test(test_pcd_fp_bisided_basis_v13 tests/unit/test_pcd_fp_bisided_basis_v13.cpp)
-    add_cfdx_test(test_global_nonlinear_acceptance_v13 tests/unit/test_global_nonlinear_acceptance_v13.cpp)
-    add_cfdx_test(test_pcd_bilateral_deflation_v14 tests/unit/test_pcd_bilateral_deflation_v14.cpp)
-    add_cfdx_test(test_pcd_full_rank_action_v15 tests/unit/test_pcd_full_rank_action_v15.cpp)
-    add_cfdx_test(test_sst_wall_triplet_v15 tests/unit/test_sst_wall_triplet_v15.cpp)
-    add_cfdx_test(test_global_nonlinear_contraction_v14 tests/unit/test_global_nonlinear_contraction_v14.cpp)
-    add_cfdx_test(test_sst_wall_triplet_cell_audit_v13 tests/unit/test_sst_wall_triplet_cell_audit_v13.cpp)
-    add_cfdx_test(test_sst_fp64_stall_v14 tests/unit/test_sst_fp64_stall_v14.cpp)
-    add_cfdx_test(test_pcd_fp_strong_component_anchor tests/unit/test_pcd_fp_strong_component_anchor.cpp)
     set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")
-    add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
-    add_cfdx_test(test_pcd_pressure_inflow_boundary tests/validation/test_pcd_pressure_inflow_boundary.cpp)
     add_test(NAME test_pcd_fp_replay_capture COMMAND test_pcd_fp_replay --self-test)
     set_tests_properties(test_pcd_fp_replay_capture PROPERTIES LABELS "pcd;linalg;replay")
     add_cfdx_test(test_pressure_velocity_jacobian_certificate
@@ -1972,15 +1958,29 @@ if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
 endif()
 
 # V7: portable double-double scalar assembly (no wide long double needed).
-if(CFDX_BUILD_TESTS)
-    add_cfdx_test(test_portable_double_double_v7 tests/unit/test_portable_double_double_v7.cpp)
-    set_tests_properties(test_portable_double_double_v7 PROPERTIES
-        LABELS "pressure;assembly;precision;portability")
-endif()
+
 
 # V7: portable double-double scalar assembly (no wide long double needed).
 if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_portable_double_double_v7 tests/unit/test_portable_double_double_v7.cpp)
     set_tests_properties(test_portable_double_double_v7 PROPERTIES
         LABELS "pressure;assembly;precision;portability")
+endif()
+
+# V35 merge: targeted V23-V34 SST qualification tests.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_sst_block_preconditioner_v23 tests/unit/test_sst_block_preconditioner_v23.cpp)
+    add_cfdx_test(test_sst_spatial_block_preconditioner_v24 tests/unit/test_sst_spatial_block_preconditioner_v24.cpp)
+    add_cfdx_test(test_sst_globalization_v25 tests/unit/test_sst_globalization_v25.cpp)
+    add_cfdx_test(test_sst_globalization_v26 tests/unit/test_sst_globalization_v26.cpp)
+    add_cfdx_test(test_sst_trust_subspace_v27 tests/unit/test_sst_trust_subspace_v27.cpp)
+    add_cfdx_test(test_sst_adaptive_trust_v28 tests/unit/test_sst_adaptive_trust_v28.cpp)
+    add_cfdx_test(test_sst_pseudo_transient_v29 tests/unit/test_sst_pseudo_transient_v29.cpp)
+    add_cfdx_test(test_sst_coupled_ptc_v30 tests/unit/test_sst_coupled_ptc_v30.cpp)
+    add_cfdx_test(test_sst_outer_ptc_v31 tests/unit/test_sst_outer_ptc_v31.cpp)
+    add_cfdx_test(test_sst_outer_ptc_balance_v32 tests/unit/test_sst_outer_ptc_balance_v32.cpp)
+    add_cfdx_test(test_sst_hotspot_v31 tests/unit/test_sst_hotspot_v31.cpp)
+    add_cfdx_test(test_sst_row_trace_v33 tests/unit/test_sst_row_trace_v33.cpp)
+    add_cfdx_test(test_sst_anisotropic_oracles_v33 tests/unit/test_sst_anisotropic_oracles_v33.cpp)
+    add_cfdx_test(test_sst_branch_preconditioner_v34 tests/unit/test_sst_branch_preconditioner_v34.cpp)
 endif()

@@ -1,4 +1,5 @@
 #pragma once
+#include "cfdx/physics/sst_coupled_pseudo_time_v30.h"
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/finite_volume_transport.h"
@@ -90,6 +91,35 @@ struct TurbulenceTransportControls {
     // V22 experimental: a joint SST [k,omega] matrix-free Newton candidate
     // with full FV reassembly and positivity/physical-residual globalization.
     bool sst_jfnk_v22_experimental = false;
+    // V23: local 2x2 source-coupled RIGHT preconditioner for V22 JFNK.
+    // Never changes SST equations or linear/nonlinear acceptance gates.
+    bool sst_block_preconditioner_v23_experimental = false;
+    // V24: two frozen spatial block Gauss-Seidel sweeps using the SAME FV
+    // convection/diffusion CSR plus V23 local source coupling. Opt-in only.
+    bool sst_spatial_block_preconditioner_v24_experimental = false;
+    // V34: bounded, switch-aware full-FV Jacobian correction at the worst
+    // k and omega cells, ONLY inside the V24 right preconditioner.
+    bool sst_branch_preconditioner_v34_experimental = false;
+    // V25: opt-in wall-aware diagonal J corrections and true-physical
+    // logarithmic globalization; requires V24 and V22. No physics gate change.
+    bool sst_log_globalization_v25_experimental = false;
+    // V26: log Jv multiscale audit + balanced RMS proposal. Only the original
+    // Linf physical FV gate may accept a final SST step (opt-in V25 required).
+    bool sst_smooth_globalization_v26_experimental = false;
+    // V27: physically projected sampled Cauchy/trust subspace on Newton,
+    // Picard and the dominant FV row coordinates; retains V26 final gates.
+    bool sst_subspace_trust_v27_experimental = false;
+    // V28: opt-in persistent trust radius and log blends of the separately
+    // certified Newton-Jacobi/Cauchy proposals. No SST gate change.
+    bool sst_adaptive_trust_v28_experimental = false;
+    // V29: diagonal local pseudo-time candidate. Physical SST residual unchanged.
+    bool sst_pseudo_transient_v29_experimental = false;
+    // V30: single adaptive pseudo-CFL for the joint JFNK direction. An external
+    // state pointer permits strictly transactional use across outer iterations.
+    bool sst_coupled_ptc_v30_experimental = false;
+    SSTV30ContinuationState* sst_continuation_state_v30 = nullptr;
+    // V29: separately gated OpenFOAM-style owner matrix manipulation.
+    bool sst_weighted_wall_matrix_v29_experimental = false;
     // Existing scalar solve blends candidate and old state with 0.7.
     // Expose the same parameter (default preserved) for a controlled
     // 0.7 / 0.9 / 1.0 contract study; 1.0 performs no post-solve damping.
@@ -309,6 +339,28 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||
        (c.sst_anderson_m2_v20 && (c.sst_picard_damping != 1.0 || c.sst_nonlinear_line_search)) ||
+       (c.sst_block_preconditioner_v23_experimental &&
+        !c.sst_jfnk_v22_experimental) ||
+       (c.sst_spatial_block_preconditioner_v24_experimental &&
+        !c.sst_jfnk_v22_experimental) ||
+       (c.sst_branch_preconditioner_v34_experimental &&
+        (!c.sst_spatial_block_preconditioner_v24_experimental ||
+         !c.sst_jfnk_v22_experimental)) ||
+       (c.sst_adaptive_trust_v28_experimental &&
+        !c.sst_subspace_trust_v27_experimental) ||
+       (c.sst_pseudo_transient_v29_experimental &&
+        !c.sst_jfnk_v22_experimental) ||
+       (c.sst_coupled_ptc_v30_experimental &&
+        !c.sst_jfnk_v22_experimental) ||
+       (c.sst_weighted_wall_matrix_v29_experimental &&
+        !c.sst_owner_consistent_projection_v21) ||
+       (c.sst_subspace_trust_v27_experimental &&
+        !c.sst_smooth_globalization_v26_experimental) ||
+       (c.sst_smooth_globalization_v26_experimental &&
+        !c.sst_log_globalization_v25_experimental) ||
+       (c.sst_log_globalization_v25_experimental &&
+        (!c.sst_spatial_block_preconditioner_v24_experimental ||
+         !c.sst_jfnk_v22_experimental)) ||
        (c.sst_jfnk_v22_experimental &&
            (c.sst_anderson_m2_v20 || c.sst_nonlinear_line_search ||
             c.sst_picard_damping != 1.0)) ||

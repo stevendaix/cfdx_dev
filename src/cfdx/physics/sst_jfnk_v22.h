@@ -20,6 +20,9 @@ namespace cfdx::physics {
 struct SSTJFNKV22Candidate {
     bool available=false;
     std::vector<double> fields; // same [k,omega] ordering as the input
+    // Direction in log(k),log(omega), only after TRUE GMRES gate.
+    // An empty accepted-state proposal can still have a qualified direction.
+    std::vector<double> log_direction;
     std::size_t function_evaluations=0;
     double frozen_merit_before=std::numeric_limits<double>::infinity();
     double frozen_merit_after=std::numeric_limits<double>::infinity();
@@ -38,7 +41,8 @@ inline SSTJFNKV22Candidate sst_jfnk_propose_v22(
     double k_floor,double omega_floor,
     const SSTPhysicalResidualV22& physical_residual,
     const CoupledNewtonKrylovControls& settings = {},
-    const std::vector<double>& frozen_left_diagonal = {})
+    const std::vector<double>& frozen_left_diagonal = {},
+    const CoupledRightPreconditioner& right_preconditioner = {})
 {
     if (!n_cells || physical_state.size()!=2*n_cells ||
         frozen_residual_scales.size()!=2*n_cells || !physical_residual ||
@@ -107,13 +111,15 @@ inline SSTJFNKV22Candidate sst_jfnk_propose_v22(
         // The GMRES true residual gate remains explicit. A small Krylov
         // residual is NEVER used as a nonlinear or BFS convergence certificate.
         const auto r=coupled_newton_krylov_step(fun,log_state,
-            std::vector<double>(2*n_cells,1.0),settings,admissible);
+            std::vector<double>(2*n_cells,1.0),settings,admissible,
+            right_preconditioner);
         out.function_evaluations=r.residual_evaluations;
         out.frozen_merit_before=r.physical_merit_before;
         out.frozen_merit_after=r.physical_merit_after;
         out.linear_true_relative=r.linear_true_relative_residual;
         out.step_length=r.accepted_step;
         out.reason=r.reason;
+        out.log_direction=std::move(r.linear_direction);
         if (r.accepted) {
             out.fields=decode(r.state);
             out.available=true;
