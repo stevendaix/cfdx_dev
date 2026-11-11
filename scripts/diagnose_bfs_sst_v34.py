@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed A/B proof for experimental SST branch preconditioning V34.
 
 This tool never certifies BFS physics or a globally accepted outer iteration.

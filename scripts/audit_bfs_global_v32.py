@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed external nonlinear convergence audit for CFDX BFS V32.
 
 An SST internal accepted step never counts as an external U,p,k,omega commit.

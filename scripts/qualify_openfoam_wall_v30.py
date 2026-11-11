@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Strict offline CFDX/OpenFOAM Foundation omega-wall parity checker.
 
 Accepts independent exports recorded at the same mesh and state. It NEVER

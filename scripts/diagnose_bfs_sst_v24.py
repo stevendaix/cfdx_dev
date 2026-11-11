@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed V23/V24 first-outer-attempt SST report; never certify physics."""
 from __future__ import annotations
 

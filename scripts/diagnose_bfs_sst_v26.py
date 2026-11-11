@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed first-attempt V26 log-Jv/L2 audit, never a BFS certification."""
 from __future__ import annotations
 import argparse

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed diagnostic of the FIRST BFS outer attempt; never certifies BFS."""
 from __future__ import annotations
 import argparse

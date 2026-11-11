@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compare only the first attempted BFS outer state. Never a V&V certificate."""
 from __future__ import annotations
 import argparse,json,math,sys

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed V33 SST row forensics. A diagnostic, NEVER a convergence certificate.
 
 Sample: CFDX_SST_ROW_TRACE_V33=341,329 CFDX_SST_DIAGNOSTICS=1 <solver>

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed V27 first-attempt diagnostic. Never certifies BFS/NASA physics."""
 from __future__ import annotations
 import argparse

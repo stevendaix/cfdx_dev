@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compare V22 / V23 SST Krylov candidates, never certify BFS or NASA physics."""
 from __future__ import annotations
 

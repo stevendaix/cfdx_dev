@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed SST V29 first-outer-attempt diagnostic.
 
 Only scores the first fully recorded SST stagnation and matching iteration-10

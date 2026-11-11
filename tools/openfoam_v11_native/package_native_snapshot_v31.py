@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Package a *native* OpenFOAM Foundation v11 instrumentation snapshot for
 CFDX V30 oracle. Requires byte-identical canonical mesh/state reference
 files and the actual native execution log. Not an OpenFOAM emulator.

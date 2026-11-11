@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed, first-attempt-only V24/V25 SST globalization diagnostic.
 
 This parser does not certify a CFD solution. It separates a linear GMRES

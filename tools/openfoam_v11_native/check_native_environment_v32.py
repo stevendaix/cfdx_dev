@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Preflight for a REAL OpenFOAM Foundation 11 execution.
 
 This script never fabricates a native snapshot. It cannot certify omegaWallFunction
