@@ -13,6 +13,7 @@
 #include "cfdx/physics/sst_pseudo_transient_v29.h"
 #include "cfdx/physics/sst_hotspot_derivatives_v31.h"
 #include "cfdx/physics/sst_row_trace_v33.h"
+#include "cfdx/physics/sst_two_cycle_v41.h"
 #include "cfdx/physics/sst_branch_preconditioner_v34.h"
 #include "cfdx/physics/sst_openfoam_weighted_owner_v29.h"
 #include "cfdx/physics/scalar_transport_gradient.h"
@@ -1569,6 +1570,19 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
     TurbulenceTransportResult result;
     std::size_t consecutive_line_search_stalls=0;
     SSTFp64StallV14 fp64_stall;
+    // Defaults to the exact V40 trajectory. Allocations occur only when the
+    // user explicitly enables the V41 diagnostic/rescue policy.
+    double picard_damping_v41=controls.sst_picard_damping;
+    std::unique_ptr<SSTTwoCycleAuditV41> two_cycle_v41;
+    std::vector<double> two_cycle_snapshot_k_v41, two_cycle_snapshot_omega_v41;
+    if (controls.sst_two_cycle_rescue_v41_experimental) {
+        two_cycle_v41=std::make_unique<SSTTwoCycleAuditV41>(n);
+        // Reuse sampling buffers for all SST iterations. The experimental
+        // observation adds no per-iteration O(N) allocations or default-on
+        // O(N) storage cost.
+        two_cycle_snapshot_k_v41.resize(n);
+        two_cycle_snapshot_omega_v41.resize(n);
+    }
     SSTAndersonV20 anderson_v20;
     SSTV28AdaptiveTrustState adaptive_trust_v28;
     SSTV29PseudoTimeState pseudo_time_v29;
@@ -2541,10 +2555,10 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                           << " new_merit=" << line_new_merit
                           << " accepted=" << line_accepted
                           << " qualified=0\n";
-        } else if (!inner.converged && controls.sst_picard_damping < 1.0) {
+        } else if (!inner.converged && picard_damping_v41 < 1.0) {
             // Historical fixed damping remains unchanged when not using
             // line search, and never certifies an undamped candidate.
-            const double alpha=controls.sst_picard_damping;
+            const double alpha=picard_damping_v41;
             for(std::size_t i=0;i<n;++i) {
                 k(i)=old_k(i)+alpha*(k(i)-old_k(i));
                 omega(i)=old_w(i)+alpha*(omega(i)-old_w(i));
@@ -2593,7 +2607,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         // diagnostics; otherwise legacy non-diagnostic performance is intact.
         const bool must_audit_returned = inner.converged ||
             controls.sst_scale_aware_convergence ||
-            controls.sst_picard_damping < 1.0 ||
+            picard_damping_v41 < 1.0 ||
             controls.sst_nonlinear_line_search ||
             controls.sst_anderson_m2_v20 ||
             controls.sst_jfnk_v22_experimental ||
@@ -2887,7 +2901,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             (iter == 1 || iter % 100 == 0 || iter == max_iterations)) {
             std::cerr << std::scientific << std::setprecision(9)
                       << "SST_TRANSPORT_DIAGNOSTIC iteration=" << iter
-                      << " picard_damping=" << controls.sst_picard_damping
+                      << " picard_damping=" << picard_damping_v41
                       << " linear_relaxation=" << controls.sst_linear_relaxation
                       << " dk_inf=" << dk << " domega_inf=" << dw
                       << " dk_relative_global=" << k_change.relative_global_inf
@@ -2966,6 +2980,26 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << " omega_returned_row_scaled=" << returned.omega_row_scaled
                       << " tolerance=" << tolerance
                       << " qualified_bfs=0\n";
+        }
+        if (two_cycle_v41 && !result.converged) {
+            for (std::size_t i=0;i<n;++i) {
+                two_cycle_snapshot_k_v41[i]=k(i);
+                two_cycle_snapshot_omega_v41[i]=omega(i);
+            }
+            const auto evidence=two_cycle_v41->observe(
+                two_cycle_snapshot_k_v41,two_cycle_snapshot_omega_v41);
+            if (evidence.detected && picard_damping_v41>0.5) {
+                picard_damping_v41=0.5;
+                std::cerr << std::scientific << std::setprecision(9)
+                          << "SST_TWO_CYCLE_RESCUE_V41 iteration=" << iter
+                          << " cell=" << evidence.cell
+                          << " confirmations=" << static_cast<int>(evidence.consecutive)
+                          << " one_step_relative=" << evidence.relative_one_step
+                          << " two_step_relative=" << evidence.relative_two_step
+                          << " next_picard_damping=" << picard_damping_v41
+                          << " tolerance_unchanged=" << tolerance
+                          << " physical_qualified=0\n";
+            }
         }
         const bool all_sst_gates_ok = inner.converged && line_accepted &&
             result.nonfinite_bound_events == 0 && outer_update_ok &&

@@ -73,6 +73,10 @@ struct TurbulenceTransportControls {
     // Opt-in damping for the OUTER nonlinear k/omega/F1/F2 Picard iteration.
     // One means the historical algorithm; this never changes equation gates.
     double sst_picard_damping = 1.0;
+    // V41 experimental: after a confirmed two-step Picard orbit, reduce
+    // the NEXT SST Picard update to 0.5. No change to FV equations, model,
+    // linear tolerance, acceptance gates or default damping.
+    bool sst_two_cycle_rescue_v41_experimental = false;
     // Explicit opt-in: dimensionless Picard and row-scaled equation gates for
     // k [m2/s2] and omega [1/s]. Legacy absolute gates remain the default.
     // The independent linear status, positivity and final carrier gates still
@@ -338,6 +342,10 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||
+       (c.sst_two_cycle_rescue_v41_experimental &&
+        (c.sst_nonlinear_line_search || c.sst_anderson_m2_v20 ||
+         c.sst_jfnk_v22_experimental || c.sst_coupled_ptc_v30_experimental ||
+         c.sst_pseudo_transient_v29_experimental)) ||
        (c.sst_anderson_m2_v20 && (c.sst_picard_damping != 1.0 || c.sst_nonlinear_line_search)) ||
        (c.sst_block_preconditioner_v23_experimental &&
         !c.sst_jfnk_v22_experimental) ||
