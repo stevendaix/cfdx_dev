@@ -32,6 +32,8 @@
 #include "cfdx/physics/pcd_fp_equilibration.h"
 #include "cfdx/physics/pcd_fp_strong_component_anchor.h"
 #include "cfdx/physics/pcd_fp_capture.h"
+#include "cfdx/physics/pcd_pressure_operator_capture_v38.h"
+#include "cfdx/physics/pcd_schur_row_audit_v40.h"
 #include "cfdx/physics/pcd_fp_bisided_basis_v13.h"
 #include "cfdx/physics/pcd_fp_deflated_quality_v14.h"
 #include "cfdx/physics/pcd_fp_basis_registry_v15.h"
@@ -55,6 +57,7 @@
 #include "cfdx/physics/global_nonlinear_residual_v8.h"
 #include "cfdx/physics/global_nonlinear_acceptance_v13.h"
 #include "cfdx/physics/global_nonlinear_contraction_v14.h"
+#include "cfdx/physics/coupled_linear_retry_policy_v37.h"
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
@@ -930,6 +933,12 @@ inline void validate_incompressible_controls(
          c.coupling.schur_model != CoupledSchurModel::PCD))
         throw std::invalid_argument(
             "PCD lumped-mass commutator requires COUPLED with PCD Schur");
+    if (c.coupling.pcd_reverse_lumped_mass_v39_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.coupling.schur_model != CoupledSchurModel::PCD ||
+         c.coupling.pcd_lumped_mass_commutator_experimental))
+        throw std::invalid_argument(
+            "V39 reverse PCD requires COUPLED/PCD and excludes other commutator mode");
     if (c.coupling.coupled_schwarz_experimental &&
         (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
          c.coupling.schur_model != CoupledSchurModel::BlockLocal))
@@ -4625,6 +4634,60 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             apply_nested_schur_pressure_gauge(pcd_ops->convection_diffusion, reference_cell);
         }
 
+        // V40: optional sparse comparison of the actual PCD auxiliary rows
+        // against C-D diag(Auu)^-1 G on this SAME frozen coupled operator.
+        // In particular, a large raw row norm ratio is not, by itself,
+        // a BC/stencil defect; the reported fit removes the best scalar.
+        // No physical matrix, SST field or preconditioner is changed.
+        if (const char* csv_path=std::getenv("CFDX_PCD_SCHUR_ROW_CSV_V40")) {
+            if (*csv_path) {
+                const auto fit=audit_pcd_schur_rows_v40(
+                    A, pcd_ops->convection_diffusion,pcd_ops->laplacian,nc);
+                const std::string temp=std::string(csv_path)+".partial";
+                {
+                    std::ofstream csv(temp, std::ios::trunc);
+                    if (!csv) throw std::runtime_error("V40 PCD Schur audit: CSV open failed");
+                    csv << "cell,sp_l2,fp_l2,kp_l2,fp_best_multiplier,kp_best_multiplier,"
+                           "fp_scaled_shape_defect,kp_scaled_shape_defect,sp_nonzeros,fp_nonzeros,gauge_like\n";
+                    csv << std::setprecision(17);
+                    for (const auto& r:fit)
+                        csv << r.cell << ',' << r.sp_l2 << ',' << r.fp_l2 << ','
+                            << r.kp_l2 << ',' << r.fp_best_multiplier << ','
+                            << r.kp_best_multiplier << ',' << r.fp_scaled_shape_defect
+                            << ',' << r.kp_scaled_shape_defect << ',' << r.sp_nonzeros
+                            << ',' << r.fp_nonzeros << ',' << (r.gauge_like?1:0) << '\n';
+                    csv.flush();
+                    if (!csv) throw std::runtime_error("V40 PCD Schur audit: CSV write failed");
+                }
+                if (std::rename(temp.c_str(),csv_path)!=0)
+                    throw std::runtime_error("V40 PCD Schur audit: CSV rename failed");
+                const auto worst=std::max_element(fit.begin(),fit.end(),
+                    [](const auto& a,const auto& b) {
+                        return a.fp_scaled_shape_defect<b.fp_scaled_shape_defect;
+                    });
+                std::cerr << "COUPLED_PCD_SCHUR_FIT_V40 cells=" << nc
+                          << " worst_cell=" << worst->cell
+                          << " worst_scaled_fp_shape=" << worst->fp_scaled_shape_defect
+                          << " exact_schur=0 physical_converged=0 original_A_unchanged=1\n";
+            }
+        }
+
+        // Opt-in read-only capture of Mp/Kp/Fp at the exact production state.
+        // External diagnostics may compare their commutator with the ORIGINAL
+        // coupled saddle-point A. No residual or preconditioner is changed.
+        if (const char* prefix = std::getenv("CFDX_PCD_OPERATORS_CAPTURE_PREFIX_V38")) {
+            if (*prefix) {
+                const auto slot = capture_pcd_pressure_operators_v38(
+                    prefix, pcd_ops->mass, pcd_ops->laplacian,
+                    pcd_ops->convection_diffusion);
+                if (slot)
+                    std::cerr << "COUPLED_PCD_PRESSURE_OPERATORS_V38 slot=" << slot
+                              << " rows=" << pcd_ops->mass.n_rows()
+                              << " prefix=" << prefix
+                              << " placeholder_rhs=1 original_coupled_operator_unchanged=1\n";
+            }
+        }
+
         const auto prepare_pcd_solver =
             [](const cfdx::core::SparseMatrix& matrix,
                const cfdx::core::LinearSolverRequest& request,
@@ -4695,6 +4758,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 controls.coupling.pcd_fp_row_equilibration_experimental ||
                 controls.coupling.pcd_fp_second_pass_experimental ||
                 controls.coupling.pcd_lumped_mass_commutator_experimental ||
+                controls.coupling.pcd_reverse_lumped_mass_v39_experimental ||
                 controls.pcd_convection_diffusion_linear_solver.krylov !=
                     cfdx::core::KrylovModel::FGMRES)
                 throw std::invalid_argument(
@@ -4756,7 +4820,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             // Request a strictly smaller inner target for this mode only;
             // never loosen either the inverse certificate or the physical gate.
             const double kp_effective_tolerance =
-                controls.coupling.pcd_lumped_mass_commutator_experimental
+                (controls.coupling.pcd_lumped_mass_commutator_experimental ||
+                 controls.coupling.pcd_reverse_lumped_mass_v39_experimental)
                     ? std::min(controls.pcd_laplacian_tolerance, 1e-10)
                     : controls.pcd_laplacian_tolerance;
             auto* preconditioner = pcd_ops->laplacian_preconditioner.get();
@@ -5080,9 +5145,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::nullopt,
             has_fixed_pressure ? std::optional<std::size_t>()
                                : std::optional<std::size_t>(reference_cell),
-            controls.coupling.pcd_lumped_mass_commutator_experimental
-                ? PcdSchurActionMode::LumpedMassCommutator
-                : PcdSchurActionMode::LegacySingleConvectionDiffusionInverse);
+            controls.coupling.pcd_reverse_lumped_mass_v39_experimental
+                ? PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental
+                : controls.coupling.pcd_lumped_mass_commutator_experimental
+                    ? PcdSchurActionMode::LumpedMassCommutator
+                    : PcdSchurActionMode::LegacySingleConvectionDiffusionInverse);
         // Evidence-only: expose the production operators to the
         // coupled_assembly_callback when one is installed (kept alive via
         // evidence_pcd_ops past this branch scope).
@@ -6147,6 +6214,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Visible to the exception handlers: pressure/linear failures may
             // occur before a candidate reaches the physical-residual gate.
             bool multisecant_trial_used = false;
+            bool coupled_linear_failed_v37 = false;
             try {
         MultisecantProposal multisecant_proposal;
         if (controls.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF &&
@@ -6659,6 +6727,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     out << std::scientific << std::setprecision(6) << value;
                     return out.str();
                 };
+                coupled_linear_failed_v37 = true;
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: coupled momentum-continuity solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(coupled_result.status)) +
@@ -11162,6 +11231,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 result.iterations = previous_result_iterations;
                 stop_after_iteration = false;
                 frozen_state_valid = false;
+                // V37: retrying identical A,b,PC with smaller update damping
+                // cannot fix the failed Krylov solve. The full rollback above
+                // is still mandatory. SIMPLEC can change its Schur PC when
+                // alpha_u changes; experimental outer PTC can change A.
+                const CoupledLinearRetryV37 linear_retry_policy{
+                    controls.coupling.schur_model == CoupledSchurModel::SIMPLEC ||
+                        controls.outer_ptc_v31_experimental,
+                    coupled_linear_failed_v37,
+                    multisecant_trial_used && !picard_fallback_after_multisecant};
+                if (linear_retry_policy.fail_fast()) {
+                    std::cerr << "COUPLED_LINEAR_UNCHANGED_RETRY_V37 iteration=" << iter
+                              << " schur=" << to_string(controls.coupling.schur_model)
+                              << " extra_linear_solves_skipped=" <<
+                                  (controls.nonlinear_retry.max_retries - retry_controller.retries())
+                              << " committed=0 qualified=0\n";
+                    throw;
+                }
                 if (!retry_controller.can_retry())
                     throw;
                 if (multisecant_trial_used &&
