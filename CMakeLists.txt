@@ -422,6 +422,11 @@ endif()
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+# V38 dense true-Schur audit is optional. It requires SciPy, and must never
+# silently become a CI dependency on the ordinary production build.
+option(CFDX_ENABLE_PCD_V38_DENSE_AUDIT_TESTS
+    "Register the bounded-size SciPy PCD Schur forensic audit" OFF)
+
 if(CFDX_BUILD_TESTS)
     enable_testing()
 
@@ -706,6 +711,16 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_nonlinear_multisecant tests/unit/test_nonlinear_multisecant.cpp)
     add_cfdx_test(test_multisecant_picard_fallback tests/unit/test_multisecant_picard_fallback.cpp)
     set_tests_properties(test_multisecant_picard_fallback PROPERTIES LABELS "momentum;anderson;transactional;regression" TIMEOUT 30)
+    add_cfdx_test(test_coupled_linear_retry_v37 tests/unit/test_coupled_linear_retry_v37.cpp)
+    set_tests_properties(test_coupled_linear_retry_v37 PROPERTIES
+        LABELS "coupled;schur;regression;quick" TIMEOUT 15)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_six_schur_common_input_v37
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_six_schur_v37.py)
+        set_tests_properties(test_bfs_six_schur_common_input_v37 PROPERTIES
+            LABELS "bfs;coupled;schur;regression;quick" TIMEOUT 25)
+    endif()
     add_cfdx_test(test_coupled_newton_krylov tests/validation/test_coupled_newton_krylov.cpp)
     set_tests_properties(test_coupled_newton_krylov PROPERTIES LABELS "momentum;jfnk;coupled;experimental;regression" TIMEOUT 90)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
@@ -1452,6 +1467,73 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_sst_fp64_stall_v14 tests/unit/test_sst_fp64_stall_v14.cpp)
     add_cfdx_test(test_pcd_fp_strong_component_anchor tests/unit/test_pcd_fp_strong_component_anchor.cpp)
     set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")
+    # V38 read-only pressure Schur operator capture. No experimental
+    # preconditioner or physical threshold is activated by this test.
+    if(CFDX_ENABLE_PCD_V38_DENSE_AUDIT_TESTS)
+        if(NOT Python3_Interpreter_FOUND)
+            message(FATAL_ERROR "V38 dense Schur audit needs a Python interpreter")
+        endif()
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy"
+            RESULT_VARIABLE CFDX_V38_SCIPY_AVAILABLE
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT CFDX_V38_SCIPY_AVAILABLE EQUAL 0)
+            message(FATAL_ERROR "V38 dense Schur audit requires numpy and scipy")
+        endif()
+        add_test(NAME test_diagnose_pcd_schur_v38
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_diagnose_pcd_schur_v38.py)
+        set_tests_properties(test_diagnose_pcd_schur_v38 PROPERTIES
+            LABELS "pcd;diagnostic;regression;scipy" TIMEOUT 40)
+        add_test(NAME test_diagnose_pcd_orientations_v39
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_diagnose_pcd_orientations_v39.py)
+        set_tests_properties(test_diagnose_pcd_orientations_v39 PROPERTIES
+            LABELS "pcd;diagnostic;regression;scipy" TIMEOUT 40)
+    endif()
+
+    add_cfdx_test(test_sst_two_cycle_v41 tests/unit/test_sst_two_cycle_v41.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v41_forensics
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v41_forensics.py)
+        set_tests_properties(test_bfs_v41_forensics PROPERTIES
+            LABELS "bfs;sst;v41;regression;diagnostic" TIMEOUT 20)
+    endif()
+    set_tests_properties(test_sst_two_cycle_v41 PROPERTIES LABELS
+        "sst;v41;regression;experimental" TIMEOUT 20)
+    add_cfdx_test(test_pcd_schur_row_audit_v40
+        tests/unit/test_pcd_schur_row_audit_v40.cpp)
+    add_cfdx_test(test_coupled_fingerprint_v40
+        tests/unit/test_coupled_fingerprint_v40.cpp)
+    set_tests_properties(test_pcd_schur_row_audit_v40
+        test_coupled_fingerprint_v40 PROPERTIES
+        LABELS "bfs;schur;pcd;diagnostic;regression" TIMEOUT 20)
+    add_cfdx_test(test_global_joint_jv_v40
+        tests/unit/test_global_joint_jv_v40.cpp)
+    set_tests_properties(test_global_joint_jv_v40 PROPERTIES
+        LABELS "bfs;coupled;jfnk;experimental;regression" TIMEOUT 20)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_two_grids_v40
+            COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_two_grids_v40.py)
+        set_tests_properties(test_bfs_two_grids_v40 PROPERTIES
+            LABELS "bfs;schur;diagnostic;regression" TIMEOUT 20)
+        add_test(NAME test_bfs_schur_fingerprint_v40
+            COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_schur_fingerprint_v40.py)
+        set_tests_properties(test_bfs_schur_fingerprint_v40 PROPERTIES
+            LABELS "bfs;schur;diagnostic;regression" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_pcd_reverse_commutator_v39
+        tests/unit/test_pcd_reverse_commutator_v39.cpp)
+    set_tests_properties(test_pcd_reverse_commutator_v39 PROPERTIES
+        LABELS "pcd;linalg;regression;experimental" TIMEOUT 20)
+    add_cfdx_test(test_pcd_pressure_operator_capture_v38
+        tests/unit/test_pcd_pressure_operator_capture_v38.cpp)
+    set_tests_properties(test_pcd_pressure_operator_capture_v38 PROPERTIES
+        LABELS "pcd;diagnostic;regression" TIMEOUT 30)
+
     add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
     add_cfdx_test(test_pcd_pressure_inflow_boundary tests/validation/test_pcd_pressure_inflow_boundary.cpp)
     set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")

@@ -1,6 +1,7 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/coupled_matrix_capture_v16.h"
+#include "cfdx/physics/coupled_fingerprint_v40.h"
 #include "cfdx/physics/production_boundary_contract.h"
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
@@ -1316,26 +1317,56 @@ int main(int argc, char** argv)
                 std::cout << "COUPLED_LINEAR_DIAGNOSTIC_BUDGET_V16 iterations=" << value
                           << " tolerance_unchanged=1 physical_qualification=0\n";
             }
+            // The same lightweight fingerprint can be enabled on 712 and
+            // 20,540 cells, unlike the bounded V16 MatrixMarket export.
+            // It is read-only evidence, *not* a convergence metric or SHA.
+            const auto fingerprint_setting=case_setup.numerics.raw_settings.find(
+                "coupled_matrix_fingerprint_v40");
+            const bool fingerprint_v40=fingerprint_setting!=
+                case_setup.numerics.raw_settings.end() &&
+                fingerprint_setting->second=="true";
+            if (fingerprint_setting!=case_setup.numerics.raw_settings.end() &&
+                fingerprint_setting->second!="true" &&
+                fingerprint_setting->second!="false")
+                throw std::invalid_argument("invalid coupled_matrix_fingerprint_v40 boolean");
             const auto coupled_capture_setting = case_setup.numerics.raw_settings.find(
                 "coupled_diagnostic_capture_prefix_v16");
-            if (coupled_capture_setting != case_setup.numerics.raw_settings.end()) {
-                const auto& raw=coupled_capture_setting->second;
-                if (raw.empty() || raw.size()>1024)
-                    throw std::invalid_argument("invalid coupled_diagnostic_capture_prefix_v16");
-                const auto prefix=std::filesystem::path(raw);
+            if (fingerprint_v40 ||
+                coupled_capture_setting != case_setup.numerics.raw_settings.end()) {
+                std::filesystem::path prefix;
+                const bool do_capture = coupled_capture_setting !=
+                    case_setup.numerics.raw_settings.end();
+                if (do_capture) {
+                    const auto& raw=coupled_capture_setting->second;
+                    if (raw.empty() || raw.size()>1024)
+                        throw std::invalid_argument("invalid coupled_diagnostic_capture_prefix_v16");
+                    prefix=std::filesystem::path(raw);
+                }
                 const auto recorded=std::make_shared<bool>(false);
-                controls.coupled_assembly_callback=[prefix,recorded](
+                controls.coupled_assembly_callback=[prefix,recorded,do_capture,fingerprint_v40](
                     const CoupledAssemblySnapshot& snapshot) {
                     if (*recorded) return;
                     if (!snapshot.matrix || !snapshot.rhs || !snapshot.initial_guess)
-                        throw std::runtime_error("V16 coupled capture: missing production snapshot");
-                    capture_coupled_matrix_v16(*snapshot.matrix,*snapshot.rhs,
-                                               *snapshot.initial_guess,prefix);
+                        throw std::runtime_error("V40 coupled capture: missing production snapshot");
+                    if (fingerprint_v40) {
+                        const auto digest=fingerprint_coupled_v40(
+                            *snapshot.matrix,*snapshot.rhs,*snapshot.initial_guess);
+                        std::cerr << "COUPLED_MATRIX_FINGERPRINT_V40"
+                                  << " A=" << digest.A << " b=" << digest.b
+                                  << " x0=" << digest.x0
+                                  << " rows=" << snapshot.matrix->n_rows()
+                                  << " nnz=" << snapshot.matrix->nnz()
+                                  << " fnv64_not_sha256=1 physical_converged=0\n";
+                    }
+                    if (do_capture) {
+                        capture_coupled_matrix_v16(*snapshot.matrix,*snapshot.rhs,
+                                                   *snapshot.initial_guess,prefix);
+                        std::cerr << "COUPLED_MATRIX_CAPTURE_V16 n="
+                                  << snapshot.matrix->n_rows()
+                                  << " nnz=" << snapshot.matrix->nnz()
+                                  << " original_operator_unchanged=1 physical_qualified=0\n";
+                    }
                     *recorded=true;
-                    std::cerr << "COUPLED_MATRIX_CAPTURE_V16 n="
-                              << snapshot.matrix->n_rows()
-                              << " nnz=" << snapshot.matrix->nnz()
-                              << " original_operator_unchanged=1 physical_qualified=0\n";
                 };
             }
             const auto restart = case_setup.numerics.raw_settings.find(
@@ -1505,6 +1536,12 @@ int main(int argc, char** argv)
             }
             pcd_flag("pcd_lumped_mass_commutator_experimental",
                      controls.coupling.pcd_lumped_mass_commutator_experimental);
+            pcd_flag("pcd_reverse_lumped_mass_v39_experimental",
+                     controls.coupling.pcd_reverse_lumped_mass_v39_experimental);
+            if (controls.coupling.pcd_lumped_mass_commutator_experimental &&
+                controls.coupling.pcd_reverse_lumped_mass_v39_experimental)
+                throw std::invalid_argument(
+                    "V39 reverse PCD cannot coexist with original commutator");
             // V21 opt-in for the existing hysteretic relaxation controller.
             // It uses momentum/flux coupling, not projected continuity, for
             // alpha_p whenever V19 full-flux SIMPLE is active.
@@ -1703,6 +1740,11 @@ int main(int argc, char** argv)
                           << sst_controls.sst_wall_omega_factor
                           << " (not an OpenFOAM wall function)\n";
             }
+            // V41: reject a misleading near-match that was previously ignored.
+            // Silent fallback to 0.7 can invalidate controlled BFS A/B sweeps.
+            if (case_setup.numerics.raw_settings.count("sst_linear_relaxation"))
+                throw std::invalid_argument(
+                    "unknown sst_linear_relaxation; use sst_transport_linear_relaxation");
             const auto sst_linear_relaxation = case_setup.numerics.raw_settings.find(
                 "sst_transport_linear_relaxation");
             if (sst_linear_relaxation != case_setup.numerics.raw_settings.end()) {
@@ -1722,6 +1764,8 @@ int main(int argc, char** argv)
             for (const auto& setting : {std::pair<const char*,bool*>{
                      "sst_compensated_residual_gate", &sst_controls.sst_compensated_residual_gate},
                      {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search},
+                     {"sst_two_cycle_rescue_v41_experimental",
+                      &sst_controls.sst_two_cycle_rescue_v41_experimental},
                      {"sst_anderson_m2_v20_experimental", &sst_controls.sst_anderson_m2_v20},
                      {"sst_jfnk_v22_experimental", &sst_controls.sst_jfnk_v22_experimental},
                      {"sst_block_preconditioner_v23_experimental",
