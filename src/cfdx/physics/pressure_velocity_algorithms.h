@@ -81,6 +81,10 @@ struct CouplingControls {
     // pressure mass. The default remains the qualified legacy -Fp^-1 action.
     // No physical performance claim or automatic fallback is implied.
     bool pcd_lumped_mass_commutator_experimental = false;
+    // V39 separately selectable preconditioner-only A/B; explicitly
+    // noncommuting reverse composition -Kp^-1 Fp Mp^-1. OFF by default.
+    // Must not be combined with the original commutator flag.
+    bool pcd_reverse_lumped_mass_v39_experimental = false;
     // Diagnostic A/B only: align the nested pressure operators' gauge column
     // with the monolithic eliminated gauge column. No production default change.
     bool pcd_consistent_gauge_experimental = false;

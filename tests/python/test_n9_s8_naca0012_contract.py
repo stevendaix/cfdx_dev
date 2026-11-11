@@ -1,5 +1,6 @@
 """N9-S8 NACA0012 validation-contract tests; no pytest dependency required."""
 
+import ast
 import sys
 from pathlib import Path
 
@@ -16,6 +17,9 @@ def main():
     text = (ROOT / "docs/validation/14-benchmarks/06-naca0012/chapter.py").read_text(
         encoding="utf-8"
     )
+    # Jupytext markdown-only chapters remain importable Python source.
+    # The prior escaped LaTeX rho/nu split had created uncompilable code.
+    ast.parse(text, filename="docs/validation/14-benchmarks/06-naca0012/chapter.py")
     for required in (
         "NASA/TMR",
         "N9-S8",

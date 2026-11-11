@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Build a fail-closed coefficient-keyed Fp nullspace registry from CFP01 captures.
 
 The basis is a PRECOMPUTED research input to the C++ PCD preconditioner.

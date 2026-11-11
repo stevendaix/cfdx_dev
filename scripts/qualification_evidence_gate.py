@@ -410,8 +410,6 @@ def verify_residuals(meshes: list[dict], case: dict) -> dict:
             mesh["final_scheme"] not in (
                 "TVD", "TVD_VANLEER", "TVD_VANALBADA", "MUSCL_CELL_LIMITED"
             )
-            mesh["final_scheme"]
-            not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA", "MUSCL_CELL_LIMITED")
             or number(mesh.get("high_order_fraction"), "TVD fraction") != 1.0
         ):
             raise ValueError(f"residuals: {name} NACA must finish in full TVD")

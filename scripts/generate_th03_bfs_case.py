@@ -10,11 +10,9 @@ convergence. No synthetic empirical observations are produced.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import hashlib
-import shutil
 import sys
 from pathlib import Path
 
@@ -247,51 +245,6 @@ def make_setup(height: float, reynolds: float, velocity: float,
     validate_solver_selection(algorithm, schur, preconditioner)
     if iterations < 1 or iterations > 100000:
         raise ValueError("BFS iteration budget must be in [1,100000]")
-SCHUR_MODELS = ("pcd", "block_local", "lsc", "bfbt", "simple", "simplec")
-COUPLED_PRECONDITIONERS = (
-    "auto",
-    "pcd",
-    "coupled_block_schur",
-    "mgr",
-    "braess_sarazin",
-)
-
-
-def validate_solver_selection(
-    algorithm: str, schur: str | None, preconditioner: str | None
-) -> None:
-    """Fail before the HDF5 write; never silently substitute a Schur or PC."""
-    if algorithm not in ("simple", "simplec", "coupled"):
-        raise ValueError("algorithm must be simple, simplec or coupled")
-    if algorithm != "coupled":
-        if schur is not None or preconditioner is not None:
-            raise ValueError(
-                "segregated BFS must not request a Schur or coupled preconditioner"
-            )
-        return
-    if schur not in SCHUR_MODELS:
-        raise ValueError("coupled BFS requires one of six explicit Schur models")
-    if preconditioner not in COUPLED_PRECONDITIONERS:
-        raise ValueError(
-            "coupled BFS requires an explicit supported preconditioner policy"
-        )
-    if preconditioner == "braess_sarazin" and schur != "block_local":
-        raise ValueError("Braess-Sarazin requires block_local Schur")
-
-
-def make_setup(
-    height: float,
-    reynolds: float,
-    velocity: float,
-    *,
-    algorithm: str = "simple",
-    schur: str | None = None,
-    preconditioner: str | None = None,
-    iterations: int = 250,
-) -> str:
-    validate_solver_selection(algorithm, schur, preconditioner)
-    if iterations < 1 or iterations > 100000:
-        raise ValueError("BFS iteration budget must be in [1,100000]")
     density = 1.2
     viscosity = density * velocity * height / reynolds
     setup = CaseSetup(
@@ -393,7 +346,6 @@ def make_setup(
         scalar_fields={"k": k, "omega": omega},
     )
     setup.numerics.max_iterations = iterations
-    setup.numerics.max_iterations = iterations
     setup.numerics.raw_settings["sst_transport_max_iterations"] = "600"
     setup.numerics.raw_settings["v8_global_nonlinear_residual"] = "true"
     setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
@@ -420,38 +372,10 @@ def make_setup(
                 family="preconditioner",
                 configuration_key=f"preconditioner.{preconditioner}"
             ))
-    setup.numerics.raw_settings["v8_global_nonlinear_residual"] = "true"
-    setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
-    selections = [
-        NumericalSelection(
-            family="gradient", configuration_key="numerics.gradient.gauss"
-        ),
-        NumericalSelection(
-            family="convection",
-            configuration_key="numerics.convection.second_order_upwind",
-        ),
-        NumericalSelection(
-            family="pressure_velocity",
-            configuration_key=f"pressure_velocity.{algorithm}",
-        ),
-        NumericalSelection(family="linear_solver", configuration_key="linear.fgmres"),
-    ]
-    if algorithm == "coupled":
-        selections.append(
-            NumericalSelection(family="schur", configuration_key=f"schur.{schur}")
-        )
-        if preconditioner != "auto":
-            selections.append(
-                NumericalSelection(
-                    family="preconditioner",
-                    configuration_key=f"preconditioner.{preconditioner}",
-                )
-            )
     setup.numerics.selection = NumericalSelectionConfig(
-            + (["schur"] if algorithm == "coupled" else []),
         entries=selections,
         required_families=["gradient", "convection", "pressure_velocity"]
-        + (["schur"] if algorithm == "coupled" else []),
+            + (["schur"] if algorithm == "coupled" else []),
     )
     return json.dumps(setup.model_dump(mode="json"))
 
@@ -501,16 +425,9 @@ def write_case(
             "source_version": "bfs-smoke-v1",
             "source_case_path": "",
             "source_case_name": "TH03_debug_only",
-                preconditioner=preconditioner, iterations=iterations
-                height, reynolds, velocity, algorithm=algorithm, schur=schur,
             "case_setup_json": make_setup(
-                height,
-                reynolds,
-                velocity,
-                algorithm=algorithm,
-                schur=schur,
-                preconditioner=preconditioner,
-                iterations=iterations,
+                height, reynolds, velocity, algorithm=algorithm, schur=schur,
+                preconditioner=preconditioner, iterations=iterations
             ),
         }.items():
             h5.attrs[key] = value
@@ -536,48 +453,9 @@ def write_case(
     }
 
 
-            "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified"}
-            "physical_qualification": "NOT_QUALIFIED",
-            "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
-            "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
-            "preconditioner": preconditioner,
-            "algorithm": algorithm, "schur": schur,
-            "topology_hash": topology, "geometry_hash": geometry,
-    return {"path": str(output_path), "cells": n_cells, "faces": n_faces,
-    with h5py.File(output_path,"r+") as configured:
-        topology, geometry = str(source.attrs["topology_hash"]), str(source.attrs["geometry_hash"])
-                    if x not in ("schur", "preconditioner")]
-        required = [x for x in selection.get("required_families", [])
-                                 "configuration_key":f"preconditioner.{preconditioner}"})
-                retained.append({"family":"preconditioner",
-            retained.append({"family":"schur", "configuration_key":f"schur.{schur}"})
-                         "configuration_key":f"pressure_velocity.{algorithm}"})
-        retained.append({"family":"pressure_velocity",
-            raise ValueError("reference input must explicitly use a bounded order-two scheme")
-                   for x in retained):
-                       "numerics.convection.tvd.mc", "numerics.convection.tvd.superbee")
-                       "numerics.convection.tvd.vanleer", "numerics.convection.tvd.vanalbada",
-                       "numerics.convection.second_order_upwind",
-                   x.get("configuration_key") in (
-        if not any(x.get("family") == "convection" and
-                    ("pressure_velocity", "schur", "preconditioner")]
-        retained = [x for x in entries if x.get("family") not in
-            raise ValueError("reference input has no explicit numerical selection")
-        if not isinstance(selection, dict) or not isinstance(selection.get("entries"), list):
-            raise ValueError("reference input has no numerical configuration")
-            raise ValueError("BFS reference input requires mesh fingerprint and case setup")
-               ("topology_hash", "geometry_hash", "case_setup_json")):
-        if any(not source.attrs.get(key) for key in
-    schur: str | None, preconditioner: str | None, iterations: int,
-    source_path: Path, output_path: Path, *, algorithm: str,
 def reconfigure_bfs_reference_case(
-    source_path: Path,
-    output_path: Path,
-    *,
-    algorithm: str,
-    schur: str | None,
-    preconditioner: str | None,
-    iterations: int,
+    source_path: Path, output_path: Path, *, algorithm: str,
+    schur: str | None, preconditioner: str | None, iterations: int,
 ) -> dict:
     """Change only numerical selection and certificate opt-ins on an existing BFS case.
 
@@ -594,64 +472,36 @@ def reconfigure_bfs_reference_case(
     with h5py.File(source_path, "r") as source:
         if source.attrs.get("format") != "CFDX-HDF5-mesh-v1":
             raise ValueError("unsupported BFS HDF5 source format")
-        if any(
-            not source.attrs.get(key)
-            for key in ("topology_hash", "geometry_hash", "case_setup_json")
-        ):
-            raise ValueError(
-                "BFS reference input requires mesh fingerprint and case setup"
-            )
+        if any(not source.attrs.get(key) for key in
+               ("topology_hash", "geometry_hash", "case_setup_json")):
+            raise ValueError("BFS reference input requires mesh fingerprint and case setup")
         setup = json.loads(source.attrs["case_setup_json"])
         numerics = setup.get("numerics")
         if not isinstance(numerics, dict):
-            raise TypeError("reference input has no numerical configuration")
+            raise ValueError("reference input has no numerical configuration")
         selection = numerics.get("selection")
-        if not isinstance(selection, dict) or not isinstance(
-            selection.get("entries"), list
-        ):
-            raise TypeError("reference input has no explicit numerical selection")
+        if not isinstance(selection, dict) or not isinstance(selection.get("entries"), list):
+            raise ValueError("reference input has no explicit numerical selection")
         entries = selection["entries"]
-        retained = [
-            x
-            for x in entries
-            if x.get("family") not in ("pressure_velocity", "schur", "preconditioner")
-        ]
-        if not any(
-            x.get("family") == "convection"
-            and x.get("configuration_key")
-            in (
-                "numerics.convection.second_order_upwind",
-                "numerics.convection.tvd.vanleer",
-                "numerics.convection.tvd.vanalbada",
-                "numerics.convection.tvd.mc",
-                "numerics.convection.tvd.superbee",
-            )
-            for x in retained
-        ):
-            raise ValueError(
-                "reference input must explicitly use a bounded order-two scheme"
-            )
-        retained.append(
-            {
-                "family": "pressure_velocity",
-                "configuration_key": f"pressure_velocity.{algorithm}",
-            }
-        )
+        retained = [x for x in entries if x.get("family") not in
+                    ("pressure_velocity", "schur", "preconditioner")]
+        if not any(x.get("family") == "convection" and
+                   x.get("configuration_key") in (
+                       "numerics.convection.second_order_upwind",
+                       "numerics.convection.tvd.vanleer", "numerics.convection.tvd.vanalbada",
+                       "numerics.convection.tvd.mc", "numerics.convection.tvd.superbee")
+                   for x in retained):
+            raise ValueError("reference input must explicitly use a bounded order-two scheme")
+        retained.append({"family":"pressure_velocity",
+                         "configuration_key":f"pressure_velocity.{algorithm}"})
         if algorithm == "coupled":
-            retained.append({"family": "schur", "configuration_key": f"schur.{schur}"})
+            retained.append({"family":"schur", "configuration_key":f"schur.{schur}"})
             if preconditioner != "auto":
-                retained.append(
-                    {
-                        "family": "preconditioner",
-                        "configuration_key": f"preconditioner.{preconditioner}",
-                    }
-                )
+                retained.append({"family":"preconditioner",
+                                 "configuration_key":f"preconditioner.{preconditioner}"})
         selection["entries"] = retained
-        required = [
-            x
-            for x in selection.get("required_families", [])
-            if x not in ("schur", "preconditioner")
-        ]
+        required = [x for x in selection.get("required_families", [])
+                    if x not in ("schur", "preconditioner")]
         if algorithm == "coupled":
             required.append("schur")
         selection["required_families"] = list(dict.fromkeys(required))
@@ -659,35 +509,24 @@ def reconfigure_bfs_reference_case(
         raw_settings = numerics.setdefault("raw_settings", {})
         raw_settings["v8_global_nonlinear_residual"] = "true"
         raw_settings["v7_post_sst_momentum_gate"] = "true"
-        topology, geometry = (
-            str(source.attrs["topology_hash"]),
-            str(source.attrs["geometry_hash"]),
-        )
+        topology, geometry = str(source.attrs["topology_hash"]), str(source.attrs["geometry_hash"])
         n_cells, n_faces = int(source.attrs["n_cells"]), int(source.attrs["n_faces"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source_path, output_path)
-    with h5py.File(output_path, "r+") as configured:
+    with h5py.File(output_path,"r+") as configured:
         configured.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
         assert str(configured.attrs["topology_hash"]) == topology
         assert str(configured.attrs["geometry_hash"]) == geometry
-    return {
-        "path": str(output_path),
-        "cells": n_cells,
-        "faces": n_faces,
-        "topology_hash": topology,
-        "geometry_hash": geometry,
-        "algorithm": algorithm,
-        "schur": schur,
-        "preconditioner": preconditioner,
-        "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
-        "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
-        "physical_qualification": "NOT_QUALIFIED",
-        "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified",
-    }
-
+    return {"path": str(output_path), "cells": n_cells, "faces": n_faces,
+            "topology_hash": topology, "geometry_hash": geometry,
+            "algorithm": algorithm, "schur": schur,
+            "preconditioner": preconditioner,
+            "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
+            "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+            "physical_qualification": "NOT_QUALIFIED",
+            "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified"}
 
 def main():
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--upstream", type=int, default=4)
@@ -701,13 +540,12 @@ def main():
         help="tanh clustering at y=0,h,8h, 0 means uniform",
     )
     parser.add_argument("--algorithm", choices=("simple", "simplec", "coupled"), default="simple")
-    parser.add_argument(
-        "--algorithm", choices=("simple", "simplec", "coupled"), default="simple"
-    )
     parser.add_argument("--schur", choices=SCHUR_MODELS)
     parser.add_argument("--preconditioner", choices=COUPLED_PRECONDITIONERS)
     parser.add_argument("--iterations", type=int, default=250)
     args = parser.parse_args()
+    if not str(args.output).endswith(".cfdx.h5"):
+        parser.error("native production case must end in .cfdx.h5 to load physical boundary conditions")
     print(
         json.dumps(
             write_case(
@@ -717,115 +555,13 @@ def main():
                 ny=args.ny,
                 step_cells=args.step_cells,
                 wall_stretch=args.wall_stretch,
-                preconditioner=args.preconditioner, iterations=args.iterations,
                 algorithm=args.algorithm, schur=args.schur,
-                algorithm=args.algorithm,
-                schur=args.schur,
-                preconditioner=args.preconditioner,
-                iterations=args.iterations,
+                preconditioner=args.preconditioner, iterations=args.iterations,
             ),
-        entries=selections,
-        required_families=["gradient", "convection", "pressure_velocity"]
-            + (["schur"] if algorithm == "coupled" else []),
             indent=2,
         )
     )
 
-    algorithm: str = "simple",
-    schur: str | None = None,
-    preconditioner: str | None = None,
-    iterations: int = 250,
-    validate_solver_selection(algorithm, schur, preconditioner)
-            "case_setup_json": make_setup(
-                height, reynolds, velocity, algorithm=algorithm, schur=schur,
-                preconditioner=preconditioner, iterations=iterations
-            ),
-        "algorithm": algorithm,
-        "schur": schur,
-        "preconditioner": preconditioner,
-        "iterations": iterations,
-        "geometry_hash": mesh["geometry_hash"],
-        "topology_hash": mesh["topology_hash"],
 
 if __name__ == "__main__":
     main()
-
-def reconfigure_bfs_reference_case(
-    source_path: Path, output_path: Path, *, algorithm: str,
-    schur: str | None, preconditioner: str | None, iterations: int,
-) -> dict:
-    """Change only numerical selection and certificate opt-ins on an existing BFS case.
-
-    The imported mesh, BCs, SST inlet data and initial condition stay byte-identical
-    at the dataset level. A reference case's experimental fidelity is NOT certified
-    merely because its mesh/setup file can be used for this campaign.
-    """
-    validate_solver_selection(algorithm, schur, preconditioner)
-    if not (1 <= iterations <= 100000):
-        raise ValueError("invalid BFS iteration budget")
-    source_path, output_path = Path(source_path), Path(output_path)
-    if not source_path.is_file() or source_path.resolve() == output_path.resolve():
-        raise ValueError("reference input must exist and differ from configured case")
-    with h5py.File(source_path, "r") as source:
-        if source.attrs.get("format") != "CFDX-HDF5-mesh-v1":
-            raise ValueError("unsupported BFS HDF5 source format")
-        if any(not source.attrs.get(key) for key in
-               ("topology_hash", "geometry_hash", "case_setup_json")):
-            raise ValueError("BFS reference input requires mesh fingerprint and case setup")
-        setup = json.loads(source.attrs["case_setup_json"])
-        numerics = setup.get("numerics")
-        if not isinstance(numerics, dict):
-            raise ValueError("reference input has no numerical configuration")
-        selection = numerics.get("selection")
-        if not isinstance(selection, dict) or not isinstance(selection.get("entries"), list):
-            raise ValueError("reference input has no explicit numerical selection")
-        entries = selection["entries"]
-        retained = [x for x in entries if x.get("family") not in
-                    ("pressure_velocity", "schur", "preconditioner")]
-        if not any(x.get("family") == "convection" and
-                   x.get("configuration_key") in (
-                       "numerics.convection.second_order_upwind",
-                       "numerics.convection.tvd.vanleer", "numerics.convection.tvd.vanalbada",
-                       "numerics.convection.tvd.mc", "numerics.convection.tvd.superbee")
-                   for x in retained):
-            raise ValueError("reference input must explicitly use a bounded order-two scheme")
-        retained.append({"family":"pressure_velocity",
-                         "configuration_key":f"pressure_velocity.{algorithm}"})
-        if algorithm == "coupled":
-            retained.append({"family":"schur", "configuration_key":f"schur.{schur}"})
-            if preconditioner != "auto":
-                retained.append({"family":"preconditioner",
-                                 "configuration_key":f"preconditioner.{preconditioner}"})
-        selection["entries"] = retained
-        required = [x for x in selection.get("required_families", [])
-                    if x not in ("schur", "preconditioner")]
-        if algorithm == "coupled":
-            required.append("schur")
-        selection["required_families"] = list(dict.fromkeys(required))
-        numerics["max_iterations"] = iterations
-        raw_settings = numerics.setdefault("raw_settings", {})
-        raw_settings["v8_global_nonlinear_residual"] = "true"
-        raw_settings["v7_post_sst_momentum_gate"] = "true"
-        topology, geometry = str(source.attrs["topology_hash"]), str(source.attrs["geometry_hash"])
-        n_cells, n_faces = int(source.attrs["n_cells"]), int(source.attrs["n_faces"])
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source_path, output_path)
-    with h5py.File(output_path,"r+") as configured:
-        configured.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
-        assert str(configured.attrs["topology_hash"]) == topology
-        assert str(configured.attrs["geometry_hash"]) == geometry
-    return {"path": str(output_path), "cells": n_cells, "faces": n_faces,
-            "topology_hash": topology, "geometry_hash": geometry,
-            "algorithm": algorithm, "schur": schur,
-            "preconditioner": preconditioner,
-            "input_kind": "EXTERNAL_BFS_REFERENCE_CANDIDATE",
-            "source_case_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
-            "physical_qualification": "NOT_QUALIFIED",
-            "reason": "experimental geometry, inlet profiles, wall y+ and grid study not yet independently qualified"}
-
-    parser.add_argument("--algorithm", choices=("simple", "simplec", "coupled"), default="simple")
-    parser.add_argument("--schur", choices=SCHUR_MODELS)
-    parser.add_argument("--preconditioner", choices=COUPLED_PRECONDITIONERS)
-    parser.add_argument("--iterations", type=int, default=250)
-                algorithm=args.algorithm, schur=args.schur,
-                preconditioner=args.preconditioner, iterations=args.iterations,

@@ -17,9 +17,6 @@ if str(SCRIPTS) not in sys.path:
     sys.path.append(str(SCRIPTS))
 
 from naca_surface_force_oracle import COLUMNS
-    sys.path.append(str(SCRIPTS))
-
-from naca_surface_force_oracle import COLUMNS
 
 
 def load(name: str):
@@ -212,60 +209,8 @@ def write_synthetic_raw_wall_faces(path: Path, cdp: float, cdv: float) -> None:
 def test_full_synthetic_three_grid_chain_exercises_cross_family_gci(
     tmp_path, schemes, expected
 ):
-def write_synthetic_raw_wall_faces(path: Path, cdp: float, cdv: float) -> None:
-    """Closed four-sided, 32-face synthetic oracle; NEVER physical NACA data."""
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=COLUMNS)
-        writer.writeheader()
-        for wall_id, wall in enumerate(("left", "right", "bottom", "top")):
-            for index in range(8):
-                t = (index + 0.5) / 8.0
-                x, y, nx, ny = {
-                    "left": (0.0, t - 0.5, -1.0, 0.0),
-                    "right": (1.0, t - 0.5, 1.0, 0.0),
-                    "bottom": (t, -0.5, 0.0, -1.0),
-                    "top": (t, 0.5, 0.0, 1.0),
-                }[wall]
-                writer.writerow(
-                    {
-                        "face": wall_id * 8 + index,
-                        "x": x,
-                        "y": y,
-                        "z": 0.5,
-                        "nx": nx,
-                        "ny": ny,
-                        "nz": 0.0,
-                        "area": 0.125,
-                        "pressure": cdp * x,
-                        "tau_n_x": -cdv / 4.0,
-                        "tau_n_y": 0.0,
-                        "tau_n_z": 0.0,
-                        "dynamic_pressure": 1.0,
-                        "reference_area": 1.0,
-                        "reference_chord": 1.0,
-                        "x_ref": 0.25,
-                        "y_ref": 0.0,
-                    }
-                )
-
-
-@pytest.mark.parametrize(
-    "schemes,expected",
-    [
-        (("TVD_VANLEER", "TVD_VANLEER"), "CROSS_MESH_GCI_AGREEMENT_CANDIDATE"),
-        (
-            ("MUSCL_CELL_LIMITED", "MUSCL_CELL_LIMITED"),
-            "CROSS_MESH_GCI_AGREEMENT_CANDIDATE",
-        ),
-        (("TVD_VANLEER", "MUSCL_CELL_LIMITED"), "BLOCKED"),
-    ],
-)
-def test_full_synthetic_three_grid_chain_exercises_cross_family_gci(
-    tmp_path, schemes, expected
-):
     """Synthetic algebraic values exercise gates; not physical NACA evidence."""
     names = ("quasi_isotropic", "anisotropic")
-    for name, scheme in zip(names, schemes):
     for name, scheme in zip(names, schemes):
         folder = tmp_path / "families" / name
         folder.mkdir(parents=True)
@@ -474,91 +419,6 @@ def test_two_grid_provisional_cannot_mix_vanleer_and_muscl(tmp_path):
             "pressure_change_inf\n"
             "1,1e-11,1e-12,2e-11,1e-13,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
             f"{scheme},1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n")
-    result = GCI.inspect_family(name, folder, tmp_path / "runs", Path(sys.executable))
-    assert result["status"] == "BLOCKED"
-    assert "two_grid_assumed_order_only" not in result
-    assert any("mixed final convection schemes" in r for r in result["reasons"])
-
-
-def test_two_grid_provisional_cannot_mix_vanleer_and_muscl(tmp_path):
-    """Even assumed-order, explicitly non-certified output must not mix schemes."""
-    name = "quasi_isotropic"
-    folder = tmp_path / "families" / name
-    folder.mkdir(parents=True)
-    (folder / "quality.json").write_text(json.dumps(quality_rows()))
-    for n, scheme in ((64, "TVD_VANLEER"), (128, "MUSCL_CELL_LIMITED")):
-        run = tmp_path / "runs" / name / f"n{n}"
-        run.mkdir(parents=True)
-        (run / "run_summary.json").write_text(json.dumps({
-            "mesh": str((folder / f"naca0012_{name}_n{n}.h5").resolve()),
-            "scheme": scheme, "algorithm": "SIMPLE",
-            "linear_tolerance": 1e-12, "wall_traction": "FACE_WLS",
-            "nonlinear_tolerance": 1e-8, "exit_code": 0,
-            "pressure_boundary_policy": "ZERO_NORMAL_GRADIENT",
-            "kinematic_face_flux_certified": True,
-        }))
-        (run / "force.csv").write_text(
-            "case,h,converged,res_mom,res_mass,cd,cdp,cdv,cl,cm\n"
-            f"N{n},0.01,yes,1e-11,1e-11,0.12,0.04,0.08,0,0\n")
-        write_synthetic_raw_wall_faces(run / "raw_wall_faces.csv", 0.04, 0.08)
-        (run / "history.csv").write_text(
-            "iteration,momentum_rhs_relative,continuity_normalized,"
-            "mass_local_linf,mass_normalized_imbalance,nonfinite_mass_faces,"
-            "nonfinite_velocities,high_order_fraction,face_momentum_x_relative,"
-            "face_momentum_y_relative,face_momentum_z_relative,face_momentum_x_linf,"
-            "face_momentum_y_linf,face_momentum_z_linf,convection_scheme,"
-            "momentum_x_rhs_relative,momentum_y_rhs_relative,momentum_z_rhs_relative,"
-            "momentum_component_max,pressure_residual,velocity_change_inf,"
-            "pressure_change_inf\n"
-            "1,1e-11,1e-12,2e-11,1e-13,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
-            f"{scheme},1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n")
-    result = GCI.inspect_family(name, folder, tmp_path / "runs", Path(sys.executable))
-    assert result["status"] == "BLOCKED"
-    assert "two_grid_assumed_order_only" not in result
-    assert any("mixed final convection schemes" in r for r in result["reasons"])
-
-
-def test_two_grid_provisional_cannot_mix_vanleer_and_muscl(tmp_path):
-    """Even assumed-order, explicitly non-certified output must not mix schemes."""
-    name = "quasi_isotropic"
-    folder = tmp_path / "families" / name
-    folder.mkdir(parents=True)
-    (folder / "quality.json").write_text(json.dumps(quality_rows()))
-    for n, scheme in ((64, "TVD_VANLEER"), (128, "MUSCL_CELL_LIMITED")):
-        run = tmp_path / "runs" / name / f"n{n}"
-        run.mkdir(parents=True)
-        (run / "run_summary.json").write_text(
-            json.dumps(
-                {
-                    "mesh": str((folder / f"naca0012_{name}_n{n}.h5").resolve()),
-                    "scheme": scheme,
-                    "algorithm": "SIMPLE",
-                    "linear_tolerance": 1e-12,
-                    "wall_traction": "FACE_WLS",
-                    "nonlinear_tolerance": 1e-8,
-                    "exit_code": 0,
-                    "pressure_boundary_policy": "ZERO_NORMAL_GRADIENT",
-                    "kinematic_face_flux_certified": True,
-                }
-            )
-        )
-        (run / "force.csv").write_text(
-            "case,h,converged,res_mom,res_mass,cd,cdp,cdv,cl,cm\n"
-            f"N{n},0.01,yes,1e-11,1e-11,0.12,0.04,0.08,0,0\n"
-        )
-        write_synthetic_raw_wall_faces(run / "raw_wall_faces.csv", 0.04, 0.08)
-        (run / "history.csv").write_text(
-            "iteration,momentum_rhs_relative,continuity_normalized,"
-            "mass_local_linf,mass_normalized_imbalance,nonfinite_mass_faces,"
-            "nonfinite_velocities,high_order_fraction,face_momentum_x_relative,"
-            "face_momentum_y_relative,face_momentum_z_relative,face_momentum_x_linf,"
-            "face_momentum_y_linf,face_momentum_z_linf,convection_scheme,"
-            "momentum_x_rhs_relative,momentum_y_rhs_relative,momentum_z_rhs_relative,"
-            "momentum_component_max,pressure_residual,velocity_change_inf,"
-            "pressure_change_inf\n"
-            "1,1e-11,1e-12,2e-11,1e-13,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
-            f"{scheme},1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n"
-        )
     result = GCI.inspect_family(name, folder, tmp_path / "runs", Path(sys.executable))
     assert result["status"] == "BLOCKED"
     assert "two_grid_assumed_order_only" not in result

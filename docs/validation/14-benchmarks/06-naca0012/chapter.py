@@ -10,9 +10,8 @@
 # ## 1. Frozen physical problem
 #
 # - NACA 0012, chord (c=1)
-# - (U_\infty=1), (ho=1)
-# - (Re_c=1000), hence (
-u=10^{-3})
+# - (U_\infty=1), (\rho=1)
+# - (Re_c=1000), hence (\nu=10^{-3})
 # - (alpha=0^\circ)
 # - incompressible Navier--Stokes, laminar
 # - no-slip airfoil wall

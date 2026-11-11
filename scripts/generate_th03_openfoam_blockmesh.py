@@ -434,10 +434,10 @@ def make_case_setup(
     sst_nonlinear_line_search: bool = False,
     sst_linear_relaxation: float = 0.7,
     sst_molecular_wall_diffusion: bool = False,
-    v19_omega_corner_equal_faces: bool = False,
-    v19_sst_equilibrated_defect: bool = False,
-    v18_omega_owner_cells: bool = False,
     v17_active_wall_operator: bool = False,
+    v18_omega_owner_cells: bool = False,
+    v19_sst_equilibrated_defect: bool = False,
+    v19_omega_corner_equal_faces: bool = False,
     v17_pressure_line_search: bool = False,
     v17_flux_audit: bool = False,
     v17_pseudo_momentum: bool = False,
@@ -1046,12 +1046,16 @@ def main() -> int:
         help="Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.",
     )
     parser.add_argument(
-    parser.add_argument("--v19-omega-corner-equal-faces", action="store_true")
-    parser.add_argument("--v19-sst-equilibrated-defect", action="store_true")
-        help="Experimental weighted owner-cell omega rows; requires --v17-active-wall-operator.",
-        "--v18-omega-owner-cells", action="store_true",
-        help="Experimental coupled wall nut/G/omega FV operator (requires kqR and molecular diffusion).",
         "--v17-active-wall-operator", action="store_true",
+        help="Experimental coupled wall nut/G/omega FV operator (requires kqR and molecular diffusion).",
+    )
+    parser.add_argument(
+        "--v18-omega-owner-cells", action="store_true",
+        help="Experimental weighted owner-cell omega rows; requires --v17-active-wall-operator.",
+    )
+    parser.add_argument("--v19-sst-equilibrated-defect", action="store_true")
+    parser.add_argument("--v19-omega-corner-equal-faces", action="store_true")
+    parser.add_argument(
         "--sst-nonlinear-line-search",
         action="store_true",
         help="Backtrack Picard candidate only when the fully reassembled SST merit decreases.",
