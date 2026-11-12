@@ -987,6 +987,43 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    validate_coupled_phase_escape_v45(
+        c.coupled_period_four_damping_v45_experimental,
+        c.coupled_period_four_damping_steps_v45);
+    if (c.coupled_period_four_damping_v45_experimental > 0.0 &&
+        !c.coupled_period_four_full_state_v44_experimental)
+        throw std::invalid_argument(
+            "V45 cycle-escape continuation requires V44 coherent full-state predictor");
+    if (!std::isfinite(c.coupled_outer_step_v43_experimental) ||
+        c.coupled_outer_step_v43_experimental < 0.0 ||
+        c.coupled_outer_step_v43_experimental > 1.0)
+        throw std::invalid_argument("V43 COUPLED outer step must be in [0,1]");
+    if ((c.coupled_period_four_mean_v43_experimental &&
+         (c.coupled_outer_step_v43_experimental > 0.0 ||
+          c.coupled_period_four_full_state_v44_experimental)) ||
+        (c.coupled_period_four_full_state_v44_experimental &&
+         c.coupled_outer_step_v43_experimental > 0.0))
+        throw std::invalid_argument(
+            "V44 full-phase, V43 phase-mean and carrier damping modes are exclusive");
+    // The paired pressure-high/low representation must not be mixed with
+    // an unpaired gauge-pressure phase average. The V44 predictor cannot
+    // yet preserve its companion low-pressure state and correction flux.
+    if (c.coupled_period_four_full_state_v44_experimental &&
+        c.pressure_high_low_production)
+        throw std::invalid_argument(
+            "V44 full-phase predictor is incompatible with paired pressure-high/low state");
+    if ((c.coupled_outer_step_v43_experimental > 0.0 ||
+         c.coupled_period_four_mean_v43_experimental ||
+         c.coupled_period_four_full_state_v44_experimental) &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.transient.enabled || !c.sst_runtime ||
+         !c.require_global_nonlinear_certificate_v8 ||
+         !c.require_post_sst_momentum_reassembly ||
+         c.initial_face_mass_flux_from_paired_checkpoint ||
+         c.outer_ptc_v31_experimental || c.pseudo_momentum.enabled))
+        throw std::invalid_argument(
+            "V43 COUPLED outer step requires steady COUPLED/SST, V7/V8, "
+            "no PTC or incomplete paired restart");
     if (c.monotone_global_merit_v14_experimental &&
         !c.joint_globalization_v13_experimental)
         throw std::invalid_argument("V14 monotone physical merit requires V13 joint globalization");
@@ -1116,6 +1153,7 @@ inline void validate_incompressible_controls(
     if (c.require_post_sst_momentum_reassembly && !c.sst_runtime)
         throw std::invalid_argument(
             "post-SST momentum reassembly requires an SST production runtime");
+
     if (c.sst_runtime) {
         if (!c.sst_runtime->state)
             throw std::invalid_argument("SST production runtime requires an initialized state");
@@ -2347,6 +2385,7 @@ gauss_gradient_pressure_high_low(
                         vf+=it->second.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
                     }
                 }
+
             }
             sum[0]+=static_cast<long double>(Sf.x)*vf;
             sum[1]+=static_cast<long double>(Sf.y)*vf;
@@ -3624,6 +3663,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
             const auto kind = mesh.boundary().patch(patch_index).type;
             if (kind == PatchType::WALL || kind == PatchType::EMPTY ||
                 kind == PatchType::SYMMETRY || kind == PatchType::PERIODIC ||
+
                 kind == PatchType::INTERFACE) continue;
             inflow_conditions.specified[face] = 1;
             inflow_conditions.conditions[face] = {
@@ -4806,6 +4846,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 std::make_unique<PcdFpBiNullspaceV13>(
                     basis_by_directory
                         ? load_pcd_fp_basis_registry_v15(
+
                             controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental,
                             pcd_ops->convection_diffusion)
                         : load_pcd_fp_bisided_basis_v13(
@@ -5333,17 +5374,88 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         throw std::invalid_argument(
             "V16 monolithic ILUT recovery is restricted to <=4096 unknowns; "
             "use native Schur/AMG/MGR for large CPU/GPU meshes");
-    const Vector initial_guess_v16 = allow_v16_ilut_recovery ? x : Vector{};
+    const bool allow_v42_blocklocal_recovery =
+        controls.coupling.pcd_blocklocal_recovery_v42_experimental;
+    if (allow_v42_blocklocal_recovery && (schur_model != CoupledSchurModel::PCD ||
+        allow_v16_ilut_recovery))
+        throw std::invalid_argument(
+            "V42 BlockLocal recovery requires PCD and cannot combine with ILUT");
+    const Vector original_guess_for_recovery =
+        (allow_v16_ilut_recovery || allow_v42_blocklocal_recovery) ? x : Vector{};
+    const Vector& initial_guess_v16 = original_guess_for_recovery;
 
+    const std::size_t primary_budget = allow_v42_blocklocal_recovery &&
+        controls.coupling.pcd_blocklocal_preflight_iterations_v42 != 0
+        ? std::min(max_iterations,
+            controls.coupling.pcd_blocklocal_preflight_iterations_v42)
+        : max_iterations;
     SolverResult result;
     if (solver_plan.krylov == KrylovModel::FGMRES) {
         result = solve_fgmres(
-            A, b, x, gmres_restart, max_iterations, tolerance,
+            A, b, x, gmres_restart, primary_budget, tolerance,
             coupled_preconditioner.get(), coupled_gmres_controls);
     } else {
         result = solve_gmres(
-            A, b, x, gmres_restart, max_iterations, tolerance,
+            A, b, x, gmres_restart, primary_budget, tolerance,
             coupled_preconditioner.get(), coupled_gmres_controls);
+    }
+
+    // V42: after a failed PCD solve, perform a separately named BlockLocal
+    // retry on IDENTICAL A,b and ORIGINAL x0. This is not a better PCD action
+    // and must not be counted as PCD convergence in six-method comparisons.
+    // No dense factorization or small-mesh cap; uses existing AMG BlockSchur.
+    // Explicit opt-in only, never used by any of the other five variants.
+    if (allow_v42_blocklocal_recovery && result.status != SolverStatus::CONVERGED) {
+        const auto first_status=result.status;
+        const auto first_iterations=result.iterations;
+        CoupledBlockSchurOptions retry_options;
+        retry_options.max_action_amplification =
+            controls.coupling.schur_action_growth_guard_experimental ? 1e10 : 0.0;
+        CoupledBlockSchurAMGPreconditioner blocklocal(
+            nc, retry_options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
+        if (!blocklocal.setup(A)) {
+            std::cerr << "COUPLED_PCD_BLOCKLOCAL_RECOVERY_V42 attempted=1 adopted=0"
+                      << " reason=setup_failed"
+                      << " primary_status=" << static_cast<int>(first_status)
+                      << " original_A_unchanged=1 physical_qualified=0\n";
+        } else {
+            Vector candidate=original_guess_for_recovery;
+            const auto alternative=solve_fgmres(
+                A,b,candidate,gmres_restart,max_iterations,tolerance,
+                &blocklocal,coupled_gmres_controls);
+            const auto quality=certify_pcd_blocklocal_recovery_v42(
+                A,b,candidate,nv,tolerance,
+                alternative.status==SolverStatus::CONVERGED);
+            std::cerr << std::scientific << std::setprecision(12)
+                      << "COUPLED_PCD_BLOCKLOCAL_RECOVERY_V42 attempted=1"
+                      << " adopted=" << (quality.adopt?1:0)
+                      << " primary_model=PCD recovery_model=BlockLocal"
+                      << " primary_status=" << static_cast<int>(first_status)
+                      << " primary_iterations=" << first_iterations
+                      << " primary_budget=" << primary_budget
+                      << " recovery_status=" << static_cast<int>(alternative.status)
+                      << " recovery_iterations=" << alternative.iterations
+                      << " true_relative=" << quality.true_relative
+                      << " momentum_relative="
+                      << quality.blocks.momentum.relative_to_block_rhs()
+                      << " continuity_and_gauge_relative="
+                      << quality.blocks.continuity_and_gauge.relative_to_block_rhs()
+                      << " unchanged_tolerance=" << tolerance
+                      << " original_A_unchanged=1 physical_qualified=0\n";
+            if (quality.adopt) {
+                x=std::move(candidate);
+                result=alternative;
+                result.iterations+=first_iterations;
+                if (resolved_linear_plan) {
+                    resolved_linear_plan->krylov=KrylovModel::FGMRES;
+                    resolved_linear_plan->preconditioner=PreconditionerModel::CoupledBlockSchur;
+                    resolved_linear_plan->automatic_preconditioner=false;
+                    resolved_linear_plan->reason+=
+                        "; explicit V42 BlockLocal recovery after failed PCD";
+                }
+            }
+        }
     }
 
     // V16: a separately selected, explicit experimental recovery of a
@@ -5892,6 +6004,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             : (controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP
                 ? static_cast<std::size_t>(controls.coupling.n_fractional_steps)
                 : 1u);
+
     const std::size_t minimum_outer_correctors =
         controls.algorithm == PressureVelocityAlgorithm::PIMPLE
             ? static_cast<std::size_t>(controls.coupling.n_outer_correctors)
@@ -6156,6 +6269,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     bool multisecant_scales_valid=false;
 
     GlobalNonlinearContractionLedgerV14 committed_global_merit_v14;
+    CoupledPhaseEscapeLedgerV45 coupled_phase_escape_v45;
+    const bool v43_field_probe_enabled = controls.sst_runtime &&
+        (controls.coupled_period_four_mean_v43_experimental ||
+         controls.coupled_period_four_full_state_v44_experimental ||
+         (std::getenv("CFDX_OUTER_FIELDS_V43") &&
+          std::string(std::getenv("CFDX_OUTER_FIELDS_V43"))=="1"));
+    std::unique_ptr<OuterFieldPeriodProbeV43> v43_field_probe;
+    if (v43_field_probe_enabled)
+        v43_field_probe=std::make_unique<OuterFieldPeriodProbeV43>(
+            mesh.n_cells(),mesh.n_faces());
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
     std::size_t adaptive_u_improvement_streak = 0;
@@ -6778,6 +6901,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Rhie-Chow operator identity audit (common scope): each algorithm
         // branch evaluates it right after its authoritative flux rebuild.
         // Evidence channel only; no acceptance criterion consumes it.
+        double coupled_outer_step_applied_v43 = 1.0;
+        const auto phase_escape_trial_v45 = coupled_phase_escape_v45.trial(
+            iter, v43_field_probe && v43_field_probe->period_four_candidate(),
+            controls.coupled_period_four_damping_v45_experimental,
+            controls.coupled_period_four_damping_steps_v45,
+            retry_controller.alpha_u(1.0));
         bool rhie_chow_identity_evaluated = false;
         double rhie_chow_identity_audit_linf = 0.0;
         double simplec_plain_rau_gap = 0.0;
@@ -6961,6 +7090,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_BREAKDOWN"
                           << " cell=" << candidate_continuity_cell
+
                           << " velocity_interpolation_div=" << velocity_flux_div
                           << " pressure_orthogonal_div=" << pressure_orth_div
                           << " pressure_nonorthogonal_div=" << pressure_nonorth_div
@@ -6979,12 +7109,49 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << "\n";
             }
 
-            // COUPLED has already solved the monolithic U/p saddle-point
-            // system. Do not post-relax its solution: even a shared factor
-            // changes the nonlinear fixed-point trajectory and can prevent
-            // the transient high-/low-order pair from converging. The block
-            // solve's candidate is the state to accept; segregated algorithms
-            // retain their equation/pressure relaxation below.
+            // V43: a guarded nonlinear field update AFTER a certified
+            // monolithic linear solve. This is Picard globalization, NOT a
+            // second way of certifying A*x=b. Retries actually shorten the
+            // carrier step, rather than changing only the segregated alpha_u
+            // and alpha_p that COUPLED does not apply. We do not interpolate
+            // old and new face flux: those may correspond to different rAU.
+            // The authoritative Rhie-Chow flux is reconstructed below from
+            // this very U,p candidate and the current frozen momentum
+            // diagonals. It is audited by the existing physical gates.
+            if (controls.coupled_outer_step_v43_experimental > 0.0 ||
+                phase_escape_trial_v45.active) {
+                coupled_outer_step_applied_v43=phase_escape_trial_v45.active ?
+                    phase_escape_trial_v45.beta : coupled_outer_beta_v43(
+                        controls.coupled_outer_step_v43_experimental,
+                        retry_controller.alpha_u(1.0));
+                for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                    for (std::size_t component=0;component<3;++component) {
+                        const double previous=U_old.component_data(component)[cell];
+                        const double candidate=U.component_data(component)[cell];
+                        U.component_data(component)[cell]=coupled_outer_blend_v43(
+                            previous,candidate,coupled_outer_step_applied_v43);
+                    }
+                    p(cell)=coupled_outer_blend_v43(
+                        p_old(cell),p(cell),coupled_outer_step_applied_v43);
+                }
+                if (controls.diagnostics.iteration_trace && phase_escape_trial_v45.active)
+                    std::cerr<<"COUPLED_PHASE_ESCAPE_V45 iteration="<<iter
+                             <<" retry="<<retry_controller.retries()
+                             <<" triggered="<<(phase_escape_trial_v45.triggered?1:0)
+                             <<" remaining="<<phase_escape_trial_v45.remaining_including_this
+                             <<" beta="<<coupled_outer_step_applied_v43
+                             <<" linear_candidate_certified=1"
+                             <<" updated_linear_solution_certified=0"
+                             <<" physical_qualified=0\n";
+                if (controls.diagnostics.iteration_trace && !phase_escape_trial_v45.active)
+                    std::cerr<<"COUPLED_CARRIER_STEP_V43 iteration="<<iter
+                             <<" retry="<<retry_controller.retries()
+                             <<" beta="<<coupled_outer_step_applied_v43
+                             <<" linear_candidate_certified=1"
+                             <<" updated_linear_solution_certified=0"
+                             <<" flux_rederived_from_trial_state=1"
+                             <<" physical_qualified=0\n";
+            }
             apply_pressure_gauge_policy(
                 p, geometry, controls.pressure_gauge_policy,
                 controls.pressure_reference_cell, controls.pressure_reference_value,
@@ -8011,6 +8178,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     mm << mat.n_rows() << " " << mat.n_cols() << " " << mat.nnz() << "\n";
                     mm << std::setprecision(17);
                     bb << std::setprecision(17);
+
                     const auto* offsets = mat.row_offsets_data();
                     const auto* columns = mat.columns_data();
                     const auto* values = mat.values_data();
@@ -9040,6 +9208,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // from the conservative flux as the residual state.
         Field<double, Location::CELL> final_ux_field(mesh.n_cells(), "Ux_final", "m/s", 1);
         Field<double, Location::CELL> final_uy_field(mesh.n_cells(), "Uy_final", "m/s", 1);
+
         Field<double, Location::CELL> final_uz_field(mesh.n_cells(), "Uz_final", "m/s", 1);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             final_ux_field(c) = U.component_data(0)[c];
@@ -9378,9 +9547,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // damping. Report its actual update factor, not the segregated
         // alpha_u/alpha_p controls, which do not scale this block solution.
         h.effective_alpha_u = controls.algorithm == PressureVelocityAlgorithm::COUPLED
-            ? 1.0 : retry_controller.alpha_u(effective_alpha_u);
+            ? coupled_outer_step_applied_v43 : retry_controller.alpha_u(effective_alpha_u);
         h.effective_alpha_p = controls.algorithm == PressureVelocityAlgorithm::COUPLED
-            ? 1.0 : retry_controller.alpha_p(effective_alpha_p);
+            ? coupled_outer_step_applied_v43 : retry_controller.alpha_p(effective_alpha_p);
         h.simplec_signed_offdiag_sum_linf = simplec_signed_offdiag_sum_audit;
         h.simplec_abs_offdiag_sum_linf = simplec_abs_offdiag_sum_audit;
         h.simplec_denominator_signed_linf = simplec_denominator_signed_audit;
@@ -10090,6 +10259,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             if (sst_step.provisional)
                 std::cerr << "SST_PROVISIONAL_OUTER iteration=" << iter
+
                           << " inner_iterations=" << sst_step.transport.iterations
                           << " k_candidate_residual=" << sst_step.transport.k_residual
                           << " omega_candidate_residual=" << sst_step.transport.second_residual
@@ -10205,6 +10375,171 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (!std::isfinite(absolute_residuals[component]))
                         throw NonlinearRetryableFailure(
                             "post-SST momentum reassembly: nonfinite residual");
+                }
+                // V45 opt-in microscope on the EXACT post-SST FV operator.
+                // Never feed a compensated residual back into V7/V8, V13/V14,
+                // the COUPLED solver or its convergence controls. Emit a
+                // tentative marker; only GLOBAL_NONLINEAR_COMMITTED_V13
+                // identifies states finally accepted by the full transaction.
+                const char* post_sst_probe=std::getenv("CFDX_POST_SST_MOMENTUM_V45");
+                if (post_sst_probe && std::string(post_sst_probe)=="1") {
+                    for (std::size_t d=0;d<3;++d) {
+                        const auto row=post_sst_momentum_hotspot_v45(
+                            *equations[d],*velocity[d],d,rhs_scales[d]);
+                        const auto cell=row.cell;
+                        const double volume=geometry.cell_volumes[cell];
+                        const double integrated_pressure_source=-volume*
+                            final_grad_p.component_data(d)[cell];
+                        const double integrated_body_source=volume*(d==0
+                            ? post_body_x(cell) : d==1
+                            ? post_body_y(cell) : post_body_z(cell));
+                        std::cerr<<"POST_SST_MOMENTUM_ROW_V45 iteration="<<iter
+                                 <<" component="<<d<<" cell="<<cell
+                                 <<" original_signed="<<row.original_signed
+                                 <<" original_abs="<<row.original_abs
+                                 <<" rhs_scale="<<row.rhs_scale
+                                 <<" rhs_relative="<<row.original_rhs_relative
+                                 <<" diagonal_term="<<row.independent_row.diagonal_term
+                                 <<" off_diagonal_terms="<<row.independent_row.off_diagonal_terms
+                                 <<" rhs="<<row.independent_row.rhs
+                                 <<" compensated_signed="<<row.independent_row.compensated_signed
+                                 <<" pressure_source_integral="<<integrated_pressure_source
+                                 <<" body_source_integral="<<integrated_body_source
+                                 <<" pressure_body_rhs_remainder="
+                                    <<(row.independent_row.rhs-
+                                        integrated_pressure_source-integrated_body_source)
+                                 <<" nu_t="<<controls.sst_runtime->state->nu_t(cell)
+                                 <<" k="<<controls.sst_runtime->state->k(cell)
+                                 <<" omega="<<controls.sst_runtime->state->omega(cell)
+                                 <<" committed=0 qualified=0\n";
+                    }
+                }
+                // V46: read-only face terms from the very same post-SST
+                // operator. No gate, relaxation, RHS, flux or field is
+                // changed; face balances are NOT used to accept a candidate.
+                const char* face_probe_v46=std::getenv("CFDX_POST_SST_FACE_V46");
+                if (face_probe_v46 && std::string(face_probe_v46)=="1") {
+                    try {
+                        const auto selection=post_sst_face_selection_v46(
+                            std::getenv("CFDX_POST_SST_FACE_WINDOW_V46"),
+                            std::getenv("CFDX_POST_SST_FACE_CELLS_V46"),mesh.n_cells());
+                        if (selection.contains(iter)) {
+                            if (controls.transient.enabled)
+                                throw std::invalid_argument(
+                                    "V46 steady face audit excludes physical time derivative");
+                            const auto collocated=make_mass_flux(
+                                mesh,geometry,U,controls.density,velocity_bcs,
+                                pressure_bcs,controls.pressure_projected_face_interpolation,
+                                final_face_velocity_conditions
+                                    ? &*final_face_velocity_conditions : nullptr);
+                            cfdx::core::Field<double,cfdx::core::Location::FACE>
+                                new_transpose;
+                            if (include_transpose_stress)
+                                new_transpose=transpose_viscous_stress_flux(
+                                    mesh,geometry,U,trial_mu,
+                                    {ubc_x,ubc_y,ubc_z},sst_molecular_wall_mu,
+                                    post_wall_face_mu_v17);
+                            const std::array<const ScalarBoundaryConditions*,3> bcs{
+                                &ubc_x,&ubc_y,&ubc_z};
+                            const std::array<const cfdx::core::Field<double,
+                                cfdx::core::Location::CELL>*,3> components{
+                                &final_ux_field,&final_uy_field,&final_uz_field};
+                            for (std::size_t d=0; d<2; ++d) {
+                                cfdx::core::Field<double,cfdx::core::Location::CELL>
+                                    pressure_part(mesh.n_cells(),"v46_grad_p","Pa/m",1);
+                                cfdx::core::Field<double,cfdx::core::Location::CELL>
+                                    physical_body(mesh.n_cells(),"v46_body","N/m3",1);
+                                for (std::size_t c=0;c<mesh.n_cells();++c) {
+                                    pressure_part(c)=final_grad_p.component_data(d)[c];
+                                    const auto& acceleration=controls.cell_body_force.empty()
+                                        ? controls.body_force : controls.cell_body_force[c];
+                                    physical_body(c)=controls.density*(d==0
+                                        ? acceleration.x : acceleration.y);
+                                }
+                                cfdx::core::Field<double,cfdx::core::Location::FACE>
+                                    transpose_part;
+                                const cfdx::core::Field<double,
+                                    cfdx::core::Location::FACE>* trans_ptr=nullptr;
+                                if (include_transpose_stress) {
+                                    transpose_part=cfdx::core::Field<double,
+                                        cfdx::core::Location::FACE>(
+                                        mesh.n_faces(),"v46_transpose","N",1);
+                                    for (std::size_t f=0;f<mesh.n_faces();++f)
+                                        transpose_part(f)=new_transpose(f,d);
+                                    trans_ptr=&transpose_part;
+                                }
+                                // Match the EXACT wall-face viscosity used
+                                // by assemble_momentum_component. On resolved
+                                // no-slip walls, this is molecular-only unless
+                                // the V17 wall operator supplies an override.
+                                const auto diagnostic_wall_face_mu=
+                                    resolved_wall_face_viscosity(
+                                        mesh,geometry,trial_mu,*bcs[d],
+                                        sst_molecular_wall_mu,post_wall_face_mu_v17);
+                                const auto audit=diagnose_post_sst_faces_v46(
+                                    mesh,geometry,mass_flux,*components[d],
+                                    pressure_part,physical_body,trial_mu,*bcs[d],
+                                    controls.convection_scheme,outer_high_order_fraction,
+                                    controls.use_bounded_convection,*equations[d],
+                                    selection.cells,trans_ptr,&diagnostic_wall_face_mu,
+                                    final_face_velocity_conditions
+                                        ? &(*final_face_velocity_conditions)[d] : nullptr,
+                                    &collocated);
+                                for (const auto& record : audit.cells) {
+                                    const auto& b=record.balance;
+                                    std::ostringstream out;
+                                    out<<std::scientific<<std::setprecision(17)
+                                       <<"POST_SST_FACE_CELL_V46 iteration="<<iter
+                                       <<" component="<<d<<" cell="<<record.cell
+                                       <<" faces="<<record.faces.size()
+                                       <<" u="<<(*components[d])(record.cell)
+                                       <<" bounded_mode="<<(controls.use_bounded_convection?1:0)
+                                       <<" conv="<<b.convection
+                                       <<" visc="<<b.viscous
+                                       <<" transpose="<<b.transpose_viscous
+                                       <<" pressure="<<b.pressure
+                                       <<" body="<<b.body_force
+                                       <<" mass_div="<<b.mass_divergence
+                                       <<" bounded="<<b.bounded_divergence
+                                       <<" collocated_delta="<<b.collocated_difference
+                                       <<" physical="<<b.physical_residual
+                                       <<" face_operator="<<b.bounded_operator_residual
+                                       <<" csr="<<b.algebraic_residual
+                                       <<" closure="<<b.matrix_face_difference
+                                       <<" closure_scale="<<b.matrix_face_scale
+                                       <<" face_ok="<<(record.face_sum_consistent?1:0)
+                                       <<" csr_ok="<<(record.matrix_face_consistent?1:0)
+                                       <<" all_csr_ok="<<(audit.all_cells_matrix_face_consistent?1:0)
+                                       <<" nu_t="<<controls.sst_runtime->state->nu_t(record.cell)
+                                       <<" k="<<controls.sst_runtime->state->k(record.cell)
+                                       <<" omega="<<controls.sst_runtime->state->omega(record.cell)
+                                       <<" committed=0 qualified=0";
+                                    std::cerr<<out.str()<<'\n';
+                                    for (const auto& f : record.faces) {
+                                        std::ostringstream flux;
+                                        flux<<std::scientific<<std::setprecision(17)
+                                            <<"POST_SST_FACE_V46 iteration="<<iter
+                                            <<" component="<<d<<" cell="<<record.cell
+                                            <<" face="<<f.face<<" owner="<<f.owner
+                                            <<" neighbour="<<f.neighbour
+                                            <<" sign="<<f.sign<<" patch="<<f.patch
+                                            <<" mass="<<f.mass
+                                            <<" conv="<<f.convection
+                                            <<" visc="<<f.viscosity
+                                            <<" transpose="<<f.transpose_stress
+                                            <<" collocated_delta="<<f.collocated_convection_difference
+                                            <<" committed=0 qualified=0";
+                                        std::cerr<<flux.str()<<'\n';
+                                    }
+                                }
+                            }
+                        }
+                    } catch (const std::exception& error) {
+                        // Audit failures are explicit but never change the
+                        // nonlinear transaction or silently certify anything.
+                        std::cerr<<"POST_SST_FACE_ERROR_V46 iteration="<<iter
+                                 <<" reason="<<error.what()<<" qualified=0\n";
+                    }
                 }
                 // Use exactly the same active-component criterion as the
                 // existing production momentum certificate. In particular,
@@ -11105,6 +11440,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
             (convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED &&
              full_order_eligible && !controls.keep_iterating_after_stagnation)) {
+
             result.iterations = iter;
             stop_after_iteration = true;
         }

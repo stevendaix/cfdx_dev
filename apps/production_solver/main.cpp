@@ -1559,6 +1559,27 @@ int main(int argc, char** argv)
                      controls.coupling.pcd_fp_full_rank_action_v15_experimental);
             pcd_flag("pcd_fp_refine_projected_v16_experimental",
                      controls.coupling.pcd_fp_refine_projected_v16_experimental);
+            pcd_flag("pcd_blocklocal_recovery_v42_experimental",
+                     controls.coupling.pcd_blocklocal_recovery_v42_experimental);
+            if (const auto it=raw.find("pcd_blocklocal_preflight_iterations_v42");
+                it!=raw.end()) {
+                if (!is_pcd_coupled ||
+                    !controls.coupling.pcd_blocklocal_recovery_v42_experimental)
+                    throw std::invalid_argument(
+                        "V42 PCD preflight needs COUPLED/PCD and explicit BlockLocal recovery");
+                std::size_t consumed=0;
+                unsigned long value=0;
+                try { value=std::stoul(it->second,&consumed,10); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid V42 PCD preflight iteration count");
+                }
+                if (consumed!=it->second.size() || value<1 ||
+                    value>controls.coupling.coupled_max_iterations)
+                    throw std::invalid_argument("invalid V42 PCD preflight iteration count");
+                controls.coupling.pcd_blocklocal_preflight_iterations_v42=value;
+                std::cout << "V42_PCD_PREFLIGHT_BUDGET=" << value
+                          << " strict_tolerance_unchanged=1 opt_in=1\n";
+            }
             if (raw.find("coupled_monolithic_ilut_fallback_v16_experimental") != raw.end()) {
                 if (controls.algorithm != PressureVelocityAlgorithm::COUPLED)
                     throw std::invalid_argument(
