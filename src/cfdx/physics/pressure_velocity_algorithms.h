@@ -118,6 +118,15 @@ struct CouplingControls {
     // acceptance requires the true original-system residual independently.
     // NOT a parallel/GPU preconditioner, and never a silent fallback.
     bool coupled_monolithic_ilut_fallback_v16_experimental = false;
+    // V42 opt-in scalable (AMG-based) BLOCKLOCAL retry after FAILED PCD.
+    // This is explicitly classified as BlockLocal recovery, not PCD success.
+    // The same original A,b,x0 and strict full-system true residual gate apply;
+    // the other five Schur choices and default PCD are untouched.
+    bool pcd_blocklocal_recovery_v42_experimental = false;
+    // Optional bounded PCD preflight (0 = the full original budget).
+    // Only valid with V42 explicit fallback; original tolerance and BLOCKLOCAL
+    // recovery budget stay unchanged. Not a fair pure-PCD benchmark.
+    std::size_t pcd_blocklocal_preflight_iterations_v42 = 0;
 
     // Preconditioner-only A/B: pressure-space Dirichlet data on actual
     // inflow faces, including mixed-in/out farfield patches. The physical
@@ -145,6 +154,16 @@ inline void validate_coupling_controls(const CouplingControls& c)
         c.n_fractional_steps < 1 || c.coupled_max_iterations == 0 ||
         !(c.coupled_linear_tolerance > 0.0))
         throw std::invalid_argument("pressure-velocity controls: invalid relaxation/corrector count");
+    if (c.pcd_blocklocal_preflight_iterations_v42 > 0 &&
+        (!c.pcd_blocklocal_recovery_v42_experimental ||
+         c.pcd_blocklocal_preflight_iterations_v42 > c.coupled_max_iterations))
+        throw std::invalid_argument(
+            "V42 PCD preflight requires explicit recovery and a bounded iteration budget");
+    if (c.pcd_blocklocal_recovery_v42_experimental &&
+        (c.schur_model != CoupledSchurModel::PCD ||
+         c.coupled_monolithic_ilut_fallback_v16_experimental))
+        throw std::invalid_argument(
+            "V42 BlockLocal recovery requires PCD and excludes ILUT recovery");
     if (c.coupled_schwarz_experimental &&
         (c.coupled_schwarz_cells_per_subdomain == 0 ||
          c.coupled_schwarz_overlap_hops > 8 ||

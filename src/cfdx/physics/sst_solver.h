@@ -13,6 +13,7 @@
 #include "cfdx/physics/sst_pseudo_transient_v29.h"
 #include "cfdx/physics/sst_hotspot_derivatives_v31.h"
 #include "cfdx/physics/sst_row_trace_v33.h"
+#include "cfdx/physics/sst_stall_forensics_v42.h"
 #include "cfdx/physics/sst_two_cycle_v41.h"
 #include "cfdx/physics/sst_branch_preconditioner_v34.h"
 #include "cfdx/physics/sst_openfoam_weighted_owner_v29.h"
@@ -3026,6 +3027,63 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << " omega_compensated=" << returned.omega_local_compensated
                       << " target=" << tolerance
                       << " accepted=0 qualified=0\n";
+            // V42: resolve the exact failure row automatically, but only
+            // on explicit request and after the fail-closed V14 decision.
+            // Distinguish max row-scaled (the strict gate) from max cell-local
+            // normalized defect (which can be in a different cell).
+            if (const char* forensic = std::getenv("CFDX_SST_STALL_FORENSICS_V42")) {
+                if (std::string(forensic) == "1") {
+                    const auto equations=sst_reassembled_equations_v22(
+                        mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                        controls,k_bcs,omega_bcs,face_values_now(),sources_now());
+                    cfdx::core::Vector omega_x(n);
+                    for (std::size_t i=0; i<n; ++i) omega_x(i)=omega(i);
+                    const auto overview=sst_stall_overview_v42(
+                        equations.second,omega_x,controls.omega_min);
+                    const auto emit=[&](const char* criterion, const SSTStallRowV42& r) {
+                        const auto budget=sst_reassembled_discrete_cell_budgets(
+                            mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                            controls,k_bcs,omega_bcs,face_values_now(),r.cell,sources_now());
+                        const auto& w=budget.second;
+                        std::cerr << std::scientific << std::setprecision(17)
+                                  << "SST_STALL_ROW_V42 iteration=" << iter
+                                  << " criterion=" << criterion
+                                  << " cell=" << r.cell
+                                  << " rhs=" << r.rhs
+                                  << " diag_term=" << r.diagonal_term
+                                  << " offdiag_terms=" << r.off_diagonal_terms
+                                  << " native_signed=" << r.native_signed
+                                  << " compensated_signed=" << r.compensated_signed
+                                  << " row_l1=" << r.row_l1
+                                  << " local_field_scale=" << r.local_field_scale
+                                  << " native_row_scaled=" << r.native_row_scaled
+                                  << " compensated_row_scaled=" << r.compensated_row_scaled
+                                  << " native_local=" << r.native_local_relative
+                                  << " compensated_local=" << r.compensated_local_relative
+                                  << " cancellation_ratio=" << r.cancellation_ratio
+                                  << " fv_convection=" << w.convection
+                                  << " fv_diffusion=" << w.diffusion
+                                  << " fv_production=" << w.physical_production
+                                  << " fv_destruction=" << w.physical_destruction
+                                  << " fv_cross=" << w.physical_cross_diffusion
+                                  << " fv_source_identity=" << w.nonlinear_source_identity_error
+                                  << " fv_assembled_residual=" << w.full_residual
+                                  << " fv_closure_error=" << w.closure_error
+                                  << " wall_orthogonal_flux=" << w.wall_orthogonal_flux
+                                  << " wall_owner_diffusion=" << w.wall_owner_diffusion_flux
+                                  << " wall_molecular_diffusion=" << w.wall_molecular_diffusion_flux
+                                  << " wall_dirichlet_faces=" << w.dirichlet_wall_faces
+                                  << " owner_constraint=" << (w.owner_constraint_row?1:0)
+                                  << " acceptance_unchanged=1 physical_qualified=0\n";
+                    };
+                    emit("row_scaled_native",overview.native_row_scaled_worst);
+                    if (overview.native_local_worst.cell!=overview.native_row_scaled_worst.cell)
+                        emit("local_native",overview.native_local_worst);
+                    if (overview.compensated_row_scaled_worst.cell!=overview.native_row_scaled_worst.cell &&
+                        overview.compensated_row_scaled_worst.cell!=overview.native_local_worst.cell)
+                        emit("row_scaled_compensated",overview.compensated_row_scaled_worst);
+                }
+            }
             break;
         }
         if (all_sst_gates_ok) {
@@ -3053,3 +3111,4 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
 }
 
 } // namespace cfdx::physics
+

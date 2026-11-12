@@ -40,6 +40,7 @@
 #include "cfdx/physics/pcd_fp_refinement_v16.h"
 #include "cfdx/physics/coupled_block_residual_v16.h"
 #include "cfdx/physics/coupled_monolithic_ilut_v16.h"
+#include "cfdx/physics/pcd_blocklocal_recovery_v42.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/pressure_continuity_line_search.h"
 #include "cfdx/physics/convection_continuation.h"
@@ -57,6 +58,12 @@
 #include "cfdx/physics/global_nonlinear_residual_v8.h"
 #include "cfdx/physics/global_nonlinear_acceptance_v13.h"
 #include "cfdx/physics/global_nonlinear_contraction_v14.h"
+#include "cfdx/physics/outer_field_period_v43.h"
+#include "cfdx/physics/coupled_outer_step_v43.h"
+#include "cfdx/physics/coupled_phase_escape_v45.h"
+#include "cfdx/physics/post_sst_momentum_hotspot_v45.h"
+#include "cfdx/physics/post_sst_face_forensics_v46.h"
+#include "cfdx/physics/coupled_full_period_v44.h"
 #include "cfdx/physics/coupled_linear_retry_policy_v37.h"
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
@@ -359,6 +366,32 @@ struct IncompressibleSolverControls {
     // post-SST global merit between COMMITTED states at identical operator.
     // Never accept by the numerical linear solver's reported residual.
     bool monotone_global_merit_v14_experimental = false;
+    // V43 experimental nonlinear correction for the monolithic COUPLED
+    // carrier update. 0 disables it; 0<beta<=1 interpolates U,p between the
+    // previous accepted state and the certified linear candidate. Retries use
+    // the shared nonlinear retry shrink; the authoritative Rhie-Chow flux is
+    // recomputed at the interpolated state (never blended as an independent
+    // face field). Physical residuals are reassembled AFTER SST as usual.
+    // The damped candidate is not claimed to solve the frozen block A*x=b.
+    double coupled_outer_step_v43_experimental = 0.0;
+    // V43 separate opt-in fixed-point composite: when all committed fields
+    // return to their state n-4 for eight consecutive measurements, seed the
+    // NEXT full coupled/SST nonlinear trial from the four-phase mean. The
+    // average is an unaccepted predictor only; it is never exported as a
+    // converged flow or used as the authoritative final Rhie-Chow flux.
+    bool coupled_period_four_mean_v43_experimental = false;
+    // V44 experimental six-field version of the phase predictor. Unlike V43,
+    // this averages k and omega as well as U/p/phi, then RECOMPUTES nu_t from
+    // the SST closure for the predicted U/k/omega. The output is an initial
+    // guess, never a nonlinear certificate. Disabled by default.
+    bool coupled_period_four_full_state_v44_experimental = false;
+    // V45 opt-in continuation, only AFTER a four-cycle of committed full
+    // fields is detected by V43 and V44's coherent phase predictor is used.
+    // For the following accepted steps, damp the COUPLED carrier candidate
+    // while SST is re-solved and the existing V7/V8 merit is reassembled.
+    // Zero disables; default equations, physical criteria and Schur untouched.
+    double coupled_period_four_damping_v45_experimental = 0.0;
+    std::size_t coupled_period_four_damping_steps_v45 = 12;
     // V31: one CFL for momentum and SST, updated ONLY on committed full
     // U,p,k,omega physical residuals. Pressure remains algebraic.
     bool outer_ptc_v31_experimental = false;
@@ -939,6 +972,12 @@ inline void validate_incompressible_controls(
          c.coupling.pcd_lumped_mass_commutator_experimental))
         throw std::invalid_argument(
             "V39 reverse PCD requires COUPLED/PCD and excludes other commutator mode");
+    if (c.coupling.pcd_blocklocal_recovery_v42_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.coupling.schur_model != CoupledSchurModel::PCD ||
+         c.coupling.coupled_monolithic_ilut_fallback_v16_experimental))
+        throw std::invalid_argument(
+            "V42 BlockLocal recovery requires COUPLED/PCD and excludes ILUT recovery");
     if (c.coupling.coupled_schwarz_experimental &&
         (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
          c.coupling.schur_model != CoupledSchurModel::BlockLocal))
@@ -6216,6 +6255,67 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             bool multisecant_trial_used = false;
             bool coupled_linear_failed_v37 = false;
             try {
+        // Reversible V43 trial initializer: a full four-field cycle can have
+        // very small ||x_n-x_{n-4}|| while failing every physical tolerance.
+        // A mean of the four committed phases is a candidate for breaking
+        // that fixed-point orbit, not a solution or a new residual oracle.
+        // The complete COUPLED/SST solve follows, so its final Rhie-Chow
+        // face flux and returned-state FV defects are independently tested.
+        if ((controls.coupled_period_four_mean_v43_experimental ||
+             controls.coupled_period_four_full_state_v44_experimental) &&
+            v43_field_probe && v43_field_probe->period_four_candidate()) {
+            const double gauge=p(controls.pressure_reference_cell);
+            for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                for (std::size_t component=0;component<3;++component)
+                    U.component_data(component)[cell]=
+                        v43_field_probe->average_last_four(component,cell);
+                p(cell)=gauge+v43_field_probe->average_last_four(3,cell);
+            }
+            for (std::size_t face=0;face<mesh.n_faces();++face)
+                mass_flux(face)=v43_field_probe->average_last_four(4,face);
+            if (controls.coupled_period_four_full_state_v44_experimental) {
+                // Do not average nu_t: nu_t(k,omega,|S|,F2) is nonlinear.
+                // Averaging U/p/phi alone (V43) also leaves the frozen
+                // momentum viscosity inconsistent with its trial SST fields.
+                // Set k/omega, then reconstruct ALL derived SST fields and
+                // the viscosity actually consumed by COUPLED assembly.
+                auto& state=*controls.sst_runtime->state;
+                for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                    const auto phase=make_coupled_sst_phase_candidate_v44(
+                        v43_field_probe->average_last_four(5,cell),
+                        v43_field_probe->average_last_four(6,cell));
+                    state.k(cell)=phase.k;
+                    state.omega(cell)=phase.omega;
+                }
+                std::map<std::string,std::array<double,3>> fixed_velocity_values;
+                for (const auto& pair:velocity_bcs)
+                    if (pair.second.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        fixed_velocity_values.emplace(pair.first,
+                            std::array<double,3>{pair.second.value.x,
+                                pair.second.value.y,pair.second.value.z});
+                refresh_sst_production_derived_state_from_mesh(
+                    state,mesh,controls.sst_runtime->transport,
+                    U,fixed_velocity_values,controls.sst_runtime->wall_patch_names);
+                for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                    mu_eff[cell]=controls.density*(
+                        controls.kinematic_viscosity+state.nu_t(cell));
+                    if (!(mu_eff[cell]>0.0) || !std::isfinite(mu_eff[cell]))
+                        throw std::runtime_error("V44 full-phase invalid viscosity");
+                }
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr<<"COUPLED_PERIOD4_FULL_V44 iteration="<<iter
+                             <<" retry="<<retry_controller.retries()
+                             <<" k_omega_averaged=1 nut_recomputed=1"
+                             <<" strain_recomputed=1 pressure_gauge_preserved=1"
+                             <<" committed=0 physical_qualified=0\n";
+            }
+            if (controls.diagnostics.iteration_trace)
+                std::cerr<<"COUPLED_PERIOD4_PREDICTOR_V43 iteration="<<iter
+                         <<" retry="<<retry_controller.retries()
+                         <<" mean_phases=4 predicted_accepted=0"
+                         <<" true_residual_must_be_reassembled=1"
+                         <<" final_flux_rederived_by_coupled=1\n";
+        }
         MultisecantProposal multisecant_proposal;
         if (controls.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF &&
             iter >= controls.nonlinear_multisecant.start_iteration &&
@@ -11072,7 +11172,49 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     throw NonlinearRetryableFailure(error.what());
                 }
             }
+            // Validate/snapshot the candidate fields BEFORE irreversible
+            // commit. If a field observer refuses a nonfinite candidate, the
+            // U/p/phi/SST transaction remains eligible for full rollback.
+            std::optional<OuterFieldPeriodReportV43> field_period_report_v44;
+            if (v43_field_probe) {
+                const double pressure_gauge=p(controls.pressure_reference_cell);
+                const auto& state=*controls.sst_runtime->state;
+                field_period_report_v44=v43_field_probe->record(
+                    [&](std::size_t channel,std::size_t index) -> double {
+                        if (channel<3) return U.component_data(channel)[index];
+                        if (channel==3) return p(index)-pressure_gauge;
+                        if (channel==4) return mass_flux(index);
+                        if (channel==5) return state.k(index);
+                        if (channel==6) return state.omega(index);
+                        return state.nu_t(index);
+                    });
+            }
             transaction.commit();
+            // Advance the V45 window ONLY after the complete U/p/phi/SST
+            // transaction commits. Retries of one outer iteration must retain
+            // the same trigger and vary only the safeguarded trial beta.
+            if (controls.coupled_period_four_damping_v45_experimental > 0.0)
+                coupled_phase_escape_v45.commit(phase_escape_trial_v45,iter,
+                    controls.coupled_period_four_damping_steps_v45);
+            if (field_period_report_v44 && field_period_report_v44->has_four_back) {
+                const auto& report=*field_period_report_v44;
+                std::cerr<<"OUTER_FIELD_PERIOD_V43 iteration="<<iter
+                             <<" Ux_four="<<report.relative_four_back[0]
+                             <<" Uy_four="<<report.relative_four_back[1]
+                             <<" Uz_four="<<report.relative_four_back[2]
+                             <<" p_gauge_four="<<report.relative_four_back[3]
+                             <<" phi_four="<<report.relative_four_back[4]
+                             <<" k_four="<<report.relative_four_back[5]
+                             <<" omega_four="<<report.relative_four_back[6]
+                             <<" nut_four="<<report.relative_four_back[7]
+                             <<" max_four="<<report.maximum_four_back
+                             <<" max_previous="<<report.maximum_previous
+                             <<" worst_channel="<<report.worst_channel_four_back
+                             <<" worst_index="<<report.worst_index_four_back
+                             <<" same_phase_count="<<report.consecutive_four_back
+                             <<" period_four_candidate="<<report.period_four_candidate
+                             <<" physical_qualified=0\n";
+            }
             if (v32_balance_proposal)
                 controls.sst_runtime->outer_ptc_balance_v32=*v32_balance_proposal;
             if (v31_outer_proposal) {
@@ -11282,6 +11424,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
+                if (controls.sst_runtime)
+                    for (std::size_t cell=0;cell<mesh.n_cells();++cell)
+                        mu_eff[cell]=controls.density*(
+                            controls.kinematic_viscosity+
+                            controls.sst_runtime->state->nu_t(cell));
                 convergence_monitor = convergence_monitor_snapshot;
                 result.history.resize(result_history_size);
                 result.probe_samples.resize(probe_samples_size);
@@ -11387,3 +11534,4 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+

@@ -1449,6 +1449,41 @@ int main(int argc, char** argv)
                 flag("v13_joint_globalization");
             controls.monotone_global_merit_v14_experimental=
                 flag("v14_monotone_global_merit");
+            controls.coupled_outer_step_v43_experimental=
+                number("coupled_outer_step_v43_experimental",0.0);
+            controls.coupled_period_four_mean_v43_experimental=
+                flag("coupled_period_four_mean_v43_experimental");
+            controls.coupled_period_four_full_state_v44_experimental=
+                flag("coupled_period_four_full_state_v44_experimental");
+            controls.coupled_period_four_damping_v45_experimental=
+                number("coupled_period_four_damping_v45_experimental",0.0);
+            const double v45_damping_steps=number(
+                "coupled_period_four_damping_steps_v45",12.0);
+            if (v45_damping_steps<1.0 || v45_damping_steps>128.0 ||
+                std::floor(v45_damping_steps)!=v45_damping_steps)
+                throw std::invalid_argument(
+                    "coupled_period_four_damping_steps_v45 must be an integer 1..128");
+            controls.coupled_period_four_damping_steps_v45=
+                static_cast<std::size_t>(v45_damping_steps);
+            if (raw.count("coupled_period_four_damping_steps_v45") &&
+                controls.coupled_period_four_damping_v45_experimental==0.0)
+                throw std::invalid_argument(
+                    "V45 damping steps require an active V45 damping beta");
+            if (controls.coupled_period_four_damping_v45_experimental>0.0)
+                std::cout<<"V45 bounded cycle-escape carrier damping beta="
+                         <<controls.coupled_period_four_damping_v45_experimental
+                         <<" accepted_steps="<<controls.coupled_period_four_damping_steps_v45
+                         <<" (experimental; V44 SST closure, V7/V8 gates unchanged)\n";
+            if (controls.coupled_period_four_full_state_v44_experimental)
+                std::cout<<"V44 full 6-field phase predictor (experimental; "
+                            "nu_t reconstructed, physical gates unchanged)\n";
+            if (controls.coupled_period_four_mean_v43_experimental)
+                std::cout<<"V43 four-phase COUPLED predictor (experimental; "
+                            "no criterion changes, only on proven committed field orbit)\n";
+            if (controls.coupled_outer_step_v43_experimental != 0.0)
+                std::cout<<"V43 COUPLED nonlinear carrier step beta="
+                         <<controls.coupled_outer_step_v43_experimental
+                         <<" (experimental; SST+V7/V8 physical gates unchanged)\n";
             controls.outer_ptc_v31_experimental=
                 flag("v31_outer_coupled_ptc_experimental");
             controls.outer_ptc_balance_v32_experimental=
@@ -2579,3 +2614,4 @@ int main(int argc, char** argv)
         return kExecutionExitError;
     }
 }
+

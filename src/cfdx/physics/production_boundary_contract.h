@@ -77,6 +77,55 @@ inline void validate_native_flow_field_overrides(const cfdx::io::BoundarySpec& b
     }
 }
 
+// The Workbench can persist independent U and p specifications. Before
+// mapping them to FV operators, reject conflicting or incomplete requests;
+// silently falling back to the legacy BC would solve a different problem.
+inline void validate_native_flow_field_overrides(const cfdx::io::BoundarySpec& bc)
+{
+    using cfdx::io::BCType;
+    auto check = [&](const char* field, std::size_t components) {
+        const auto* native = bc.find_field(field);
+        if (!native) return;
+        const std::string where = "production boundary '" + bc.patch_name +
+            "' native " + field + ": ";
+        if (native->type != "FIXED_VALUE" && native->type != "ZERO_GRADIENT" &&
+            !(components == 1 && native->type == "FIXED_GRADIENT"))
+            throw std::invalid_argument(where + "unsupported operator");
+        if (native->type == "FIXED_VALUE" && native->value.size() != components)
+            throw std::invalid_argument(where + "wrong number of Dirichlet components");
+        for (const double value : native->value)
+            if (!std::isfinite(value))
+                throw std::invalid_argument(where + "non-finite component");
+        if (!std::isfinite(native->gradient))
+            throw std::invalid_argument(where + "non-finite gradient");
+        if (native->type == "FIXED_VALUE" && std::abs(native->gradient) > 0.0)
+            throw std::invalid_argument(where + "Dirichlet and gradient cannot both be imposed");
+    };
+    check("velocity", 3);
+    check("pressure", 1);
+    if (const auto* u = bc.find_field("velocity")) {
+        const bool prescribed = u->type == "FIXED_VALUE";
+        if (prescribed && bc.type != BCType::INLET && bc.type != BCType::WALL)
+            throw std::invalid_argument("fixed velocity requires an inlet or wall patch");
+        if (!prescribed && (bc.type == BCType::INLET || bc.type == BCType::WALL))
+            throw std::invalid_argument("inlet/wall velocity cannot be zeroGradient in the current FV adapter");
+        if (bc.type == BCType::WALL && bc.value_type != cfdx::io::BCValueType::FIXED) {
+            for (const auto value : u->value)
+                if (value != 0.0)
+                    throw std::invalid_argument("no-slip wall cannot have moving explicit velocity");
+        }
+    }
+    if (const auto* pressure = bc.find_field("pressure")) {
+        if (pressure->type == "FIXED_VALUE" && bc.type != BCType::PRESSURE_OUTLET)
+            throw std::invalid_argument("fixed pressure requires pressure_outlet in the current FV adapter");
+        if (pressure->type != "FIXED_VALUE" && bc.type == BCType::PRESSURE_OUTLET)
+            throw std::invalid_argument("pressure_outlet cannot discard its fixed pressure");
+        if (pressure->type == "FIXED_GRADIENT" &&
+            bc.type != BCType::WALL && bc.type != BCType::OUTLET)
+            throw std::invalid_argument("fixed pressure gradient unsupported on this physical patch");
+    }
+}
+
 inline void validate_production_incompressible_boundary(
     const cfdx::io::BoundarySpec& bc, cfdx::core::PatchType mesh_patch_type)
 {
