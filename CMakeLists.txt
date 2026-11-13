@@ -826,6 +826,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_tvd_skew_affine_mms PROPERTIES LABELS "naca;fv;anisotropy;regression" TIMEOUT 60)
     add_cfdx_test(test_convection_continuation tests/unit/test_convection_continuation.cpp)
     set_tests_properties(test_convection_continuation PROPERTIES LABELS "fv;convection;regression")
+    add_cfdx_test(test_vof_curvature_contract tests/unit/test_vof_curvature_contract.cpp)
     add_cfdx_test(test_variable_viscosity_transpose_stress tests/unit/test_variable_viscosity_transpose_stress.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
@@ -1789,6 +1790,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_bfs_v41_forensics
             COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v41_forensics.py)
         set_tests_properties(test_bfs_v41_forensics PROPERTIES
             LABELS "bfs;sst;v41;regression;diagnostic" TIMEOUT 20)
     endif()

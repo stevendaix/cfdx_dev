@@ -144,6 +144,7 @@ inline double hemispherical_irradiation(
     if (directions.size() != intensities.size())
         throw std::invalid_argument("DOM direction/intensity size mismatch");
     const double nn = std::sqrt(normal[0]*normal[0] + normal[1]*normal[1] +
+                                normal[2]*normal[2]);
     if (!std::isfinite(nn) || nn <= 0.0)
         throw std::invalid_argument("wall normal must be finite and non-zero");
     double G = 0.0;
@@ -157,6 +158,7 @@ inline double hemispherical_irradiation(
         }
     }
     return G;
+}
 
 inline void apply_diffuse_gray_wall(
     const std::vector<DiscreteDirection>& directions,
@@ -184,6 +186,7 @@ inline void apply_diffuse_gray_wall(
     const double nn = std::sqrt(outward_normal[0]*outward_normal[0] +
                                 outward_normal[1]*outward_normal[1] +
                                 outward_normal[2]*outward_normal[2]);
+    for (std::size_t m = 0; m < directions.size(); ++m) {
         const double mu = (directions[m].dx*outward_normal[0] +
                            directions[m].dy*outward_normal[1] +
                            directions[m].dz*outward_normal[2]) / nn;
@@ -191,6 +194,7 @@ inline void apply_diffuse_gray_wall(
             boundary_intensities[m] = Iw;
     }
 }
+
 // -----------------------------------------------------------------------------
 // View-factor matrix construction for a supplied geometric kernel.
 //

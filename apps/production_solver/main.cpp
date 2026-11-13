@@ -1486,6 +1486,7 @@ int main(int argc, char** argv)
             const double v45_damping_steps=number(
                 "coupled_period_four_damping_steps_v45",12.0);
             if (v45_damping_steps<1.0 || v45_damping_steps>128.0 ||
+                std::floor(v45_damping_steps)!=v45_damping_steps)
                 throw std::invalid_argument(
                     "coupled_period_four_damping_steps_v45 must be an integer 1..128");
             controls.coupled_period_four_damping_steps_v45=

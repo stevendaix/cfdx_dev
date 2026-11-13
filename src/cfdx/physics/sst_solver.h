@@ -1094,6 +1094,7 @@ inline SSTCoupledResidualV22 sst_coupled_residual_v22(
         mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,controls,
         k_bcs,omega_bcs,omega_face_values,wall_production);
     const std::size_t n=mesh.n_cells();
+    SSTCoupledResidualV22 out;
     out.values.resize(2*n);
     out.row_norms.resize(2*n);
     out.local_scales.resize(2*n);
@@ -1133,6 +1134,7 @@ inline SSTCoupledResidualV22 sst_coupled_residual_v22(
     return out;
 }
 
+// V23: construct a CHEAP frozen local 2x2 SST source Jacobian. The base
 // FV matrix provides advection, diffusion and the frozen sink diagonal;
 // centered LOCAL source differences add the missing k/omega cross terms.
 // The matrix-free Jv still contains ALL gradients, F1/F2, wall refresh and
@@ -3107,6 +3109,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
     if (controls.sst_coupled_ptc_v30_experimental && result.converged &&
         controls.sst_continuation_state_v30)
         *controls.sst_continuation_state_v30=ptc_v30;
+    return result;
 }
 
 } // namespace cfdx::physics

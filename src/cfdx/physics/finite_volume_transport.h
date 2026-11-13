@@ -6,6 +6,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
+#include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/gauss_seidel_solver.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
@@ -78,6 +79,7 @@ inline LimitedFaceKindV56 convection_kind_v56(ConvectionScheme scheme) {
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
     std::map<std::string, std::vector<double>> values;
+};
 
 struct FvGeometry {
     std::vector<cfdx::core::Vec3> face_centres;
@@ -390,6 +392,7 @@ inline double muscl_cell_limited_face_value(
     if (!std::isfinite(reconstructed))
         throw std::runtime_error("muscl_cell_limited_face_value: invalid face state");
     return reconstructed;
+}
 
 // One-ring multidimensional extrema for limited convection. On a non-affine
 // or skewed grid the true face centroid can lie outside the two endpoint
@@ -471,6 +474,7 @@ inline std::pair<double,double> tvd_internal_face_envelope_v56(
     const Vec3 offset = geometry.face_centres[face] - geometry.cell_centres[owner];
     const Vec3 skew = offset - d * (offset.dot(d) / d2);
     // With zero skew, retain the established 1-D TVD endpoint envelope.
+    // Otherwise limit against the multidimensional one-ring extrema. This
     // still forbids new local extrema and restores affine exactness when the
     // real face value lies in the surrounding physical stencil envelope.
     if (skew.mag2() <= 1e-24 * d2)
@@ -495,6 +499,7 @@ inline double bound_tvd_internal_face_value(
 }
 
 // Boundary-aware scalar gradient shared by transport and diffusion-flux
+// reconstruction. Face-specific values/conditions take precedence over patch
 // conditions so the gradient uses the same boundary state as the assembly.
 inline cfdx::core::Field<double, cfdx::core::Location::CELL>
 compute_scalar_gradient_with_boundary(
@@ -1145,6 +1150,7 @@ inline ScalarEquation assemble_scalar_equation(
                 } else if (convection_scheme == ConvectionScheme::TVD ||
                            convection_scheme == ConvectionScheme::TVD_VANLEER ||
                 convection_scheme == ConvectionScheme::TVD_VANALBADA) {
+                    // Darwish-Moukalled successive-slope ratio for an
                     // unstructured cell-centred face. The gradient must be
                     // projected over the full upwind-to-downwind centre
                     // distance, not the half-distance from the upwind centre
@@ -1178,6 +1184,7 @@ inline ScalarEquation assemble_scalar_equation(
                 } else {
                     // Central, blended and quadratic schemes are explicit
                     // deferred corrections around the conservative upwind
+                    // matrix. The face value itself is produced by the core
                     // reconstruction library, so assembly and post-solve
                     // flux reconstruction share exactly the same scheme.
                     phi_high = reconstructed_face(f);
@@ -1479,6 +1486,7 @@ reconstruct_scalar_transport_flux(
                 } else {
                     psi_face = reconstructed_face(f);
                 }
+            }
             // Reconstruct the SAME conservative fraction used in the matrix
             // assembly. The physical full-order audit requires fraction=1.
             psi_face = up + high_order_fraction * (psi_face - up);

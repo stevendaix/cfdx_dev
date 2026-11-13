@@ -16,6 +16,7 @@
 
 namespace cfdx::physics {
 
+struct RadiationTransportControls {
     double absorption = 0.0;
     double scattering = 0.0;
     double intensity_relaxation = 1.0;
@@ -48,6 +49,7 @@ struct RadiationSolveResult {
 };
 
 inline void validate_radiation_transport_controls(const RadiationTransportControls& c)
+{
     if(c.absorption<0.0 || c.scattering<0.0 ||
        c.max_iterations==0 || c.tolerance<=0.0 ||
        c.linear_max_iterations==0 || c.linear_tolerance<=0.0 ||
@@ -150,6 +152,7 @@ using DomWallBoundaryConditions = std::map<std::string, DomWallBoundaryCondition
 // Outgoing ordinates use zero-gradient/extrapolation from the owner cell.
 inline void validate_dom_wall_conditions(
     const cfdx::core::Mesh& mesh,
+    const DomWallBoundaryConditions& walls)
 {
     for (std::size_t p=0; p<mesh.boundary().n_patches(); ++p) {
         const auto& patch=mesh.boundary().patch(p);
@@ -355,6 +358,7 @@ inline ScalarBoundaryFaceValues build_dom_diffuse_gray_face_values(
     if (intensities.size()!=directions.size() || direction_index>=directions.size())
         throw std::invalid_argument("DOM wall operator: direction/intensity size mismatch");
     const std::size_t nf=mesh.n_faces();
+    ScalarBoundaryFaceValues values;
     const auto& target_direction=directions[direction_index];
     for (std::size_t p=0; p<mesh.boundary().n_patches(); ++p) {
         const auto& patch=mesh.boundary().patch(p);
@@ -551,6 +555,7 @@ inline DomAcceptedStateDefectV42 audit_dom_accepted_state_v42(
 // DOM solve with physically coupled diffuse-gray wall boundary conditions.
 // The wall reflection is lagged one transport iteration (Picard), so the
 // directional linear systems remain independent and strictly diagonally
+// dominant while the wall operator is converged with the transport field.
 inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -566,6 +571,7 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
 {
     validate_radiation_transport_controls(controls);
     validate_discrete_directions(directions);
+    validate_dom_wall_conditions(mesh,walls);
     if (temperature.size()!=mesh.n_cells() ||
         irradiation.size()!=mesh.n_cells() ||
         radiation_source.size()!=mesh.n_cells())
@@ -589,6 +595,7 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
     std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>> intensities;
     intensities.reserve(directions.size());
     for (std::size_t m=0;m<directions.size();++m) {
+        intensities.emplace_back(nc,"I_"+std::to_string(m),"W/m2/sr",1);
         intensities.back().fill(0.0);
     }
 
@@ -608,6 +615,7 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
         double max_delta=0.0;
 
         std::vector<double> J(nc,0.0);
+        for (std::size_t m=0;m<directions.size();++m)
             for (std::size_t c=0;c<nc;++c)
                 J[c]+=directions[m].weight*intensities[m](c)/(4.0*M_PI);
 
@@ -618,6 +626,7 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
             cfdx::core::Field<double,cfdx::core::Location::FACE> directional_flux(
                 mesh.n_faces(),"sI","W/m2",1);
             const auto& d=directions[m];
+            for (std::size_t f=0;f<mesh.n_faces();++f)
                 directional_flux(f)=d.dx*geometry.face_area_vectors[f].x+
                                     d.dy*geometry.face_area_vectors[f].y+
                                     d.dz*geometry.face_area_vectors[f].z;
@@ -734,6 +743,7 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
     return result;
 }
 
+inline RadiationSolveResult solve_participating_radiation(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
