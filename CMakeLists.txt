@@ -2425,3 +2425,21 @@ if(CFDX_ENABLE_RADIATION_RESEARCH_V57)
             LABELS "radiation;v57;research;legacy;long" TIMEOUT 1200 RUN_SERIAL TRUE)
     endif()
 endif()
+
+# V74 (partial lot, adapted): independent SST wall-regime audit only. The
+# fixed-direction continuation test is deferred until the V72 joint
+# fixed-point header lands on this branch (V61-V73 lots pending).
+if(CFDX_BUILD_TESTS)
+    add_executable(test_bfs_wall_regime_v74
+        tests/unit/test_bfs_wall_regime_v74.cpp)
+    target_include_directories(test_bfs_wall_regime_v74 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_wall_regime_v74 COMMAND test_bfs_wall_regime_v74)
+    set_tests_properties(test_bfs_wall_regime_v74 PROPERTIES
+        LABELS "bfs;sst;v74;wall;validation" TIMEOUT 30)
+endif()
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_v74_evidence_falsification
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v74_evidence.py)
+    set_tests_properties(test_bfs_v74_evidence_falsification PROPERTIES
+        LABELS "bfs;sst;v74;falsification" TIMEOUT 30)
+endif()
