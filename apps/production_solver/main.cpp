@@ -1457,10 +1457,35 @@ int main(int argc, char** argv)
                 flag("coupled_period_four_full_state_v44_experimental");
             controls.coupled_period_four_damping_v45_experimental=
                 number("coupled_period_four_damping_v45_experimental",0.0);
+            // Restored while rebasing V58: these switches were absent from the
+            // uploaded V36-style ZIP despite being available in the FV solver.
+            // Opt-in only; neither activates a new accepted physical state.
+            controls.coupled_composite_backtracking_v47_experimental=
+                flag("coupled_composite_backtracking_v47_experimental");
+            controls.coupled_flux_homotopy_v48_experimental=
+                flag("coupled_flux_homotopy_v48_experimental");
+            if(controls.coupled_flux_homotopy_v48_experimental)
+                std::cout << "V48 Rhie-Chow inverse-diagonal homotopy experimental; "
+                          << "requires V47, no restart, and beta=1 to certify convergence\n";
+            const double v47_retries=number(
+                "coupled_composite_backtracking_retries_v47",10.0);
+            if(v47_retries<1.0 || v47_retries>12.0 ||
+               std::floor(v47_retries)!=v47_retries)
+                throw std::invalid_argument(
+                    "coupled_composite_backtracking_retries_v47 must be an integer 1..12");
+            controls.coupled_composite_backtracking_retries_v47=
+                static_cast<std::size_t>(v47_retries);
+            if(raw.count("coupled_composite_backtracking_retries_v47") &&
+               !controls.coupled_composite_backtracking_v47_experimental)
+                throw std::invalid_argument(
+                    "V47 retries require coupled_composite_backtracking_v47_experimental=true");
+            if(controls.coupled_composite_backtracking_v47_experimental)
+                std::cout << "V47 composite COUPLED backtracking experimental, retries="
+                          << controls.coupled_composite_backtracking_retries_v47
+                          << "; SST re-solved and V13/V14 physical gates unchanged\n";
             const double v45_damping_steps=number(
                 "coupled_period_four_damping_steps_v45",12.0);
             if (v45_damping_steps<1.0 || v45_damping_steps>128.0 ||
-                std::floor(v45_damping_steps)!=v45_damping_steps)
                 throw std::invalid_argument(
                     "coupled_period_four_damping_steps_v45 must be an integer 1..128");
             controls.coupled_period_four_damping_steps_v45=
