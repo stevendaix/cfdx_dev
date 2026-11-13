@@ -77,6 +77,7 @@
 #include "cfdx/physics/post_sst_momentum_hotspot_v45.h"
 #include "cfdx/physics/post_sst_face_forensics_v46.h"
 #include "cfdx/physics/coupled_full_period_v44.h"
+#include "cfdx/physics/coupled_linear_retry_policy_v37.h"
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
@@ -415,6 +416,7 @@ struct IncompressibleSolverControls {
     // V31: one CFL for momentum and SST, updated ONLY on committed full
     // U,p,k,omega physical residuals. Pressure remains algebraic.
     bool outer_ptc_v31_experimental = false;
+    // V32: cap *both* momentum and SST pseudo masses by a relative FV
     // diagonal budget; failed retries reduce only the unpublished trial.
     bool outer_ptc_balance_v32_experimental = false;
     // Separate controlled A/B: share CFL and the accepted outer ledger,
@@ -1041,6 +1043,7 @@ inline void validate_incompressible_controls(
     if (c.coupled_period_four_damping_v45_experimental > 0.0 &&
         !c.coupled_period_four_full_state_v44_experimental)
         throw std::invalid_argument(
+            "V45 cycle-escape continuation requires V44 coherent full-state predictor");
     if (!std::isfinite(c.coupled_outer_step_v43_experimental) ||
         c.coupled_outer_step_v43_experimental < 0.0 ||
         c.coupled_outer_step_v43_experimental > 1.0)
@@ -1203,6 +1206,7 @@ inline void validate_incompressible_controls(
     if (c.sst_runtime) {
         if (!c.sst_runtime->state)
             throw std::invalid_argument("SST production runtime requires an initialized state");
+        if (c.sst_runtime->transport.model != TurbulenceModel::SST)
             throw std::invalid_argument("SST production runtime requires SST transport controls");
         if (c.sst_runtime->transport.density != c.density ||
             c.sst_runtime->transport.molecular_viscosity != c.kinematic_viscosity)
@@ -2433,6 +2437,7 @@ gauss_gradient_pressure_high_low(
             }
             sum[0]+=static_cast<long double>(Sf.x)*vf;
             sum[1]+=static_cast<long double>(Sf.y)*vf;
+            sum[2]+=static_cast<long double>(Sf.z)*vf;
         }
         for(std::size_t d=0;d<3;++d) {
             const long double v=sum[d]/geometry.cell_volumes[c];
@@ -3709,6 +3714,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
                 kind == PatchType::INTERFACE) continue;
             inflow_conditions.specified[face] = 1;
             inflow_conditions.conditions[face] = {
+                ScalarBoundaryFaceCondition::Type::FIXED_VALUE, 0.0};
         }
     }
     const auto* auxiliary_face_bcs = pressure_space_inflow_dirichlet
@@ -3881,6 +3887,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
+    const std::size_t nv = 3 * nc;
     const std::size_t np = nc;
     const std::size_t n = nv + np;
 
@@ -4892,6 +4899,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                             controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental,
                             pcd_ops->convection_diffusion)
                         : load_pcd_fp_bisided_basis_v13(
+                            controls.coupling.pcd_fp_bisided_basis_file_experimental,
                             pcd_ops->convection_diffusion));
             std::cerr << "COUPLED_PCD_BILATERAL_V14 modes="
                       << pcd_ops->convection_diffusion_bisided->left.size()
@@ -5872,6 +5880,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     return result;
 }
 
+inline IncompressibleSolveResult solve_steady_incompressible(
     const cfdx::core::Mesh& mesh,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
@@ -5958,6 +5967,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Do not let a phantom fixed-pressure BC suppress the pressure gauge.
     // Validate this before Uniform/Restart initialization changes U or p.
     const bool has_fixed_pressure_boundary =
+        has_effective_fixed_pressure_boundary(mesh, pressure_bcs);
     // Validate the caller-owned SST bundle before initialization can mutate
     // the carrier fields. Derived SST quantities must be refreshed only after
     // initialization/restart has established the actual velocity field.
@@ -6119,6 +6129,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const std::size_t minimum_outer_correctors =
         controls.algorithm == PressureVelocityAlgorithm::PIMPLE
             ? static_cast<std::size_t>(controls.coupling.n_outer_correctors)
+            : 1u;
 
     IncompressibleSolveResult result;
     result.reference_momentum_residual = controls.initial_momentum_residual_reference;
@@ -6385,6 +6396,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const bool v43_field_probe_enabled = controls.sst_runtime &&
         (controls.coupled_period_four_mean_v43_experimental ||
          controls.coupled_period_four_full_state_v44_experimental ||
+         (std::getenv("CFDX_OUTER_FIELDS_V43") &&
           std::string(std::getenv("CFDX_OUTER_FIELDS_V43"))=="1"));
     std::unique_ptr<OuterFieldPeriodProbeV43> v43_field_probe;
     if (v43_field_probe_enabled)
@@ -6464,6 +6476,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const double outer_high_order_fraction =
             convection_high_order_fraction(controls.convection_continuation, iter);
         const bool full_order_eligible =
+            convection_full_order_eligible(controls.convection_continuation, iter);
         const bool same_convection_operator_as_previous =
             convection_residuals_share_operator(
                 controls.convection_continuation, iter);
@@ -6477,6 +6490,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         NonlinearStateRollback transaction(U, p);
         const auto mass_flux_snapshot = mass_flux;
         const Vector pressure_low_snapshot=pressure_low_state;
+        bool iteration_completed = false;
         // A rejected multisecant predictor gets exactly one ordinary Picard
         // retry at UNCHANGED alpha_u/alpha_p. Reset the multisecant history;
         // a rejected prediction must not seed the next nonlinear proposal.
@@ -6498,6 +6512,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::optional<MomentumSameStateTrace> pending_same_state_trace;
             std::optional<MomentumPicardTvdTrace> pending_picard_tvd_trace;
             std::array<std::vector<double>,3> pending_effective_tvd_deferred;
+            std::array<std::vector<double>,3> pending_raw_tvd_deferred;
             std::array<std::vector<double>,3> pending_tvd_input_velocity;
             std::array<double,3> pending_memory_source_linf{0.0,0.0,0.0};
             std::array<std::optional<MomentumLinearRelaxationEvidence>,3>
@@ -7056,6 +7071,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         bool rhie_chow_identity_evaluated = false;
         double rhie_chow_identity_audit_linf = 0.0;
         double simplec_plain_rau_gap = 0.0;
+        std::size_t simplec_plain_rau_worst = 0;
         // V20 diagnostic-only reference for the V19 split pressure state.
         std::optional<Field<double,Location::FACE>> v20_relaxed_pressure_flux;
 
@@ -7084,6 +7100,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             result.coupled_linear_plan_resolved = true;
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=COUPLED_LINEAR_END status="
                           << static_cast<int>(coupled_result.status)
                           << " iterations=" << coupled_result.iterations
                           << " true_relative=" << coupled_result.residual_relative
@@ -7239,6 +7256,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " velocity_interpolation_div=" << velocity_flux_div
                           << " pressure_orthogonal_div=" << pressure_orth_div
                           << " pressure_nonorthogonal_div=" << pressure_nonorth_div
+                          << " physical_velocity_compensation_div=" << physical_velocity_compensation_div
                           << " sum=" << (velocity_flux_div + pressure_orth_div +
                                          pressure_nonorth_div + physical_velocity_compensation_div)
                           << " authoritative_div=" << candidate_continuity_signed
@@ -7275,6 +7293,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         controls.coupled_outer_step_v43_experimental,
                         retry_controller.alpha_u(1.0));
                 for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                    for (std::size_t component=0;component<3;++component) {
                         const double previous=U_old.component_data(component)[cell];
                         const double candidate=U.component_data(component)[cell];
                         U.component_data(component)[cell]=coupled_outer_blend_v43(
@@ -7300,6 +7319,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (controls.diagnostics.iteration_trace && phase_escape_trial_v45.active)
                     std::cerr<<"COUPLED_PHASE_ESCAPE_V45 iteration="<<iter
                              <<" retry="<<retry_controller.retries()
+                             <<" triggered="<<(phase_escape_trial_v45.triggered?1:0)
                              <<" remaining="<<phase_escape_trial_v45.remaining_including_this
                              <<" beta="<<coupled_outer_step_applied_v43
                              <<" linear_candidate_certified=1"
@@ -7310,6 +7330,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     std::cerr<<"COUPLED_CARRIER_STEP_V43 iteration="<<iter
                              <<" retry="<<retry_controller.retries()
                              <<" beta="<<coupled_outer_step_applied_v43
+                             <<" linear_candidate_certified=1"
                              <<" updated_linear_solution_certified=0"
                              <<" flux_rederived_from_trial_state=1"
                              <<" physical_qualified=0\n";
@@ -7444,6 +7465,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
             // Operator identity audit: re-derive the authoritative flux from
             // the same state through the same production call and compare
+            // against the stored field. Zero unless the stored flux was
             // mutated after the rebuild.
             {
                 const auto rederived_flux = make_rhie_chow_flux_from_physical_velocity(
@@ -8428,6 +8450,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const auto* offsets = mat.row_offsets_data();
                     const auto* columns = mat.columns_data();
                     const auto* values = mat.values_data();
+                    for (std::size_t row = 0; row < mat.n_rows(); ++row) {
                         bb << rhs(row) << "\n";
                         for (std::uint32_t k = offsets[row]; k < offsets[row+1]; ++k)
                             mm << row + 1 << " " << columns[k] + 1
@@ -9456,6 +9479,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         Field<double, Location::CELL> final_uz_field(mesh.n_cells(), "Uz_final", "m/s", 1);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             final_ux_field(c) = U.component_data(0)[c];
+            final_uy_field(c) = U.component_data(1)[c];
             final_uz_field(c) = U.component_data(2)[c];
         }
         auto final_grad_p = controls.pressure_high_low_production
@@ -10505,6 +10529,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " inner_iterations=" << sst_step.transport.iterations
                           << " k_candidate_residual=" << sst_step.transport.k_residual
                           << " omega_candidate_residual=" << sst_step.transport.second_residual
+                          << " qualified=0\n";
             // Turbulence convergence is an additional gate; it never relaxes
             // the existing carrier residual, continuity, or QoI criteria.
             if (!std::isfinite(sst_step.transport.k_residual) ||
@@ -11974,6 +11999,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (controls.transient.enabled) {
                     const auto& prior=*controls.transient.previous;
                     const auto& older=controls.transient.history_valid
+                        ? *controls.transient.previous_previous : prior;
                     const bool bdf2=controls.transient.scheme==
                         cfdx::core::TimeScheme::BDF2 && controls.transient.history_valid;
                     add_dual_time_mass_term(ex_post,prior,older,geometry,
@@ -12283,6 +12309,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             }
             if (controls.monotone_global_merit_v14_experimental) {
                 const auto contraction=committed_global_merit_v14.evaluate(
+                    h.global_nonlinear_v8,same_convection_operator_as_previous);
                 if (controls.diagnostics.iteration_trace)
                     std::cerr << "GLOBAL_CONTRACTION_TRIAL_V14 iteration=" << iter
                               << " baseline=" << contraction.baseline
@@ -12378,6 +12405,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
+                      << " algorithm=" << static_cast<int>(controls.algorithm)
                       << " iteration=" << iter << " ===\n";
             const auto dump_equation = [&](const char* name,
                                            const ScalarEquation& eq,
@@ -13064,6 +13092,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         if (convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
             (!per_criterion_gates_ok || iter < minimum_outer_correctors)) {
             result.convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason = !per_criterion_gates_ok
                 ? "global nonlinear monitor met but one or more per-component physical gates remain open"
                 : "minimum required outer pressure correctors not yet completed";
         }
@@ -13106,6 +13135,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             result.iterations = iter;
             stop_after_iteration = true;
         }
+        result.iterations = iter;
             // The gate runs on a complete trial state *before* any mutation
             // of committed TVD histories, before transaction.commit(), and
             // before any irreversible output or checkpoint is published.
@@ -13216,6 +13246,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             // Advance the V45 window ONLY after the complete U/p/phi/SST
             // transaction commits. Retries of one outer iteration must retain
             // the same trigger and vary only the safeguarded trial beta.
+            if (controls.coupled_period_four_damping_v45_experimental > 0.0)
                 coupled_phase_escape_v45.commit(phase_escape_trial_v45,iter,
                     controls.coupled_period_four_damping_steps_v45);
             if (field_period_report_v44 && field_period_report_v44->has_four_back) {
@@ -13452,6 +13483,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (controls.sst_runtime)
                     for (std::size_t cell=0;cell<mesh.n_cells();++cell)
                         mu_eff[cell]=controls.density*(
+                            controls.kinematic_viscosity+
                             controls.sst_runtime->state->nu_t(cell));
                 convergence_monitor = convergence_monitor_snapshot;
                 result.history.resize(result_history_size);
@@ -13492,6 +13524,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw;
             }
             // Restart observers must never serialize U,p before commit, nor
+            // reconstruct phi from U on a collocated grid. Keep I/O outside the
             // rollback try/catch: a failed write is not a nonlinear retry.
             if (iteration_completed && controls.accepted_iteration_callback)
                 controls.accepted_iteration_callback(
