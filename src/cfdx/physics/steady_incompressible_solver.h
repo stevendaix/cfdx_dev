@@ -61,10 +61,22 @@
 #include "cfdx/physics/outer_field_period_v43.h"
 #include "cfdx/physics/coupled_outer_step_v43.h"
 #include "cfdx/physics/coupled_phase_escape_v45.h"
+#include "cfdx/physics/coupled_composite_backtracking_v47.h"
+#include "cfdx/physics/coupled_zero_step_flux_v47.h"
+#include "cfdx/physics/coupled_flux_homotopy_v48.h"
+#include "cfdx/physics/state_only_rhie_chow_v49.h"
+#include "cfdx/physics/state_only_six_residual_v50.h"
+#include "cfdx/physics/physical_six_candidate_v51.h"
+#include "cfdx/physics/physical_chain_tangent_v57.h"
+#include "cfdx/physics/convective_face_audit_v56.h"
+#include "cfdx/physics/convective_branch_oracle_v58.h"
+#include "cfdx/physics/frozen_sou_active_set_v59.h"
+#include "cfdx/physics/global_physical_newton_v52.h"
+#include "cfdx/physics/global_sst_block_v53.h"
+#include "cfdx/physics/jv_fidelity_v53.h"
 #include "cfdx/physics/post_sst_momentum_hotspot_v45.h"
 #include "cfdx/physics/post_sst_face_forensics_v46.h"
 #include "cfdx/physics/coupled_full_period_v44.h"
-#include "cfdx/physics/coupled_linear_retry_policy_v37.h"
 #include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
@@ -392,10 +404,17 @@ struct IncompressibleSolverControls {
     // Zero disables; default equations, physical criteria and Schur untouched.
     double coupled_period_four_damping_v45_experimental = 0.0;
     std::size_t coupled_period_four_damping_steps_v45 = 12;
+    // V47: optional backtracking on a COUPLED U,p direction, with SST
+    // re-equilibrated at each beta. V13/V14 accept the fully reassembled
+    // state; V47 has its own retry budget rather than alpha_u's floor.
+    bool coupled_composite_backtracking_v47_experimental = false;
+    // Opt-in only: continue the RC inverse momentum diagonal with the
+    // COUPLED trial beta. The previous flux and rAU are committed together.
+    bool coupled_flux_homotopy_v48_experimental = false;
+    std::size_t coupled_composite_backtracking_retries_v47 = 10;
     // V31: one CFL for momentum and SST, updated ONLY on committed full
     // U,p,k,omega physical residuals. Pressure remains algebraic.
     bool outer_ptc_v31_experimental = false;
-    // V32: cap *both* momentum and SST pseudo masses by a relative FV
     // diagonal budget; failed retries reduce only the unpublished trial.
     bool outer_ptc_balance_v32_experimental = false;
     // Separate controlled A/B: share CFL and the accepted outer ledger,
@@ -990,10 +1009,38 @@ inline void validate_incompressible_controls(
     validate_coupled_phase_escape_v45(
         c.coupled_period_four_damping_v45_experimental,
         c.coupled_period_four_damping_steps_v45);
+    validate_coupled_flux_homotopy_v48(
+        c.coupled_flux_homotopy_v48_experimental,
+        c.coupled_composite_backtracking_v47_experimental);
+    if (c.coupled_flux_homotopy_v48_experimental &&
+        c.initialization.mode == InitializationMode::Restart)
+        throw std::invalid_argument(
+            "V48 flux homotopy requires a fresh start: restart rAU not yet checkpointed");
+    if (c.coupled_composite_backtracking_v47_experimental) {
+        validate_coupled_composite_backtracking_v47(
+            c.coupled_composite_backtracking_retries_v47,
+            c.nonlinear_retry.relaxation_shrink);
+        if (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+            c.transient.enabled || !c.sst_runtime ||
+            !c.require_post_sst_momentum_reassembly ||
+            !c.require_global_nonlinear_certificate_v8 ||
+            !c.joint_globalization_v13_experimental ||
+            !c.monotone_global_merit_v14_experimental ||
+            c.coupled_outer_step_v43_experimental != 0.0 ||
+            c.coupled_period_four_mean_v43_experimental ||
+            c.coupled_period_four_full_state_v44_experimental ||
+            c.coupled_period_four_damping_v45_experimental != 0.0 ||
+            c.pressure_high_low_production ||
+            c.initial_face_mass_flux_from_paired_checkpoint ||
+            c.outer_ptc_v31_experimental || c.pseudo_momentum.enabled ||
+            c.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF)
+            throw std::invalid_argument(
+                "V47 requires steady COUPLED/SST, V7/V8/V13/V14 and excludes "
+                "other predictors, pseudo-time, multisecant and paired pressure");
+    }
     if (c.coupled_period_four_damping_v45_experimental > 0.0 &&
         !c.coupled_period_four_full_state_v44_experimental)
         throw std::invalid_argument(
-            "V45 cycle-escape continuation requires V44 coherent full-state predictor");
     if (!std::isfinite(c.coupled_outer_step_v43_experimental) ||
         c.coupled_outer_step_v43_experimental < 0.0 ||
         c.coupled_outer_step_v43_experimental > 1.0)
@@ -1153,11 +1200,9 @@ inline void validate_incompressible_controls(
     if (c.require_post_sst_momentum_reassembly && !c.sst_runtime)
         throw std::invalid_argument(
             "post-SST momentum reassembly requires an SST production runtime");
-
     if (c.sst_runtime) {
         if (!c.sst_runtime->state)
             throw std::invalid_argument("SST production runtime requires an initialized state");
-        if (c.sst_runtime->transport.model != TurbulenceModel::SST)
             throw std::invalid_argument("SST production runtime requires SST transport controls");
         if (c.sst_runtime->transport.density != c.density ||
             c.sst_runtime->transport.molecular_viscosity != c.kinematic_viscosity)
@@ -2385,11 +2430,9 @@ gauss_gradient_pressure_high_low(
                         vf+=it->second.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
                     }
                 }
-
             }
             sum[0]+=static_cast<long double>(Sf.x)*vf;
             sum[1]+=static_cast<long double>(Sf.y)*vf;
-            sum[2]+=static_cast<long double>(Sf.z)*vf;
         }
         for(std::size_t d=0;d<3;++d) {
             const long double v=sum[d]/geometry.cell_volumes[c];
@@ -3663,11 +3706,9 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
             const auto kind = mesh.boundary().patch(patch_index).type;
             if (kind == PatchType::WALL || kind == PatchType::EMPTY ||
                 kind == PatchType::SYMMETRY || kind == PatchType::PERIODIC ||
-
                 kind == PatchType::INTERFACE) continue;
             inflow_conditions.specified[face] = 1;
             inflow_conditions.conditions[face] = {
-                ScalarBoundaryFaceCondition::Type::FIXED_VALUE, 0.0};
         }
     }
     const auto* auxiliary_face_bcs = pressure_space_inflow_dirichlet
@@ -3833,11 +3874,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     double momentum_under_relaxation,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
-    cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
+    cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr,
+    // V52 only: hand off the already-configured, successful native Schur
+    // action for a bounded private nonlinear trial. The default is null.
+    std::unique_ptr<cfdx::core::Preconditioner>* v52_native_preconditioner = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
-    const std::size_t nv = 3 * nc;
     const std::size_t np = nc;
     const std::size_t n = nv + np;
 
@@ -4846,11 +4889,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 std::make_unique<PcdFpBiNullspaceV13>(
                     basis_by_directory
                         ? load_pcd_fp_basis_registry_v15(
-
                             controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental,
                             pcd_ops->convection_diffusion)
                         : load_pcd_fp_bisided_basis_v13(
-                            controls.coupling.pcd_fp_bisided_basis_file_experimental,
                             pcd_ops->convection_diffusion));
             std::cerr << "COUPLED_PCD_BILATERAL_V14 modes="
                       << pcd_ops->convection_diffusion_bisided->left.size()
@@ -5821,10 +5862,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " flux_cell=" << flux_cell
                   << " flux_divergence_linf=" << flux_linf << "\n";
     }
+    if (v52_native_preconditioner &&
+        !allow_v42_blocklocal_recovery && !allow_v16_ilut_recovery &&
+        result.status == SolverStatus::CONVERGED) {
+        // Transfer ONLY the successful native 4N preconditioner, not A,b,x0
+        // or any captured reference. Setup owns the AMG/Schur operators.
+        *v52_native_preconditioner=std::move(coupled_preconditioner);
+    }
     return result;
 }
 
-inline IncompressibleSolveResult solve_steady_incompressible(
     const cfdx::core::Mesh& mesh,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
@@ -5842,10 +5889,75 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Validate all controls and derived material properties before initialization
     // can mutate the caller-provided solution fields.
     validate_incompressible_controls(controls, mesh.n_cells());
+    // V51 diagnostic must never silently disappear when the caller requested
+    // a full candidate-state residual or one of its directional probes.
+    const auto opt_in_v51=[](const char* name) {
+        const char* value=std::getenv(name);
+        return value && std::string(value)=="1";
+    };
+    const bool v51_requested=opt_in_v51("CFDX_FPHYS_CANDIDATE_V51");
+    if ((opt_in_v51("CFDX_FPHYS_JV_V51") ||
+         opt_in_v51("CFDX_FPHYS_CROSS_V51") ||
+         opt_in_v51("CFDX_FPHYS_JFNK_V52") ||
+         opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP") ||
+         opt_in_v51("CFDX_FPHYS_JFNK_V53_BLOCK") ||
+         opt_in_v51("CFDX_FPHYS_JV_AUDIT_V53")) && !v51_requested)
+        throw std::invalid_argument(
+            "V51 directional diagnostics require CFDX_FPHYS_CANDIDATE_V51=1");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP") &&
+        !opt_in_v51("CFDX_FPHYS_JFNK_V52"))
+        throw std::invalid_argument(
+            "V52 frozen common-state comparison requires V52 JFNK opt-in");
+    if ((opt_in_v51("CFDX_FPHYS_JFNK_V53_CENTRAL") ||
+         std::getenv("CFDX_FPHYS_JFNK_V53_COMPOSITION")) &&
+        !opt_in_v51("CFDX_FPHYS_JFNK_V53_BLOCK"))
+        throw std::invalid_argument("V53 central Jv or composition requires global block opt-in");
+    // Krylov face-audit requires the exact hybrid derivative and the true
+    // per-direction residual check; it cannot certify Newton by itself.
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V58_SYMMETRIC_SOU") &&
+        (!opt_in_v51("CFDX_FPHYS_JFNK_V57_HYBRID") ||
+         !opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH")))
+        throw std::invalid_argument(
+            "V58 symmetric SOU generalized step requires hybrid+truth");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V59_FROZEN_SOU") &&
+        (!opt_in_v51("CFDX_FPHYS_JFNK_V57_HYBRID") ||
+         !opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH") ||
+         opt_in_v51("CFDX_FPHYS_JFNK_V58_SYMMETRIC_SOU")))
+        throw std::invalid_argument(
+            "V59 frozen SOU needs hybrid+truth and excludes V58 symmetric ties");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V58_FACE_AUDIT") &&
+        (!opt_in_v51("CFDX_FPHYS_JFNK_V57_HYBRID") ||
+         !opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH")))
+        throw std::invalid_argument(
+            "V58 Krylov face audit needs V57 hybrid+truth");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V60_REMAINDER_AUDIT") &&
+        (!opt_in_v51("CFDX_FPHYS_JFNK_V57_HYBRID") ||
+         !opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH")))
+        throw std::invalid_argument(
+            "V60 remainder audit requires native hybrid Jv and Krylov truth");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V57_HYBRID") &&
+        !opt_in_v51("CFDX_FPHYS_JFNK_V52"))
+        throw std::invalid_argument("V57 hybrid tangent requires private V52 JFNK");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH") &&
+        !opt_in_v51("CFDX_FPHYS_JFNK_V52"))
+        throw std::invalid_argument("V57 per-Krylov truth audit requires private V52 JFNK");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V53_BLOCK") &&
+        !opt_in_v51("CFDX_FPHYS_JFNK_V52"))
+        throw std::invalid_argument("V53 global preconditioner requires V52 JFNK");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V53_BLOCK") &&
+        opt_in_v51("CFDX_FPHYS_JFNK_V52_SST_2X2"))
+        throw std::invalid_argument("V53 global SST and V52 row-sum SST probes are exclusive");
+    if (v51_requested && (!controls.sst_runtime ||
+        !controls.require_post_sst_momentum_reassembly ||
+        !controls.require_global_nonlinear_certificate_v8 ||
+        controls.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+        controls.transient.enabled || controls.pressure_high_low_production ||
+        controls.pseudo_momentum.enabled))
+        throw std::invalid_argument(
+            "V51 candidate residual requires steady COUPLED SST with V7/V8 and native pressure");
     // Do not let a phantom fixed-pressure BC suppress the pressure gauge.
     // Validate this before Uniform/Restart initialization changes U or p.
     const bool has_fixed_pressure_boundary =
-        has_effective_fixed_pressure_boundary(mesh, pressure_bcs);
     // Validate the caller-owned SST bundle before initialization can mutate
     // the carrier fields. Derived SST quantities must be refreshed only after
     // initialization/restart has established the actual velocity field.
@@ -6004,11 +6116,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             : (controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP
                 ? static_cast<std::size_t>(controls.coupling.n_fractional_steps)
                 : 1u);
-
     const std::size_t minimum_outer_correctors =
         controls.algorithm == PressureVelocityAlgorithm::PIMPLE
             ? static_cast<std::size_t>(controls.coupling.n_outer_correctors)
-            : 1u;
 
     IncompressibleSolveResult result;
     result.reference_momentum_residual = controls.initial_momentum_residual_reference;
@@ -6270,10 +6380,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
     GlobalNonlinearContractionLedgerV14 committed_global_merit_v14;
     CoupledPhaseEscapeLedgerV45 coupled_phase_escape_v45;
+    CoupledInverseMomentumDiagonalV48 committed_rAU_v48;
+    bool committed_rAU_valid_v48 = false;
     const bool v43_field_probe_enabled = controls.sst_runtime &&
         (controls.coupled_period_four_mean_v43_experimental ||
          controls.coupled_period_four_full_state_v44_experimental ||
-         (std::getenv("CFDX_OUTER_FIELDS_V43") &&
           std::string(std::getenv("CFDX_OUTER_FIELDS_V43"))=="1"));
     std::unique_ptr<OuterFieldPeriodProbeV43> v43_field_probe;
     if (v43_field_probe_enabled)
@@ -6326,19 +6437,46 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t last_committed_cell_iteration = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        // The V52 frozen-common-state comparison captures the 6N iterate
+        // BEFORE any of the six 4N coupled solvers changes U/p/SST. This
+        // captures the identical HDF5-initialized candidate for every Schur
+        // choice; it is read-only, never a production starting-state override.
+        const auto v52_shared_pre_solve_state=[&]() -> std::optional<PhysicalCandidateV51> {
+            if (!(v51_requested && opt_in_v51("CFDX_FPHYS_JFNK_V52") &&
+                  opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP")))
+                return std::nullopt;
+            PhysicalCandidateV51 capture;
+            capture.cells=mesh.n_cells();
+            capture.fields.resize(6*capture.cells);
+            const auto& sst=*controls.sst_runtime->state;
+            for(std::size_t i=0;i<capture.cells;++i) {
+                for(std::size_t d=0;d<3;++d)
+                    capture.fields[d*capture.cells+i]=U.component_data(d)[i];
+                capture.fields[3*capture.cells+i]=p(i);
+                capture.fields[4*capture.cells+i]=sst.k(i);
+                capture.fields[5*capture.cells+i]=sst.omega(i);
+            }
+            validate_physical_candidate_v51(capture,
+                controls.sst_runtime->transport.k_min,
+                controls.sst_runtime->transport.omega_min);
+            return capture;
+        }();
         const double outer_high_order_fraction =
             convection_high_order_fraction(controls.convection_continuation, iter);
         const bool full_order_eligible =
-            convection_full_order_eligible(controls.convection_continuation, iter);
         const bool same_convection_operator_as_previous =
             convection_residuals_share_operator(
                 controls.convection_continuation, iter);
         bool stop_after_iteration = false;
-        NonlinearRetryController retry_controller(controls.nonlinear_retry);
+        auto nonlinear_retry_controls = controls.nonlinear_retry;
+        if (controls.coupled_composite_backtracking_v47_experimental)
+            nonlinear_retry_controls.max_retries =
+                controls.coupled_composite_backtracking_retries_v47;
+        NonlinearRetryController retry_controller(nonlinear_retry_controls);
+        CoupledCompositeSearchV47 composite_search_v47;
         NonlinearStateRollback transaction(U, p);
         const auto mass_flux_snapshot = mass_flux;
         const Vector pressure_low_snapshot=pressure_low_state;
-        bool iteration_completed = false;
         // A rejected multisecant predictor gets exactly one ordinary Picard
         // retry at UNCHANGED alpha_u/alpha_p. Reset the multisecant history;
         // a rejected prediction must not seed the next nonlinear proposal.
@@ -6349,10 +6487,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // transaction commits.
             stop_after_iteration = false;
             transaction.begin();
+            // A rejected trial must never publish an inverse momentum
+            // diagonal belonging to an uncommitted Rhie-Chow flux.
+            std::optional<CoupledInverseMomentumDiagonalV48> pending_rAU_v48;
+            // V50 only: a rejected candidate cannot publish a committed
+            // physical residual fingerprint. Recreated for every retry.
+            std::optional<NativeSixFieldResidualV50> pending_native_six_v50;
+            double pending_native_flux_gap_v50=
+                std::numeric_limits<double>::infinity();
             std::optional<MomentumSameStateTrace> pending_same_state_trace;
             std::optional<MomentumPicardTvdTrace> pending_picard_tvd_trace;
             std::array<std::vector<double>,3> pending_effective_tvd_deferred;
-            std::array<std::vector<double>,3> pending_raw_tvd_deferred;
             std::array<std::vector<double>,3> pending_tvd_input_velocity;
             std::array<double,3> pending_memory_source_linf{0.0,0.0,0.0};
             std::array<std::optional<MomentumLinearRelaxationEvidence>,3>
@@ -6907,10 +7052,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.coupled_period_four_damping_v45_experimental,
             controls.coupled_period_four_damping_steps_v45,
             retry_controller.alpha_u(1.0));
+        std::unique_ptr<cfdx::core::Preconditioner> v52_native_preconditioner;
         bool rhie_chow_identity_evaluated = false;
         double rhie_chow_identity_audit_linf = 0.0;
         double simplec_plain_rau_gap = 0.0;
-        std::size_t simplec_plain_rau_worst = 0;
         // V20 diagnostic-only reference for the V19 split pressure state.
         std::optional<Field<double,Location::FACE>> v20_relaxed_pressure_flux;
 
@@ -6933,11 +7078,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupled_linear_solver,
                 controls,
                 retry_controller.alpha_u(effective_alpha_u),
-                U, p, &result.coupled_linear_plan);
+                U, p, &result.coupled_linear_plan,
+                (v51_requested && opt_in_v51("CFDX_FPHYS_JFNK_V52"))
+                    ? &v52_native_preconditioner : nullptr);
             result.coupled_linear_plan_resolved = true;
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
-                          << " phase=COUPLED_LINEAR_END status="
                           << static_cast<int>(coupled_result.status)
                           << " iterations=" << coupled_result.iterations
                           << " true_relative=" << coupled_result.residual_relative
@@ -7090,11 +7236,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_BREAKDOWN"
                           << " cell=" << candidate_continuity_cell
-
                           << " velocity_interpolation_div=" << velocity_flux_div
                           << " pressure_orthogonal_div=" << pressure_orth_div
                           << " pressure_nonorthogonal_div=" << pressure_nonorth_div
-                          << " physical_velocity_compensation_div=" << physical_velocity_compensation_div
                           << " sum=" << (velocity_flux_div + pressure_orth_div +
                                          pressure_nonorth_div + physical_velocity_compensation_div)
                           << " authoritative_div=" << candidate_continuity_signed
@@ -7119,13 +7263,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // this very U,p candidate and the current frozen momentum
             // diagonals. It is audited by the existing physical gates.
             if (controls.coupled_outer_step_v43_experimental > 0.0 ||
-                phase_escape_trial_v45.active) {
-                coupled_outer_step_applied_v43=phase_escape_trial_v45.active ?
-                    phase_escape_trial_v45.beta : coupled_outer_beta_v43(
+                phase_escape_trial_v45.active ||
+                controls.coupled_composite_backtracking_v47_experimental) {
+                coupled_outer_step_applied_v43=
+                    controls.coupled_composite_backtracking_v47_experimental
+                    ? composite_search_v47.trial_beta(
+                        retry_controller.retries(),
+                        controls.nonlinear_retry.relaxation_shrink)
+                    : phase_escape_trial_v45.active
+                    ? phase_escape_trial_v45.beta : coupled_outer_beta_v43(
                         controls.coupled_outer_step_v43_experimental,
                         retry_controller.alpha_u(1.0));
                 for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
-                    for (std::size_t component=0;component<3;++component) {
                         const double previous=U_old.component_data(component)[cell];
                         const double candidate=U.component_data(component)[cell];
                         U.component_data(component)[cell]=coupled_outer_blend_v43(
@@ -7134,20 +7283,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     p(cell)=coupled_outer_blend_v43(
                         p_old(cell),p(cell),coupled_outer_step_applied_v43);
                 }
+                if (controls.diagnostics.iteration_trace &&
+                    controls.coupled_composite_backtracking_v47_experimental)
+                    std::cerr<<"COUPLED_COMPOSITE_TRIAL_V47 iteration="<<iter
+                             <<" retry="<<retry_controller.retries()
+                             <<" beta="<<coupled_outer_step_applied_v43
+                             <<" search_kind="<<(
+                                 retry_controller.retries()==3 &&
+                                 std::abs(coupled_outer_step_applied_v43-
+                                     coupled_composite_beta_v47(3,controls.nonlinear_retry.relaxation_shrink))>1e-13
+                                 ? "quadratic" : "geometric")
+                             <<" carrier_linear_candidate_certified=1"
+                             <<" damped_linear_solution_certified=0"
+                             <<" flux_rederived=1 sst_transport_pending=1"
+                             <<" physical_qualified=0 committed=0\n";
                 if (controls.diagnostics.iteration_trace && phase_escape_trial_v45.active)
                     std::cerr<<"COUPLED_PHASE_ESCAPE_V45 iteration="<<iter
                              <<" retry="<<retry_controller.retries()
-                             <<" triggered="<<(phase_escape_trial_v45.triggered?1:0)
                              <<" remaining="<<phase_escape_trial_v45.remaining_including_this
                              <<" beta="<<coupled_outer_step_applied_v43
                              <<" linear_candidate_certified=1"
                              <<" updated_linear_solution_certified=0"
                              <<" physical_qualified=0\n";
-                if (controls.diagnostics.iteration_trace && !phase_escape_trial_v45.active)
+                if (controls.diagnostics.iteration_trace && !phase_escape_trial_v45.active &&
+                    !controls.coupled_composite_backtracking_v47_experimental)
                     std::cerr<<"COUPLED_CARRIER_STEP_V43 iteration="<<iter
                              <<" retry="<<retry_controller.retries()
                              <<" beta="<<coupled_outer_step_applied_v43
-                             <<" linear_candidate_certified=1"
                              <<" updated_linear_solution_certified=0"
                              <<" flux_rederived_from_trial_state=1"
                              <<" physical_qualified=0\n";
@@ -7189,14 +7351,99 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
                 coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
             }
+            if (controls.coupled_composite_backtracking_v47_experimental &&
+                retry_controller.retries()==0 && iter>1) {
+                // Evaluate the PREVIOUS accepted U,p fields under this
+                // iteration's newly assembled rAU, without changing phi.
+                // Compare to the previous COMMITTED authoritative flux.
+                // This audit can expose a nonzero step-zero jump in the
+                // continuity residual, which prevents a standard Armijo
+                // argument with the old Picard residual as baseline.
+                const auto phi_zero = make_rhie_chow_flux_from_physical_velocity(
+                    mesh,geometry,U_old,p_old,coupled_rAU,
+                    controls.density,velocity_bcs,pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
+                const auto zero = audit_coupled_zero_step_flux_v47(
+                    mesh.n_cells(),mesh.n_faces(),
+                    [&](std::size_t f){return mesh.ownership().owner(f);},
+                    [&](std::size_t f){return mesh.ownership().neighbour(f);},
+                    [&](std::size_t f){return mass_flux_snapshot(f);},
+                    [&](std::size_t f){return phi_zero(f);});
+                std::cerr<<std::scientific<<std::setprecision(12)
+                         <<"COUPLED_ZERO_STEP_FLUX_V47 iteration="<<iter
+                         <<" previous_continuity="<<zero.previous_continuity
+                         <<" zero_step_continuity="<<zero.current_diagonal_zero_step_continuity
+                         <<" divergence_jump="<<zero.divergence_jump_l1
+                         <<" face_flux_change="<<zero.relative_face_flux_change
+                         <<" max_face_change="<<zero.maximum_face_flux_change
+                         <<" worst_cell="<<zero.worst_cell
+                         <<" previous_flux_untouched=1 committed=0 qualified=0\n";
+            }
+            std::optional<CoupledInverseMomentumDiagonalV48> native_rAU_v48;
+            if (controls.coupled_flux_homotopy_v48_experimental) {
+                // Check the predecessor operator identity BEFORE its rAU is
+                // overwritten. This is stronger than blending phi itself:
+                // every continuation flux is recomputed from U(beta), p(beta)
+                // and a positive rAU(beta) using the production RC operator.
+                if (committed_rAU_valid_v48) {
+                    const auto previous_rederived =
+                        make_rhie_chow_flux_from_physical_velocity(
+                            mesh, geometry, U_old, p_old, committed_rAU_v48,
+                            controls.density, velocity_bcs, pressure_bcs,
+                            controls.pressure_skew_corrected_gradient);
+                    const auto identity=check_coupled_flux_identity_v48(
+                        mesh.n_faces(),
+                        [&](std::size_t f){return mass_flux_snapshot(f);},
+                        [&](std::size_t f){return previous_rederived(f);});
+                    if (identity.relative_l1>1e-10 ||
+                        identity.absolute_linf >
+                            1e-12*std::max(identity.reference_linf,1e-12))
+                        throw NonlinearRetryableFailure(
+                            "V48 committed flux/rAU identity lost: reject trial");
+                    if (coupled_outer_step_applied_v43 != 1.0)
+                        native_rAU_v48=coupled_rAU;
+                    coupled_rAU=blend_inverse_momentum_v48(
+                        committed_rAU_v48,coupled_rAU,
+                        coupled_outer_step_applied_v43);
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr<<"COUPLED_RAU_HOMOTOPY_V48 iteration="<<iter
+                                 <<" retry="<<retry_controller.retries()
+                                 <<" beta="<<coupled_outer_step_applied_v43
+                                 <<" previous_identity_l1="<<identity.relative_l1
+                                 <<" previous_identity_linf="<<identity.absolute_linf
+                                 <<" effective_rAU_rederived=1"
+                                 <<" exact_physical_residual_oracle=0"
+                                 <<" committed=0 qualified=0\n";
+                }
+                pending_rAU_v48=coupled_rAU;
+            }
             mass_flux = make_rhie_chow_flux_from_physical_velocity(
                 mesh, geometry, U, p, coupled_rAU,
                 controls.density, velocity_bcs, pressure_bcs,
                     controls.pressure_skew_corrected_gradient);
+            if (native_rAU_v48 && controls.diagnostics.iteration_trace) {
+                // Independent diagnostic: the homotopy is NOT the native
+                // momentum diagonal at beta<1. Expose the difference rather
+                // than presenting the continuation state as a state-only F(X).
+                const auto native_flux=make_rhie_chow_flux_from_physical_velocity(
+                    mesh,geometry,U,p,*native_rAU_v48,
+                    controls.density,velocity_bcs,pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
+                const auto delta=check_coupled_flux_identity_v48(
+                    mesh.n_faces(),
+                    [&](std::size_t f){return mass_flux(f);},
+                    [&](std::size_t f){return native_flux(f);});
+                std::cerr<<"COUPLED_NATIVE_FLUX_GAP_V48 iteration="<<iter
+                         <<" retry="<<retry_controller.retries()
+                         <<" beta="<<coupled_outer_step_applied_v43
+                         <<" relative_l1="<<delta.relative_l1
+                         <<" absolute_linf="<<delta.absolute_linf
+                         <<" worst_face="<<delta.worst_face
+                         <<" native_operator_qualified=0 committed=0\n";
+            }
 
             // Operator identity audit: re-derive the authoritative flux from
             // the same state through the same production call and compare
-            // against the stored field. Zero unless the stored flux was
             // mutated after the rebuild.
             {
                 const auto rederived_flux = make_rhie_chow_flux_from_physical_velocity(
@@ -8178,11 +8425,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     mm << mat.n_rows() << " " << mat.n_cols() << " " << mat.nnz() << "\n";
                     mm << std::setprecision(17);
                     bb << std::setprecision(17);
-
                     const auto* offsets = mat.row_offsets_data();
                     const auto* columns = mat.columns_data();
                     const auto* values = mat.values_data();
-                    for (std::size_t row = 0; row < mat.n_rows(); ++row) {
                         bb << rhs(row) << "\n";
                         for (std::uint32_t k = offsets[row]; k < offsets[row+1]; ++k)
                             mm << row + 1 << " " << columns[k] + 1
@@ -9208,11 +9453,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // from the conservative flux as the residual state.
         Field<double, Location::CELL> final_ux_field(mesh.n_cells(), "Ux_final", "m/s", 1);
         Field<double, Location::CELL> final_uy_field(mesh.n_cells(), "Uy_final", "m/s", 1);
-
         Field<double, Location::CELL> final_uz_field(mesh.n_cells(), "Uz_final", "m/s", 1);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             final_ux_field(c) = U.component_data(0)[c];
-            final_uy_field(c) = U.component_data(1)[c];
             final_uz_field(c) = U.component_data(2)[c];
         }
         auto final_grad_p = controls.pressure_high_low_production
@@ -10259,11 +10502,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             if (sst_step.provisional)
                 std::cerr << "SST_PROVISIONAL_OUTER iteration=" << iter
-
                           << " inner_iterations=" << sst_step.transport.iterations
                           << " k_candidate_residual=" << sst_step.transport.k_residual
                           << " omega_candidate_residual=" << sst_step.transport.second_residual
-                          << " qualified=0\n";
             // Turbulence convergence is an additional gate; it never relaxes
             // the existing carrier residual, continuity, or QoI criteria.
             if (!std::isfinite(sst_step.transport.k_residual) ||
@@ -10343,10 +10584,1396 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     final_face_velocity_conditions
                         ? &(*final_face_velocity_conditions)[2] : nullptr,
                     post_wall_face_mu_v17);
+                // V49 read-only oracle: close the *native* RC flux/diagonal
+                // relationship at fixed U,p,k,omega, independent of the last
+                // accepted phi and the V48 continuation coefficient. This is
+                // intentionally diagnostic until a fully state-only six-field
+                // nonlinear evaluator and its Jv are independently qualified.
+                const char* native_rc_probe_v49=std::getenv("CFDX_NATIVE_RC_ORACLE_V49");
+                const char* native_six_probe_v50=std::getenv("CFDX_NATIVE_SIX_VECTOR_V50");
+                const char* native_final_flag_v50=std::getenv(
+                    "CFDX_NATIVE_SIX_FINAL_GATE_V50");
+                const bool native_final_gate_v50=native_final_flag_v50 &&
+                    std::string(native_final_flag_v50)=="1";
+                const bool audit_six_v50=(native_six_probe_v50 &&
+                    std::string(native_six_probe_v50)=="1") || native_final_gate_v50;
+                // V50 always reuses the V49 fixed point: there must never be
+                // separate candidate face fluxes for the six residual blocks.
+                if ((native_rc_probe_v49 && std::string(native_rc_probe_v49)=="1") ||
+                    audit_six_v50) {
+                    try {
+                        if (controls.transient.enabled ||
+                            controls.algorithm != PressureVelocityAlgorithm::COUPLED)
+                            throw std::invalid_argument(
+                                "V49 oracle supports steady COUPLED only");
+                        // The deterministic seed is constructed ONLY from the
+                        // trial physical velocity and immutable boundary data.
+                        // In particular, do NOT seed with mass_flux_snapshot or
+                        // with the current homotopy flux.
+                        const auto initial_phi=make_mass_flux(
+                            mesh,geometry,U,controls.density,velocity_bcs,
+                            pressure_bcs,controls.pressure_projected_face_interpolation);
+                        std::vector<double> seed(mesh.n_faces());
+                        for (std::size_t f=0;f<mesh.n_faces();++f)
+                            seed[f]=initial_phi(f);
+                        const auto field_from_vector=[&](const std::vector<double>& values) {
+                            cfdx::core::Field<double,cfdx::core::Location::FACE>
+                                field(mesh.n_faces(),"native_phi_v49","kg/s",1);
+                            if (values.size()!=mesh.n_faces())
+                                throw std::invalid_argument("V49 flux size mismatch");
+                            for (std::size_t f=0;f<mesh.n_faces();++f)
+                                field(f)=values[f];
+                            return field;
+                        };
+                        const auto assemble_native=[&](const std::vector<double>& trial_phi) {
+                            const auto flux=field_from_vector(trial_phi);
+                            const auto dynamic_faces=mixed_velocity_faces(flux);
+                            const std::array<const ScalarBoundaryConditions*,3> bcs{
+                                &ubc_x,&ubc_y,&ubc_z};
+                            const std::array<const cfdx::core::Field<double,
+                                cfdx::core::Location::CELL>*,3> velocity{
+                                &final_ux_field,&final_uy_field,&final_uz_field};
+                            const std::array<const cfdx::core::Field<double,
+                                cfdx::core::Location::CELL>*,3> forces{
+                                &post_body_x,&post_body_y,&post_body_z};
+                            std::array<std::vector<double>,3> native_inverse;
+                            for (std::size_t d=0;d<3;++d) {
+                                const auto eq=assemble_momentum_component(
+                                    mesh,geometry,flux,final_grad_p,*forces[d],trial_mu,
+                                    *bcs[d],d,controls.use_bounded_convection,
+                                    controls.convection_scheme,velocity[d],nullptr,
+                                    sst_molecular_wall_mu,outer_high_order_fraction,
+                                    dynamic_faces ? &(*dynamic_faces)[d] : nullptr,
+                                    post_wall_face_mu_v17);
+                                native_inverse[d].resize(mesh.n_cells());
+                                for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                                    const double ap=eq.diagonal[cell];
+                                    if (!(ap>0.) || !std::isfinite(ap))
+                                        throw std::invalid_argument(
+                                            "V49 native momentum diagonal invalid");
+                                    native_inverse[d][cell]=1.0/ap;
+                                }
+                            }
+                            return native_inverse;
+                        };
+                        const auto reconstruct_native=[&](
+                            const std::array<std::vector<double>,3>& rAU) {
+                            const auto flux=make_rhie_chow_flux_from_physical_velocity(
+                                mesh,geometry,U,p,rAU,controls.density,
+                                velocity_bcs,pressure_bcs,
+                                controls.pressure_skew_corrected_gradient);
+                            std::vector<double> values(mesh.n_faces());
+                            for (std::size_t f=0;f<mesh.n_faces();++f)
+                                values[f]=flux(f);
+                            return values;
+                        };
+                        const auto oracle=evaluate_state_only_rhie_chow_v49(
+                            seed,mesh.n_cells(),assemble_native,reconstruct_native,96);
+                        bool replay_checked_v49=false;
+                        if (const char* repeat=std::getenv("CFDX_NATIVE_RC_ORACLE_V49_REPEAT")) {
+                            if (std::string(repeat)=="1") {
+                                const auto duplicate=evaluate_state_only_rhie_chow_v49(
+                                    seed,mesh.n_cells(),assemble_native,reconstruct_native,96);
+                                replay_checked_v49=true;
+                                if (duplicate.converged!=oracle.converged ||
+                                    duplicate.iterations!=oracle.iterations ||
+                                    duplicate.relative_linf!=oracle.relative_linf ||
+                                    duplicate.flux!=oracle.flux ||
+                                    duplicate.inverse_diagonal!=oracle.inverse_diagonal)
+                                    throw std::runtime_error(
+                                        "V49 repeated native operator evaluation not identical");
+                            }
+                        }
+                        std::ostringstream v49;
+                        v49<<std::scientific<<std::setprecision(12)
+                           <<"NATIVE_RC_ORACLE_V49 iteration="<<iter
+                           <<" retry="<<retry_controller.retries()
+                           <<" closed="<<(oracle.converged?1:0)
+                           <<" fixed_point_iterations="<<oracle.iterations
+                           <<" fixed_point_defect="<<oracle.relative_linf
+                           <<" repeated_same_state="<<(replay_checked_v49?1:0);
+                        if (oracle.converged) {
+                            const auto native_flux=field_from_vector(oracle.flux);
+                            double max_abs_native_flux=0.;
+                            for (double face_flux : oracle.flux)
+                                max_abs_native_flux=std::max(max_abs_native_flux,
+                                    std::abs(face_flux));
+                            double l1_div=0.,l1_flux=0.;
+                            std::vector<double> divergence(mesh.n_cells(),0.);
+                            for (std::size_t f=0;f<mesh.n_faces();++f) {
+                                const double value=oracle.flux[f];
+                                divergence[mesh.ownership().owner(f)]+=value;
+                                const auto neighbor=mesh.ownership().neighbour(f);
+                                if (neighbor>=0)
+                                    divergence[static_cast<std::size_t>(neighbor)]-=value;
+                                l1_flux+=std::abs(value);
+                            }
+                            for (double value:divergence) l1_div+=std::abs(value);
+                            const auto native_gap=check_coupled_flux_identity_v48(
+                                mesh.n_faces(),
+                                [&](std::size_t f){return mass_flux(f);},
+                                [&](std::size_t f){return native_flux(f);});
+                            const auto native_face_bcs=mixed_velocity_faces(native_flux);
+                            const std::array<const ScalarBoundaryConditions*,3> native_bcs{
+                                &ubc_x,&ubc_y,&ubc_z};
+                            const std::array<const cfdx::core::Field<double,
+                                cfdx::core::Location::CELL>*,3> native_velocity_fields{
+                                &final_ux_field,&final_uy_field,&final_uz_field};
+                            const std::array<const cfdx::core::Field<double,
+                                cfdx::core::Location::CELL>*,3> native_body_fields{
+                                &post_body_x,&post_body_y,&post_body_z};
+                            const std::array<const cfdx::core::Vector*,3> native_velocity{
+                                &final_ux,&final_uy,&final_uz};
+                            std::array<double,3> native_rhs_scales{},native_residuals{};
+                            std::array<std::vector<double>,3> signed_momentum_v50;
+                            for (std::size_t d=0;d<3;++d) {
+                                const auto equation=assemble_momentum_component(
+                                    mesh,geometry,native_flux,final_grad_p,
+                                    *native_body_fields[d],trial_mu,*native_bcs[d],d,
+                                    controls.use_bounded_convection,
+                                    controls.convection_scheme,native_velocity_fields[d],
+                                    nullptr,sst_molecular_wall_mu,outer_high_order_fraction,
+                                    native_face_bcs ? &(*native_face_bcs)[d] : nullptr,
+                                    post_wall_face_mu_v17);
+                                native_rhs_scales[d]=1e-300;
+                                for (std::size_t cell=0;cell<mesh.n_cells();++cell)
+                                    native_rhs_scales[d]=std::max(native_rhs_scales[d],
+                                        std::abs(equation.rhs(cell)));
+                                native_residuals[d]=scalar_equation_residual_inf(
+                                    equation,*native_velocity[d]);
+                                if (audit_six_v50) {
+                                    signed_momentum_v50[d].resize(mesh.n_cells());
+                                    const auto* offsets=equation.matrix.row_offsets_data();
+                                    const auto* columns=equation.matrix.columns_data();
+                                    const auto* entries=equation.matrix.values_data();
+                                    for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+                                        long double signed_row=-static_cast<long double>(
+                                            equation.rhs(cell));
+                                        for (auto edge=offsets[cell];edge<offsets[cell+1];++edge) {
+                                            if (columns[edge]>=mesh.n_cells())
+                                                throw std::invalid_argument(
+                                                    "V50 invalid momentum FV column");
+                                            signed_row+=static_cast<long double>(entries[edge])*
+                                                static_cast<long double>((*native_velocity[d])(columns[edge]));
+                                        }
+                                        signed_momentum_v50[d][cell]=
+                                            static_cast<double>(signed_row);
+                                    }
+                                }
+                            }
+                            const auto native_momentum=certify_momentum_residual_components(
+                                native_residuals,native_rhs_scales,
+                                controls.convergence.relative_tolerance);
+                            const auto native_sst=sst_reassembled_returned_state_residual(
+                                mesh,geometry,native_flux,
+                                controls.sst_runtime->state->k,
+                                controls.sst_runtime->state->omega,
+                                controls.sst_runtime->state->strain_rate,
+                                controls.sst_runtime->state->wall_distance,
+                                controls.sst_runtime->transport,
+                                controls.sst_runtime->k_boundary_conditions,
+                                controls.sst_runtime->omega_boundary_conditions,
+                                post_wall_operator_v17
+                                    ? &post_wall_operator_v17->omega_faces
+                                    : &controls.sst_runtime->omega_face_values,
+                                post_wall_operator_v17
+                                    ? &post_wall_operator_v17->production : nullptr);
+                            // The V50 diagnostic stores the full signed
+                            // cellwise residual, in block order [Ux,Uy,Uz,p,k,w].
+                            // It uses the SAME already-certified native_flux
+                            // for every momentum/SST assembly and continuity.
+                            // It does not write a correction to U,p,phi or SST.
+                            if (audit_six_v50) {
+                                try {
+                                    const auto signed_sst=sst_coupled_residual_v22(
+                                        mesh,geometry,native_flux,
+                                        controls.sst_runtime->state->k,
+                                        controls.sst_runtime->state->omega,
+                                        controls.sst_runtime->state->strain_rate,
+                                        controls.sst_runtime->state->wall_distance,
+                                        controls.sst_runtime->transport,
+                                        controls.sst_runtime->k_boundary_conditions,
+                                        controls.sst_runtime->omega_boundary_conditions,
+                                        post_wall_operator_v17
+                                            ? &post_wall_operator_v17->omega_faces
+                                            : &controls.sst_runtime->omega_face_values,
+                                        post_wall_operator_v17
+                                            ? &post_wall_operator_v17->production : nullptr);
+                                    const auto native_six=make_native_six_residual_v50(
+                                        signed_momentum_v50,native_rhs_scales,
+                                        divergence,l1_flux,signed_sst.values,
+                                        signed_sst.row_norms,signed_sst.local_scales,true);
+                                    const double momentum_v50=native_six.momentum_active_merit;
+                                    const auto compare=[&](double lhs,double rhs) {
+                                        return std::isfinite(lhs) && std::isfinite(rhs) &&
+                                            std::abs(lhs-rhs)<=
+                                            1e-9*std::max({1.0,std::abs(lhs),std::abs(rhs)});
+                                    };
+                                    const bool parity=compare(momentum_v50,
+                                            native_momentum.max_active_component_relative) &&
+                                        compare(native_six.continuity_l1,
+                                            l1_div/std::max(l1_flux,1e-300)) &&
+                                        compare(native_six.linf[4],native_sst.k_local_relative) &&
+                                        compare(native_six.linf[5],native_sst.omega_local_relative);
+                                    if (!parity)
+                                        throw std::runtime_error(
+                                            "V50 same-flux signed-row and scalar oracle mismatch");
+                                    pending_native_six_v50=native_six;
+                                    pending_native_flux_gap_v50=native_gap.relative_l1;
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"NATIVE_SIX_VECTOR_V50 iteration="<<iter
+                                        <<" retry="<<retry_controller.retries()
+                                        <<" closed=1 cells="<<native_six.cells
+                                        <<" entries="<<native_six.normalized.size()
+                                        <<" U="<<momentum_v50
+                                        <<" continuity="<<native_six.continuity_l1
+                                        <<" k="<<native_six.linf[4]
+                                        <<" omega="<<native_six.linf[5]
+                                        <<" merit="<<native_six.merit
+                                        <<" worst_u="<<native_six.worst_cell[0]
+                                        <<" worst_v="<<native_six.worst_cell[1]
+                                        <<" worst_k="<<native_six.worst_cell[4]
+                                        <<" worst_omega="<<native_six.worst_cell[5]
+                                        <<" fingerprint="<<native_six.fingerprint
+                                        <<" parity=1 same_native_flux=1"
+                                        <<" experimental=1 committed=0 qualified=0\n";
+                                } catch (const std::exception& error) {
+                                    std::cerr<<"NATIVE_SIX_VECTOR_V50 iteration="<<iter
+                                        <<" retry="<<retry_controller.retries()
+                                        <<" closed=0 reason="<<error.what()
+                                        <<" experimental=1 committed=0 qualified=0\n";
+                                }
+                            }
+                            v49<<" native_flux_scale_linf="<<max_abs_native_flux
+                               <<" U="<<native_momentum.max_active_component_relative
+                               <<" continuity="<<(l1_div/std::max(l1_flux,1e-300))
+                               <<" k="<<native_sst.k_local_relative
+                               <<" omega="<<native_sst.omega_local_relative
+                               <<" carrier_flux_gap_l1="<<native_gap.relative_l1
+                               <<" carrier_flux_gap_linf="<<native_gap.absolute_linf
+                               <<" worst_face="<<native_gap.worst_face;
+                        }
+                        if (audit_six_v50 && !oracle.converged)
+                            std::cerr<<"NATIVE_SIX_VECTOR_V50 iteration="<<iter
+                                     <<" retry="<<retry_controller.retries()
+                                     <<" closed=0 reason=native_flux_not_closed"
+                                     <<" experimental=1 committed=0 qualified=0\n";
+                        v49<<" full_six_field_oracle_qualified=0"
+                           <<" physical_converged=0 committed=0 qualified=0";
+                        std::cerr<<v49.str()<<'\n';
+                    } catch (const std::exception& error) {
+                        // The forensic oracle never modifies the U/p/phi/SST
+                        // transaction or the production convergence gates.
+                        if (audit_six_v50)
+                            std::cerr<<"NATIVE_SIX_VECTOR_V50 iteration="<<iter
+                                     <<" retry="<<retry_controller.retries()
+                                     <<" closed=0 reason=native_oracle_failure"
+                                     <<" experimental=1 committed=0 qualified=0\n";
+                        std::cerr<<"NATIVE_RC_ORACLE_V49 iteration="<<iter
+                                 <<" retry="<<retry_controller.retries()
+                                 <<" closed=0 reason="<<error.what()
+                                 <<" full_six_field_oracle_qualified=0"
+                                 <<" physical_converged=0 committed=0 qualified=0\n";
+                    }
+                }
+                // V51 OFF-by-default: a separate, completely candidate-owned
+                // nonlinear six-field residual. Unlike V49/V50 it re-creates
+                // strain, SST viscosity, wall omega/G/nut, pressure gradient,
+                // viscous transpose force and RC coefficients for *each* X.
+                // This diagnostic NEVER changes an accepted state or a gate.
+                if (const char* v51_flag=std::getenv("CFDX_FPHYS_CANDIDATE_V51")) {
+                    if (std::string(v51_flag)=="1") {
+                        try {
+                            if (controls.transient.enabled ||
+                                controls.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+                                controls.pressure_high_low_production ||
+                                controls.pseudo_momentum.enabled ||
+                                outer_high_order_fraction!=1.0)
+                                throw std::invalid_argument(
+                                    "V51 requires steady full-order COUPLED without pressure high/low or pseudo-time");
+                            const std::size_t nc=mesh.n_cells(), nf=mesh.n_faces();
+                            auto& runtime=*controls.sst_runtime;
+                            const auto wall_dist=compute_mesh_cell_wall_distance(
+                                mesh,geometry,runtime.wall_patch_names);
+                            // In the non-V17 path wall omega is a pure geometry
+                            // formula. Recompute it here, NEVER copy a value
+                            // staged by a preceding SST transport iteration.
+                            const auto geometric_wall_faces=runtime.wall_omega_sst_patches.empty()
+                                ? ScalarBoundaryFaceValues{}
+                                : make_sst_wall_omega_face_values(
+                                    mesh,geometry,runtime.wall_omega_sst_patches,
+                                    runtime.transport);
+                            bool capture_stages_v57=false;
+                            bool capture_transport_v53=false;
+                            std::optional<std::pair<ScalarEquation,ScalarEquation>> transport_v53;
+                            const auto evaluator_v51=[&](const PhysicalCandidateV51& state) {
+                                validate_physical_candidate_v51(
+                                    state,runtime.transport.k_min,
+                                    runtime.transport.omega_min);
+                                Field<double,Location::CELL> cand_U(nc,"U_v51","m/s",3);
+                                Field<double,Location::CELL> cand_p(nc,"p_v51","Pa",1);
+                                SSTProductionState cand_sst(nc);
+                                for (std::size_t i=0;i<nc;++i) {
+                                    for (std::size_t d=0;d<3;++d)
+                                        cand_U.component_data(d)[i]=state.fields[d*nc+i];
+                                    cand_p(i)=state.fields[3*nc+i];
+                                    cand_sst.k(i)=state.fields[4*nc+i];
+                                    cand_sst.omega(i)=state.fields[5*nc+i];
+                                    cand_sst.wall_distance(i)=wall_dist.distance[i];
+                                }
+                                cand_sst.strain_rate=
+                                    compute_sst_strain_rate_with_boundary_values(
+                                        cand_U,mesh,fixed_velocity_values);
+                                Field<double,Location::CELL> F2(nc,"F2_v51","1",1);
+                                for (std::size_t i=0;i<nc;++i) {
+                                    F2(i)=compute_sst_blending(
+                                        cand_sst.k(i),cand_sst.omega(i),
+                                        cand_sst.wall_distance(i),
+                                        runtime.transport.molecular_viscosity,
+                                        runtime.transport.beta_star,0.0,
+                                        runtime.transport.density,
+                                        runtime.transport.sst_sigma_w2).second;
+                                }
+                                refresh_sst_production_eddy_viscosity(
+                                    cand_sst.k,cand_sst.omega,cand_sst.strain_rate,
+                                    F2,runtime.transport,cand_sst.nu_t);
+                                validate_sst_production_state(cand_sst,nc);
+                                std::optional<SSTWallOperatorV17> wall;
+                                if (runtime.active_openfoam_wall_operator_v17) {
+                                    const auto triplet=prepare_openfoam_wall_triplet_v15(
+                                        mesh,geometry,runtime.wall_omega_sst_patches,
+                                        cand_U,cand_sst,fixed_velocity_values,
+                                        runtime.transport,
+                                        runtime.omega_wall_corner_face_count_v19);
+                                    wall=make_sst_wall_operator_v17(
+                                        mesh,geometry,runtime.wall_omega_sst_patches,
+                                        triplet,runtime.transport,
+                                        runtime.omega_wall_owner_constraints_v18);
+                                }
+                                const auto* face_mu=wall ? &wall->momentum_face_mu : nullptr;
+                                const auto* wall_production=wall ? &wall->production : nullptr;
+                                const auto* omega_faces=wall
+                                    ? &wall->omega_faces
+                                    : (runtime.wall_omega_sst_patches.empty()
+                                        ? nullptr : &geometric_wall_faces);
+                                std::vector<double> mu(nc);
+                                for (std::size_t i=0;i<nc;++i) {
+                                    mu[i]=controls.density*(controls.kinematic_viscosity+
+                                        cand_sst.nu_t(i));
+                                    if (!(mu[i]>0.) || !std::isfinite(mu[i]))
+                                        throw std::domain_error("V51 invalid current-state viscosity");
+                                }
+                                const auto cand_grad_p=gauss_gradient_with_boundary(
+                                    cand_p,mesh,geometry,pressure_bcs,
+                                    controls.pressure_skew_corrected_gradient,
+                                    controls.pressure_projected_face_interpolation);
+                                std::array<Field<double,Location::CELL>,3> forces{
+                                    Field<double,Location::CELL>(nc,"body_x_v51","N/m3",1),
+                                    Field<double,Location::CELL>(nc,"body_y_v51","N/m3",1),
+                                    Field<double,Location::CELL>(nc,"body_z_v51","N/m3",1)};
+                                for (std::size_t i=0;i<nc;++i) {
+                                    const auto& applied=controls.cell_body_force.empty()
+                                        ? controls.body_force:controls.cell_body_force[i];
+                                    forces[0](i)=controls.density*applied.x;
+                                    forces[1](i)=controls.density*applied.y;
+                                    forces[2](i)=controls.density*applied.z;
+                                }
+                                if (include_transpose_stress) {
+                                    const auto trans=viscous_face_flux_divergence(
+                                        mesh,geometry,transpose_viscous_stress_flux(
+                                            mesh,geometry,cand_U,mu,
+                                            {ubc_x,ubc_y,ubc_z},
+                                            controls.density*controls.kinematic_viscosity,
+                                            face_mu));
+                                    for (std::size_t i=0;i<nc;++i)
+                                        for (std::size_t d=0;d<3;++d)
+                                            forces[d](i)+=trans(i,d);
+                                }
+                                std::array<Field<double,Location::CELL>,3> comps{
+                                    Field<double,Location::CELL>(nc,"ux_v51","m/s",1),
+                                    Field<double,Location::CELL>(nc,"uy_v51","m/s",1),
+                                    Field<double,Location::CELL>(nc,"uz_v51","m/s",1)};
+                                for (std::size_t d=0;d<3;++d)
+                                    for (std::size_t i=0;i<nc;++i)
+                                        comps[d](i)=state.fields[d*nc+i];
+                                const std::array<const ScalarBoundaryConditions*,3> bcs{
+                                    &ubc_x,&ubc_y,&ubc_z};
+                                const auto from_flux_vector=[&](const std::vector<double>& vector) {
+                                    if (vector.size()!=nf)
+                                        throw std::invalid_argument("V51 face vector size mismatch");
+                                    Field<double,Location::FACE> flux(nf,"phi_v51","kg/s",1);
+                                    for (std::size_t f=0;f<nf;++f) flux(f)=vector[f];
+                                    return flux;
+                                };
+                                const auto phi_seed=make_mass_flux(
+                                    mesh,geometry,cand_U,controls.density,
+                                    velocity_bcs,pressure_bcs,
+                                    controls.pressure_projected_face_interpolation);
+                                std::vector<double> seed(nf);
+                                for (std::size_t f=0;f<nf;++f)seed[f]=phi_seed(f);
+                                const auto momentum_equation=[&](
+                                    const Field<double,Location::FACE>& flux,std::size_t d) {
+                                    const auto dynamic_bcs=mixed_velocity_faces(flux);
+                                    return assemble_momentum_component(
+                                        mesh,geometry,flux,cand_grad_p,forces[d],mu,
+                                        *bcs[d],d,controls.use_bounded_convection,
+                                        controls.convection_scheme,&comps[d],nullptr,
+                                        controls.density*controls.kinematic_viscosity,
+                                        outer_high_order_fraction,
+                                        dynamic_bcs?&(*dynamic_bcs)[d]:nullptr,face_mu);
+                                };
+                                const auto assemble=[&](const std::vector<double>& trial_phi) {
+                                    const auto flux=from_flux_vector(trial_phi);
+                                    std::array<std::vector<double>,3> rAU;
+                                    for (std::size_t d=0;d<3;++d) {
+                                        const auto eq=momentum_equation(flux,d);
+                                        rAU[d].resize(nc);
+                                        for (std::size_t i=0;i<nc;++i) {
+                                            if (!(eq.diagonal[i]>0.) ||
+                                                !std::isfinite(eq.diagonal[i]))
+                                                throw std::runtime_error("V51 invalid candidate momentum diagonal");
+                                            rAU[d][i]=1.0/eq.diagonal[i];
+                                        }
+                                    }
+                                    return rAU;
+                                };
+                                const auto reconstruct=[&](const auto& rAU) {
+                                    const auto rc=make_rhie_chow_flux_from_physical_velocity(
+                                        mesh,geometry,cand_U,cand_p,rAU,
+                                        controls.density,velocity_bcs,pressure_bcs,
+                                        controls.pressure_skew_corrected_gradient);
+                                    std::vector<double> values(nf);
+                                    for (std::size_t f=0;f<nf;++f) values[f]=rc(f);
+                                    return values;
+                                };
+                                const auto rc=evaluate_state_only_rhie_chow_v49(
+                                    seed,nc,assemble,reconstruct,96);
+                                if (!rc.converged)
+                                    throw std::runtime_error("V51 candidate RC fixed point did not close");
+                                const auto flux=from_flux_vector(rc.flux);
+                                std::array<std::vector<double>,3> raw_momentum;
+                                std::array<double,3> rhs_scale{};
+                                for (std::size_t d=0;d<3;++d) {
+                                    const auto eq=momentum_equation(flux,d);
+                                    raw_momentum[d].resize(nc);
+                                    const auto* offsets=eq.matrix.row_offsets_data();
+                                    const auto* columns=eq.matrix.columns_data();
+                                    const auto* values=eq.matrix.values_data();
+                                    rhs_scale[d]=1e-300;
+                                    for (std::size_t i=0;i<nc;++i) {
+                                        rhs_scale[d]=std::max(rhs_scale[d],std::abs(eq.rhs(i)));
+                                        long double sum=-static_cast<long double>(eq.rhs(i));
+                                        for (auto j=offsets[i];j<offsets[i+1];++j) {
+                                            if (columns[j]>=nc) throw std::logic_error("V51 bad momentum CSR");
+                                            sum+=static_cast<long double>(values[j])*comps[d](columns[j]);
+                                        }
+                                        raw_momentum[d][i]=static_cast<double>(sum);
+                                    }
+                                }
+                                std::vector<double> div(nc,0.0);
+                                double flux_l1=0.0;
+                                for (std::size_t f=0;f<nf;++f) {
+                                    const double mf=rc.flux[f];
+                                    flux_l1+=std::abs(mf);
+                                    div[mesh.ownership().owner(f)]+=mf;
+                                    const auto adjacent=mesh.ownership().neighbour(f);
+                                    if (adjacent>=0)
+                                        div[static_cast<std::size_t>(adjacent)]-=mf;
+                                }
+                                const auto sst=sst_coupled_residual_v22(
+                                    mesh,geometry,flux,cand_sst.k,cand_sst.omega,
+                                    cand_sst.strain_rate,cand_sst.wall_distance,
+                                    runtime.transport,runtime.k_boundary_conditions,
+                                    runtime.omega_boundary_conditions,omega_faces,wall_production,
+                                    capture_transport_v53 ? &transport_v53.emplace() : nullptr);
+                                capture_transport_v53=false;
+                                const auto native=make_native_six_residual_v50(
+                                    raw_momentum,rhs_scale,div,flux_l1,
+                                    sst.values,sst.row_norms,sst.local_scales,true);
+                                PhysicalResidualV51 residual;
+                                residual.signed_raw.resize(6*nc);
+                                for (std::size_t d=0;d<3;++d)
+                                    std::copy(raw_momentum[d].begin(),raw_momentum[d].end(),
+                                              residual.signed_raw.begin()+static_cast<std::ptrdiff_t>(d*nc));
+                                std::copy(div.begin(),div.end(),residual.signed_raw.begin()+static_cast<std::ptrdiff_t>(3*nc));
+                                std::copy(sst.values.begin(),sst.values.end(),
+                                          residual.signed_raw.begin()+static_cast<std::ptrdiff_t>(4*nc));
+                                residual.normalized=std::move(native.normalized);
+                                residual.face_flux=rc.flux;
+                                residual.eddy_viscosity.resize(nc);
+                                for (std::size_t i=0;i<nc;++i)
+                                    residual.eddy_viscosity[i]=cand_sst.nu_t(i);
+                                residual.flux_fixed_point_defect=rc.relative_linf;
+                                residual.flux_closed=true;
+                                residual.merit=native.merit;
+                                if(capture_stages_v57){
+                                    auto& stages=residual.stages_v57.emplace();
+                                    stages.inverse_momentum_diagonal.reserve(3*nc);
+                                    for(const auto& diag:rc.inverse_diagonal)
+                                        stages.inverse_momentum_diagonal.insert(
+                                            stages.inverse_momentum_diagonal.end(),diag.begin(),diag.end());
+                                    stages.effective_dynamic_viscosity=mu;
+                                    stages.strain_rate.resize(nc);
+                                    stages.sst_blend_f2.resize(nc);
+                                    stages.wall_production.resize(nc,-1.);
+                                    for(std::size_t i=0;i<nc;++i){
+                                        stages.strain_rate[i]=cand_sst.strain_rate(i);
+                                        stages.sst_blend_f2[i]=F2(i);
+                                        if(wall_production)
+                                            stages.wall_production[i]=wall_production->for_cell(i);
+                                    }
+                                    if(face_mu)stages.wall_momentum_face_mu=*face_mu;
+                                    stages.momentum_convection.assign(3*nc,0.);
+                                    const auto empty_dir=Field<double,Location::CELL>(
+                                        nc,"duzero_v57","m/s",1);
+                                    const auto empty_dphi=Field<double,Location::FACE>(
+                                        nf,"dphi_zero_v57","kg/s",1);
+                                    for(std::size_t d=0;d<3;++d){
+                                        const auto dyn=mixed_velocity_faces(flux);
+                                        const auto faces=audit_scalar_convective_faces_v56(
+                                            mesh,geometry,comps[d],empty_dir,flux,empty_dphi,
+                                            controls.convection_scheme,*bcs[d],nullptr,
+                                            dyn?&(*dyn)[d]:nullptr,
+                                            outer_high_order_fraction);
+                                        const auto conv=scatter_bounded_convection_v56(
+                                            mesh,geometry,comps[d],empty_dir,flux,empty_dphi,
+                                            faces,controls.use_bounded_convection);
+                                        std::copy(conv.value.begin(),conv.value.end(),
+                                            stages.momentum_convection.begin()+
+                                                static_cast<std::ptrdiff_t>(d*nc));
+                                    }
+                                }
+                                return residual;
+                            };
+                            PhysicalCandidateV51 x;
+                            x.cells=nc;x.fields.resize(6*nc);
+                            for (std::size_t i=0;i<nc;++i) {
+                                for (std::size_t d=0;d<3;++d)
+                                    x.fields[d*nc+i]=U.component_data(d)[i];
+                                x.fields[3*nc+i]=p(i);
+                                x.fields[4*nc+i]=runtime.state->k(i);
+                                x.fields[5*nc+i]=runtime.state->omega(i);
+                            }
+                            // V57 bounded private chain audit. Physical F(X)
+                            // is still the sole nonlinear operator; the V56
+                            // convection tangent is audited separately below.
+                            // V58 is an opt-in extension of the V57 physical
+                            // chain audit, not an alternative Newton tangent.
+                            if(opt_in_v51("CFDX_FPHYS_CHAIN_V58_FACES") &&
+                               !opt_in_v51("CFDX_FPHYS_CHAIN_V57"))
+                                throw std::invalid_argument(
+                                    "V58 face audit requires CFDX_FPHYS_CHAIN_V57=1");
+                            if(opt_in_v51("CFDX_FPHYS_CHAIN_V57")){
+                                capture_stages_v57=true;
+                                try{
+                                    std::vector<double> dv(6*nc,0.);
+                                    for(std::size_t b=0;b<6;++b)
+                                        for(std::size_t i=0;i<nc;++i)
+                                            dv[b*nc+i]=0.01*(b+1)*
+                                                std::max(1.,std::abs(x.fields[b*nc+i]));
+                                    const auto chain=audit_physical_chain_v57(
+                                        x,dv,evaluator_v51,1e-6,
+                                        runtime.transport.k_min,
+                                        runtime.transport.omega_min);
+                                    // The V56 analytic tangent uses the exact same
+                                    // limited primal interpolation as production.
+                                    // dphi is obtained by re-closing RC/rAU at X +/-h*dX,
+                                    // NOT by holding a lagged face flux fixed.
+                                    Field<double,Location::FACE> primal_phi(nf,"phi_v57","kg/s",1);
+                                    Field<double,Location::FACE> tangent_phi(nf,"dphi_v57","kg/s",1);
+                                    const auto base_trace=evaluate_physical_candidate_v51(
+                                        x,evaluator_v51,runtime.transport.k_min,
+                                        runtime.transport.omega_min);
+                                    for(std::size_t f=0;f<nf;++f){
+                                        primal_phi(f)=base_trace.face_flux[f];
+                                        tangent_phi(f)=chain.dphi[f];
+                                    }
+                                    double convection_tangent_sq=0.;
+                                    std::size_t nonsmooth_faces=0;
+                                    const bool v58_audit_faces=opt_in_v51(
+                                        "CFDX_FPHYS_CHAIN_V58_FACES");
+                                    for(std::size_t d=0;d<3;++d){
+                                        CellScalarV56 primal(nc,"u_v57","m/s",1);
+                                        CellScalarV56 tangent(nc,"du_v57","m/s",1);
+                                        for(std::size_t i=0;i<nc;++i){
+                                            primal(i)=x.fields[d*nc+i];
+                                            tangent(i)=dv[d*nc+i];
+                                        }
+                                        const auto* ubc=(d==0 ? &ubc_x : d==1 ? &ubc_y : &ubc_z);
+                                        const auto faces=audit_scalar_convective_faces_v56(
+                                            mesh,geometry,primal,tangent,primal_phi,tangent_phi,
+                                            controls.convection_scheme,*ubc,nullptr,nullptr,
+                                            outer_high_order_fraction);
+                                        const auto bounded=scatter_bounded_convection_v56(
+                                            mesh,geometry,primal,tangent,primal_phi,tangent_phi,
+                                            faces,controls.use_bounded_convection);
+                                        for(double a:bounded.tangent)
+                                            convection_tangent_sq+=a*a;
+                                        nonsmooth_faces+=bounded.nonsmooth_faces;
+                                        if(v58_audit_faces){
+                                            // Reconstruct one-sided face fluxes
+                                            // using production's V56 primal.
+                                            // dphi is the V57 candidate RC
+                                            // directional derivative; the +/-
+                                            // perturbation of phi is local and
+                                            // does NOT reclose RC at every face.
+                                            const auto evidence=audit_convective_branches_v58(
+                                                mesh,geometry,primal,tangent,
+                                                primal_phi,tangent_phi,
+                                                controls.convection_scheme,*ubc,
+                                                1e-6,1e-2,nullptr,nullptr,
+                                                outer_high_order_fraction);
+                                            std::cerr<<std::scientific<<std::setprecision(12)
+                                                <<"FPHYS_BRANCH_V58 iteration="<<iter
+                                                <<" component="<<d
+                                                <<" faces="<<evidence.faces.size()
+                                                <<" ambiguous="<<evidence.ambiguous_active_sets
+                                                <<" effective_kinks="<<evidence.effective_kinks
+                                                <<" unresolved="<<evidence.unresolved
+                                                <<" inert="<<evidence.inert_branch_flags
+                                                <<" roundoff_limited="<<evidence.roundoff_limited
+                                                <<" flux_crossings="<<evidence.flux_crossings
+                                                <<" sided="<<evidence.global_sided_relative
+                                                <<" halving="<<evidence.global_halving_relative
+                                                <<" certifiable="<<(evidence.bilateral_certifiable?1:0)
+                                                <<" native_rc_reclosure_at_offsets=0"
+                                                <<" physical_qualified=0 committed=0\n";
+                                            // Bounded forensic output even on
+                                            // very large meshes: top three by
+                                            // ABSOLUTE mismatch, not an unstable
+                                            // relative score at tiny flux.
+                                            std::vector<std::size_t> order(evidence.faces.size());
+                                            std::iota(order.begin(),order.end(),0);
+                                            std::sort(order.begin(),order.end(),[&](
+                                                std::size_t a,std::size_t b){
+                                                const auto& x=evidence.faces[a];
+                                                const auto& y=evidence.faces[b];
+                                                const double dx=std::abs(x.right-x.left);
+                                                const double dy=std::abs(y.right-y.left);
+                                                return dx==dy?a<b:dx>dy;
+                                            });
+                                            for(std::size_t ix=0;
+                                                ix<std::min<std::size_t>(3,order.size());++ix){
+                                                const auto& face=evidence.faces[order[ix]];
+                                                std::cerr<<std::scientific<<std::setprecision(12)
+                                                    <<"FPHYS_BRANCH_FACE_V58 iteration="<<iter
+                                                    <<" component="<<d
+                                                    <<" face="<<face.face
+                                                    <<" owner="<<face.owner
+                                                    <<" neighbour="<<face.neighbour
+                                                    <<" phi="<<face.mass_flux
+                                                    <<" dphi="<<face.dmass_flux
+                                                    <<" right="<<face.right
+                                                    <<" left="<<face.left
+                                                    <<" sided="<<face.sided_relative
+                                                    <<" halving="<<face.halving_relative
+                                                    <<" kink="<<(face.effective_kink?1:0)
+                                                    <<" unresolved="<<(face.unresolved?1:0)
+                                                    <<" native_rc_reclosure_at_offsets=0"
+                                                    <<" physical_qualified=0 committed=0\n";
+                                            }
+                                        }
+                                    }
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"FPHYS_CHAIN_V57 iteration="<<iter
+                                        <<" convective_tangent_norm="<<std::sqrt(convection_tangent_sq)
+                                        <<" convective_nonsmooth_faces="<<nonsmooth_faces
+                                        <<" rc_dphi_norm="<<v57_norm2(chain.dphi)
+                                        <<" rau_tangent_norm="<<v57_norm2(chain.drau)
+                                        <<" mu_tangent_norm="<<v57_norm2(chain.dmu)
+                                        <<" strain_tangent_norm="<<v57_norm2(chain.dstrain)
+                                        <<" f2_tangent_norm="<<v57_norm2(chain.df2)
+                                        <<" wall_mu_tangent_norm="<<v57_norm2(chain.dwall_mu)
+                                        <<" wall_g_tangent_norm="<<v57_norm2(chain.dwall_production)
+                                        <<" signed_rows_norm="<<v57_norm2(chain.signed_raw)
+                                        <<" global_halving="<<chain.global_halving
+                                        <<" sided_nonsmooth="<<chain.global_sided_nonsmoothness
+                                        <<" near_branch_sign_crossings="<<chain.flux_sign_crossings
+                                        <<" wall_faces="<<chain.wall_active_faces
+                                        <<" evaluations="<<chain.evaluations
+                                        <<" physical_qualified=0 committed=0\n";
+                                }catch(...){capture_stages_v57=false;throw;}
+                                capture_stages_v57=false;
+                            }
+                            const auto r0=evaluate_physical_candidate_v51(
+                                x,evaluator_v51,runtime.transport.k_min,
+                                runtime.transport.omega_min);
+                            const auto r1=evaluate_physical_candidate_v51(
+                                x,evaluator_v51,runtime.transport.k_min,
+                                runtime.transport.omega_min);
+                            verify_candidate_replay_v51(r0,r1);
+                            if (pending_native_six_v50) {
+                                const auto& legacy=*pending_native_six_v50;
+                                if (legacy.normalized.size()!=r0.normalized.size())
+                                    throw std::logic_error("V51/V50 residual size parity failed");
+                                double max_gap=0.0;
+                                std::size_t worst=0;
+                                for (std::size_t i=0;i<r0.normalized.size();++i) {
+                                    const double gap=std::abs(r0.normalized[i]-
+                                        legacy.normalized[i]);
+                                    if (gap>max_gap) {max_gap=gap;worst=i;}
+                                }
+                                std::cerr<<std::scientific<<std::setprecision(12)
+                                    <<"FPHYS_PARITY_V51 iteration="<<iter
+                                    <<" max_normalized_gap="<<max_gap
+                                    <<" worst_block="<<(worst/nc)
+                                    <<" worst_cell="<<(worst%nc)
+                                    <<" legacy_fingerprint="<<legacy.fingerprint
+                                    <<" candidate_fingerprint="
+                                        <<fingerprint_native_six_v50(r0.normalized)
+                                    <<" qualified=0\n";
+                            }
+                            std::array<double,6> raw_linf{},scaled_linf{};
+                            double continuity_l1_v51=0.0;
+                            for (std::size_t d=0;d<6;++d)
+                                for (std::size_t i=0;i<nc;++i) {
+                                    raw_linf[d]=std::max(raw_linf[d],
+                                        std::abs(r0.signed_raw[d*nc+i]));
+                                    scaled_linf[d]=std::max(scaled_linf[d],
+                                        std::abs(r0.normalized[d*nc+i]));
+                                    if (d==3)
+                                        continuity_l1_v51+=std::abs(r0.normalized[d*nc+i]);
+                                }
+                            std::cerr<<std::scientific<<std::setprecision(12)
+                                <<"FPHYS_CANDIDATE_V51 iteration="<<iter
+                                <<" retry="<<retry_controller.retries()
+                                <<" cells="<<nc<<" entries="<<r0.signed_raw.size()
+                                <<" closed=1 replay_identical=1"
+                                <<" flux_defect="<<r0.flux_fixed_point_defect
+                                <<" merit="<<r0.merit
+                                <<" continuity="<<continuity_l1_v51
+                                <<" k="<<scaled_linf[4]
+                                <<" omega="<<scaled_linf[5]
+                                <<" raw_u="<<raw_linf[0]
+                                <<" raw_k="<<raw_linf[4]
+                                <<" raw_omega="<<raw_linf[5]
+                                <<" fingerprint="<<fingerprint_native_six_v50(r0.normalized)
+                                <<" qualified=0 committed=0\n";
+                            // V52: one opt-in private Newton-Krylov experiment on
+                            // the very same candidate-owned F(X). No state is
+                            // published, so V13/V14 and the default outer
+                            // algorithm remain authoritative. This is NOT the
+                            // six-Schur production qualification.
+                            if (opt_in_v51("CFDX_FPHYS_JFNK_V52")) {
+                                if (nc>152)
+                                    throw std::invalid_argument(
+                                        "V52 bounded JFNK diagnostic is limited to 152 cells");
+                                GlobalPhysicalNewtonControlsV52 cfg;
+                                cfg.v53_extended_krylov=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V53_BLOCK");
+                                cfg.v54_frozen_jacobian=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V54_FROZEN");
+                                cfg.v57_true_krylov_each_step=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V57_TRUTH");
+                                cfg.v57_hybrid_convective_jv=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V57_HYBRID");
+                                cfg.v58_symmetric_sou_ties=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V58_SYMMETRIC_SOU");
+                                cfg.v59_frozen_sou_active_set=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V59_FROZEN_SOU");
+                                cfg.v60_remainder_audit=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V60_REMAINDER_AUDIT");
+                                if(cfg.v59_frozen_sou_active_set &&
+                                   controls.convection_scheme!=
+                                       ConvectionScheme::SECOND_ORDER_UPWIND)
+                                    throw std::invalid_argument(
+                                        "V59 only implements frozen SOU active sets");
+                                if(cfg.v58_symmetric_sou_ties &&
+                                   controls.convection_scheme!=
+                                       ConvectionScheme::SECOND_ORDER_UPWIND)
+                                    throw std::invalid_argument(
+                                        "V58 generalized active set only implemented for SOU");
+                                if(cfg.v57_hybrid_convective_jv &&
+                                   !cfg.v57_true_krylov_each_step)
+                                    throw std::invalid_argument(
+                                        "V57 hybrid requires per-direction true Krylov residual checks");
+                                cfg.v53_central_difference=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V53_CENTRAL") ||
+                                    cfg.v57_hybrid_convective_jv;
+                                if(cfg.v54_frozen_jacobian && !cfg.v53_extended_krylov)
+                                    throw std::invalid_argument(
+                                        "V54 frozen Amat needs explicit V53 Pmat opt-in");
+                                if(cfg.v53_central_difference && !cfg.v53_extended_krylov &&
+                                   !cfg.v57_hybrid_convective_jv)
+                                    throw std::invalid_argument(
+                                        "V53 central Jv requires V53 global block opt-in");
+                                if (const char* krylov=std::getenv(
+                                        "CFDX_FPHYS_JFNK_V52_KRYLOV")) {
+                                    const std::string value(krylov);
+                                    if (value.empty() ||
+                                        value.find_first_not_of("0123456789")!=
+                                            std::string::npos)
+                                        throw std::invalid_argument(
+                                            "V52/V53 Krylov dimension must be an integer");
+                                    const unsigned long parsed=std::stoul(value);
+                                    if (parsed<1 || parsed>(cfg.v53_extended_krylov?96ul:32ul))
+                                        throw std::invalid_argument(
+                                            "V52/V53 Krylov dimension exceeds selected mode budget");
+                                    cfg.krylov_dimension=static_cast<std::size_t>(parsed);
+                                }
+                                if (const char* fd=std::getenv("CFDX_FPHYS_JFNK_V52_FD_STEP")) {
+                                    const std::string value(fd);
+                                    std::size_t consumed=0;
+                                    cfg.difference_step=std::stod(value,&consumed);
+                                    if(consumed!=value.size() ||
+                                       !std::isfinite(cfg.difference_step) ||
+                                       cfg.difference_step<1e-9 ||
+                                       cfg.difference_step>1e-3)
+                                        throw std::invalid_argument(
+                                            "V52 Jv difference step must be within [1e-9,1e-3]");
+                                }
+                                cfg.sst_two_by_two_preconditioner=
+                                    opt_in_v51("CFDX_FPHYS_JFNK_V52_SST_2X2");
+                                cfg.pin_pressure=!has_fixed_pressure_boundary;
+                                cfg.reference_cell=controls.pressure_reference_cell;
+                                cfg.reference_pressure=controls.pressure_reference_value;
+                                cfg.k_min=runtime.transport.k_min;
+                                cfg.omega_min=runtime.transport.omega_min;
+                                GlobalPhysicalNativeSchurV52 native_action;
+                                if (v52_native_preconditioner) {
+                                    native_action=[&](const std::vector<double>& rhs,
+                                        const std::array<double,6>& x_scale,
+                                        const std::array<double,6>& f_scale,
+                                        std::size_t cells) {
+                                        if(cells!=nc || rhs.size()!=6*nc)
+                                            throw std::runtime_error(
+                                                "V52 native Schur action has wrong dimensions");
+                                        Vector input(4*nc,0.0),output(4*nc,0.0);
+                                        for(std::size_t block=0;block<4;++block)
+                                            for(std::size_t i=0;i<nc;++i) {
+                                                double scale=f_scale[block];
+                                                if (block==3 && !has_fixed_pressure_boundary &&
+                                                    i==controls.pressure_reference_cell)
+                                                    scale=x_scale[3];
+                                                input(block*nc+i)=rhs[block*nc+i]*scale;
+                                            }
+                                        if(!v52_native_preconditioner->apply(input,output) ||
+                                            !output.is_valid())
+                                            throw std::runtime_error(
+                                                "V52 native 4N Schur preconditioner action failed");
+                                        std::vector<double> z=rhs;
+                                        for(std::size_t block=0;block<4;++block)
+                                            for(std::size_t i=0;i<nc;++i)
+                                                z[block*nc+i]=output(block*nc+i)/x_scale[block];
+                                        return z;
+                                    };
+                                }
+                                const auto& comparison_state = v52_shared_pre_solve_state
+                                    ? *v52_shared_pre_solve_state : x;
+                                const auto common_state_fingerprint =
+                                    fingerprint_native_six_v50(comparison_state.fields);
+                                if (opt_in_v51("CFDX_FPHYS_JV_AUDIT_V53") &&
+                                    v52_shared_pre_solve_state) {
+                                    std::vector<double> v(6*nc,0.0);
+                                    for(std::size_t block=0;block<6;++block)
+                                        for(std::size_t i=0;i<nc;++i)
+                                            v[block*nc+i]=0.003*static_cast<double>(block+1)*
+                                                std::max(1.0,std::abs(comparison_state.fields[block*nc+i]));
+                                    const auto derivative=audit_physical_jv_v53(
+                                        comparison_state,v,evaluator_v51,1e-6,
+                                        runtime.transport.k_min,runtime.transport.omega_min);
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"FPHYS_JV_AUDIT_V53 phase=prestep iteration="<<iter
+                                        <<" common_state_fingerprint="<<common_state_fingerprint
+                                        <<" evaluations="<<derivative.evaluations
+                                        <<" central_halving="<<derivative.central_halving_relative
+                                        <<" forward_halving="<<derivative.forward_halving_relative
+                                        <<" nonsmooth_sided="<<derivative.sided_nonsmooth_relative
+                                        <<" both_sides="<<(derivative.both_sides_valid?1:0)
+                                        <<" qualified=0\n";
+                                }
+                                GlobalPhysicalPmatBuilderV53 v53_builder;
+                                if (opt_in_v51("CFDX_FPHYS_JFNK_V53_BLOCK")) {
+                                    if(!native_action)
+                                        throw std::runtime_error(
+                                            "V53 requires a successful native 4N Schur setup");
+                                    // Collect genuine mesh adjacency (no geometric guess).
+                                    std::vector<std::vector<std::size_t>> adjacency(nc);
+                                    for(std::size_t f=0;f<nf;++f) {
+                                        const auto neighbor=mesh.ownership().neighbour(f);
+                                        if(neighbor<0)continue;
+                                        const auto own=mesh.ownership().owner(f);
+                                        const auto other=static_cast<std::size_t>(neighbor);
+                                        adjacency[own].push_back(other);
+                                        adjacency[other].push_back(own);
+                                    }
+                                    GlobalSSTBlockV53::Composition v53_composition=
+                                        GlobalSSTBlockV53::Composition::Symmetric;
+                                    if (const char* mode=std::getenv("CFDX_FPHYS_JFNK_V53_COMPOSITION")) {
+                                        const std::string name(mode);
+                                        if(name=="diagonal")v53_composition=GlobalSSTBlockV53::Composition::BlockDiagonal;
+                                        else if(name=="lower")v53_composition=GlobalSSTBlockV53::Composition::Lower;
+                                        else if(name=="upper")v53_composition=GlobalSSTBlockV53::Composition::Upper;
+                                        else if(name=="symmetric")v53_composition=GlobalSSTBlockV53::Composition::Symmetric;
+                                        else throw std::invalid_argument(
+                                            "V53 composition must be diagonal/lower/upper/symmetric");
+                                    }
+                                    v53_builder=[&,adjacency,native_action,v53_composition](
+                                        const PhysicalCandidateV51& frozen,
+                                        const PhysicalResidualV51& frozen_residual,
+                                        const std::array<double,6>& x_scale,
+                                        const std::array<double,6>& f_scale) {
+                                        capture_transport_v53=true;
+                                        transport_v53.reset();
+                                        const auto check=evaluate_physical_candidate_v51(
+                                            frozen,evaluator_v51,runtime.transport.k_min,
+                                            runtime.transport.omega_min);
+                                        capture_transport_v53=false;
+                                        if(!transport_v53 ||
+                                           check.signed_raw!=frozen_residual.signed_raw ||
+                                           check.face_flux!=frozen_residual.face_flux)
+                                            throw std::runtime_error(
+                                                "V53 frozen transport differs from same-candidate F");
+                                        auto transport=std::move(*transport_v53);
+                                        transport_v53.reset();
+                                        const auto& pmat=std::make_shared<GlobalSSTBlockV53>(
+                                            frozen,frozen_residual,x_scale,f_scale,
+                                            transport.first.matrix,transport.second.matrix,
+                                            adjacency,
+                                            [&evaluator_v51,&runtime](const PhysicalCandidateV51& cand){
+                                                return evaluate_physical_candidate_v51(
+                                                    cand,evaluator_v51,runtime.transport.k_min,
+                                                    runtime.transport.omega_min);
+                                            },native_action,cfg.pin_pressure,cfg.reference_cell,
+                                            1e-6,v53_composition);
+                                        GlobalPhysicalFrozenPmatV53 result;
+                                        result.apply=[pmat](const std::vector<double>& v){
+                                            return pmat->apply(v);
+                                        };
+                                        result.probes=pmat->statistics().candidate_evaluations+1;
+                                        result.transport_nnz=pmat->statistics().transport_nnz;
+                                        result.locality_error=pmat->statistics().maximum_locality_relative_error;
+                                        return result;
+                                    };
+                                }
+                                // Active-set tangent of the production V56
+                                // SOU/TVD/MUSCL reconstruction on the SAME
+                                // candidate U, phi, dU and re-closed dphi.
+                                GlobalPhysicalConvectiveTangentV57 convective_v57;
+                                // One active set per velocity component, reused
+                                // across every direction of the private Krylov solve.
+                                std::array<std::optional<FrozenSouActiveSetV59>,3>
+                                    frozen_sou_v59;
+                                std::size_t v58_krylov_face_samples=0;
+                                const bool v58_krylov_face_audit=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V58_FACE_AUDIT");
+                                if(cfg.v57_hybrid_convective_jv){
+                                    convective_v57=[&](const PhysicalCandidateV51& cand,
+                                        const std::vector<double>& dx,
+                                        const std::vector<double>& phi0,
+                                        const std::vector<double>& dphi){
+                                        if(cand.cells!=nc || dx.size()!=6*nc ||
+                                           phi0.size()!=nf || dphi.size()!=nf)
+                                            throw std::invalid_argument("V57 bad native convection shapes");
+                                        Field<double,Location::FACE> phi(nf,"phi_hybrid_v57","kg/s",1);
+                                        Field<double,Location::FACE> dflux(nf,"dphi_hybrid_v57","kg/s",1);
+                                        for(std::size_t f=0;f<nf;++f){
+                                            phi(f)=phi0[f];dflux(f)=dphi[f];
+                                        }
+                                        const auto dynamic=mixed_velocity_faces(phi);
+                                        ConvectiveTangentV57 result;
+                                        result.signed_raw.assign(3*nc,0.);
+                                        const std::array<const ScalarBoundaryConditions*,3> velocity_bc{
+                                            &ubc_x,&ubc_y,&ubc_z};
+                                        for(std::size_t d=0;d<3;++d){
+                                            CellScalarV56 field(nc,"u_v57_hybrid","m/s",1);
+                                            CellScalarV56 tangent(nc,"du_v57_hybrid","m/s",1);
+                                            for(std::size_t i=0;i<nc;++i){
+                                                field(i)=cand.fields[d*nc+i];
+                                                tangent(i)=dx[d*nc+i];
+                                            }
+                                            std::vector<FaceFluxTangentV56> faces;
+                                            if(cfg.v59_frozen_sou_active_set){
+                                                if(!frozen_sou_v59[d]){
+                                                    frozen_sou_v59[d]=freeze_sou_active_set_v59(
+                                                        mesh,geometry,field,phi,*velocity_bc[d],
+                                                        outer_high_order_fraction,nullptr,
+                                                        dynamic?&(*dynamic)[d]:nullptr);
+                                                    std::cerr<<"FPHYS_FROZEN_SOU_V59 component="<<d
+                                                        <<" ties="<<frozen_sou_v59[d]->triple_ties
+                                                        <<" nonunique="
+                                                        <<frozen_sou_v59[d]->nonunique_internal_faces
+                                                        <<" linear_face_action=1"
+                                                        <<" newton_qualified=0 committed=0\n";
+                                                }
+                                                faces=apply_frozen_sou_v59(*frozen_sou_v59[d],
+                                                    mesh,geometry,field,tangent,phi,dflux,
+                                                    *velocity_bc[d],nullptr,
+                                                    dynamic?&(*dynamic)[d]:nullptr);
+                                            }else{
+                                                faces=audit_scalar_convective_faces_v56(
+                                                    mesh,geometry,field,tangent,phi,dflux,
+                                                    controls.convection_scheme,*velocity_bc[d],nullptr,
+                                                    dynamic?&(*dynamic)[d]:nullptr,
+                                                    outer_high_order_fraction);
+                                            }
+                                            if(cfg.v58_symmetric_sou_ties){
+                                                const auto generalized=apply_symmetric_sou_ties_v58(
+                                                    mesh,geometry,field,tangent,phi,dflux,
+                                                    *velocity_bc[d],outer_high_order_fraction,
+                                                    faces,nullptr,dynamic?&(*dynamic)[d]:nullptr);
+                                                std::cerr<<"FPHYS_SOU_GENERALIZED_V58 iteration="<<iter
+                                                    <<" component="<<d
+                                                    <<" repaired_faces="<<generalized
+                                                    <<" nonunique_derivative=1"
+                                                    <<" physical_qualified=0 committed=0\n";
+                                            }
+                                            const auto conv=scatter_bounded_convection_v56(
+                                                mesh,geometry,field,tangent,phi,dflux,
+                                                faces,controls.use_bounded_convection);
+                                            std::copy(conv.tangent.begin(),conv.tangent.end(),
+                                                result.signed_raw.begin()+
+                                                    static_cast<std::ptrdiff_t>(d*nc));
+                                            result.nonsmooth_faces+=conv.nonsmooth_faces;
+                                            if(v58_krylov_face_audit &&
+                                               v58_krylov_face_samples<18){
+                                                const auto evidence=audit_convective_branches_v58(
+                                                    mesh,geometry,field,tangent,phi,dflux,
+                                                    controls.convection_scheme,*velocity_bc[d],
+                                                    1e-6,1e-2,nullptr,
+                                                    dynamic?&(*dynamic)[d]:nullptr,
+                                                    outer_high_order_fraction);
+                                                std::cerr<<std::scientific<<std::setprecision(12)
+                                                    <<"FPHYS_KRYLOV_BRANCH_V58 iteration="<<iter
+                                                    <<" sample="<<v58_krylov_face_samples
+                                                    <<" component="<<d
+                                                    <<" faces="<<evidence.faces.size()
+                                                    <<" ambiguous="<<evidence.ambiguous_active_sets
+                                                    <<" effective_kinks="<<evidence.effective_kinks
+                                                    <<" unresolved="<<evidence.unresolved
+                                                    <<" inert="<<evidence.inert_branch_flags
+                                                    <<" roundoff_limited="<<evidence.roundoff_limited
+                                                    <<" sided="<<evidence.global_sided_relative
+                                                    <<" halving="<<evidence.global_halving_relative
+                                                    <<" certifiable="<<(evidence.bilateral_certifiable?1:0)
+                                                    <<" native_rc_reclosure_at_offsets=0"
+                                                    <<" physical_qualified=0 committed=0\n";
+                                                // Show the actual responsible
+                                                // face ids, never just the
+                                                // aggregated number of ties.
+                                                std::vector<std::size_t> suspects;
+                                                for(std::size_t f=0;f<evidence.faces.size();++f)
+                                                    if(evidence.faces[f].effective_kink ||
+                                                       evidence.faces[f].unresolved)
+                                                        suspects.push_back(f);
+                                                std::sort(suspects.begin(),suspects.end(),[&](
+                                                    std::size_t a,std::size_t b){
+                                                    const auto da=std::abs(evidence.faces[a].right-
+                                                                           evidence.faces[a].left);
+                                                    const auto db=std::abs(evidence.faces[b].right-
+                                                                           evidence.faces[b].left);
+                                                    return da==db?a<b:da>db;
+                                                });
+                                                for(std::size_t j=0;
+                                                    j<std::min<std::size_t>(2,suspects.size());++j){
+                                                    const auto& f=evidence.faces[suspects[j]];
+                                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                                        <<"FPHYS_KRYLOV_FACE_V58 iteration="<<iter
+                                                        <<" sample="<<v58_krylov_face_samples
+                                                        <<" component="<<d
+                                                        <<" face="<<f.face
+                                                        <<" owner="<<f.owner
+                                                        <<" neighbour="<<f.neighbour
+                                                        <<" phi="<<f.mass_flux
+                                                        <<" dphi="<<f.dmass_flux
+                                                        <<" right="<<f.right
+                                                        <<" left="<<f.left
+                                                        <<" sided="<<f.sided_relative
+                                                        <<" halving="<<f.halving_relative
+                                                        <<" kink="<<(f.effective_kink?1:0)
+                                                        <<" unresolved="<<(f.unresolved?1:0)
+                                                        <<" physical_qualified=0 committed=0\n";
+                                                    if(f.neighbour>=0){
+                                                        const auto state=inspect_convective_face_v58(
+                                                            mesh,geometry,field,phi,f.face,
+                                                            controls.convection_scheme,*velocity_bc[d],
+                                                            nullptr,dynamic?&(*dynamic)[d]:nullptr);
+                                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                                            <<"FPHYS_LIMITER_STATE_V58 iteration="<<iter
+                                                            <<" sample="<<v58_krylov_face_samples
+                                                            <<" component="<<d
+                                                            <<" face="<<f.face
+                                                            <<" scheme="<<static_cast<int>(controls.convection_scheme)
+                                                            <<" up_cell="<<state.up
+                                                            <<" down_cell="<<state.down
+                                                            <<" up="<<state.up_value
+                                                            <<" down="<<state.down_value
+                                                            <<" increment="<<state.increment
+                                                            <<" full="<<state.full
+                                                            <<" lower="<<state.lower
+                                                            <<" upper="<<state.upper
+                                                            <<" reconstructed="<<state.reconstructed
+                                                            <<" small_delta_fallback="<<(state.tvd_small_delta_fallback?1:0)
+                                                            <<" physical_qualified=0 committed=0\n";
+                                                    }
+                                                }
+                                                // A distinct parity list:
+                                                // even a face without a sided
+                                                // kink may have an incorrectly
+                                                // differentiated reconstruction.
+                                                std::vector<std::size_t> mismatches(evidence.faces.size());
+                                                std::iota(mismatches.begin(),mismatches.end(),0);
+                                                std::sort(mismatches.begin(),mismatches.end(),[&](
+                                                    std::size_t a,std::size_t b){
+                                                    const auto& x=evidence.faces[a];
+                                                    const auto& y=evidence.faces[b];
+                                                    const double dx=std::abs(faces[a].tangent-
+                                                        0.5*(x.right+x.left));
+                                                    const double dy=std::abs(faces[b].tangent-
+                                                        0.5*(y.right+y.left));
+                                                    return dx==dy?a<b:dx>dy;
+                                                });
+                                                for(std::size_t j=0;
+                                                    j<std::min<std::size_t>(2,mismatches.size());++j){
+                                                    const auto id=mismatches[j];
+                                                    const auto& f=evidence.faces[id];
+                                                    const double center=0.5*(f.right+f.left);
+                                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                                        <<"FPHYS_KRYLOV_FACE_GAP_V58 iteration="<<iter
+                                                        <<" sample="<<v58_krylov_face_samples
+                                                        <<" component="<<d
+                                                        <<" face="<<id
+                                                        <<" phi="<<f.mass_flux
+                                                        <<" right="<<f.right
+                                                        <<" left="<<f.left
+                                                        <<" tangent="<<faces[id].tangent
+                                                        <<" central="<<center
+                                                        <<" absolute_gap="<<std::abs(faces[id].tangent-center)
+                                                        <<" kink="<<(f.effective_kink?1:0)
+                                                        <<" unresolved="<<(f.unresolved?1:0)
+                                                        <<" physical_qualified=0 committed=0\n";
+                                                    if(evidence.faces[id].neighbour>=0){
+                                                        const auto state=inspect_convective_face_v58(
+                                                            mesh,geometry,field,phi,id,
+                                                            controls.convection_scheme,*velocity_bc[d],
+                                                            nullptr,dynamic?&(*dynamic)[d]:nullptr);
+                                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                                            <<"FPHYS_GAP_STATE_V58 iteration="<<iter
+                                                            <<" sample="<<v58_krylov_face_samples
+                                                            <<" component="<<d
+                                                            <<" face="<<id
+                                                            <<" up="<<state.up_value
+                                                            <<" down="<<state.down_value
+                                                            <<" increment="<<state.increment
+                                                            <<" full="<<state.full
+                                                            <<" reconstructed="<<state.reconstructed
+                                                            <<" lower="<<state.lower
+                                                            <<" upper="<<state.upper
+                                                            <<" physical_qualified=0 committed=0\n";
+                                                    }
+                                                }
+                                                // A kink that is active in a
+                                                // preconditioned Krylov direction
+                                                // must never be silently accepted
+                                                // as a smooth analytic Jv.
+                                                result.nonsmooth_faces+=
+                                                    evidence.effective_kinks+
+                                                    evidence.unresolved;
+                                                ++v58_krylov_face_samples;
+                                            }
+                                        }
+                                        return result;
+                                    };
+                                }
+                                const auto result52=[&](){
+                                    if(cfg.v57_hybrid_convective_jv)capture_stages_v57=true;
+                                    try {
+                                        auto result=global_physical_newton_v52(
+                                            comparison_state,evaluator_v51,cfg,{},
+                                            native_action,v53_builder,convective_v57);
+                                        capture_stages_v57=false;
+                                        return result;
+                                    } catch(...) {
+                                        capture_stages_v57=false;
+                                        throw;
+                                    }
+                                }();
+                                for(std::size_t step=0;step<result52.steps.size();++step) {
+                                    const auto& r=result52.steps[step];
+                                    for(const auto& sample:r.v57_krylov_trace)
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"FPHYS_KRYLOV_TRUTH_V57 iteration="<<iter
+                                            <<" step="<<step
+                                            <<" direction="<<sample.direction
+                                            <<" arnoldi="<<sample.arnoldi_relative
+                                            <<" true="<<sample.true_relative
+                                            <<" nonadditivity="<<sample.action_nonadditivity_relative
+                                            <<" gap="<<sample.arnoldi_gap
+                                            <<" consistency_limit="<<cfg.v57_krylov_consistency_tolerance
+                                            <<" qualified="<<(
+                                                sample.arnoldi_gap<=cfg.v57_krylov_consistency_tolerance &&
+                                                sample.action_nonadditivity_relative<=
+                                                    cfg.v57_krylov_consistency_tolerance ?1:0)
+                                            <<" production_committed=0\n";
+                                    if(cfg.v60_remainder_audit) {
+                                        const auto& a=r.v60_remainder;
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"FPHYS_REMAINDER_V60 iteration="<<iter
+                                            <<" step="<<step
+                                            <<" evaluations="<<a.evaluations
+                                            <<" complete="<<(a.audited?1:0)
+                                            <<" total="<<a.global_remainder
+                                            <<" convective="<<a.convection
+                                            <<" momentum="<<a.momentum_remainder
+                                            <<" continuity="<<a.continuity
+                                            <<" k="<<a.sst_k
+                                            <<" omega="<<a.sst_omega
+                                            <<" rhie_chow_flux="<<a.rhie_chow_flux
+                                            <<" rAU="<<a.inverse_diagonal
+                                            <<" viscosity="<<a.viscosity
+                                            <<" strain="<<a.strain_rate
+                                            <<" SST_F2="<<a.sst_blend
+                                            <<" wall_mu="<<a.wall_viscosity
+                                            <<" wall_G="<<a.wall_production
+                                            <<" remainder_ok="<<(r.v60_remainder_consistent?1:0)
+                                            <<" additive="<<(r.v60_full_additive?1:0)
+                                            <<" threshold="<<cfg.v57_krylov_consistency_tolerance
+                                            <<" newton_committed=0 qualified=0\n";
+                                    }
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"FPHYS_JFNK_V52 iteration="<<iter
+                                        <<" step="<<step
+                                        <<" linear_true_relative="<<r.linear_true_relative
+                                        <<" arnoldi_relative="<<r.linear_arnoldi_relative
+                                        <<" jv_linearity="<<r.jv_linearity_relative
+                                        <<" central_jv="<<(cfg.v53_central_difference?1:0)
+                                        <<" merit_before="<<r.merit_before
+                                        <<" merit_after="<<r.merit_after
+                                        <<" alpha="<<r.alpha
+                                        <<" evaluations="<<r.candidate_evaluations
+                                        <<" rejected="<<r.rejected_trials
+                                        <<" private_accepted="<<(r.accepted?1:0)
+                                        <<" v57_true_krylov_checks="<<r.v57_krylov_trace.size()
+                                        <<" v57_krylov_consistent="<<(r.v57_krylov_consistent?1:0)
+                                        <<" v57_max_arnoldi_gap="<<r.v57_maximum_arnoldi_gap
+                                        <<" v57_max_nonadditivity="<<r.v57_maximum_action_nonadditivity
+                                        <<" v57_hybrid_jv_calls="<<r.v57_hybrid_jv_applications
+                                        <<" v57_hybrid_convection_gap="<<r.v57_maximum_convective_discrepancy
+                                        <<" v57_hybrid_nonsmooth_faces="<<r.v57_nonsmooth_faces
+                                        <<" v57_hybrid_consistent="<<(r.v57_convective_fidelity_ok?1:0)
+                                        <<" v58_generalized_sou="<<(r.v58_generalized_sou?1:0)
+                                        <<" jv_step="<<cfg.difference_step
+                                        <<" v54_frozen_amat="<<(r.v54_frozen_jacobian_ready?1:0)
+                                        <<" v54_jacobian_evaluations="<<r.v54_jacobian_evaluations
+                                        <<" v54_centered_columns="<<r.v54_centered_columns
+                                        <<" v54_one_sided_columns="<<r.v54_one_sided_columns
+                                        <<" v54_basis_audits="<<r.v54_basis_audits
+                                        <<" v54_fidelity="<<r.v54_maximum_jv_fidelity
+                                        <<" v54_halving="<<r.v54_maximum_halving_discrepancy
+                                        <<" v54_sided_nonsmooth="<<r.v54_maximum_sided_nonsmoothness
+                                        <<" v54_fidelity_blocks=("<<r.v54_block_fidelity[0]<<","<<r.v54_block_fidelity[1]
+                                        <<","<<r.v54_block_fidelity[2]<<","<<r.v54_block_fidelity[3]
+                                        <<","<<r.v54_block_fidelity[4]<<","<<r.v54_block_fidelity[5]<<")"
+                                        <<" v54_sided_blocks=("<<r.v54_block_sided[0]<<","<<r.v54_block_sided[1]
+                                        <<","<<r.v54_block_sided[2]<<","<<r.v54_block_sided[3]
+                                        <<","<<r.v54_block_sided[4]<<","<<r.v54_block_sided[5]<<")"
+                                        <<" v54_flux_sign_flips="<<r.v54_flux_sign_flips
+                                        <<" v54_flux_asymmetry="<<r.v54_flux_asymmetry
+                                        <<" v54_fidelity_ok="<<(r.v54_krylov_fidelity_ok?1:0)
+                                        <<" v53_global_block="<<(r.v53_global_block_ready?1:0)
+                                        <<" v53_probes="<<r.v53_probe_evaluations
+                                        <<" v53_transport_nnz="<<r.v53_transport_nnz
+                                        <<" v53_locality_error="<<r.v53_maximum_locality_error
+                                        <<" sst_2x2_ready="<<(r.sst_two_by_two_ready?1:0)
+                                        <<" native_schur_ready="<<(native_action?1:0)
+                                        <<" frozen_prestep="<<(v52_shared_pre_solve_state?1:0)
+                                        <<" common_state_fingerprint="<<common_state_fingerprint
+                                        <<" selected_schur="<<to_string(controls.coupling.schur_model)
+                                        <<" production_committed=0 qualified=0"
+                                        <<" reason="<<r.reason<<"\n";
+                                }
+                            }
+                            if (opt_in_v51("CFDX_FPHYS_JV_AUDIT_V53")) {
+                                std::vector<double> direction(6*nc,0.0);
+                                for(std::size_t b=0;b<6;++b)
+                                    for(std::size_t i=0;i<nc;++i)
+                                        direction[b*nc+i]=0.003*static_cast<double>(b+1)*
+                                            std::max(1.0,std::abs(x.fields[b*nc+i]));
+                                const auto diag=audit_physical_jv_v53(
+                                    x,direction,evaluator_v51,1e-6,
+                                    runtime.transport.k_min,runtime.transport.omega_min);
+                                std::cerr<<std::scientific<<std::setprecision(12)
+                                    <<"FPHYS_JV_AUDIT_V53 phase=post_sst iteration="<<iter
+                                    <<" evaluations="<<diag.evaluations
+                                    <<" central_halving="<<diag.central_halving_relative
+                                    <<" forward_halving="<<diag.forward_halving_relative
+                                    <<" nonsmooth_sided="<<diag.sided_nonsmooth_relative
+                                    <<" both_sides="<<(diag.both_sides_valid?1:0)
+                                    <<" qualified=0\n";
+                            }
+                            if (const char* cross_flag=std::getenv("CFDX_FPHYS_CROSS_V51")) {
+                                if (std::string(cross_flag)=="1") {
+                                    // Six physical column probes, not Schur solves:
+                                    // every row comes from the REASSEMBLED F(X+h*d).
+                                    for (std::size_t col=0;col<6;++col) {
+                                        PhysicalCandidateV51 trial=x;
+                                        const double h=1e-6;
+                                        for (std::size_t i=0;i<nc;++i)
+                                            trial.fields[col*nc+i]+=h*0.01*
+                                                std::max(1.0,std::abs(x.fields[col*nc+i]));
+                                        const auto pert=evaluate_physical_candidate_v51(
+                                            trial,evaluator_v51,runtime.transport.k_min,
+                                            runtime.transport.omega_min);
+                                        std::array<double,6> cross{};
+                                        for (std::size_t d=0;d<6;++d)
+                                            for (std::size_t i=0;i<nc;++i)
+                                                cross[d]=std::max(cross[d],
+                                                    std::abs((pert.signed_raw[d*nc+i]-
+                                                        r0.signed_raw[d*nc+i])/h));
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"FPHYS_CROSS_V51 iteration="<<iter
+                                            <<" column="<<col
+                                            <<" Ux="<<cross[0]<<" Uy="<<cross[1]
+                                            <<" Uz="<<cross[2]<<" continuity="<<cross[3]
+                                            <<" k="<<cross[4]<<" omega="<<cross[5]
+                                            <<" qualified=0\n";
+                                    }
+                                }
+                            }
+                            if (const char* jv_flag=std::getenv("CFDX_FPHYS_JV_V51")) {
+                                if (std::string(jv_flag)=="1") {
+                                    std::vector<double> direction(6*nc,0.0);
+                                    for (std::size_t d=0;d<6;++d)
+                                        for (std::size_t i=0;i<nc;++i) {
+                                            const double value=x.fields[d*nc+i];
+                                            direction[d*nc+i]=0.01*static_cast<double>(d+1)*
+                                                std::max(1.0,std::abs(value));
+                                        }
+                                    const auto jv=physical_directional_jv_v51(
+                                        x,direction,evaluator_v51,1e-6,
+                                        runtime.transport.k_min,
+                                        runtime.transport.omega_min);
+                                    const auto jv_half=physical_directional_jv_v51(
+                                        x,direction,evaluator_v51,5e-7,
+                                        runtime.transport.k_min,
+                                        runtime.transport.omega_min);
+                                    double linf=0.,difference=0.;
+                                    for (std::size_t i=0;i<jv.size();++i) {
+                                        linf=std::max(linf,std::abs(jv_half[i]));
+                                        difference=std::max(difference,
+                                            std::abs(jv[i]-jv_half[i]));
+                                    }
+                                    const double consistency=difference/
+                                        std::max(linf,1e-300);
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"FPHYS_JV_V51 iteration="<<iter
+                                        <<" entries="<<jv.size()<<" raw_linf="<<linf
+                                        <<" two_steps_relative_gap="<<consistency
+                                        <<" raw_residual=1"
+                                        <<" preconditioners_connected=0 qualified=0\n";
+                                }
+                            }
+                        } catch (const std::exception& error) {
+                            std::cerr<<"FPHYS_CANDIDATE_V51 iteration="<<iter
+                                <<" retry="<<retry_controller.retries()
+                                <<" closed=0 reason="<<error.what()
+                                <<" qualified=0 committed=0\n";
+                        }
+                    }
+                }
                 if (controls.transient.enabled) {
                     const auto& prior=*controls.transient.previous;
                     const auto& older=controls.transient.history_valid
-                        ? *controls.transient.previous_previous : prior;
                     const bool bdf2=controls.transient.scheme==
                         cfdx::core::TimeScheme::BDF2 && controls.transient.history_valid;
                     add_dual_time_mass_term(ex_post,prior,older,geometry,
@@ -10645,14 +12272,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " accepted=" << (joint.allowed ? 1 : 0)
                               << " failed_equation=" << joint.failed_equation
                               << " qualified=0\n";
-                if (!joint.allowed)
+                if (!joint.allowed) {
+                    if (controls.coupled_composite_backtracking_v47_experimental)
+                        composite_search_v47.observe_rejection(
+                            coupled_outer_step_applied_v43,joint.largest_growth);
                     throw NonlinearRetryableFailure(
                         "V13 joint post-SST physical residual growth: " +
                         joint.failed_equation);
+                }
             }
             if (controls.monotone_global_merit_v14_experimental) {
                 const auto contraction=committed_global_merit_v14.evaluate(
-                    h.global_nonlinear_v8,same_convection_operator_as_previous);
                 if (controls.diagnostics.iteration_trace)
                     std::cerr << "GLOBAL_CONTRACTION_TRIAL_V14 iteration=" << iter
                               << " baseline=" << contraction.baseline
@@ -10716,15 +12346,38 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool global_nonlinear_v8_gate =
             !controls.require_global_nonlinear_certificate_v8 ||
             h.global_nonlinear_v8.converged;
+        // V50 opt-in strict final-stop veto. It cannot make a rejected state
+        // converge; it requires the SAME native operator for all six blocks
+        // and agreement of native and authoritative carrier flux. No default
+        // convergence criterion or tolerance is changed.
+        const char* native_final_flag_v50=std::getenv(
+            "CFDX_NATIVE_SIX_FINAL_GATE_V50");
+        const bool native_final_gate_v50=native_final_flag_v50 &&
+            std::string(native_final_flag_v50)=="1";
+        const bool native_final_eligible_v50=!native_final_gate_v50 ||
+            (pending_native_six_v50 &&
+             native_six_final_stop_eligible_v50(*pending_native_six_v50,
+                 pending_native_flux_gap_v50,
+                 controls.convergence.relative_tolerance));
+        if (native_final_gate_v50)
+            std::cerr<<"NATIVE_SIX_FINAL_GATE_V50 iteration="<<iter
+                     <<" native_available="<<(pending_native_six_v50?1:0)
+                     <<" eligible="<<(native_final_eligible_v50?1:0)
+                     <<" gap="<<pending_native_flux_gap_v50
+                     <<" tolerance="<<controls.convergence.relative_tolerance
+                     <<" experimental=1 qualified=0\n";
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
             per_criterion_gates_ok && sst_residual_gate &&
-            global_nonlinear_v8_gate && full_order_eligible;
+            global_nonlinear_v8_gate && full_order_eligible &&
+            native_final_eligible_v50 &&
+            coupled_flux_homotopy_final_gate_v48(
+                controls.coupled_flux_homotopy_v48_experimental,
+                coupled_outer_step_applied_v43);
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
-                      << " algorithm=" << static_cast<int>(controls.algorithm)
                       << " iteration=" << iter << " ===\n";
             const auto dump_equation = [&](const char* name,
                                            const ScalarEquation& eq,
@@ -11397,10 +13050,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             result.convergence_reason =
                 "V8 true U-p-k-omega residual certificate is not satisfied";
         }
+        if (native_final_gate_v50 && !native_final_eligible_v50 &&
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED) {
+            // A monitor-only CONVERGED status must not survive an opt-in
+            // native six-field veto when result.converged is still false.
+            result.convergence_status =
+                iter == controls.convergence.max_iterations
+                    ? cfdx::core::ConvergenceStatus::MAX_ITERATIONS
+                    : cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "V50 native FV residual and/or native carrier flux consistency gate not met";
+        }
         if (convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
             (!per_criterion_gates_ok || iter < minimum_outer_correctors)) {
             result.convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
-            result.convergence_reason = !per_criterion_gates_ok
                 ? "global nonlinear monitor met but one or more per-component physical gates remain open"
                 : "minimum required outer pressure correctors not yet completed";
         }
@@ -11440,11 +13103,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
             (convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED &&
              full_order_eligible && !controls.keep_iterating_after_stagnation)) {
-
             result.iterations = iter;
             stop_after_iteration = true;
         }
-        result.iterations = iter;
             // The gate runs on a complete trial state *before* any mutation
             // of committed TVD histories, before transaction.commit(), and
             // before any irreversible output or checkpoint is published.
@@ -11525,11 +13186,36 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         return state.nu_t(index);
                     });
             }
+            if (controls.coupled_flux_homotopy_v48_experimental &&
+                !pending_rAU_v48)
+                throw NonlinearRetryableFailure(
+                    "V48 coupled transaction missing rAU: reject candidate");
             transaction.commit();
+            // Emit a second marker only for the actually accepted complete
+            // U/p/phi/SST transaction. The tentative marker always carries
+            // committed=0; a retry has its own pending fingerprint.
+            if (pending_native_six_v50) {
+                const auto& native=*pending_native_six_v50;
+                std::cerr<<std::scientific<<std::setprecision(12)
+                    <<"NATIVE_SIX_COMMITTED_V50 iteration="<<iter
+                    <<" cells="<<native.cells
+                    <<" entries="<<native.normalized.size()
+                    <<" fingerprint="<<native.fingerprint
+                    <<" merit="<<native.merit
+                    <<" U="<<native.momentum_active_merit
+                    <<" continuity="<<native.continuity_l1
+                    <<" k="<<native.linf[4]
+                    <<" omega="<<native.linf[5]
+                    <<" flux_gap_l1="<<pending_native_flux_gap_v50
+                    <<" committed=1 physical_converged=0 qualified=0\n";
+            }
+            if (pending_rAU_v48) {
+                committed_rAU_v48=std::move(*pending_rAU_v48);
+                committed_rAU_valid_v48=true;
+            }
             // Advance the V45 window ONLY after the complete U/p/phi/SST
             // transaction commits. Retries of one outer iteration must retain
             // the same trigger and vary only the safeguarded trial beta.
-            if (controls.coupled_period_four_damping_v45_experimental > 0.0)
                 coupled_phase_escape_v45.commit(phase_escape_trial_v45,iter,
                     controls.coupled_period_four_damping_steps_v45);
             if (field_period_report_v44 && field_period_report_v44->has_four_back) {
@@ -11760,10 +13446,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
+                // V44: restore the cached momentum viscosity too. Without
+                // this, a failed full-phase predictor (or a multisecant
+                // fallback) could assemble the next trial with stale nu_t.
                 if (controls.sst_runtime)
                     for (std::size_t cell=0;cell<mesh.n_cells();++cell)
                         mu_eff[cell]=controls.density*(
-                            controls.kinematic_viscosity+
                             controls.sst_runtime->state->nu_t(cell));
                 convergence_monitor = convergence_monitor_snapshot;
                 result.history.resize(result_history_size);
@@ -11796,10 +13484,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
+                if (controls.sst_runtime)
+                    for (std::size_t cell=0;cell<mesh.n_cells();++cell)
+                        mu_eff[cell]=controls.density*(
+                            controls.kinematic_viscosity+
+                            controls.sst_runtime->state->nu_t(cell));
                 throw;
             }
             // Restart observers must never serialize U,p before commit, nor
-            // reconstruct phi from U on a collocated grid. Keep I/O outside the
             // rollback try/catch: a failed write is not a nonlinear retry.
             if (iteration_completed && controls.accepted_iteration_callback)
                 controls.accepted_iteration_callback(
@@ -11870,4 +13562,3 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
-
