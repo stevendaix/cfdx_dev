@@ -283,7 +283,5 @@ def test_cli_requires_native_case_unless_reconstruction_is_explicit(tmp_path, mo
 
 
 def test_native_case_requires_full_reference_dictionaries(tmp_path):
-    from scripts.generate_th03_openfoam_blockmesh import validate_openfoam_reference_case
-
     with pytest.raises(ValueError, match="native OpenFOAM reference case is incomplete"):
-        validate_openfoam_reference_case(tmp_path)
+        b.validate_openfoam_reference_case(tmp_path)
