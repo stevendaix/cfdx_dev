@@ -4,6 +4,7 @@ This gate proves that the HDF5 mesh is the exact topology/geometry imported
 from the referenced OpenFOAM constant/polyMesh. Matching bounding boxes alone
 are insufficient. A pass is geometry provenance only, never physical validation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,7 @@ def native_case_path(source_case_path: object) -> Path:
             f"case provenance is {source!r}. Reconstructed six-block meshes "
             "are diagnostic-only."
         )
-    raw_path = source[len(prefix):].strip()
+    raw_path = source[len(prefix) :].strip()
     if not raw_path:
         raise ValueError("native OpenFOAM case path is empty")
     case = Path(raw_path).expanduser().resolve(strict=True)
@@ -64,7 +65,7 @@ def reference_domain(mesh: dict) -> dict:
     vertices = np.asarray(mesh["face_vertices"], dtype=np.int64)
     centres = []
     for face_id in lower["face_ids"]:
-        ids = vertices[offsets[int(face_id)]:offsets[int(face_id) + 1]]
+        ids = vertices[offsets[int(face_id)] : offsets[int(face_id) + 1]]
         centres.append(points[ids].mean(axis=0))
     centres = np.asarray(centres)
     upstream = centres[(centres[:, 0] < 0.0) & (np.abs(centres[:, 1] - H) <= 1e-7 * H)]
@@ -86,7 +87,7 @@ def reference_domain(mesh: dict) -> dict:
         "outlet_at_plus_50H": abs(x_max - 50.0) <= 1e-7,
     }
     if not all(checks.values()):
-        raise ValueError(f"native OpenFOAM mesh does not match TH-03 reference domain: {checks}")
+        raise ValueError(\n            f"native OpenFOAM mesh does not match TH-03 reference domain: {checks}"\n        )
     return {
         "step_height_m": step,
         "upstream_height_over_H": (y_top - y_up) / step,
