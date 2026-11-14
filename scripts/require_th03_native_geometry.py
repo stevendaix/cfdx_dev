@@ -21,6 +21,7 @@ if str(ROOT / "src/cfdx/python") not in sys.path:
     sys.path.insert(0, str(ROOT / "src/cfdx/python"))
 
 from cfdx.io.hdf5_writer import _integrity_hashes
+
 from scripts.generate_th03_openfoam_blockmesh import H, load_openfoam_polymesh
 
 
