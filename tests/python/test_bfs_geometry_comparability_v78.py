@@ -1,5 +1,9 @@
 """V78 geometry-comparability checks: dimensions are necessary, not sufficient."""
+import sys
 import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.bfs_geometry_comparability_v78 import gate_reference_geometry
 
