@@ -437,7 +437,10 @@ def main() -> int:
     print(
         json.dumps(
             initialise_case(
-                args.case, args.output, delta_h=args.delta_h, sst_style=args.sst_style,
+                args.case,
+                args.output,
+                delta_h=args.delta_h,
+                sst_style=args.sst_style,
                 require_native_geometry=not args.allow_reconstructed_diagnostic,
             ),
             indent=2,
