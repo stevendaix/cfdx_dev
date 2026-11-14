@@ -22,6 +22,46 @@ int main() {
         outlet.pressure=123.0;
         validate_production_incompressible_boundary(outlet,PatchType::OUTLET);
     });
+    run_case("zero_gradient_inlet_is_supported_for_pressure_driven_and_equilibrium_cases", [] {
+        BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = BCType::INLET;
+        inlet.value_type = BCValueType::ZERO_GRADIENT;
+        validate_production_incompressible_boundary(inlet, PatchType::INLET);
+        inlet.velocity_magnitude = 1.0;
+        EXPECT_THROW(validate_production_incompressible_boundary(inlet, PatchType::INLET),
+                     std::invalid_argument);
+        inlet.velocity_magnitude = 0.0;
+        inlet.source_type_name = "mass-flow-inlet";
+        EXPECT_THROW(validate_production_incompressible_boundary(inlet, PatchType::INLET),
+                     std::invalid_argument);
+    });
+    run_case("generic_mesh_patch_role_is_resolved_only_from_explicit_case_bc", [] {
+        BoundaryPatches patches;
+        patches.add_patch("inlet", PatchType::UNKNOWN);
+        patches.add_patch("wall", PatchType::WALL);
+        CaseSetup setup;
+        BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = BCType::INLET;
+        inlet.value_type = BCValueType::FIXED;
+        setup.boundary_conditions.push_back(inlet);
+        BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = BCType::WALL;
+        wall.value_type = BCValueType::WALL_NO_SLIP;
+        setup.boundary_conditions.push_back(wall);
+        resolve_generic_production_boundary_patch_types(patches, setup);
+        EXPECT_TRUE(patches.patch(patches.find("inlet")).type == PatchType::INLET);
+        EXPECT_TRUE(patches.patch(patches.find("wall")).type == PatchType::WALL);
+        patches.add_patch("orphan", PatchType::UNKNOWN);
+        BoundarySpec orphan;
+        orphan.patch_name = "orphan";
+        orphan.type = BCType::PERIODIC;
+        setup.boundary_conditions.push_back(orphan);
+        EXPECT_THROW(resolve_generic_production_boundary_patch_types(patches, setup),
+                     std::invalid_argument);
+    });
     run_case("symmetry_requires_matching_mesh_patch", [] {
         BoundarySpec bc;
         bc.patch_name="symmetry";
@@ -115,6 +155,9 @@ int main() {
         inlet.field_conditions["velocity"].value={44.2,0.0,0.0};
         inlet.field_conditions["velocity"].type="ZERO_GRADIENT";
         EXPECT_THROW(validate_native_flow_field_overrides(inlet), std::invalid_argument);
+        inlet.value_type = BCValueType::ZERO_GRADIENT;
+        validate_native_flow_field_overrides(inlet);
+        validate_production_incompressible_boundary(inlet, PatchType::INLET);
         BoundarySpec outlet;
         outlet.patch_name="out";
         outlet.type=BCType::PRESSURE_OUTLET;
