@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 from pathlib import Path
 
 import h5py
@@ -83,10 +85,63 @@ def read_case(path: Path) -> dict:
         }
 
 
+def pressure_failure_evidence(
+    logfile: Path, execution: Path, relative_target: float = 1e-11
+) -> dict:
+    """Extract actual native pressure-correction rejection attempts; never certify."""
+    source = Path(logfile).read_text(errors="replace")
+    rejected = re.findall(
+        r"^CFDX nonlinear iteration \\d+ rejected;[^\\n]*$", source, re.MULTILINE
+    )
+    pattern = re.compile(
+        r"pressure-correction solve did not converge "
+        r"\\(status=(\\d+), iterations=(\\d+), "
+        r"residual=([0-9eE+\\-.]+), relative=([0-9eE+\\-.]+)\\)"
+    )
+    raw = [match.groups() for line in rejected if (match := pattern.search(line))]
+    if not raw:
+        raise ValueError("no native pressure-rejection evidence")
+    execution_data = json.loads(Path(execution).read_text())
+    if (
+        execution_data.get("converged") is not False
+        or execution_data.get("process_exit_code") != 2
+    ):
+        raise ValueError("execution record does not prove a rejected, unconverged run")
+    trials = []
+    for index, (status, iterations, residual, relative) in enumerate(raw, 1):
+        row = {
+            "trial": index,
+            "status": int(status),
+            "iterations": int(iterations),
+            "residual_absolute": float(residual),
+            "residual_relative": float(relative),
+        }
+        if not (
+            math.isfinite(row["residual_absolute"])
+            and math.isfinite(row["residual_relative"])
+            and row["residual_absolute"] >= 0.0
+            and row["residual_relative"] > 0.0
+        ):
+            raise ValueError("nonfinite or invalid native pressure residual")
+        trials.append(row)
+    return {
+        "schema": "CFDX-PRESSURE-FAIL-REPLAY/V78",
+        "target_relative": relative_target,
+        "process_exit_code": 2,
+        "outer_iterations_accepted": 0,
+        "converged": False,
+        "trials": trials,
+        "min_relative": min(row["residual_relative"] for row in trials),
+        "physical_validation_authorized": False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case_h5", nargs="+", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--pressure-log", type=Path)
+    parser.add_argument("--pressure-execution", type=Path)
     args = parser.parse_args()
     rows = []
     for path in args.case_h5:
@@ -100,12 +155,18 @@ def main() -> int:
         row["physical_validation_authorized"] = False
         rows.append(row)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(
-            {"schema": "CFDX-TH03-GEOMETRY-COMPARABILITY/V78", "cases": rows}, indent=2
+    if bool(args.pressure_log) != bool(args.pressure_execution):
+        raise ValueError("provide both --pressure-log and --pressure-execution")
+    report = {
+        "schema": "CFDX-TH03-GEOMETRY-COMPARABILITY/V78",
+        "cases": rows,
+        "geometry_only_not_physics": True,
+    }
+    if args.pressure_log:
+        report["pressure_failure_evidence"] = pressure_failure_evidence(
+            args.pressure_log, args.pressure_execution
         )
-        + "\n"
-    )
+    args.output.write_text(json.dumps(report, indent=2) + "\n")
     for row in rows:
         print(
             row["case_file"],
