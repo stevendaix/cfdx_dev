@@ -1113,8 +1113,9 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.openfoam_case is not None:
-            mesh = load_openfoam_polymesh(args.openfoam_case)
-            source = f"OpenFOAM polyMesh, {args.openfoam_case}"
+            native_case = args.openfoam_case.expanduser().resolve(strict=True)
+            mesh = load_openfoam_polymesh(native_case)
+            source = f"OpenFOAM polyMesh, {native_case}"
         else:
             mesh = make_structured_mesh(args.resolution)
             source = f"OpenFOAM v2606 six-block geometry, graded reconstruction ({args.resolution})"
