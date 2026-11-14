@@ -29,3 +29,20 @@ class TestTh03NativeGeometryGate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_boundary_patch_integrity_hash_covers_names_types_and_face_ownership():
+    from cfdx.io.hdf5_writer import (
+        _boundary_patch_integrity_hash,
+        _boundary_patch_metadata,
+    )
+    from scripts.generate_th03_openfoam_blockmesh import make_structured_mesh
+
+    mesh = make_structured_mesh("smoke")
+    metadata, face_ids, offsets = _boundary_patch_metadata(mesh)
+    original = _boundary_patch_integrity_hash(metadata, face_ids, offsets)
+    changed_faces = face_ids.copy()
+    changed_faces[0], changed_faces[-1] = changed_faces[-1], changed_faces[0]
+    assert _boundary_patch_integrity_hash(metadata, changed_faces, offsets) != original
+    changed_metadata = metadata.replace(":0;", ":1;", 1)
+    assert _boundary_patch_integrity_hash(changed_metadata, face_ids, offsets) != original

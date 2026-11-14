@@ -70,7 +70,8 @@ historique 181728 s^-1 et n'est pas prouvée identique au `0.orig` OpenFOAM.
 
 ```bash
 PYTHONPATH=src/cfdx/python python scripts/generate_th03_openfoam_blockmesh.py \
-  --resolution full --max-iterations 3 \
+  --resolution full --allow-reconstructed-mesh --max-iterations 3
+# Reconstruction is diagnostic-only; physical runs must pass --openfoam-case. \
   --pressure-linear-tolerance 1e-11 --pressure-gmres-restart 160 \
   --output build/th03_v4/full.cfdx.h5
 

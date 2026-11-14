@@ -21,7 +21,11 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "src/cfdx/python") not in sys.path:
     sys.path.insert(0, str(ROOT / "src/cfdx/python"))
 
-from cfdx.io.hdf5_writer import _integrity_hashes
+from cfdx.io.hdf5_writer import (
+    _boundary_patch_integrity_hash,
+    _boundary_patch_metadata,
+    _integrity_hashes,
+)
 
 from scripts.generate_th03_openfoam_blockmesh import H, load_openfoam_polymesh
 
@@ -112,6 +116,21 @@ def require_native_geometry(case_h5: Path) -> dict:
             key: _text(h.attrs.get(key, ""))
             for key in ("topology_hash", "geometry_hash", "mesh_hash")
         }
+        stored_patch_hash = _text(h.attrs.get("boundary_patch_hash", ""))
+        if not stored_patch_hash:
+            raise ValueError("HDF5 case is missing native boundary-patch integrity hash")
+        if "boundary_patches" not in h.attrs or "patch_face_ids" not in h or "patch_face_offsets" not in h:
+            raise ValueError("HDF5 case is missing native boundary-patch assignment data")
+        hdf5_patch_hash = _boundary_patch_integrity_hash(
+            _text(h.attrs["boundary_patches"]),
+            np.asarray(h["patch_face_ids"][:]),
+            np.asarray(h["patch_face_offsets"][:]),
+        )
+        if hdf5_patch_hash != stored_patch_hash:
+            raise ValueError(
+                "HDF5 boundary patch assignments do not match their stored hash: "
+                f"stored={stored_patch_hash}, recomputed={hdf5_patch_hash}"
+            )
         if any(not value for value in stored.values()):
             raise ValueError("HDF5 case is missing native mesh integrity hashes")
         hdf5_mesh = {
@@ -140,6 +159,15 @@ def require_native_geometry(case_h5: Path) -> dict:
                 f"stored={stored}, recomputed={hdf5_actual}"
             )
     native = load_openfoam_polymesh(source)
+    native_patch_metadata, native_patch_ids, native_patch_offsets = _boundary_patch_metadata(native)
+    native_patch_hash = _boundary_patch_integrity_hash(
+        native_patch_metadata, native_patch_ids, native_patch_offsets
+    )
+    if native_patch_hash != stored_patch_hash:
+        raise ValueError(
+            "HDF5 boundary patch names/types/faces differ from the referenced native OpenFOAM polyMesh: "
+            f"stored={stored_patch_hash}, reimported={native_patch_hash}"
+        )
     topology, geometry, mesh_hash = _integrity_hashes(native)
     actual = {
         "topology_hash": topology,

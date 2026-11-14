@@ -28,7 +28,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src/cfdx/python"))
 
-from cfdx.io.hdf5_writer import _boundary_patch_metadata, _integrity_hashes
+from cfdx.io.hdf5_writer import (
+    _boundary_patch_integrity_hash,
+    _boundary_patch_metadata,
+    _integrity_hashes,
+)
 from cfdx.io.schema import (
     BCType,
     BCValueType,
@@ -871,8 +875,15 @@ def write_case(
             "geometry_hash": geometry_hash,
             "mesh_hash": mesh_hash,
             "boundary_patches": metadata,
+            "boundary_patch_hash": _boundary_patch_integrity_hash(
+                metadata, face_ids, face_offsets
+            ),
             "source_solver": "OpenFOAM",
-            "source_format": "openfoam",
+            "source_format": (
+                "openfoam"
+                if mesh_source.startswith("OpenFOAM polyMesh, ")
+                else "openfoam-reconstruction"
+            ),
             "source_version": "v2606",
             "source_case_path": mesh_source,
             "source_case_name": "backwardFacingStep2D",
