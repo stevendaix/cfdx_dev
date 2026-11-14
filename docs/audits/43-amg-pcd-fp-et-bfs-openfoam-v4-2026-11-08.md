@@ -54,7 +54,8 @@ ctest --test-dir build-amg -R 'test_pcd_fp_replay_capture|test_pcd_schur|test_am
 # Avec une vraie capture Fp en entree, compare amg ET amg_robust :
 build-amg/test_pcd_fp_replay /chemin/vers/naca_n64_rhs1.cfp 100 1e-8
 PYTHONPATH=src/cfdx/python:. python -m pytest -q tests/python/test_th03_openfoam_blockmesh.py tests/python/test_th03_openfoam_existing_mesh_regression.py
-PYTHONPATH=src/cfdx/python:. python scripts/generate_th03_openfoam_blockmesh.py --resolution full --output build-amg/bfs_v4.h5 --max-iterations 2
+PYTHONPATH=src/cfdx/python:. python scripts/generate_th03_openfoam_blockmesh.py --resolution full --allow-reconstructed-mesh --output build-amg/bfs_v4.h5 --max-iterations 2
+# Geometry/IO diagnostic only: use --openfoam-case with a native polyMesh for campaigns.
 PYTHONPATH=src/cfdx/python:. python scripts/audit_th03_openfoam_mesh.py build-amg/bfs_v4.h5 --output build-amg/bfs_mesh_audit.json
 ```
 

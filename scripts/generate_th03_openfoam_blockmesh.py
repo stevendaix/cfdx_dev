@@ -510,7 +510,11 @@ def make_case_setup(
             solver="OpenFOAM",
             version="v2606",
             case_name="backwardFacingStep2D",
-            format="openfoam-blockmesh-sourced",
+            format=(
+                "openfoam-native-polymesh"
+                if mesh_source.startswith("OpenFOAM polyMesh, ")
+                else "openfoam-blockmesh-reconstruction"
+            ),
         )
     )
     setup.physics_model = "incompressible_laminar"  # experimental SST opt-in
@@ -936,7 +940,12 @@ def main() -> int:
     parser.add_argument(
         "--openfoam-case",
         type=Path,
-        help="Use actual OpenFOAM constant/polyMesh ASCII files instead of reconstruction",
+        help="Use actual OpenFOAM constant/polyMesh ASCII files (required for physical campaigns)",
+    )
+    parser.add_argument(
+        "--allow-reconstructed-mesh",
+        action="store_true",
+        help="Allow the six-block reconstruction for geometry/IO diagnostics only; never physical qualification",
     )
     parser.add_argument(
         "--convection-scheme",
@@ -1117,8 +1126,16 @@ def main() -> int:
             mesh = load_openfoam_polymesh(native_case)
             source = f"OpenFOAM polyMesh, {native_case}"
         else:
+            if not args.allow_reconstructed_mesh:
+                parser.error(
+                    "--openfoam-case is required; use --allow-reconstructed-mesh "
+                    "only for geometry/IO diagnostics, never for physical campaigns"
+                )
             mesh = make_structured_mesh(args.resolution)
-            source = f"OpenFOAM v2606 six-block geometry, graded reconstruction ({args.resolution})"
+            source = (
+                "RECONSTRUCTION ONLY: OpenFOAM v2606 six-block geometry, "
+                f"graded approximation ({args.resolution})"
+            )
         summary = write_case(
             args.output,
             mesh,

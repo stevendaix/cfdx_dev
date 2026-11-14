@@ -1,7 +1,7 @@
-"""Protect the existing V4 OpenFOAM six-block BFS, not a replacement mesh.
+"""Protect the documented V4 six-block geometry specification.
 
-This test is geometry/provenance ONLY. OpenFOAM polyMesh identity and
-Driver-Seegmiller physical qualification require separate evidence.
+This is a geometry-contract test, not a native polyMesh identity test.
+Driver-Seegmiller physical qualification requires separate evidence.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from scripts import generate_th03_openfoam_blockmesh as reference
 
 
-def test_openfoam_v2606_six_block_native_geometry_is_preserved():
+def test_openfoam_v2606_six_block_geometry_contract_is_preserved():
     specs = reference.block_specs("full")
     assert len(specs) == 6
     assert [(x["nx"], x["ny"]) for x in specs] == [

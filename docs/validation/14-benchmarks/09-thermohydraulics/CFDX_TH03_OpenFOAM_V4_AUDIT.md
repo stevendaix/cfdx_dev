@@ -36,7 +36,8 @@ aucun binaire `blockMesh` OpenFOAM n'était disponible dans cet environnement.
 
 ```bash
 PYTHONPATH=src/cfdx/python python scripts/generate_th03_openfoam_blockmesh.py \
-  --resolution full --max-iterations 300 --output build/th03_v4/full.cfdx.h5
+  --resolution full --allow-reconstructed-mesh --max-iterations 300 --output build/th03_v4/full.cfdx.h5
+# Reconstructed geometry is diagnostic only; physical runs require --openfoam-case.
 
 PYTHONPATH=src/cfdx/python python scripts/audit_th03_openfoam_mesh.py \
   build/th03_v4/full.cfdx.h5 --output build/th03_v4/mesh_audit.json
