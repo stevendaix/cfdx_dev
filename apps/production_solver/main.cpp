@@ -873,7 +873,7 @@ int main(int argc, char** argv)
                     "--validate-numerics-only requires a .cfdx.h5 case");
             IncompressibleSolverControls selection_controls;
             apply_explicit_case_numerics(case_setup, selection_controls);
-            std::cout << "Resolved numerical selections:\\n"
+            std::cout << "Resolved numerical selections:\n"
                       << cfdx::core::format_numerics_report(case_setup.numerical_report);
             return 0;
         }
