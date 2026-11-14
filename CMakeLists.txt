@@ -2443,3 +2443,14 @@ if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
     set_tests_properties(test_bfs_v74_evidence_falsification PROPERTIES
         LABELS "bfs;sst;v74;falsification" TIMEOUT 30)
 endif()
+
+
+# TH-03 geometry provenance and V78 reference-domain regression gates.
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_th03_native_geometry_gate
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_th03_native_geometry_gate.py)
+    add_test(NAME test_bfs_geometry_comparability_v78
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_geometry_comparability_v78.py)
+    set_tests_properties(test_th03_native_geometry_gate test_bfs_geometry_comparability_v78
+        PROPERTIES LABELS "bfs;th03;geometry;v78;falsification" TIMEOUT 30)
+endif()
