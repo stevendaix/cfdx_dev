@@ -114,6 +114,31 @@ def require_native_geometry(case_h5: Path) -> dict:
         }
         if any(not value for value in stored.values()):
             raise ValueError("HDF5 case is missing native mesh integrity hashes")
+        hdf5_mesh = {
+            key: np.asarray(h[key][:])
+            for key in (
+                "points",
+                "face_vertices",
+                "face_offsets",
+                "owner",
+                "neighbour",
+                "cell_faces",
+                "cell_offsets",
+            )
+        }
+        hdf5_mesh["n_faces"] = int(h.attrs["n_faces"])
+        hdf5_mesh["n_cells"] = int(h.attrs["n_cells"])
+        hdf5_topology, hdf5_geometry, hdf5_mesh_hash = _integrity_hashes(hdf5_mesh)
+        hdf5_actual = {
+            "topology_hash": hdf5_topology,
+            "geometry_hash": hdf5_geometry,
+            "mesh_hash": hdf5_mesh_hash,
+        }
+        if hdf5_actual != stored:
+            raise ValueError(
+                "HDF5 mesh arrays do not match their stored integrity hashes: "
+                f"stored={stored}, recomputed={hdf5_actual}"
+            )
     native = load_openfoam_polymesh(source)
     topology, geometry, mesh_hash = _integrity_hashes(native)
     actual = {
