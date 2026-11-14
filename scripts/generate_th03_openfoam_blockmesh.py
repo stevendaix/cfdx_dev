@@ -378,8 +378,6 @@ def make_structured_mesh(resolution: str) -> dict:
     }
 
 
-
-
 def validate_openfoam_reference_case(case: Path) -> None:
     """Require the full tutorial case, not an isolated polyMesh folder.
 

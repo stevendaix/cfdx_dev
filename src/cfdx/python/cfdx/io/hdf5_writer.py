@@ -506,8 +506,6 @@ def _write_mesh_topology(f: h5py.File, m: dict) -> None:
         f.create_dataset("patch_face_offsets", data=patch_offsets)
 
 
-
-
 def _boundary_patch_integrity_hash(
     metadata: str, face_ids: np.ndarray, face_offsets: np.ndarray
 ) -> str:

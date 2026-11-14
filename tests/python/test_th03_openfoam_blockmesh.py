@@ -285,5 +285,7 @@ def test_cli_requires_native_case_unless_reconstruction_is_explicit(
 
 
 def test_native_case_requires_full_reference_dictionaries(tmp_path):
-    with pytest.raises(ValueError, match="native OpenFOAM reference case is incomplete"):
+    with pytest.raises(
+        ValueError, match="native OpenFOAM reference case is incomplete"
+    ):
         b.validate_openfoam_reference_case(tmp_path)
