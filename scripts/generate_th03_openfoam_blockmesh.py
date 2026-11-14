@@ -692,9 +692,9 @@ def make_case_setup(
     setup.numerics.raw_settings["v18_omega_wall_owner_constraints_experimental"] = (
         "enabled" if v18_omega_owner_cells else "disabled"
     )
-    setup.numerics.raw_settings["v19_sst_equilibrated_defect_correction_experimental"] = (
-        "enabled" if v19_sst_equilibrated_defect else "disabled"
-    )
+    setup.numerics.raw_settings[
+        "v19_sst_equilibrated_defect_correction_experimental"
+    ] = "enabled" if v19_sst_equilibrated_defect else "disabled"
     setup.numerics.raw_settings["v19_omega_corner_equal_faces_experimental"] = (
         "enabled" if v19_omega_corner_equal_faces else "disabled"
     )
