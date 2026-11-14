@@ -119,8 +119,14 @@ def require_native_geometry(case_h5: Path) -> dict:
         stored_patch_hash = _text(h.attrs.get("boundary_patch_hash", ""))
         if not stored_patch_hash:
             raise ValueError("HDF5 case is missing native boundary-patch integrity hash")
-        if "boundary_patches" not in h.attrs or "patch_face_ids" not in h or "patch_face_offsets" not in h:
-            raise ValueError("HDF5 case is missing native boundary-patch assignment data")
+        if (
+            "boundary_patches" not in h.attrs
+            or "patch_face_ids" not in h
+            or "patch_face_offsets" not in h
+        ):
+            raise ValueError(
+                "HDF5 case is missing native boundary-patch assignment data"
+            )
         hdf5_patch_hash = _boundary_patch_integrity_hash(
             _text(h.attrs["boundary_patches"]),
             np.asarray(h["patch_face_ids"][:]),
@@ -159,7 +165,11 @@ def require_native_geometry(case_h5: Path) -> dict:
                 f"stored={stored}, recomputed={hdf5_actual}"
             )
     native = load_openfoam_polymesh(source)
-    native_patch_metadata, native_patch_ids, native_patch_offsets = _boundary_patch_metadata(native)
+    (
+        native_patch_metadata,
+        native_patch_ids,
+        native_patch_offsets,
+    ) = _boundary_patch_metadata(native)
     native_patch_hash = _boundary_patch_integrity_hash(
         native_patch_metadata, native_patch_ids, native_patch_offsets
     )

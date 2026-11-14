@@ -454,6 +454,7 @@ def make_case_setup(
     v21_adaptive_relaxation: bool = False,
     convection_scheme: str = "upwind",
     pressure_refinement_steps: int = 0,
+    mesh_source: str = "",
 ) -> CaseSetup:
     convection_keys = {
         "upwind": "numerics.convection.upwind",
@@ -819,6 +820,7 @@ def write_case(
         sst_wall_factor,
         sst_inner_iterations,
         openfoam_kqr_wall_v16=openfoam_kqr_wall_v16,
+        mesh_source=mesh_source,
         sst_provisional=sst_provisional,
         sst_picard_damping=sst_picard_damping,
         sst_relative_gate=sst_relative_gate,

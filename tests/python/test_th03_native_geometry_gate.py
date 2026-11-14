@@ -9,6 +9,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 native_case_path = importlib.import_module(
     "scripts.require_th03_native_geometry"
 ).native_case_path
+_boundary_patch_integrity_hash = importlib.import_module(
+    "cfdx.io.hdf5_writer"
+)._boundary_patch_integrity_hash
+_boundary_patch_metadata = importlib.import_module(
+    "cfdx.io.hdf5_writer"
+)._boundary_patch_metadata
+make_structured_mesh = importlib.import_module(
+    "scripts.generate_th03_openfoam_blockmesh"
+).make_structured_mesh
 
 
 class TestTh03NativeGeometryGate(unittest.TestCase):
@@ -32,12 +41,6 @@ if __name__ == "__main__":
 
 
 def test_boundary_patch_integrity_hash_covers_names_types_and_face_ownership():
-    from cfdx.io.hdf5_writer import (
-        _boundary_patch_integrity_hash,
-        _boundary_patch_metadata,
-    )
-    from scripts.generate_th03_openfoam_blockmesh import make_structured_mesh
-
     mesh = make_structured_mesh("smoke")
     metadata, face_ids, offsets = _boundary_patch_metadata(mesh)
     original = _boundary_patch_integrity_hash(metadata, face_ids, offsets)
