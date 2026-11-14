@@ -1,7 +1,10 @@
 """Regression tests for the fail-closed TH-03 native geometry contract."""
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import h5py
 
