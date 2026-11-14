@@ -118,7 +118,9 @@ def require_native_geometry(case_h5: Path) -> dict:
         }
         stored_patch_hash = _text(h.attrs.get("boundary_patch_hash", ""))
         if not stored_patch_hash:
-            raise ValueError("HDF5 case is missing native boundary-patch integrity hash")
+            raise ValueError(
+                "HDF5 case is missing native boundary-patch integrity hash"
+            )
         if (
             "boundary_patches" not in h.attrs
             or "patch_face_ids" not in h

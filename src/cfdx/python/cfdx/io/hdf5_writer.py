@@ -507,6 +507,7 @@ def _write_mesh_topology(f: h5py.File, m: dict) -> None:
 
 
 
+
 def _boundary_patch_integrity_hash(
     metadata: str, face_ids: np.ndarray, face_offsets: np.ndarray
 ) -> str:

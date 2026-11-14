@@ -251,7 +251,9 @@ def test_krylov_config_is_exported_and_rejects_invalid_entries(tmp_path):
     assert settings["pressure_linear_scaling"] == "symmetric_diagonal"
 
 
-def test_cli_requires_native_case_unless_reconstruction_is_explicit(tmp_path, monkeypatch):
+def test_cli_requires_native_case_unless_reconstruction_is_explicit(
+    tmp_path, monkeypatch
+):
     output = tmp_path / "diagnostic.cfdx.h5"
     monkeypatch.setattr(
         sys, "argv", ["generate_th03_openfoam_blockmesh.py", "--output", str(output)]

@@ -1,4 +1,5 @@
 """Regression tests for the fail-closed TH-03 native geometry contract."""
+
 import importlib
 import sys
 import tempfile
