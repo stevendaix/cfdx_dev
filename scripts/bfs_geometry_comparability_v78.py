@@ -2,6 +2,7 @@
 
 This is a geometry-only diagnostic. It never authorizes physical qualification.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,16 +45,18 @@ def read_case(path: Path) -> dict:
         vertices = np.asarray(h["face_vertices"][:], dtype=np.int64)
         patch_offsets = np.asarray(h["patch_face_offsets"][:], dtype=np.int64)
         patch_ids = np.asarray(h["patch_face_ids"][:], dtype=np.int64)
-        patch_names = [x.split(":")[0] for x in str(h.attrs["boundary_patches"]).split(";")]
+        patch_names = [
+            x.split(":")[0] for x in str(h.attrs["boundary_patches"]).split(";")
+        ]
         patches = {
-            name: patch_ids[patch_offsets[i]:patch_offsets[i + 1]]
+            name: patch_ids[patch_offsets[i] : patch_offsets[i + 1]]
             for i, name in enumerate(patch_names)
         }
         if "lowerWall" not in patches or len(patches["lowerWall"]) == 0:
             raise ValueError("TH-03 HDF5 case lacks lowerWall")
         lower_centres = []
         for face_id in patches["lowerWall"]:
-            ids = vertices[offsets[face_id]:offsets[face_id + 1]]
+            ids = vertices[offsets[face_id] : offsets[face_id + 1]]
             lower_centres.append(points[ids].mean(axis=0))
         lower = np.asarray(lower_centres)
         upstream = lower[(lower[:, 0] < 0.0) & (np.abs(lower[:, 1] - H_REF) < 1e-7)]
@@ -90,7 +93,8 @@ def main() -> int:
         row = read_case(path)
         row["geometry_gate"] = gate_reference_geometry(row)
         row["geometry_status"] = (
-            "REFERENCE_DOMAIN_MATCH" if row["geometry_gate"]["pass_reference_domain"]
+            "REFERENCE_DOMAIN_MATCH"
+            if row["geometry_gate"]["pass_reference_domain"]
             else "NOT_REFERENCE_DOMAIN"
         )
         row["physical_validation_authorized"] = False
