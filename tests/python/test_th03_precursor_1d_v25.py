@@ -95,7 +95,7 @@ def precursor_case(tmp_path_factory):
         mesh_source="v25-discrete-precursor",
         max_iterations=2,
     )
-    report = initialise_case(source, output, sst_style="precursor_1d")
+    report = initialise_case(source, output, sst_style="precursor_1d", require_native_geometry=False)
     return source, output, report
 
 
@@ -137,7 +137,7 @@ def test_refuse_uncertified_1d_initialization_without_output(precursor_case, tmp
         ),
         pytest.raises(ArithmeticError, match="unconverged 1D"),
     ):
-        initialise_case(source, target, sst_style="precursor_1d")
+        initialise_case(source, target, sst_style="precursor_1d", require_native_geometry=False)
     assert not target.exists()
 
 
@@ -147,8 +147,8 @@ def test_velocity_only_mode_never_claims_verified_sst_precursor(
     source, _, _ = precursor_case
     legacy = tmp_path / "legacy.cfdx.h5"
     velocity_only = tmp_path / "velocity_only.cfdx.h5"
-    initialise_case(source, legacy, sst_style="wall_aware")
-    report = initialise_case(source, velocity_only, sst_style="precursor_1d_u_only")
+    initialise_case(source, legacy, sst_style="wall_aware", require_native_geometry=False)
+    report = initialise_case(source, velocity_only, sst_style="precursor_1d_u_only", require_native_geometry=False)
     assert report["profile_validation"] == (
         "1D_U_DISCRETE_CERTIFIED_K_OMEGA_UNVERIFIED_NOT_2D_QUALIFIED"
     )
