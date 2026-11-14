@@ -1,4 +1,5 @@
 """V78 geometry-comparability checks: dimensions are necessary, not sufficient."""
+
 import importlib
 import sys
 import unittest
