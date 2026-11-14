@@ -378,6 +378,56 @@ def make_structured_mesh(resolution: str) -> dict:
     }
 
 
+
+def validate_openfoam_reference_case(case: Path) -> None:
+    """Require the full tutorial case, not an isolated polyMesh folder.
+
+    Numerical dictionaries and initial fields are needed to audit whether CFDX
+    solves the same problem as simpleFoam. Presence is checked here; numerical
+    equivalence still requires a separate dictionary comparison.
+    """
+    required = (
+        "system/controlDict",
+        "system/blockMeshDict",
+        "system/fvSchemes",
+        "system/fvSolution",
+        "constant/polyMesh/points",
+        "constant/polyMesh/faces",
+        "constant/polyMesh/owner",
+        "constant/polyMesh/neighbour",
+        "constant/polyMesh/boundary",
+    )
+    missing = [name for name in required if not (case / name).is_file()]
+    if missing:
+        raise ValueError(
+            "native OpenFOAM reference case is incomplete; missing: "
+            + ", ".join(missing)
+        )
+    if not any(
+        (case / name).is_file()
+        for name in ("constant/physicalProperties", "constant/transportProperties")
+    ):
+        raise ValueError(
+            "native OpenFOAM reference case lacks physicalProperties/transportProperties"
+        )
+    if not any(
+        (case / name).is_file()
+        for name in ("constant/momentumTransport", "constant/turbulenceProperties")
+    ):
+        raise ValueError(
+            "native OpenFOAM reference case lacks momentumTransport/turbulenceProperties"
+        )
+    field_root = case / ("0.orig" if (case / "0.orig").is_dir() else "0")
+    missing_fields = [
+        name for name in ("U", "p", "k", "omega") if not (field_root / name).is_file()
+    ]
+    if missing_fields:
+        raise ValueError(
+            f"native OpenFOAM reference case lacks {field_root.name} fields: "
+            + ", ".join(missing_fields)
+        )
+
+
 def load_openfoam_polymesh(case: Path) -> dict:
     """Import *actual* OpenFOAM ASCII polyMesh, preserving all CSR connections."""
     from cfdx.io.adapters.openfoam import OpenFOAMAdapter
@@ -963,8 +1013,8 @@ def main() -> int:
     parser.add_argument(
         "--convection-scheme",
         choices=("upwind", "second_order_upwind", "tvd_minmod"),
-        default="upwind",
-        help="V22 opt-in bounded momentum convection; keep legacy upwind by default.",
+        default=None,
+        help="Explicit CFDX momentum convection mapping; mandatory with a native OpenFOAM case.",
     )
     parser.add_argument("--max-iterations", type=int, default=100)
     parser.add_argument("--alpha-u", type=float, default=0.25)
@@ -1136,6 +1186,12 @@ def main() -> int:
     try:
         if args.openfoam_case is not None:
             native_case = args.openfoam_case.expanduser().resolve(strict=True)
+            validate_openfoam_reference_case(native_case)
+            if args.convection_scheme is None:
+                parser.error(
+                    "--convection-scheme must be explicit for a native OpenFOAM case; "
+                    "map it from system/fvSchemes after review"
+                )
             mesh = load_openfoam_polymesh(native_case)
             source = f"OpenFOAM polyMesh, {native_case}"
         else:
@@ -1189,7 +1245,7 @@ def main() -> int:
             v18_sparse_flux_pressure_jacobian=args.v18_sparse_flux_pressure_jacobian,
             v19_full_pressure_flux_step=args.v19_full_pressure_flux_step,
             v21_adaptive_relaxation=args.v21_adaptive_relaxation,
-            convection_scheme=args.convection_scheme,
+            convection_scheme=args.convection_scheme or "upwind",
             pressure_refinement_steps=args.pressure_refinement_steps,
         )
     except (OSError, ValueError, RuntimeError) as exc:

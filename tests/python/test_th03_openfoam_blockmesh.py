@@ -280,3 +280,10 @@ def test_cli_requires_native_case_unless_reconstruction_is_explicit(tmp_path, mo
         assert case.attrs["source_format"] == "openfoam-reconstruction"
         setup = json.loads(case.attrs["case_setup_json"])
         assert setup["source_metadata"]["physical_qualification"] == "NOT_QUALIFIED"
+
+
+def test_native_case_requires_full_reference_dictionaries(tmp_path):
+    from scripts.generate_th03_openfoam_blockmesh import validate_openfoam_reference_case
+
+    with pytest.raises(ValueError, match="native OpenFOAM reference case is incomplete"):
+        validate_openfoam_reference_case(tmp_path)
