@@ -590,8 +590,11 @@ def make_case_setup(
             (SSTScalarBoundaryType.FIXED_VALUE, SSTScalarBoundaryType.FIXED_VALUE)
             if name == "inlet"
             else (
-                (SSTScalarBoundaryType.WALL_KQ_R
-                 if openfoam_kqr_wall_v16 else SSTScalarBoundaryType.WALL_K_ZERO),
+                (
+                    SSTScalarBoundaryType.WALL_KQ_R
+                    if openfoam_kqr_wall_v16
+                    else SSTScalarBoundaryType.WALL_K_ZERO
+                ),
                 SSTScalarBoundaryType.WALL_OMEGA_SST,
             )
             if kind == "wall"

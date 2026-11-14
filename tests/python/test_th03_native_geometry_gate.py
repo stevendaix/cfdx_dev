@@ -51,4 +51,6 @@ def test_boundary_patch_integrity_hash_covers_names_types_and_face_ownership():
     first[3] = str((int(first[3]) + 1) % 8)
     entries[0] = ":".join(first)
     changed_metadata = ";".join(entries)
-    assert _boundary_patch_integrity_hash(changed_metadata, face_ids, offsets) != original
+    assert (
+        _boundary_patch_integrity_hash(changed_metadata, face_ids, offsets) != original
+    )
