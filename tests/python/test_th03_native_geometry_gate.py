@@ -21,9 +21,10 @@ class TestTh03NativeGeometryGate(unittest.TestCase):
             native_case_path("")
 
     def test_native_prefix_requires_existing_case(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(FileNotFoundError):
-                native_case_path(f"OpenFOAM polyMesh, {Path(tmp) / 'missing'}")
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(
+            FileNotFoundError
+        ):
+            native_case_path(f"OpenFOAM polyMesh, {Path(tmp) / 'missing'}")
 
 
 if __name__ == "__main__":
