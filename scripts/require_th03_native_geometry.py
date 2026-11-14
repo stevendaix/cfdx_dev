@@ -87,7 +87,9 @@ def reference_domain(mesh: dict) -> dict:
         "outlet_at_plus_50H": abs(x_max - 50.0) <= 1e-7,
     }
     if not all(checks.values()):
-        raise ValueError(\n            f"native OpenFOAM mesh does not match TH-03 reference domain: {checks}"\n        )
+        raise ValueError(
+            f"native OpenFOAM mesh does not match TH-03 reference domain: {checks}"
+        )
     return {
         "step_height_m": step,
         "upstream_height_over_H": (y_top - y_up) / step,
