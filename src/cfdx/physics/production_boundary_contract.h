@@ -58,8 +58,14 @@ inline void validate_native_flow_field_overrides(const cfdx::io::BoundarySpec& b
         const bool prescribed = u->type == "FIXED_VALUE";
         if (prescribed && bc.type != BCType::INLET && bc.type != BCType::WALL)
             throw std::invalid_argument("fixed velocity requires an inlet or wall patch");
-        if (!prescribed && (bc.type == BCType::INLET || bc.type == BCType::WALL))
-            throw std::invalid_argument("inlet/wall velocity cannot be zeroGradient in the current FV adapter");
+        if (prescribed && bc.value_type == cfdx::io::BCValueType::ZERO_GRADIENT)
+            throw std::invalid_argument("native fixed velocity conflicts with zeroGradient case velocity on patch '" + bc.patch_name + "'");
+        if (!prescribed && bc.type == BCType::WALL)
+            throw std::invalid_argument("wall velocity cannot be zeroGradient in the current FV adapter");
+        if (!prescribed && bc.type == BCType::INLET &&
+            bc.value_type != cfdx::io::BCValueType::ZERO_GRADIENT &&
+            bc.value_type != cfdx::io::BCValueType::UNKNOWN)
+            throw std::invalid_argument("native zeroGradient velocity conflicts with the case inlet value type on patch '" + bc.patch_name + "'");
         if (bc.type == BCType::WALL && bc.value_type != cfdx::io::BCValueType::FIXED) {
             for (const auto value : u->value)
                 if (value != 0.0)
@@ -125,8 +131,19 @@ inline void validate_production_incompressible_boundary(
             bc.source_type_name == "mass-flow-inlet" ||
             bc.source_type_name == "pressure-far-field")
             reject("imported inlet uses a physical operator not implemented by the incompressible production adapter");
-        if (bc.value_type != BCValueType::FIXED)
-            reject("velocity inlet requires FIXED velocity; pressure/debit inlet needs a dedicated operator");
+        {
+            const auto* native_velocity = bc.find_field("velocity");
+            const bool fixed = native_velocity
+                ? native_velocity->type == "FIXED_VALUE"
+                : bc.value_type == BCValueType::FIXED;
+            const bool zero_gradient = native_velocity
+                ? native_velocity->type == "ZERO_GRADIENT"
+                : bc.value_type == BCValueType::ZERO_GRADIENT;
+            if (!fixed && !zero_gradient)
+                reject("inlet requires an explicit FIXED velocity or ZERO_GRADIENT velocity operator");
+            if (zero_gradient && !zero_velocity)
+                reject("zeroGradient inlet cannot also prescribe a velocity value");
+        }
         return;
     case BCType::PRESSURE_OUTLET:
         if (mesh_patch_type != PatchType::OUTLET)
@@ -169,6 +186,44 @@ inline void validate_production_incompressible_boundary(
     case BCType::UNKNOWN:
     default:
         reject("unsupported physical boundary type");
+    }
+}
+
+// Generic OpenFOAM `patch` zones carry no physical role in polyMesh. In a
+// CFDX case the named BoundarySpec supplies that role explicitly. Resolve only
+// UNKNOWN mesh patch types from that explicit case declaration; never overwrite
+// a known WALL/INLET/OUTLET/SYMMETRY/EMPTY type or infer from a patch name.
+inline void resolve_generic_production_boundary_patch_types(
+    cfdx::core::BoundaryPatches& patches,
+    const cfdx::io::CaseSetup& setup)
+{
+    validate_production_boundary_unique_names(setup);
+    for (const auto& bc : setup.boundary_conditions) {
+        const std::size_t index = patches.find(bc.patch_name);
+        if (index == patches.n_patches())
+            throw std::invalid_argument(
+                "production boundary '" + bc.patch_name +
+                "': case patch is absent from the imported mesh");
+        auto& patch = patches.patch(index);
+        if (patch.type != cfdx::core::PatchType::UNKNOWN) continue;
+        using cfdx::core::PatchType;
+        using cfdx::io::BCType;
+        switch (bc.type) {
+        case BCType::WALL: patch.type = PatchType::WALL; break;
+        case BCType::INLET: patch.type = PatchType::INLET; break;
+        case BCType::OUTLET:
+        case BCType::PRESSURE_OUTLET: patch.type = PatchType::OUTLET; break;
+        case BCType::SYMMETRY: patch.type = PatchType::SYMMETRY; break;
+        case BCType::EMPTY: patch.type = PatchType::EMPTY; break;
+        case BCType::PERIODIC:
+        case BCType::INTERFACE:
+        case BCType::INTERNAL:
+        case BCType::UNKNOWN:
+        default:
+            throw std::invalid_argument(
+                "production boundary '" + bc.patch_name +
+                "': cannot resolve generic mesh patch from unsupported case boundary type");
+        }
     }
 }
 

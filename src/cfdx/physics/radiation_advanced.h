@@ -151,10 +151,12 @@ inline double hemispherical_irradiation(
     for (std::size_t m = 0; m < directions.size(); ++m) {
         const auto& d = directions[m];
         const double mu = (d.dx*normal[0] + d.dy*normal[1] + d.dz*normal[2]) / nn;
-        if (mu > 0.0) {
+        // With an outward normal, incident rays point toward the wall: d.n < 0.
+        // Outgoing/reflected directions must not contribute to irradiation.
+        if (mu < 0.0) {
             if (!std::isfinite(intensities[m]) || intensities[m] < 0.0)
-                throw std::invalid_argument("wall-directed DOM intensity must be finite and non-negative");
-            G += directions[m].weight * mu * intensities[m];
+                throw std::invalid_argument("wall-incident DOM intensity must be finite and non-negative");
+            G += directions[m].weight * (-mu) * intensities[m];
         }
     }
     return G;

@@ -88,6 +88,7 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
+    bool validate_numerics_only = false;
     std::string high_low_checkpoint_prefix;
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
@@ -717,6 +718,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
+        else if (arg == "--validate-numerics-only") o.validate_numerics_only = true;
         else if (arg == "--high-low-checkpoint-prefix")
             o.high_low_checkpoint_prefix = value("--high-low-checkpoint-prefix");
         else if (arg == "--pressure-replay-prefix")
@@ -750,6 +752,7 @@ Options parse(int argc, char** argv)
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
+                         "  [--validate-numerics-only] (validate and print resolved case methods; do not solve)\n"
                          "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
@@ -810,6 +813,7 @@ int main(int argc, char** argv)
             ok = read_case_cfdx_h5(mesh_path, mesh, case_source, case_setup, case_gap);
             if (!ok)
                 throw std::runtime_error("production solver: CFDX case load failed");
+            resolve_generic_production_boundary_patch_types(mesh.boundary(), case_setup);
         } else if (mesh_path.size() >= 3 &&
                    mesh_path.substr(mesh_path.size() - 3) == ".h5") {
             if (hdf5_contains_case_setup(mesh_path))
@@ -861,6 +865,17 @@ int main(int argc, char** argv)
                     "production solver: energy_model 'compressible' is not "
                     "solved by this executable (incompressible carrier "
                     "only); use a compressible solver for this case");
+        }
+
+        if (options.validate_numerics_only) {
+            if (!is_case_hdf5)
+                throw std::invalid_argument(
+                    "--validate-numerics-only requires a .cfdx.h5 case");
+            IncompressibleSolverControls selection_controls;
+            apply_explicit_case_numerics(case_setup, selection_controls);
+            std::cout << "Resolved numerical selections:\\n"
+                      << cfdx::core::format_numerics_report(case_setup.numerical_report);
+            return 0;
         }
 
         if (options.initial_pressure_field && (!options.initial_velocity_field ||

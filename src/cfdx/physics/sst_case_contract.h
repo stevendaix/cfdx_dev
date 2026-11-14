@@ -112,9 +112,21 @@ inline void validate_sst_case_prerequisites(
             throw std::invalid_argument("SST case contains an unsupported boundary type on patch '" +
                                         boundary.patch_name + "'");
         if (boundary.type == cfdx::io::BCType::INLET) {
-            // Reuse the exact same validation and derivation used by the solver
-            // when it constructs inlet scalar values.
-            (void)derive_sst_inlet_turbulence_state(boundary, controls);
+            // Explicit fixed k and omega are authoritative. Do not also require
+            // an intensity/length-scale estimate when both scalars are supplied.
+            bool fixed_k = false;
+            bool fixed_omega = false;
+            for (const auto& scalar : boundary.sst_scalar_conditions) {
+                if (scalar.type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
+                    continue;
+                if (!std::isfinite(scalar.value) || scalar.value <= 0.0)
+                    throw std::invalid_argument(
+                        "explicit SST inlet scalar values must be finite and positive");
+                if (scalar.field == "k") fixed_k = true;
+                if (scalar.field == "omega") fixed_omega = true;
+            }
+            if (!(fixed_k && fixed_omega))
+                (void)derive_sst_inlet_turbulence_state(boundary, controls);
         }
     }
 }
