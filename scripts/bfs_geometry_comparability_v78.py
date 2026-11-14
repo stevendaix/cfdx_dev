@@ -134,6 +134,8 @@ def pressure_failure_evidence(
         "min_relative": min(row["residual_relative"] for row in trials),
         "physical_validation_authorized": False,
     }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case_h5", nargs="+", type=Path)
