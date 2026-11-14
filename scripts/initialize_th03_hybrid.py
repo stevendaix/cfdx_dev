@@ -30,6 +30,9 @@ from scripts.generate_th03_openfoam_blockmesh import (
     VELOCITY,
     H,
 )
+from scripts.require_th03_native_geometry import (
+    require_native_geometry as verify_native_geometry,
+)
 
 
 def _geometry(f: h5py.File) -> dict:
@@ -261,8 +264,6 @@ def initialise_case(
 ) -> dict:
     source = source.resolve(strict=True)
     if require_native_geometry:
-        from scripts.require_th03_native_geometry import require_native_geometry as verify_native_geometry
-
         verify_native_geometry(source)
     destination = destination.resolve()
     if destination == source or destination.exists():
