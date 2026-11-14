@@ -91,12 +91,12 @@ def pressure_failure_evidence(
     """Extract actual native pressure-correction rejection attempts; never certify."""
     source = Path(logfile).read_text(errors="replace")
     rejected = re.findall(
-        r"^CFDX nonlinear iteration \\d+ rejected;[^\\n]*$", source, re.MULTILINE
+        r"^CFDX nonlinear iteration \d+ rejected;[^\n]*$", source, re.MULTILINE
     )
     pattern = re.compile(
         r"pressure-correction solve did not converge "
-        r"\\(status=(\\d+), iterations=(\\d+), "
-        r"residual=([0-9eE+\\-.]+), relative=([0-9eE+\\-.]+)\\)"
+        r"\(status=(\d+), iterations=(\d+), "
+        r"residual=([0-9eE+\-.]+), relative=([0-9eE+\-.]+)\)"
     )
     raw = [match.groups() for line in rejected if (match := pattern.search(line))]
     if not raw:
@@ -134,8 +134,6 @@ def pressure_failure_evidence(
         "min_relative": min(row["residual_relative"] for row in trials),
         "physical_validation_authorized": False,
     }
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case_h5", nargs="+", type=Path)
