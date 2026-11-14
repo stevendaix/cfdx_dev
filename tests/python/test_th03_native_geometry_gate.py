@@ -44,5 +44,9 @@ def test_boundary_patch_integrity_hash_covers_names_types_and_face_ownership():
     changed_faces = face_ids.copy()
     changed_faces[0], changed_faces[-1] = changed_faces[-1], changed_faces[0]
     assert _boundary_patch_integrity_hash(metadata, changed_faces, offsets) != original
-    changed_metadata = metadata.replace(":0;", ":1;", 1)
+    entries = metadata.split(";")
+    first = entries[0].split(":")
+    first[3] = str((int(first[3]) + 1) % 8)
+    entries[0] = ":".join(first)
+    changed_metadata = ";".join(entries)
     assert _boundary_patch_integrity_hash(changed_metadata, face_ids, offsets) != original

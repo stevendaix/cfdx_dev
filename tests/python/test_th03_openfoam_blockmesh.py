@@ -277,6 +277,6 @@ def test_cli_requires_native_case_unless_reconstruction_is_explicit(tmp_path, mo
     )
     assert b.main() == 0
     with h5py.File(output) as case:
-        assert case.attrs["source_format"] == "openfoam-blockmesh-reconstruction"
+        assert case.attrs["source_format"] == "openfoam-reconstruction"
         setup = json.loads(case.attrs["case_setup_json"])
         assert setup["source_metadata"]["physical_qualification"] == "NOT_QUALIFIED"
