@@ -103,9 +103,15 @@ def main() -> int:
     args.output.write_text(json.dumps({"schema": "CFDX-TH03-GEOMETRY-COMPARABILITY/V78",
                                       "cases": rows}, indent=2) + "\n")
     for row in rows:
-        print(row["case_file"], row["geometry_status"],
-              "upstream=", row["h_upstream"], "downstream=", row["h_downstream"],
-              "physical_validation_authorized=0")
+        print(
+            row["case_file"],
+            row["geometry_status"],
+            "upstream=",
+            row["h_upstream"],
+            "downstream=",
+            row["h_downstream"],
+            "physical_validation_authorized=0",
+        )
     return 0
 
 
