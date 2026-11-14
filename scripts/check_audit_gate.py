@@ -66,6 +66,40 @@ NON_FICHE_REPORTS = {
     "CFDX_CODE_CORRECTIONS_COMPLET_2026-10-25.md",
     "CFDX_CODE_ET_VALIDATION_6_VERROUS_2026-10-25.md",
     "CFDX_etat_integration_et_reste_a_faire_2026-10-25.md",
+    # V9 is a campaign/evidence dossier, not a single numerical-method fiche:
+    # its sections 1-9 document the multi-Schur qualification contract.
+    "50-bfs-multi-schur-qualification-v9.md",
+    # V10 extends the same BFS campaign with solver-stage diagnostics and
+    # fail-closed physical qualification evidence; it is not a new method.
+    "51-bfs-six-schur-production-diagnostics-v10.md",
+    # V11/V13/V14 are successive BFS campaign evidence dossiers (A/B runs,
+    # certificates and solver-state diagnostics), not standalone method fiches.
+    "52-bfs-v11-pression-pcd-sst.md",
+    "53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md",
+    "54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md",
+    # Versioned BFS/PCD/SST campaign and integration dossiers. These are
+    # evidence reports, not standalone method fiches; numeric-core changes
+    # still require an approved fiche through check_audit_gate().
+    "42-pcd-fp-bfs-coupled-matrix-2026-11-08.md",
+    "43-amg-pcd-fp-et-bfs-openfoam-v4-2026-11-08.md",
+    "49-pcd-fp-bfs-v4-boundaries-2026-11-08.md",
+    "55-bfs-sst-equilibrated-refinement-v19.md",
+    "55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md",
+    "56-bfs-sst-owner-synchronization-v21.md",
+    "57-bfs-sst-jfnk-v22.md",
+    "58-bfs-sst-block-preconditioning-v23.md",
+    "59-bfs-sst-spatial-block-v24.md",
+    "60-bfs-sst-physical-log-globalization-v25.md",
+    "61-bfs-sst-smooth-globalization-v26.md",
+    "61-sst-coupled-ptc-and-openfoam-oracle-v30.md",
+    "62-bfs-sst-cauchy-subspace-v27.md",
+    "63-bfs-sst-adaptive-trust-v28.md",
+    "64-bfs-sst-branch-jacobian-v34.md",
+    "CFDX_BFS_V17_SST_WALL_AND_VALIDATION.md",
+    "CFDX_BFS_V18_OMEGA_OWNER_AND_CONVERGENCE.md",
+    "CFDX_V35_MERGE_AUDIT.md",
+    "CFDX_V38_PCD_EXACT_SCHUR.md",
+    "CFDX_V39_PCD_ORIENTATION_AND_BFS.md",
 }
 
 # Reference detection (DOI prefix or ISBN). Every character class avoids

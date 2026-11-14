@@ -1,9 +1,8 @@
-"""Protect the existing V4 OpenFOAM six-block BFS, not a replacement mesh.
+"""Protect the documented V4 six-block geometry specification.
 
-This test is geometry/provenance ONLY. OpenFOAM polyMesh identity and
-Driver-Seegmiller physical qualification require separate evidence.
+This is a geometry-contract test, not a native polyMesh identity test.
+Driver-Seegmiller physical qualification requires separate evidence.
 """
-
 from __future__ import annotations
 
 import sys
@@ -16,29 +15,18 @@ sys.path.insert(0, str(ROOT))
 from scripts import generate_th03_openfoam_blockmesh as reference
 
 
-def test_openfoam_v2606_six_block_native_geometry_is_preserved():
+def test_openfoam_v2606_six_block_geometry_contract_is_preserved():
     specs = reference.block_specs("full")
     assert len(specs) == 6
     assert [(x["nx"], x["ny"]) for x in specs] == [
-        (2, 65),
-        (88, 65),
-        (97, 48),
-        (33, 48),
-        (97, 65),
-        (33, 65),
+        (2, 65), (88, 65), (97, 48), (33, 48), (97, 65), (33, 65)
     ]
     assert sum(x["nx"] * x["ny"] for x in specs) == 20540
     assert specs[0]["x0"] == -130 and specs[-1]["x1"] == 50
     assert reference.H == pytest.approx(0.0127)
     assert tuple(reference.PATCH_TYPES) == (
-        "inlet",
-        "outlet",
-        "lowerWallStartup",
-        "upperWallStartup",
-        "upperWall",
-        "lowerWall",
-        "front",
-        "back",
+        "inlet", "outlet", "lowerWallStartup", "upperWallStartup",
+        "upperWall", "lowerWall", "front", "back",
     )
     assert reference.PATCH_TYPES["front"] == "empty"
     assert reference.PATCH_TYPES["lowerWallStartup"] == "symmetryPlane"

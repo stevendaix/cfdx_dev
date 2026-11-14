@@ -249,3 +249,43 @@ def test_krylov_config_is_exported_and_rejects_invalid_entries(tmp_path):
         settings = json.loads(h.attrs["case_setup_json"])["numerics"]["raw_settings"]
     assert settings["pressure_gmres_restart"] == "192"
     assert settings["pressure_linear_scaling"] == "symmetric_diagonal"
+
+
+def test_cli_requires_native_case_unless_reconstruction_is_explicit(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "diagnostic.cfdx.h5"
+    monkeypatch.setattr(
+        sys, "argv", ["generate_th03_openfoam_blockmesh.py", "--output", str(output)]
+    )
+    with pytest.raises(SystemExit) as error:
+        b.main()
+    assert error.value.code == 2
+    assert not output.exists()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "generate_th03_openfoam_blockmesh.py",
+            "--output",
+            str(output),
+            "--resolution",
+            "smoke",
+            "--allow-reconstructed-mesh",
+            "--max-iterations",
+            "1",
+        ],
+    )
+    assert b.main() == 0
+    with h5py.File(output) as case:
+        assert case.attrs["source_format"] == "openfoam-reconstruction"
+        setup = json.loads(case.attrs["case_setup_json"])
+        assert setup["source_metadata"]["physical_qualification"] == "NOT_QUALIFIED"
+
+
+def test_native_case_requires_full_reference_dictionaries(tmp_path):
+    with pytest.raises(
+        ValueError, match="native OpenFOAM reference case is incomplete"
+    ):
+        b.validate_openfoam_reference_case(tmp_path)

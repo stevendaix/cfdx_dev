@@ -84,6 +84,8 @@ _PRECONDITIONER_KEYS = {
     "native_fieldsplit": "preconditioner.native_fieldsplit",
     "coupled_block_schur": "preconditioner.coupled_block_schur",
     "pcd": "preconditioner.pcd",
+    "mgr": "preconditioner.mgr",
+    "braess_sarazin": "preconditioner.braess_sarazin",
 }
 
 

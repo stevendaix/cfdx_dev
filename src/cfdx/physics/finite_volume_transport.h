@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/boundary_constraint_fvm.h"
+#include "cfdx/physics/convective_limited_tangent_v56.h"
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
@@ -61,6 +62,19 @@ enum class ConvectionScheme {
     // proof of 1-D TVD or of physical accuracy.
     MUSCL_CELL_LIMITED
 };
+
+// The SOU/MUSCL/TVD branches use the identical primal and active-set
+// tangent kernel. Other schemes are deliberately not certified by V56.
+inline LimitedFaceKindV56 convection_kind_v56(ConvectionScheme scheme) {
+    switch(scheme) {
+        case ConvectionScheme::SECOND_ORDER_UPWIND: return LimitedFaceKindV56::SOU;
+        case ConvectionScheme::TVD: return LimitedFaceKindV56::TVD_MINMOD;
+        case ConvectionScheme::TVD_VANLEER: return LimitedFaceKindV56::TVD_VANLEER;
+        case ConvectionScheme::TVD_VANALBADA: return LimitedFaceKindV56::TVD_VANALBADA;
+        case ConvectionScheme::MUSCL_CELL_LIMITED: return LimitedFaceKindV56::MUSCL_CELL;
+        default: throw std::invalid_argument("V56 unsupported convection reconstruction");
+    }
+}
 
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
@@ -369,12 +383,12 @@ inline double muscl_cell_limited_face_value(
         local_min = std::min(local_min, sample);
         local_max = std::max(local_max, sample);
     }
-    double theta = 1.0;
-    if (extrapolation > 0.0)
-        theta = std::clamp((local_max-centre_value)/extrapolation, 0.0, 1.0);
-    else if (extrapolation < 0.0)
-        theta = std::clamp((local_min-centre_value)/extrapolation, 0.0, 1.0);
-    const double reconstructed = centre_value + theta*extrapolation;
+    // Shared primal/tangent kernel: same limiter branches as the V56 audit.
+    const double reconstructed = limited_high_face_v56(
+        LimitedFaceKindV56::MUSCL_CELL, face_jet_v56(centre_value),
+        face_jet_v56(centre_value), face_jet_v56(extrapolation),
+        face_jet_v56(0.0), face_jet_v56(local_min),
+        face_jet_v56(local_max)).value;
     if (!std::isfinite(reconstructed))
         throw std::runtime_error("muscl_cell_limited_face_value: invalid face state");
     return reconstructed;
@@ -444,20 +458,19 @@ inline ScalarCellStencilBounds compute_scalar_tvd_stencil_bounds(
     return bounds;
 }
 
-inline double bound_tvd_internal_face_value(
+inline std::pair<double,double> tvd_internal_face_envelope_v56(
     const FvGeometry& geometry,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
     const ScalarCellStencilBounds& bounds,
-    std::size_t face, std::size_t owner, std::size_t neighbour,
-    double candidate)
+    std::size_t face, std::size_t owner, std::size_t neighbour)
 {
     using cfdx::core::Vec3;
     const double endpoint_low = std::min(field(owner), field(neighbour));
     const double endpoint_high = std::max(field(owner), field(neighbour));
     const Vec3 d = geometry.cell_centres[neighbour] - geometry.cell_centres[owner];
     const double d2 = d.mag2();
-    if (!(d2 > 0.0) || !std::isfinite(d2) || !std::isfinite(candidate))
-        throw std::invalid_argument("TVD face: invalid geometry or candidate");
+    if (!(d2 > 0.0) || !std::isfinite(d2))
+        throw std::invalid_argument("TVD face: invalid geometry");
     const Vec3 offset = geometry.face_centres[face] - geometry.cell_centres[owner];
     const Vec3 skew = offset - d * (offset.dot(d) / d2);
     // With zero skew, retain the established 1-D TVD endpoint envelope.
@@ -465,10 +478,24 @@ inline double bound_tvd_internal_face_value(
     // still forbids new local extrema and restores affine exactness when the
     // real face value lies in the surrounding physical stencil envelope.
     if (skew.mag2() <= 1e-24 * d2)
-        return std::clamp(candidate, endpoint_low, endpoint_high);
+        return {endpoint_low,endpoint_high};
     const double local_low = std::min(bounds[owner].first, bounds[neighbour].first);
     const double local_high = std::max(bounds[owner].second, bounds[neighbour].second);
-    return std::clamp(candidate, local_low, local_high);
+    return {local_low,local_high};
+}
+
+inline double bound_tvd_internal_face_value(
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const ScalarCellStencilBounds& bounds,
+    std::size_t face, std::size_t owner, std::size_t neighbour,
+    double candidate)
+{
+    if (!std::isfinite(candidate))
+        throw std::invalid_argument("TVD face: non-finite candidate");
+    const auto interval=tvd_internal_face_envelope_v56(
+        geometry,field,bounds,face,owner,neighbour);
+    return std::clamp(candidate,interval.first,interval.second);
 }
 
 // Boundary-aware scalar gradient shared by transport and diffusion-flux
@@ -1115,10 +1142,11 @@ inline ScalarEquation assemble_scalar_equation(
                         gx[upwind] * (Cf.x - C_up.x) +
                         gy[upwind] * (Cf.y - C_up.y) +
                         gz[upwind] * (Cf.z - C_up.z);
-                    phi_high = phi_up + high_increment;
-                    // Keep the historical bounded SOU reconstruction.
-                    phi_high = std::clamp(
-                        phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                    phi_high = limited_high_face_v56(
+                        LimitedFaceKindV56::SOU, face_jet_v56(phi_up),
+                        face_jet_v56(phi_other), face_jet_v56(high_increment),
+                        face_jet_v56(0.0), face_jet_v56(0.0),
+                        face_jet_v56(0.0)).value;
                 } else if (convection_scheme == ConvectionScheme::TVD ||
                            convection_scheme == ConvectionScheme::TVD_VANLEER ||
                 convection_scheme == ConvectionScheme::TVD_VANALBADA) {
@@ -1143,20 +1171,16 @@ inline ScalarEquation assemble_scalar_equation(
                         gx[upwind] * (C_down.x - C_up.x) +
                         gy[upwind] * (C_down.y - C_up.y) +
                         gz[upwind] * (C_down.z - C_up.z);
-                    const double ratio = std::abs(delta_down) > 1e-14
-                        ? (2.0 * delta_upwind_to_down - delta_down) / delta_down
-                        : (std::abs(delta_upwind_to_down) <= 1e-14 ? 1.0 : 0.0);
-                    const double limiter = std::max(0.0,
-                        cfdx::core::limiter_psi(ratio,
-                            convection_scheme == ConvectionScheme::TVD_VANALBADA
-                            ? cfdx::core::LimiterType::VAN_ALBADA
-                            : convection_scheme == ConvectionScheme::TVD_VANLEER
-                                ? cfdx::core::LimiterType::VANLEER
-                                : cfdx::core::LimiterType::MINMOD));
-                    phi_high = phi_up + limiter * high_increment;
-                    phi_high = bound_tvd_internal_face_value(
-                        geometry, *convected_field, tvd_bounds, f,
-                        o, n, phi_high);
+                    (void)delta_down; // retained above for diagnostic parity
+                    const auto envelope=tvd_internal_face_envelope_v56(
+                        geometry,*convected_field,tvd_bounds,f,o,n);
+                    phi_high = limited_high_face_v56(
+                        convection_kind_v56(convection_scheme),
+                        face_jet_v56(phi_up),face_jet_v56(phi_other),
+                        face_jet_v56(high_increment),
+                        face_jet_v56(delta_upwind_to_down),
+                        face_jet_v56(envelope.first),
+                        face_jet_v56(envelope.second)).value;
                 } else {
                     // Central, blended and quadratic schemes are explicit
                     // deferred corrections around the conservative upwind
@@ -1447,31 +1471,18 @@ reconstruct_scalar_transport_flux(
                     const auto& Cu=geometry.cell_centres[u];
                     const auto& Cf=geometry.face_centres[f];
                     const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
-                    double high=field(u)+increment;
-                    if (convection_scheme == ConvectionScheme::TVD ||
-                        convection_scheme == ConvectionScheme::TVD_VANLEER ||
-                convection_scheme == ConvectionScheme::TVD_VANALBADA) {
-                        const auto& Cd=geometry.cell_centres[dcell];
-                        const double delta=field(dcell)-field(u);
-                        const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
-                        const double ratio=std::abs(delta)>1e-14
-                            ? (2.0*full-delta)/delta
-                            : (std::abs(full)<=1e-14 ? 1.0 : 0.0);
-                        high=field(u)+std::max(0.0, limiter_psi(ratio,
-                            convection_scheme == ConvectionScheme::TVD_VANALBADA
-                            ? LimiterType::VAN_ALBADA
-                            : convection_scheme == ConvectionScheme::TVD_VANLEER
-                                ? LimiterType::VANLEER : LimiterType::MINMOD))*increment;
-                    }
-                    // SOU and both TVD face states are bounded by
-                    // scheme contract, independently of bounded_convection.
-                    // That option controls a separate bounded-divergence term.
-                    psi_face = convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND
-                        ? std::clamp(high,
-                            std::min(field(u), field(dcell)),
-                            std::max(field(u), field(dcell)))
-                        : bound_tvd_internal_face_value(
-                            geometry, field, tvd_bounds, f, o, n, high);
+                    const bool sou=convection_scheme==ConvectionScheme::SECOND_ORDER_UPWIND;
+                    const auto& Cd=geometry.cell_centres[dcell];
+                    const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
+                    const auto envelope=sou
+                        ? std::make_pair(std::min(field(u),field(dcell)),
+                                         std::max(field(u),field(dcell)))
+                        : tvd_internal_face_envelope_v56(
+                            geometry,field,tvd_bounds,f,o,n);
+                    psi_face=limited_high_face_v56(convection_kind_v56(convection_scheme),
+                        face_jet_v56(field(u)),face_jet_v56(field(dcell)),
+                        face_jet_v56(increment),face_jet_v56(full),
+                        face_jet_v56(envelope.first),face_jet_v56(envelope.second)).value;
                 } else {
                     psi_face = reconstructed_face(f);
                 }

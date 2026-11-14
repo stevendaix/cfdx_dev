@@ -5,7 +5,6 @@ attribute are distinct schemas. They are intentionally *not* conflated.
 A future translator must synchronise them before editable dual-schema cases
 can be executed via the native solver.
 """
-
 from __future__ import annotations
 
 import json
@@ -18,8 +17,7 @@ def is_native_production_solver(executable: str | None) -> bool:
     if not executable:
         return False
     return Path(executable).name.lower() in {
-        "cfdx_production_solver",
-        "cfdx_production_solver.exe",
+        "cfdx_production_solver", "cfdx_production_solver.exe"
     }
 
 
@@ -47,12 +45,8 @@ def check_native_production_case(case_path: Path) -> None:
             setup = json.loads(raw)
         except (TypeError, ValueError) as exc:
             raise ValueError("case_setup_json du solveur natif est invalide") from exc
-        if not isinstance(setup, dict) or not isinstance(
-            setup.get("boundary_conditions"), list
-        ):
-            raise TypeError(
-                "case_setup_json doit declarer boundary_conditions sous forme de liste"
-            )
+        if not isinstance(setup, dict) or not isinstance(setup.get("boundary_conditions"), list):
+            raise ValueError("case_setup_json doit declarer boundary_conditions")
         if not setup["boundary_conditions"]:
             raise ValueError("case_setup_json ne contient aucune condition limite")
         if "case/config" in h5:
@@ -74,10 +68,7 @@ def check_native_production_case(case_path: Path) -> None:
 
 
 def native_production_command(
-    executable: str,
-    case_path: Path,
-    *,
-    output_dir: str | Path,
+    executable: str, case_path: Path, *, output_dir: str | Path,
     max_iterations: int,
 ) -> list[str]:
     """Use the actual native C++ CLI, never a positional GUI case argument."""
@@ -93,11 +84,7 @@ def native_production_command(
         raise ValueError("output_dir du solveur natif est vide")
     check_native_production_case(case_path)
     return [
-        executable,
-        "--mesh",
-        str(case_path),
-        "--output-dir",
-        str(output_dir),
-        "--iterations",
-        str(max_iterations),
+        executable, "--mesh", str(case_path),
+        "--output-dir", str(output_dir),
+        "--iterations", str(max_iterations),
     ]

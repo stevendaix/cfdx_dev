@@ -89,7 +89,9 @@ enum class SSTScalarBoundaryType : std::uint8_t {
     ZERO_GRADIENT,
     WALL_K_ZERO,
     WALL_OMEGA_SST,
-    UNKNOWN
+    UNKNOWN,
+    // V16: OpenFOAM kqRWallFunction is zeroGradient, NOT a zero-k Dirichlet wall.
+    WALL_KQ_R
 };
 
 struct SSTScalarBoundarySpec {

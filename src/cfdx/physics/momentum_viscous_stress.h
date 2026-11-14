@@ -20,12 +20,15 @@ transpose_viscous_stress_flux(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& velocity,
     const std::vector<double>& cell_mu,
     const std::array<ScalarBoundaryConditions,3>& velocity_bcs,
-    double molecular_wall_mu = -1.0)
+    double molecular_wall_mu = -1.0,
+    const std::vector<double>* wall_mu_override = nullptr)
 {
     using namespace cfdx::core;
     const auto nc=mesh.n_cells(), nf=mesh.n_faces();
     if (velocity.size()!=nc || velocity.dimension()!=3 || cell_mu.size()!=nc)
         throw std::invalid_argument("transpose viscous stress: invalid field shape");
+    if (wall_mu_override && wall_mu_override->size()!=nf)
+        throw std::invalid_argument("V17 transpose wall viscosity shape mismatch");
     for (const double mu : cell_mu)
         if (!std::isfinite(mu) || mu<0.0)
             throw std::invalid_argument("transpose viscous stress: invalid dynamic viscosity");
@@ -54,10 +57,14 @@ transpose_viscous_stress_flux(
                 it != velocity_bcs[0].end() &&
                 it->second.type == ScalarBoundaryType::FIXED_VALUE) {
                 if (!std::isfinite(molecular_wall_mu) ||
-                    !(molecular_wall_mu > 0.0) || molecular_wall_mu > mu)
+                    !(molecular_wall_mu > 0.0))
                     throw std::invalid_argument(
                         "transpose viscous stress: invalid molecular wall viscosity");
-                mu = molecular_wall_mu;
+                mu = wall_mu_override ? wall_mu_override->at(face) : molecular_wall_mu;
+                if (!std::isfinite(mu) || !(mu>0.0) ||
+                    (!wall_mu_override && mu>cell_mu[owner]))
+                    throw std::invalid_argument(
+                        "V17 transpose viscous stress: invalid wall viscosity");
             }
         }
         const auto& Sf=geometry.face_area_vectors[face];

@@ -1,5 +1,7 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/coupled_matrix_capture_v16.h"
+#include "cfdx/physics/coupled_fingerprint_v40.h"
 #include "cfdx/physics/production_boundary_contract.h"
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
@@ -24,7 +26,6 @@
 #include <array>
 #include <cmath>
 #include <csignal>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -88,15 +89,16 @@ struct Options {
     bool experimental_sst = false;
     bool benchmark_export = false;
     bool validate_numerics_only = false;
+    std::string high_low_checkpoint_prefix;
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
     std::vector<std::size_t> pressure_replay_iterations;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
-    bool probe_stream = false;
-    bool cell_hotspots = false;
+    bool probe_stream = false;    bool cell_hotspots = false;
     bool cell_map_full = false;
     std::size_t cell_hotspots_every = 5;
+
 };
 
 std::string encode_probe_name_hex(const std::string& name)
@@ -286,6 +288,10 @@ void apply_explicit_case_numerics(
                 model = PreconditionerModel::CoupledBlockSchur;
             else if (selection.method_id == "preconditioner.pcd")
                 model = PreconditionerModel::PCD;
+            else if (selection.method_id == "preconditioner.mgr")
+                model = PreconditionerModel::MGR;
+            else if (selection.method_id == "preconditioner.braess_sarazin")
+                model = PreconditionerModel::BraessSarazin;
             else
                 throw std::invalid_argument(
                     "unsupported resolved preconditioner selection: " +
@@ -713,6 +719,8 @@ Options parse(int argc, char** argv)
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
         else if (arg == "--validate-numerics-only") o.validate_numerics_only = true;
+        else if (arg == "--high-low-checkpoint-prefix")
+            o.high_low_checkpoint_prefix = value("--high-low-checkpoint-prefix");
         else if (arg == "--pressure-replay-prefix")
             o.pressure_replay_prefix = value("--pressure-replay-prefix");
         else if (arg == "--pressure-replay-iterations")
@@ -727,7 +735,9 @@ Options parse(int argc, char** argv)
             const auto raw = value("--cell-hotspots-every");
             std::size_t used = 0;
             try { o.cell_hotspots_every = std::stoull(raw, &used); }
-            catch (const std::exception&) { throw std::invalid_argument("invalid --cell-hotspots-every"); }
+            catch (const std::exception&) {
+                throw std::invalid_argument("invalid --cell-hotspots-every");
+            }
             if (used != raw.size() || o.cell_hotspots_every < 1 || o.cell_hotspots_every > 100000)
                 throw std::invalid_argument("--cell-hotspots-every must be in [1,100000]");
         }
@@ -743,11 +753,13 @@ Options parse(int argc, char** argv)
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
                          "  [--validate-numerics-only] (validate and print resolved case methods; do not solve)\n"
+                         "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
-                         "  probe field: p | u_x | u_y | u_z | u_mag\n"
-                         "  [--cell-hotspots] [--cell-hotspots-every N] [--cell-map-full] (full map <=512 MiB)\n";
+                         "  probe field: p | u_x | u_y | u_z | u_mag\n";
+            std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
+                         "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
@@ -776,11 +788,6 @@ Options parse(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-    const auto process_started = std::chrono::steady_clock::now();
-    const auto elapsed_wall_seconds = [&]() -> double {
-        return std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - process_started).count();
-    };
     std::signal(SIGINT, handle_stop_signal);
     std::signal(SIGTERM, handle_stop_signal);
     std::filesystem::path execution_output_dir;
@@ -806,6 +813,7 @@ int main(int argc, char** argv)
             ok = read_case_cfdx_h5(mesh_path, mesh, case_source, case_setup, case_gap);
             if (!ok)
                 throw std::runtime_error("production solver: CFDX case load failed");
+            resolve_generic_production_boundary_patch_types(mesh.boundary(), case_setup);
         } else if (mesh_path.size() >= 3 &&
                    mesh_path.substr(mesh_path.size() - 3) == ".h5") {
             if (hdf5_contains_case_setup(mesh_path))
@@ -819,8 +827,6 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
-        if (is_case_hdf5)
-            resolve_production_mesh_patch_types(mesh, case_setup);
         if (options.experimental_sst && !is_case_hdf5)
             throw std::invalid_argument(
                 "production solver: --experimental-sst requires a .cfdx.h5 case");
@@ -867,7 +873,7 @@ int main(int argc, char** argv)
                     "--validate-numerics-only requires a .cfdx.h5 case");
             IncompressibleSolverControls selection_controls;
             apply_explicit_case_numerics(case_setup, selection_controls);
-            std::cout << "Resolved numerical selections:\\n"
+            std::cout << "Resolved numerical selections:\n"
                       << cfdx::core::format_numerics_report(case_setup.numerical_report);
             return 0;
         }
@@ -1031,17 +1037,16 @@ int main(int argc, char** argv)
             // A physical label must never be silently interpreted as an
             // unrelated generic zero-gradient condition.
             validate_production_incompressible_boundary(*bc, patch.type);
+            validate_native_flow_field_overrides(*bc);
 
-            // Explicit per-field conditions override the legacy shared value_type.
-            // Never infer the pressure boundary from the velocity mode.
-            if (const auto* explicit_u = bc->find_field("velocity")) {
-                if (explicit_u->type == "FIXED_VALUE") {
-                    ubc[patch.name] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
-                        {explicit_u->value.at(0), explicit_u->value.at(1), explicit_u->value.at(2)}};
-                } else if (explicit_u->type == "ZERO_GRADIENT") {
+            if (const auto* native_u = bc->find_field("velocity")) {
+                if (native_u->type == "FIXED_VALUE")
+                    ubc[patch.name] = {
+                        VelocityBoundaryCondition::Type::FIXED_VALUE,
+                        {native_u->value[0], native_u->value[1], native_u->value[2]}};
+                else
                     ubc[patch.name] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,
                         {0.0, 0.0, 0.0}};
-                } else throw std::invalid_argument("unsupported native velocity field condition");
             } else if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
@@ -1074,14 +1079,15 @@ int main(int argc, char** argv)
                     patch.name + "'");
             }
 
-            if (const auto* explicit_p = bc->find_field("pressure")) {
-                if (explicit_p->type == "FIXED_VALUE")
-                    pbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE, explicit_p->value.at(0), 0.0};
-                else if (explicit_p->type == "FIXED_GRADIENT")
-                    pbc[patch.name] = {ScalarBoundaryType::FIXED_GRADIENT, 0.0, explicit_p->gradient};
-                else if (explicit_p->type == "ZERO_GRADIENT")
+            if (const auto* native_p = bc->find_field("pressure")) {
+                if (native_p->type == "FIXED_VALUE")
+                    pbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE,
+                        native_p->value[0], 0.0};
+                else if (native_p->type == "FIXED_GRADIENT")
+                    pbc[patch.name] = {ScalarBoundaryType::FIXED_GRADIENT,
+                        0.0, native_p->gradient};
+                else
                     pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
-                else throw std::invalid_argument("unsupported native pressure field condition");
             } else if (bc->value_type == BCValueType::OUTLET_PRESSURE) {
                 pbc[patch.name] = {
                     ScalarBoundaryType::FIXED_VALUE, bc->pressure, 0.0};
@@ -1092,6 +1098,7 @@ int main(int argc, char** argv)
         }
 
         IncompressibleSolverControls controls;
+        double v32_initial_fraction_override=1.0e-6;
         controls.convergence.max_iterations = options.iterations;
         if (is_case_hdf5) {
             apply_explicit_case_numerics(case_setup, controls);
@@ -1305,6 +1312,78 @@ int main(int argc, char** argv)
                 controls.pressure_linear_max_iterations = value;
                 std::cout << "Pressure max iterations: " << value << "\n";
             }
+            // Diagnostic-only iteration cap: shorten a failed coupled solve to
+            // expose the *independently recomputed* U/p block residuals.
+            // This never changes the requested linear tolerance, physical
+            // acceptance or the default 2000-iteration production budget.
+            const auto coupled_diag_budget = case_setup.numerics.raw_settings.find(
+                "coupled_linear_diagnostic_max_iterations_v16");
+            if (coupled_diag_budget != case_setup.numerics.raw_settings.end()) {
+                const auto& raw = coupled_diag_budget->second;
+                std::size_t consumed = 0;
+                unsigned long value = 0;
+                try { value = std::stoul(raw, &consumed, 10); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid coupled_linear_diagnostic_max_iterations_v16");
+                }
+                if (consumed != raw.size() || value < 1 || value > 2000)
+                    throw std::invalid_argument("invalid coupled_linear_diagnostic_max_iterations_v16");
+                controls.coupling.coupled_max_iterations = value;
+                std::cout << "COUPLED_LINEAR_DIAGNOSTIC_BUDGET_V16 iterations=" << value
+                          << " tolerance_unchanged=1 physical_qualification=0\n";
+            }
+            // The same lightweight fingerprint can be enabled on 712 and
+            // 20,540 cells, unlike the bounded V16 MatrixMarket export.
+            // It is read-only evidence, *not* a convergence metric or SHA.
+            const auto fingerprint_setting=case_setup.numerics.raw_settings.find(
+                "coupled_matrix_fingerprint_v40");
+            const bool fingerprint_v40=fingerprint_setting!=
+                case_setup.numerics.raw_settings.end() &&
+                fingerprint_setting->second=="true";
+            if (fingerprint_setting!=case_setup.numerics.raw_settings.end() &&
+                fingerprint_setting->second!="true" &&
+                fingerprint_setting->second!="false")
+                throw std::invalid_argument("invalid coupled_matrix_fingerprint_v40 boolean");
+            const auto coupled_capture_setting = case_setup.numerics.raw_settings.find(
+                "coupled_diagnostic_capture_prefix_v16");
+            if (fingerprint_v40 ||
+                coupled_capture_setting != case_setup.numerics.raw_settings.end()) {
+                std::filesystem::path prefix;
+                const bool do_capture = coupled_capture_setting !=
+                    case_setup.numerics.raw_settings.end();
+                if (do_capture) {
+                    const auto& raw=coupled_capture_setting->second;
+                    if (raw.empty() || raw.size()>1024)
+                        throw std::invalid_argument("invalid coupled_diagnostic_capture_prefix_v16");
+                    prefix=std::filesystem::path(raw);
+                }
+                const auto recorded=std::make_shared<bool>(false);
+                controls.coupled_assembly_callback=[prefix,recorded,do_capture,fingerprint_v40](
+                    const CoupledAssemblySnapshot& snapshot) {
+                    if (*recorded) return;
+                    if (!snapshot.matrix || !snapshot.rhs || !snapshot.initial_guess)
+                        throw std::runtime_error("V40 coupled capture: missing production snapshot");
+                    if (fingerprint_v40) {
+                        const auto digest=fingerprint_coupled_v40(
+                            *snapshot.matrix,*snapshot.rhs,*snapshot.initial_guess);
+                        std::cerr << "COUPLED_MATRIX_FINGERPRINT_V40"
+                                  << " A=" << digest.A << " b=" << digest.b
+                                  << " x0=" << digest.x0
+                                  << " rows=" << snapshot.matrix->n_rows()
+                                  << " nnz=" << snapshot.matrix->nnz()
+                                  << " fnv64_not_sha256=1 physical_converged=0\n";
+                    }
+                    if (do_capture) {
+                        capture_coupled_matrix_v16(*snapshot.matrix,*snapshot.rhs,
+                                                   *snapshot.initial_guess,prefix);
+                        std::cerr << "COUPLED_MATRIX_CAPTURE_V16 n="
+                                  << snapshot.matrix->n_rows()
+                                  << " nnz=" << snapshot.matrix->nnz()
+                                  << " original_operator_unchanged=1 physical_qualified=0\n";
+                    }
+                    *recorded=true;
+                };
+            }
             const auto restart = case_setup.numerics.raw_settings.find(
                 "pressure_gmres_restart");
             if (restart != case_setup.numerics.raw_settings.end()) {
@@ -1334,30 +1413,22 @@ int main(int argc, char** argv)
         // requires the authoritative convergence gates below.
         controls.diagnostics.iteration_trace = true;
         controls.diagnostics.iteration_trace_frequency = 1;
-        // Opt-in trace is a spatial diagnostic, not part of convergence.json
-        // or execution.json acceptance. Truncate stale trace on every new run;
-        // otherwise a previous run could be mistaken for current evidence.
-        const auto cell_trace_path = options.output_dir / "cell_convergence.jsonl";
-        if (std::filesystem::is_symlink(cell_trace_path))
-            throw std::invalid_argument("cell convergence trace output cannot be a symlink");
-        if (std::filesystem::exists(cell_trace_path) &&
-            !std::filesystem::is_regular_file(cell_trace_path))
-            throw std::invalid_argument("cell convergence trace output must be a file");
-        if (std::filesystem::exists(cell_trace_path))
-            std::filesystem::remove(cell_trace_path);
-        const auto cell_map_path = options.output_dir / "cell_convergence_map.bin";
-        if (std::filesystem::is_symlink(cell_map_path) ||
-            (std::filesystem::exists(cell_map_path) && !std::filesystem::is_regular_file(cell_map_path)))
-            throw std::invalid_argument("cell convergence full map output must be a regular file, not a symlink");
-        if (std::filesystem::exists(cell_map_path))
-            std::filesystem::remove(cell_map_path);
         if (options.cell_hotspots) {
-            if (options.cell_map_full)
-                controls.diagnostics.cell_convergence_full_map_path = cell_map_path.string();
-            controls.diagnostics.cell_convergence_trace_path = cell_trace_path.string();
+            // Never touch existing trace artifacts when diagnostics are OFF.
+            // Reject unsafe destinations instead of following links.
+            const auto trace_path = options.output_dir / "cell_convergence.jsonl";
+            const auto map_path = options.output_dir / "cell_convergence_map.bin";
+            for (const auto& path : {trace_path, map_path}) {
+                if (std::filesystem::is_symlink(path) ||
+                    (std::filesystem::exists(path) && !std::filesystem::is_regular_file(path)))
+                    throw std::invalid_argument("cell convergence output must be a regular file, not a symlink");
+            }
+            controls.diagnostics.cell_convergence_trace_path = trace_path.string();
             controls.diagnostics.cell_convergence_mesh_source =
                 std::filesystem::absolute(options.mesh).lexically_normal().string();
             controls.diagnostics.cell_convergence_every = options.cell_hotspots_every;
+            if (options.cell_map_full)
+                controls.diagnostics.cell_convergence_full_map_path = map_path.string();
         }
         if (is_case_hdf5) {
             const auto& raw=case_setup.numerics.raw_settings;
@@ -1384,9 +1455,190 @@ int main(int argc, char** argv)
             controls.diagnostics.flux_patch_audit=flag("v17_flux_patch_audit");
             controls.pressure_compensated_assembly=flag("pressure_compensated_assembly");
             controls.pressure_compensated_refinement_diagnostic=flag("pressure_compensated_refinement_diagnostic");
+            controls.pressure_high_low_production=flag("pressure_high_low_production");
+            controls.require_post_sst_momentum_reassembly=
+                flag("v7_post_sst_momentum_gate");
+            controls.require_global_nonlinear_certificate_v8 =
+                flag("v8_global_nonlinear_residual");
+            controls.joint_globalization_v13_experimental=
+                flag("v13_joint_globalization");
+            controls.monotone_global_merit_v14_experimental=
+                flag("v14_monotone_global_merit");
+            controls.coupled_outer_step_v43_experimental=
+                number("coupled_outer_step_v43_experimental",0.0);
+            controls.coupled_period_four_mean_v43_experimental=
+                flag("coupled_period_four_mean_v43_experimental");
+            controls.coupled_period_four_full_state_v44_experimental=
+                flag("coupled_period_four_full_state_v44_experimental");
+            controls.coupled_period_four_damping_v45_experimental=
+                number("coupled_period_four_damping_v45_experimental",0.0);
+            // Restored while rebasing V58: these switches were absent from the
+            // uploaded V36-style ZIP despite being available in the FV solver.
+            // Opt-in only; neither activates a new accepted physical state.
+            controls.coupled_composite_backtracking_v47_experimental=
+                flag("coupled_composite_backtracking_v47_experimental");
+            controls.coupled_flux_homotopy_v48_experimental=
+                flag("coupled_flux_homotopy_v48_experimental");
+            if(controls.coupled_flux_homotopy_v48_experimental)
+                std::cout << "V48 Rhie-Chow inverse-diagonal homotopy experimental; "
+                          << "requires V47, no restart, and beta=1 to certify convergence\n";
+            const double v47_retries=number(
+                "coupled_composite_backtracking_retries_v47",10.0);
+            if(v47_retries<1.0 || v47_retries>12.0 ||
+               std::floor(v47_retries)!=v47_retries)
+                throw std::invalid_argument(
+                    "coupled_composite_backtracking_retries_v47 must be an integer 1..12");
+            controls.coupled_composite_backtracking_retries_v47=
+                static_cast<std::size_t>(v47_retries);
+            if(raw.count("coupled_composite_backtracking_retries_v47") &&
+               !controls.coupled_composite_backtracking_v47_experimental)
+                throw std::invalid_argument(
+                    "V47 retries require coupled_composite_backtracking_v47_experimental=true");
+            if(controls.coupled_composite_backtracking_v47_experimental)
+                std::cout << "V47 composite COUPLED backtracking experimental, retries="
+                          << controls.coupled_composite_backtracking_retries_v47
+                          << "; SST re-solved and V13/V14 physical gates unchanged\n";
+            const double v45_damping_steps=number(
+                "coupled_period_four_damping_steps_v45",12.0);
+            if (v45_damping_steps<1.0 || v45_damping_steps>128.0 ||
+                std::floor(v45_damping_steps)!=v45_damping_steps)
+                throw std::invalid_argument(
+                    "coupled_period_four_damping_steps_v45 must be an integer 1..128");
+            controls.coupled_period_four_damping_steps_v45=
+                static_cast<std::size_t>(v45_damping_steps);
+            if (raw.count("coupled_period_four_damping_steps_v45") &&
+                controls.coupled_period_four_damping_v45_experimental==0.0)
+                throw std::invalid_argument(
+                    "V45 damping steps require an active V45 damping beta");
+            if (controls.coupled_period_four_damping_v45_experimental>0.0)
+                std::cout<<"V45 bounded cycle-escape carrier damping beta="
+                         <<controls.coupled_period_four_damping_v45_experimental
+                         <<" accepted_steps="<<controls.coupled_period_four_damping_steps_v45
+                         <<" (experimental; V44 SST closure, V7/V8 gates unchanged)\n";
+            if (controls.coupled_period_four_full_state_v44_experimental)
+                std::cout<<"V44 full 6-field phase predictor (experimental; "
+                            "nu_t reconstructed, physical gates unchanged)\n";
+            if (controls.coupled_period_four_mean_v43_experimental)
+                std::cout<<"V43 four-phase COUPLED predictor (experimental; "
+                            "no criterion changes, only on proven committed field orbit)\n";
+            if (controls.coupled_outer_step_v43_experimental != 0.0)
+                std::cout<<"V43 COUPLED nonlinear carrier step beta="
+                         <<controls.coupled_outer_step_v43_experimental
+                         <<" (experimental; SST+V7/V8 physical gates unchanged)\n";
+            controls.outer_ptc_v31_experimental=
+                flag("v31_outer_coupled_ptc_experimental");
+            controls.outer_ptc_balance_v32_experimental=
+                flag("v32_outer_ptc_balance_experimental");
+            if (controls.outer_ptc_balance_v32_experimental)
+                v32_initial_fraction_override=
+                    number("v32_outer_ptc_initial_fraction_experimental",1.0e-6);
+            if (raw.count("v32_outer_ptc_limit_momentum_experimental"))
+                controls.outer_ptc_balance_momentum_v32=
+                    flag("v32_outer_ptc_limit_momentum_experimental");
+            if (raw.count("v32_outer_ptc_limit_sst_experimental"))
+                controls.outer_ptc_balance_sst_v32=
+                    flag("v32_outer_ptc_limit_sst_experimental");
+            if (controls.monotone_global_merit_v14_experimental)
+                std::cout << "V14 strictly contracting physical U,p,k,omega,nu_t merit: "
+                             "EXPERIMENTAL; rollback, all physical gates unchanged\n";
+            if (controls.joint_globalization_v13_experimental)
+                std::cout << "V13 joint U,p,k,omega post-SST trial guard: "
+                             "EXPERIMENTAL, physical gates unchanged\n";
+            if (controls.require_global_nonlinear_certificate_v8)
+                std::cout << "V8 independent U-p-k-omega residual: "
+                             "EXPERIMENTAL for all Schur variants; no physical tolerances changed\n";
+            if (controls.require_post_sst_momentum_reassembly)
+                std::cout << "V7 cross-equation momentum residual after SST: "
+                             "EXPERIMENTAL physical gate, tolerances unchanged\n";
+            if (controls.pressure_high_low_production)
+                std::cout << "V6 full Rhie-Chow high/low pressure PRODUCTION: EXPERIMENTAL, not BFS-qualified\n";
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
             controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
             controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
+            // Experimental PCD research knobs are an explicit HDF5 contract.
+            // Reject them on SIMPLE/SIMPLEC or another Schur instead of silently
+            // ignoring a method that the case requests. These affect only the
+            // preconditioner, not the FV equations or the physical tolerances.
+            const bool is_pcd_coupled =
+                controls.algorithm == PressureVelocityAlgorithm::COUPLED &&
+                controls.coupling.schur_model == CoupledSchurModel::PCD;
+            const auto pcd_flag = [&](const char* name, bool& destination) {
+                if (raw.find(name) == raw.end()) return;
+                if (!is_pcd_coupled)
+                    throw std::invalid_argument(
+                        std::string(name) + " requires COUPLED with PCD Schur");
+                destination = flag(name);
+                std::cout << "PCD research " << name << "="
+                          << (destination ? 1 : 0)
+                          << " (preconditioner only, physics criteria unchanged)\n";
+            };
+            pcd_flag("pcd_fp_row_equilibration_experimental",
+                     controls.coupling.pcd_fp_row_equilibration_experimental);
+            pcd_flag("pcd_fp_quality_guard_experimental",
+                     controls.coupling.pcd_fp_quality_guard_experimental);
+            pcd_flag("pcd_fp_second_pass_experimental",
+                     controls.coupling.pcd_fp_second_pass_experimental);
+            pcd_flag("pcd_fp_recirculation_anchor_experimental",
+                     controls.coupling.pcd_fp_recirculation_anchor_experimental);
+            if (const auto it=raw.find("pcd_fp_bisided_basis_file_experimental");
+                it!=raw.end()) {
+                if (!is_pcd_coupled || it->second.empty())
+                    throw std::invalid_argument("V14 Fp basis requires COUPLED/PCD and a path");
+                controls.coupling.pcd_fp_bisided_basis_file_experimental=it->second;
+                std::cout << "V14 Fp certified bilateral deflation enabled: "
+                             "exact current CSR required; preconditioner only\n";
+            }
+
+            if (const auto it=raw.find("pcd_fp_bisided_basis_directory_v15_experimental");
+                it!=raw.end()) {
+                if (!is_pcd_coupled || it->second.empty())
+                    throw std::invalid_argument("V15 Fp directory requires COUPLED/PCD and a path");
+                controls.coupling.pcd_fp_bisided_basis_directory_v15_experimental=it->second;
+                std::cout << "V15 Fp exact-CSR certificate registry: fail closed on new coefficient fingerprint\n";
+            }
+            pcd_flag("pcd_fp_full_rank_action_v15_experimental",
+                     controls.coupling.pcd_fp_full_rank_action_v15_experimental);
+            pcd_flag("pcd_fp_refine_projected_v16_experimental",
+                     controls.coupling.pcd_fp_refine_projected_v16_experimental);
+            pcd_flag("pcd_blocklocal_recovery_v42_experimental",
+                     controls.coupling.pcd_blocklocal_recovery_v42_experimental);
+            if (const auto it=raw.find("pcd_blocklocal_preflight_iterations_v42");
+                it!=raw.end()) {
+                if (!is_pcd_coupled ||
+                    !controls.coupling.pcd_blocklocal_recovery_v42_experimental)
+                    throw std::invalid_argument(
+                        "V42 PCD preflight needs COUPLED/PCD and explicit BlockLocal recovery");
+                std::size_t consumed=0;
+                unsigned long value=0;
+                try { value=std::stoul(it->second,&consumed,10); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid V42 PCD preflight iteration count");
+                }
+                if (consumed!=it->second.size() || value<1 ||
+                    value>controls.coupling.coupled_max_iterations)
+                    throw std::invalid_argument("invalid V42 PCD preflight iteration count");
+                controls.coupling.pcd_blocklocal_preflight_iterations_v42=value;
+                std::cout << "V42_PCD_PREFLIGHT_BUDGET=" << value
+                          << " strict_tolerance_unchanged=1 opt_in=1\n";
+            }
+            if (raw.find("coupled_monolithic_ilut_fallback_v16_experimental") != raw.end()) {
+                if (controls.algorithm != PressureVelocityAlgorithm::COUPLED)
+                    throw std::invalid_argument(
+                        "V16 monolithic ILUT recovery requires COUPLED");
+                controls.coupling.coupled_monolithic_ilut_fallback_v16_experimental=
+                    flag("coupled_monolithic_ilut_fallback_v16_experimental");
+                if (controls.coupling.coupled_monolithic_ilut_fallback_v16_experimental)
+                    std::cout << "V16 explicit SMALL-SYSTEM monolithic ILUT recovery "
+                                 "enabled; no automatic solver substitution, no relaxed physics\n";
+            }
+            pcd_flag("pcd_lumped_mass_commutator_experimental",
+                     controls.coupling.pcd_lumped_mass_commutator_experimental);
+            pcd_flag("pcd_reverse_lumped_mass_v39_experimental",
+                     controls.coupling.pcd_reverse_lumped_mass_v39_experimental);
+            if (controls.coupling.pcd_lumped_mass_commutator_experimental &&
+                controls.coupling.pcd_reverse_lumped_mass_v39_experimental)
+                throw std::invalid_argument(
+                    "V39 reverse PCD cannot coexist with original commutator");
             // V21 opt-in for the existing hysteretic relaxation controller.
             // It uses momentum/flux coupling, not projected continuity, for
             // alpha_p whenever V19 full-flux SIMPLE is active.
@@ -1585,6 +1837,11 @@ int main(int argc, char** argv)
                           << sst_controls.sst_wall_omega_factor
                           << " (not an OpenFOAM wall function)\n";
             }
+            // V41: reject a misleading near-match that was previously ignored.
+            // Silent fallback to 0.7 can invalidate controlled BFS A/B sweeps.
+            if (case_setup.numerics.raw_settings.count("sst_linear_relaxation"))
+                throw std::invalid_argument(
+                    "unknown sst_linear_relaxation; use sst_transport_linear_relaxation");
             const auto sst_linear_relaxation = case_setup.numerics.raw_settings.find(
                 "sst_transport_linear_relaxation");
             if (sst_linear_relaxation != case_setup.numerics.raw_settings.end()) {
@@ -1603,7 +1860,33 @@ int main(int argc, char** argv)
                       << sst_controls.sst_linear_relaxation << " (default 0.7)\n";
             for (const auto& setting : {std::pair<const char*,bool*>{
                      "sst_compensated_residual_gate", &sst_controls.sst_compensated_residual_gate},
-                     {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search}}) {
+                     {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search},
+                     {"sst_two_cycle_rescue_v41_experimental",
+                      &sst_controls.sst_two_cycle_rescue_v41_experimental},
+                     {"sst_anderson_m2_v20_experimental", &sst_controls.sst_anderson_m2_v20},
+                     {"sst_jfnk_v22_experimental", &sst_controls.sst_jfnk_v22_experimental},
+                     {"sst_block_preconditioner_v23_experimental",
+                      &sst_controls.sst_block_preconditioner_v23_experimental},
+                     {"sst_branch_preconditioner_v34_experimental",
+                      &sst_controls.sst_branch_preconditioner_v34_experimental},
+                     {"sst_spatial_block_preconditioner_v24_experimental",
+                      &sst_controls.sst_spatial_block_preconditioner_v24_experimental},
+                     {"sst_log_globalization_v25_experimental",
+                      &sst_controls.sst_log_globalization_v25_experimental},
+                     {"sst_smooth_globalization_v26_experimental",
+                      &sst_controls.sst_smooth_globalization_v26_experimental},
+                     {"sst_subspace_trust_v27_experimental",
+                      &sst_controls.sst_subspace_trust_v27_experimental},
+                     {"sst_adaptive_trust_v28_experimental",
+                      &sst_controls.sst_adaptive_trust_v28_experimental},
+                     {"sst_pseudo_transient_v29_experimental",
+                      &sst_controls.sst_pseudo_transient_v29_experimental},
+                     {"sst_coupled_ptc_v30_experimental",
+                      &sst_controls.sst_coupled_ptc_v30_experimental},
+                     {"sst_weighted_wall_matrix_v29_experimental",
+                      &sst_controls.sst_weighted_wall_matrix_v29_experimental},
+                     {"sst_owner_consistent_projection_v21_experimental",
+                      &sst_controls.sst_owner_consistent_projection_v21}}) {
                 const auto found=case_setup.numerics.raw_settings.find(setting.first);
                 if (found != case_setup.numerics.raw_settings.end()) {
                     if (found->second != "true" && found->second != "false")
@@ -1625,6 +1908,18 @@ int main(int argc, char** argv)
             std::cout << "SST molecular boundary diffusion: "
                       << (sst_controls.sst_molecular_wall_diffusion ? "experimental" : "legacy")
                       << " (only fixed-value wall faces; no wall function)\n";
+            const auto correction_v19=case_setup.numerics.raw_settings.find(
+                "v19_sst_equilibrated_defect_correction_experimental");
+            if (correction_v19!=case_setup.numerics.raw_settings.end()) {
+                if (correction_v19->second!="enabled" && correction_v19->second!="disabled")
+                    throw std::invalid_argument(
+                        "v19_sst_equilibrated_defect_correction_experimental must be enabled or disabled");
+                sst_controls.sst_equilibrated_defect_correction_v19 =
+                    correction_v19->second=="enabled";
+            }
+            if (sst_controls.sst_coupled_ptc_v30_experimental)
+                sst_controls.sst_continuation_state_v30 =
+                    &experimental_sst_runtime.coupled_ptc_v30;
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
@@ -1777,12 +2072,142 @@ int main(int argc, char** argv)
                     boundary_contract, mesh, sst_geometry, nullptr);
             }
             controls.sst_runtime = &experimental_sst_runtime;
+            if (controls.outer_ptc_balance_v32_experimental) {
+                experimental_sst_runtime.outer_ptc_balance_v32.fraction=
+                    v32_initial_fraction_override;
+                experimental_sst_runtime.outer_ptc_balance_v32.validate();
+            }
+            if (is_case_hdf5) {
+                const auto it=case_setup.numerics.raw_settings.find(
+                    "v15_stage_openfoam_wall_triplet_reference");
+                if (it!=case_setup.numerics.raw_settings.end()) {
+                    if (it->second!="true" && it->second!="false")
+                        throw std::invalid_argument(
+                            "v15_stage_openfoam_wall_triplet_reference must be true or false");
+                    experimental_sst_runtime.stage_openfoam_wall_triplet_v15 =
+                        it->second=="true";
+                    if (experimental_sst_runtime.stage_openfoam_wall_triplet_v15)
+                        std::cout << "V15 atomic wall triplet staged at accepted states; "
+                                     "REFERENCE ONLY; no FV wall operator changed\n";
+                }
+            }
+            const auto active_wall_v17 = case_setup.numerics.raw_settings.find(
+                "v17_openfoam_wall_operator_experimental");
+            if (active_wall_v17 != case_setup.numerics.raw_settings.end()) {
+                if (active_wall_v17->second != "enabled" &&
+                    active_wall_v17->second != "disabled")
+                    throw std::invalid_argument(
+                        "v17_openfoam_wall_operator_experimental must be enabled or disabled");
+                if (active_wall_v17->second == "enabled") {
+                    if (!sst_controls.sst_molecular_wall_diffusion)
+                        throw std::invalid_argument(
+                            "V17 active wall operator requires sst_molecular_wall_diffusion=true");
+                    if (boundary_contract.wall_omega_sst_patches.size()!=wall_patch_names.size())
+                        throw std::invalid_argument(
+                            "V17 active wall operator requires omegaWallFunction on every WALL patch");
+                    for (const auto& bc : case_setup.boundary_conditions) {
+                        if (bc.type != BCType::WALL) continue;
+                        bool kqr=false;
+                        for (const auto& scalar : bc.sst_scalar_conditions)
+                            if (scalar.field=="k" &&
+                                scalar.type==cfdx::io::SSTScalarBoundaryType::WALL_KQ_R)
+                                kqr=true;
+                        if (!kqr)
+                            throw std::invalid_argument(
+                                "V17 active wall operator requires kqRWallFunction on every WALL patch");
+                        const auto wall_velocity=fixed_velocity_values.find(bc.patch_name);
+                        if (wall_velocity==fixed_velocity_values.end() ||
+                            wall_velocity->second!=std::array<double,3>{0.,0.,0.})
+                            throw std::invalid_argument(
+                                "V17 active wall operator requires explicit stationary noSlip walls");
+                    }
+                    if (controls.pseudo_momentum.enabled || controls.transient.enabled)
+                        throw std::invalid_argument(
+                            "V17 active wall operator supports steady solve without pseudo-momentum only");
+                    experimental_sst_runtime.active_openfoam_wall_operator_v17=true;
+                    std::cout << "V17 ACTIVE wall operator: nut face momentum,"
+                                 " omega face SST and G owner SST."
+                                 " OpenFOAM-equivalence=NOT_CERTIFIED\n";
+                }
+            }
+            const auto owner_wall_v18=case_setup.numerics.raw_settings.find(
+                "v18_omega_wall_owner_constraints_experimental");
+            if (owner_wall_v18!=case_setup.numerics.raw_settings.end()) {
+                if (owner_wall_v18->second!="enabled" && owner_wall_v18->second!="disabled")
+                    throw std::invalid_argument(
+                        "v18_omega_wall_owner_constraints_experimental must be enabled or disabled");
+                if (owner_wall_v18->second=="enabled") {
+                    if (!experimental_sst_runtime.active_openfoam_wall_operator_v17)
+                        throw std::invalid_argument(
+                            "V18 owner omega constraints require V17 atomic wall operator");
+                    experimental_sst_runtime.omega_wall_owner_constraints_v18=true;
+                    std::cout << "V18 experimental omega OWNER constraint active; "
+                                 "area-weighted corner targets, equation rows and "
+                                 "returned residual recomputed; OpenFOAM-equivalence=NOT_CERTIFIED\n";
+                }
+            }
+            const auto corner_v19=case_setup.numerics.raw_settings.find(
+                "v19_omega_corner_equal_faces_experimental");
+            if (corner_v19!=case_setup.numerics.raw_settings.end()) {
+                if (corner_v19->second!="enabled" && corner_v19->second!="disabled")
+                    throw std::invalid_argument(
+                        "v19_omega_corner_equal_faces_experimental must be enabled or disabled");
+                if (corner_v19->second=="enabled") {
+                    if (!experimental_sst_runtime.omega_wall_owner_constraints_v18)
+                        throw std::invalid_argument(
+                            "V19 corner face-count policy requires V18 omega-owner constraints");
+                    experimental_sst_runtime.omega_wall_corner_face_count_v19=true;
+                }
+            }
+            std::cout << "V19 SST equilibrated correction="
+                      << sst_controls.sst_equilibrated_defect_correction_v19
+                      << " omega corner equal-faces="
+                      << experimental_sst_runtime.omega_wall_corner_face_count_v19
+                      << " (experimental, NOT OpenFOAM qualified)\n";
             solver_restart_fields.k = &experimental_sst_state->k;
             solver_restart_fields.omega = &experimental_sst_state->omega;
             std::cerr
                 << "WARNING: experimental SST runtime explicitly enabled. "
                    "This path is not physically qualified and does not enable "
                    "the general RANS selector.\n";
+        }
+
+        if (!options.high_low_checkpoint_prefix.empty()) {
+            if (!controls.pressure_high_low_production)
+                throw std::invalid_argument(
+                    "--high-low-checkpoint-prefix requires pressure_high_low_production=true");
+            const std::filesystem::path prefix(options.high_low_checkpoint_prefix);
+            if (!prefix.parent_path().empty())
+                std::filesystem::create_directories(prefix.parent_path());
+            controls.accepted_compensated_iteration_callback =
+                [&options,&experimental_sst_state](
+                    std::size_t iter, const Mesh& mesh,
+                    const Field<double,Location::CELL>& u,
+                    const Field<double,Location::CELL>& p,
+                    const Field<double,Location::FACE>& flux,
+                    const Vector& low) {
+                    if (low.size()!=mesh.n_cells() || flux.size()!=mesh.n_faces())
+                        throw std::logic_error("DAT6 checkpoint: incomplete accepted high/low state");
+                    Field<double,Location::CELL> p_low(mesh.n_cells(),"p_low","Pa",1);
+                    for (std::size_t c=0;c<mesh.n_cells();++c) p_low(c)=low(c);
+                    // The writer's legacy field pointers are mutable, but
+                    // these copies leave the committed solver state untouched.
+                    auto flux_copy=flux;
+                    DatRestartFields fields;
+                    fields.pressure_low=&p_low;
+                    fields.face_mass_flux=&flux_copy;
+                    if (experimental_sst_state) {
+                        fields.k=&experimental_sst_state->k;
+                        fields.omega=&experimental_sst_state->omega;
+                    }
+                    const auto name=options.high_low_checkpoint_prefix +
+                        "_iter" + std::to_string(iter) + ".dat";
+                    write_dat_restart_fields(name,mesh,u,p,fields,iter,0.0);
+                    std::cout << "HILO_DAT6_CHECKPOINT iteration=" << iter
+                              << " file=" << name << " qualified=0\n";
+                };
+            std::cout << "V7 DAT6 accepted-state checkpoint enabled: "
+                      << options.high_low_checkpoint_prefix << " (EXPERIMENTAL)\n";
         }
 
         std::cout << "Initialization strategy "
@@ -1950,8 +2375,7 @@ int main(int argc, char** argv)
             static_cast<int>(result.convergence_status),
             result.convergence_reason,
             false,
-            false,
-            elapsed_wall_seconds()});
+            false});
         if (options.wall_forces_quadratic) {
             if (!result.converged)
                 throw std::runtime_error(
@@ -2213,8 +2637,7 @@ int main(int argc, char** argv)
             static_cast<int>(overall_status),
             overall_reason,
             std::filesystem::is_regular_file(dat),
-            std::filesystem::is_regular_file(convergence),
-            elapsed_wall_seconds()});
+            std::filesystem::is_regular_file(convergence)});
         std::cout << "Checkpoint " << dat.string() << "\n";
         std::cout << "Convergence history " << convergence.string() << "\n";
         std::cout << "Execution summary " << execution.string() << "\n";
@@ -2244,8 +2667,7 @@ int main(int argc, char** argv)
                     static_cast<int>(cfdx::core::ConvergenceStatus::DIVERGED),
                     exc.what(),
                     has_restart,
-                    has_convergence,
-                    elapsed_wall_seconds()});
+                    has_convergence});
             } catch (const std::exception& summary_exc) {
                 std::cerr << "CFDX production solver: failed to persist execution summary: "
                           << summary_exc.what() << "\n";
@@ -2254,3 +2676,4 @@ int main(int argc, char** argv)
         return kExecutionExitError;
     }
 }
+

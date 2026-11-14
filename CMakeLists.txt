@@ -328,8 +328,19 @@ set(CFDX_CORE_HEADERS
     src/cfdx/io/vtu/vtu_writer.h
 )
 
+# Compile only the very large production entry translation unit at -O0
+# when explicitly requested for bounded diagnostic campaigns. This is a
+# compile-time convenience, not a qualification/performance build; normal
+# Release retains the original optimization flags unchanged.
+option(CFDX_DIAGNOSTIC_FAST_PRODUCTION_COMPILE
+    "Compile production main at -O0 for non-performance diagnostic runs" OFF)
 add_executable(cfdx_production_solver apps/production_solver/main.cpp)
 target_link_libraries(cfdx_production_solver PRIVATE cfdx_core)
+if(CFDX_DIAGNOSTIC_FAST_PRODUCTION_COMPILE AND
+   CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(cfdx_production_solver PRIVATE -O0 -g0)
+    message(STATUS "Diagnostic-only: production main compiled with -O0 (NOT performance-certified)")
+endif()
 
 add_executable(cfdx_thermal_solver apps/thermal_solver/main.cpp)
 target_link_libraries(cfdx_thermal_solver PRIVATE cfdx_core)
@@ -411,6 +422,11 @@ endif()
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+# V38 dense true-Schur audit is optional. It requires SciPy, and must never
+# silently become a CI dependency on the ordinary production build.
+option(CFDX_ENABLE_PCD_V38_DENSE_AUDIT_TESTS
+    "Register the bounded-size SciPy PCD Schur forensic audit" OFF)
+
 if(CFDX_BUILD_TESTS)
     enable_testing()
 
@@ -695,6 +711,16 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_nonlinear_multisecant tests/unit/test_nonlinear_multisecant.cpp)
     add_cfdx_test(test_multisecant_picard_fallback tests/unit/test_multisecant_picard_fallback.cpp)
     set_tests_properties(test_multisecant_picard_fallback PROPERTIES LABELS "momentum;anderson;transactional;regression" TIMEOUT 30)
+    add_cfdx_test(test_coupled_linear_retry_v37 tests/unit/test_coupled_linear_retry_v37.cpp)
+    set_tests_properties(test_coupled_linear_retry_v37 PROPERTIES
+        LABELS "coupled;schur;regression;quick" TIMEOUT 15)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_six_schur_common_input_v37
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_six_schur_v37.py)
+        set_tests_properties(test_bfs_six_schur_common_input_v37 PROPERTIES
+            LABELS "bfs;coupled;schur;regression;quick" TIMEOUT 25)
+    endif()
     add_cfdx_test(test_coupled_newton_krylov tests/validation/test_coupled_newton_krylov.cpp)
     set_tests_properties(test_coupled_newton_krylov PROPERTIES LABELS "momentum;jfnk;coupled;experimental;regression" TIMEOUT 90)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
@@ -724,6 +750,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
     add_cfdx_test(test_geometry_invariants tests/unit/test_geometry_invariants.cpp)
     add_cfdx_test(test_dat_restart_identity tests/unit/test_dat_restart_identity.cpp)
+    add_cfdx_test(test_sst_openfoam_wall_reference_v7 tests/unit/test_sst_openfoam_wall_reference_v7.cpp)
+    add_cfdx_test(test_sst_openfoam_wall_audit_v7 tests/unit/test_sst_openfoam_wall_audit_v7.cpp)
+    add_cfdx_test(test_v7_post_sst_momentum tests/unit/test_v7_post_sst_momentum.cpp)
+    add_cfdx_test(test_v8_global_nonlinear_certificate tests/unit/test_v8_global_nonlinear_certificate.cpp)
+    add_cfdx_test(test_v8_globalized_jfnk tests/unit/test_v8_globalized_jfnk.cpp)
+    add_cfdx_test(test_v8_six_field_preconditioner tests/unit/test_v8_six_field_preconditioner.cpp)
+    add_cfdx_test(test_v8_all_coupled_schur_production tests/unit/test_v8_all_coupled_schur_production.cpp)
+    add_cfdx_test(test_v8_wall_coupling_audit tests/unit/test_v8_wall_coupling_audit.cpp)
+    add_cfdx_test(test_v7_hilo_solver_restart tests/unit/test_v7_hilo_solver_restart.cpp)
     add_cfdx_test(test_mesh_family_volumes tests/numerical/test_mesh_family_volumes.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
@@ -785,6 +820,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_tvd_skew_affine_mms tests/validation/test_tvd_skew_affine_mms.cpp)
+    if(CFDX_DIAGNOSTIC_FAST_COMPILE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_tvd_skew_affine_mms PRIVATE -O0 -g0)
+    endif()
     set_tests_properties(test_tvd_skew_affine_mms PROPERTIES LABELS "naca;fv;anisotropy;regression" TIMEOUT 60)
     add_cfdx_test(test_convection_continuation tests/unit/test_convection_continuation.cpp)
     set_tests_properties(test_convection_continuation PROPERTIES LABELS "fv;convection;regression")
@@ -1000,6 +1038,12 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     endif()
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
+        # Small, fail-closed wall-model comparability contract, no CFD solve.
+        add_test(NAME test_bfs_sst_wall_contract_v6
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_sst_wall_contract_v6.py)
+        set_tests_properties(test_bfs_sst_wall_contract_v6 PROPERTIES
+            LABELS "bfs;sst;wall;qualification;regression" TIMEOUT 20)
         add_test(NAME test_naca_farfield_face_flux_audit
             COMMAND ${Python3_EXECUTABLE} -m pytest -q
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_farfield_face_flux.py)
@@ -1404,9 +1448,389 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
+    add_cfdx_test(test_sst_jfnk_v22 tests/unit/test_sst_jfnk_v22.cpp)
+    add_cfdx_test(test_sst_wall_owner_sync_v21 tests/unit/test_sst_wall_owner_sync_v21.cpp)
+    add_cfdx_test(test_sst_anderson_v20 tests/unit/test_sst_anderson_v20.cpp)
+    add_cfdx_test(test_sst_equilibrated_v19 tests/unit/test_sst_equilibrated_v19.cpp)
+    add_cfdx_test(test_sst_wall_owner_v18 tests/unit/test_sst_wall_owner_v18.cpp)
     add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
+    add_cfdx_test(test_pcd_fp_bisided_basis_v13 tests/unit/test_pcd_fp_bisided_basis_v13.cpp)
+    add_cfdx_test(test_global_nonlinear_acceptance_v13 tests/unit/test_global_nonlinear_acceptance_v13.cpp)
+    add_cfdx_test(test_pcd_bilateral_deflation_v14 tests/unit/test_pcd_bilateral_deflation_v14.cpp)
+    add_cfdx_test(test_pcd_full_rank_action_v15 tests/unit/test_pcd_full_rank_action_v15.cpp)
+    add_cfdx_test(test_pcd_fp_refinement_v16 tests/unit/test_pcd_fp_refinement_v16.cpp)
+    add_cfdx_test(test_coupled_block_residual_v16 tests/unit/test_coupled_block_residual_v16.cpp)
+    add_cfdx_test(test_coupled_matrix_capture_v16 tests/unit/test_coupled_matrix_capture_v16.cpp)
+    add_cfdx_test(test_coupled_monolithic_ilut_v16 tests/unit/test_coupled_monolithic_ilut_v16.cpp)
+    add_cfdx_test(test_sst_kqr_wall_v16 tests/unit/test_sst_kqr_wall_v16.cpp)
+    add_cfdx_test(test_global_nonlinear_contraction_v14 tests/unit/test_global_nonlinear_contraction_v14.cpp)
+    add_cfdx_test(test_sst_wall_triplet_cell_audit_v13 tests/unit/test_sst_wall_triplet_cell_audit_v13.cpp)
+    add_cfdx_test(test_sst_wall_triplet_v15 tests/unit/test_sst_wall_triplet_v15.cpp)
+    add_cfdx_test(test_sst_wall_operator_v17 tests/unit/test_sst_wall_operator_v17.cpp)
+    add_cfdx_test(test_sst_fp64_stall_v14 tests/unit/test_sst_fp64_stall_v14.cpp)
+    add_cfdx_test(test_pcd_fp_strong_component_anchor tests/unit/test_pcd_fp_strong_component_anchor.cpp)
+    set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")
+    # V38 read-only pressure Schur operator capture. No experimental
+    # preconditioner or physical threshold is activated by this test.
+    if(CFDX_ENABLE_PCD_V38_DENSE_AUDIT_TESTS)
+        if(NOT Python3_Interpreter_FOUND)
+            message(FATAL_ERROR "V38 dense Schur audit needs a Python interpreter")
+        endif()
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy"
+            RESULT_VARIABLE CFDX_V38_SCIPY_AVAILABLE
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT CFDX_V38_SCIPY_AVAILABLE EQUAL 0)
+            message(FATAL_ERROR "V38 dense Schur audit requires numpy and scipy")
+        endif()
+        add_test(NAME test_diagnose_pcd_schur_v38
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_diagnose_pcd_schur_v38.py)
+        set_tests_properties(test_diagnose_pcd_schur_v38 PROPERTIES
+            LABELS "pcd;diagnostic;regression;scipy" TIMEOUT 40)
+        add_test(NAME test_diagnose_pcd_orientations_v39
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_diagnose_pcd_orientations_v39.py)
+        set_tests_properties(test_diagnose_pcd_orientations_v39 PROPERTIES
+            LABELS "pcd;diagnostic;regression;scipy" TIMEOUT 40)
+    endif()
+
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_global_merit_period_v42
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_outer_period_v42.py)
+        set_tests_properties(test_bfs_global_merit_period_v42
+            PROPERTIES LABELS "bfs;global;v42;regression;diagnostic" TIMEOUT 15)
+        add_test(NAME test_bfs_pcd_recovery_evidence_v42
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_bfs_pcd_recovery_v42.py)
+        set_tests_properties(test_bfs_pcd_recovery_evidence_v42
+            PROPERTIES LABELS "bfs;pcd;v42;regression;diagnostic" TIMEOUT 15)
+    endif()
+    add_cfdx_test(test_sst_two_cycle_v41 tests/unit/test_sst_two_cycle_v41.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_outer_fields_v43
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_outer_fields_v43.py)
+        set_tests_properties(test_bfs_outer_fields_v43 PROPERTIES
+            LABELS "bfs;coupled;sst;v43;regression;diagnostic;quick" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_coupled_outer_step_v43 tests/unit/test_coupled_outer_step_v43.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_compare_bfs_period4_v44
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_compare_bfs_period4_v44.py)
+        set_tests_properties(test_compare_bfs_period4_v44 PROPERTIES
+            LABELS "bfs;sst;coupled;experimental;regression;diagnostic" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v45_evidence
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_bfs_v45_evidence.py)
+        set_tests_properties(test_bfs_v45_evidence PROPERTIES
+            LABELS "bfs;sst;coupled;v45;forensics;regression" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v45_momentum_evidence
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_bfs_v45_momentum_hotspots.py)
+        set_tests_properties(test_bfs_v45_momentum_evidence PROPERTIES
+            LABELS "bfs;sst;coupled;v45;forensics;regression" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_coupled_zero_step_flux_v47
+        tests/unit/test_coupled_zero_step_flux_v47.cpp)
+    set_tests_properties(test_coupled_zero_step_flux_v47 PROPERTIES
+        LABELS "bfs;coupled;rhie_chow;v47;diagnostic;regression" TIMEOUT 20)
+    # Self-contained V48 coefficient-homotopy contract. No large solver TU.
+    # V49: bounded, read-only native flux fixed point (no production gate).
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_native_rc_v49_forensics
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_native_rc_v49.py)
+        set_tests_properties(test_bfs_native_rc_v49_forensics PROPERTIES
+            LABELS "bfs;rhie_chow;v49;regression;diagnostic" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_native_six_v50_forensics
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_native_six_v50.py)
+        set_tests_properties(test_bfs_native_six_v50_forensics PROPERTIES
+            LABELS "bfs;coupled;v50;regression;diagnostic" TIMEOUT 20)
+    endif()
+    # V50: a signed six-field FV residual vector assembled on ONE native flux.
+    # This is diagnostic storage and an oracle contract, not a new convergence
+    # gate or an activated production Newton method.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_fphys_v51_forensics
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_fphys_v51.py)
+        set_tests_properties(test_bfs_fphys_v51_forensics PROPERTIES
+            LABELS "bfs;v51;nonlinear;forensics" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v52_six_schur
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v52_six_schur.py)
+        set_tests_properties(test_audit_v52_six_schur PROPERTIES
+            LABELS "bfs;coupled;schur;v52;regression" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v52_frozen_jfnk
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v52_frozen_jfnk.py)
+        set_tests_properties(test_audit_v52_frozen_jfnk PROPERTIES
+            LABELS "bfs;coupled;schur;newton;v52;regression" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v53_global_block
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v53_global_block.py)
+        set_tests_properties(test_audit_v53_global_block PROPERTIES
+            LABELS "bfs;coupled;schur;jfnk;v53;regression" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v54_krylov
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v54_krylov.py)
+        set_tests_properties(test_audit_v54_krylov PROPERTIES
+            LABELS "bfs;jfnk;v54;fail_closed;regression" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_frozen_physical_jacobian_v54 tests/unit/test_frozen_physical_jacobian_v54.cpp)
+    add_cfdx_test(test_convective_face_tangent_v55 tests/unit/test_convective_face_tangent_v55.cpp)
+    # V56: identical production limiter kernel and branch-aware face tangent.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v56_tangent
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v56_tangent.py)
+        set_tests_properties(test_audit_v56_tangent PROPERTIES
+            LABELS "bfs;fv;tangent;v56;fail_closed" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_convective_limited_tangent_v56
+        tests/unit/test_convective_limited_tangent_v56.cpp)
+    add_executable(test_bfs152_face_tangent_v56
+        tests/unit/test_bfs152_face_tangent_v56.cpp)
+    target_link_libraries(test_bfs152_face_tangent_v56 PRIVATE cfdx_core)
+    add_test(NAME test_bfs152_face_tangent_v56
+        COMMAND test_bfs152_face_tangent_v56
+                ${CMAKE_SOURCE_DIR}/tests/data/bfs152_mesh_v56.dat)
+    set_tests_properties(test_convective_limited_tangent_v56
+        PROPERTIES LABELS "bfs;fv;tangent;v56;regression" TIMEOUT 20)
+    set_tests_properties(test_bfs152_face_tangent_v56
+        PROPERTIES LABELS "bfs;fv;tangent;v56;mesh" TIMEOUT 120)
+    set_property(TEST test_bfs152_face_tangent_v56 PROPERTY
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    # Real BFS152 HDF5 topology preserved as a text fixture; only the test
+    # fields, not the connectivity or geometry, are synthetic.
+    set_property(TEST test_bfs152_face_tangent_v56 PROPERTY
+        PASS_REGULAR_EXPRESSION "V56_BFS152_FACE_AUDIT")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_bfs152_face_tangent_v56 PRIVATE -O0 -g0)
+    endif()
+    set_property(TEST test_bfs152_face_tangent_v56 PROPERTY
+        REQUIRED_FILES "${CMAKE_SOURCE_DIR}/tests/data/bfs152_mesh_v56.dat")
+
+    set_tests_properties(test_convective_face_tangent_v55 PROPERTIES LABELS "bfs;momentum;branch;v55;regression" TIMEOUT 20)
+    set_tests_properties(test_frozen_physical_jacobian_v54 PROPERTIES
+        LABELS "bfs;jfnk;v54;fidelity;regression" TIMEOUT 120)
+    # Header-heavy forensic test only: fast compilation, never a perf claim.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_frozen_physical_jacobian_v54 PRIVATE -O0 -g0)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v57_six_schur
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v57_six_schur.py)
+        set_tests_properties(test_audit_v57_six_schur PROPERTIES
+            LABELS "bfs;jfnk;v57;fail_closed;mutation" TIMEOUT 30)
+    endif()
+    # V57: read-only chain-rule stages and true residual at every Krylov direction.
+    add_cfdx_test(test_physical_chain_tangent_v57
+        tests/unit/test_physical_chain_tangent_v57.cpp)
+    add_cfdx_test(test_krylov_truth_v57
+        tests/unit/test_krylov_truth_v57.cpp)
+    add_cfdx_test(test_hybrid_physical_jv_v57
+        tests/unit/test_hybrid_physical_jv_v57.cpp)
+    set_tests_properties(test_physical_chain_tangent_v57 test_krylov_truth_v57
+        test_hybrid_physical_jv_v57
+        PROPERTIES LABELS "bfs;fphys;v57;fail_closed" TIMEOUT 40)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_physical_chain_tangent_v57 PRIVATE -O0 -g0)
+        target_compile_options(test_krylov_truth_v57 PRIVATE -O0 -g0)
+        target_compile_options(test_hybrid_physical_jv_v57 PRIVATE -O0 -g0)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v58_branches
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v58_branches.py)
+        set_tests_properties(test_audit_v58_branches PROPERTIES
+            LABELS "bfs;v58;branch;fail_closed" TIMEOUT 20)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_audit_v58_krylov_branches
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_audit_v58_krylov_branches.py)
+        set_tests_properties(test_audit_v58_krylov_branches PROPERTIES
+            LABELS "bfs;v58;branch;krylov;fail_closed" TIMEOUT 20)
+    endif()
+    # V58: reproducible one-sided physical face-flux branch oracle on
+    # real BFS152 connectivity; synthetic scalar/flux fields only.
+    add_executable(test_convective_branch_oracle_v58
+        tests/unit/test_convective_branch_oracle_v58.cpp)
+    target_link_libraries(test_convective_branch_oracle_v58 PRIVATE cfdx_core)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_convective_branch_oracle_v58 PRIVATE -O0 -g0)
+    endif()
+    add_test(NAME test_convective_branch_oracle_v58
+        COMMAND test_convective_branch_oracle_v58
+                ${CMAKE_SOURCE_DIR}/tests/data/bfs152_mesh_v56.dat)
+    set_tests_properties(test_convective_branch_oracle_v58 PROPERTIES
+        LABELS "bfs;fv;branch;v58;fail_closed" TIMEOUT 120
+        PASS_REGULAR_EXPRESSION "V58_BFS152_BRANCH_PASS")
+    # V60: independent decomposition of physical Jv with fresh RC/rAU/SST.
+    add_cfdx_test(test_physical_remainder_audit_v60
+        tests/unit/test_physical_remainder_audit_v60.cpp)
+    set_tests_properties(test_physical_remainder_audit_v60 PROPERTIES
+        LABELS "bfs;jfnk;sst;rhie_chow;v60;diagnostic;fail_closed" TIMEOUT 30)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_physical_remainder_audit_v60 PRIVATE -O0 -g0)
+    endif()
+    # V59: generalized SOU branch is frozen at the physical base; its test
+    # uses actual BFS152 connectivity but synthetic velocity directions.
+    add_executable(test_frozen_sou_active_set_v59
+        tests/unit/test_frozen_sou_active_set_v59.cpp)
+    target_link_libraries(test_frozen_sou_active_set_v59 PRIVATE cfdx_core)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_frozen_sou_active_set_v59 PRIVATE -O0 -g0)
+    endif()
+    add_test(NAME test_frozen_sou_active_set_v59
+        COMMAND test_frozen_sou_active_set_v59
+            ${CMAKE_SOURCE_DIR}/tests/data/bfs152_mesh_v56.dat)
+    set_tests_properties(test_frozen_sou_active_set_v59 PROPERTIES
+        LABELS "bfs;sst;coupled;frozen_active_set;v59;regression" TIMEOUT 120
+        PASS_REGULAR_EXPRESSION "V59_FROZEN_SOU_PASS")
+    add_cfdx_test(test_global_jv_linearity_v53 tests/unit/test_global_jv_linearity_v53.cpp)
+    set_tests_properties(test_global_jv_linearity_v53 PROPERTIES
+        LABELS "bfs;coupled;jfnk;v53;regression" TIMEOUT 25)
+    add_cfdx_test(test_global_sst_block_v53 tests/unit/test_global_sst_block_v53.cpp)
+    set_tests_properties(test_global_sst_block_v53 PROPERTIES
+        LABELS "bfs;sst;coupled;jfnk;v53;regression" TIMEOUT 45)
+    add_cfdx_test(test_global_physical_newton_v52 tests/unit/test_global_physical_newton_v52.cpp)
+    set_tests_properties(test_global_physical_newton_v52 PROPERTIES
+        LABELS "bfs;coupled;newton;v52;experimental;regression" TIMEOUT 60)
+    add_cfdx_test(test_physical_six_candidate_v51 tests/unit/test_physical_six_candidate_v51.cpp)
+    set_tests_properties(test_physical_six_candidate_v51 PROPERTIES
+        LABELS "bfs;v51;nonlinear;regression" TIMEOUT 20)
+    add_executable(test_state_only_six_residual_v50
+        tests/unit/test_state_only_six_residual_v50.cpp)
+    target_include_directories(test_state_only_six_residual_v50 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_state_only_six_residual_v50 COMMAND test_state_only_six_residual_v50)
+    set_tests_properties(test_state_only_six_residual_v50 PROPERTIES
+        LABELS "bfs;coupled;v50;regression;diagnostic" TIMEOUT 20)
+    add_executable(test_state_only_rhie_chow_v49
+        tests/unit/test_state_only_rhie_chow_v49.cpp)
+    target_include_directories(test_state_only_rhie_chow_v49 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_state_only_rhie_chow_v49 COMMAND test_state_only_rhie_chow_v49)
+    set_tests_properties(test_state_only_rhie_chow_v49 PROPERTIES
+        LABELS "bfs;rhie_chow;v49;regression;diagnostic" TIMEOUT 20)
+    add_executable(test_coupled_flux_homotopy_v48
+        tests/unit/test_coupled_flux_homotopy_v48.cpp)
+    target_include_directories(test_coupled_flux_homotopy_v48 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_coupled_flux_homotopy_v48 COMMAND test_coupled_flux_homotopy_v48)
+    set_tests_properties(test_coupled_flux_homotopy_v48 PROPERTIES
+        LABELS "bfs;coupled;rhie_chow;v48;regression;quick" TIMEOUT 20)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_homotopy_v48_forensics
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_homotopy_v48.py)
+        set_tests_properties(test_bfs_homotopy_v48_forensics PROPERTIES
+            LABELS "bfs;coupled;rhie_chow;v48;forensics;quick" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_coupled_composite_backtracking_v47
+        tests/unit/test_coupled_composite_backtracking_v47.cpp)
+    set_tests_properties(test_coupled_composite_backtracking_v47 PROPERTIES
+        LABELS "bfs;sst;coupled;v47;experimental;regression" TIMEOUT 20)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v47_backtracking_evidence
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v47_backtracking_evidence.py)
+        set_tests_properties(test_bfs_v47_backtracking_evidence PROPERTIES
+            LABELS "bfs;sst;coupled;v47;forensics;regression" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_post_sst_face_forensics_v46 tests/unit/test_post_sst_face_forensics_v46.cpp)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # Header-heavy forensic fixture: compile speed only, no performance qualification.
+        target_compile_options(test_post_sst_face_forensics_v46 PRIVATE -O0 -g0)
+    endif()
+    set_tests_properties(test_post_sst_face_forensics_v46 PROPERTIES
+        LABELS "bfs;momentum;v46;regression;diagnostic" TIMEOUT 30)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v46_face_evidence
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v46_face_evidence.py)
+        set_tests_properties(test_bfs_v46_face_evidence PROPERTIES
+            LABELS "bfs;momentum;v46;regression;diagnostic" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_post_sst_momentum_hotspot_v45 tests/unit/test_post_sst_momentum_hotspot_v45.cpp)
+    set_tests_properties(test_post_sst_momentum_hotspot_v45 PROPERTIES
+        LABELS "bfs;coupled;sst;v45;forensics;regression" TIMEOUT 20)
+    add_cfdx_test(test_coupled_phase_escape_v45 tests/unit/test_coupled_phase_escape_v45.cpp)
+    set_tests_properties(test_coupled_phase_escape_v45 PROPERTIES
+        LABELS "bfs;coupled;sst;v45;regression;experimental;quick" TIMEOUT 20)
+    add_cfdx_test(test_coupled_full_period_v44 tests/unit/test_coupled_full_period_v44.cpp)
+    set_tests_properties(test_coupled_full_period_v44 PROPERTIES
+        LABELS "bfs;sst;coupled;experimental;regression" TIMEOUT 20)
+    set_tests_properties(test_coupled_outer_step_v43 PROPERTIES
+        LABELS "bfs;coupled;v43;regression;quick" TIMEOUT 20)
+    add_cfdx_test(test_outer_field_period_v43 tests/unit/test_outer_field_period_v43.cpp)
+    set_tests_properties(test_outer_field_period_v43 PROPERTIES
+        LABELS "bfs;coupled;sst;v43;regression;diagnostic;quick" TIMEOUT 20)
+    add_cfdx_test(test_sst_stall_forensics_v42 tests/unit/test_sst_stall_forensics_v42.cpp)
+    add_cfdx_test(test_pcd_blocklocal_recovery_v42 tests/unit/test_pcd_blocklocal_recovery_v42.cpp)
+    set_tests_properties(test_sst_stall_forensics_v42 test_pcd_blocklocal_recovery_v42
+        PROPERTIES LABELS "bfs;sst;pcd;v42;regression;diagnostic" TIMEOUT 30)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # Header-heavy diagnostic tests: no performance assertions are made.
+        target_compile_options(test_sst_stall_forensics_v42 PRIVATE -O0 -g0)
+        target_compile_options(test_pcd_blocklocal_recovery_v42 PRIVATE -O0 -g0)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v41_forensics
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v41_forensics.py)
+        set_tests_properties(test_bfs_v41_forensics PROPERTIES
+            LABELS "bfs;sst;v41;regression;diagnostic" TIMEOUT 20)
+    endif()
+    set_tests_properties(test_sst_two_cycle_v41 PROPERTIES LABELS
+        "sst;v41;regression;experimental" TIMEOUT 20)
+    add_cfdx_test(test_pcd_schur_row_audit_v40
+        tests/unit/test_pcd_schur_row_audit_v40.cpp)
+    add_cfdx_test(test_coupled_fingerprint_v40
+        tests/unit/test_coupled_fingerprint_v40.cpp)
+    set_tests_properties(test_pcd_schur_row_audit_v40
+        test_coupled_fingerprint_v40 PROPERTIES
+        LABELS "bfs;schur;pcd;diagnostic;regression" TIMEOUT 20)
+    add_cfdx_test(test_global_joint_jv_v40
+        tests/unit/test_global_joint_jv_v40.cpp)
+    set_tests_properties(test_global_joint_jv_v40 PROPERTIES
+        LABELS "bfs;coupled;jfnk;experimental;regression" TIMEOUT 20)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_two_grids_v40
+            COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_two_grids_v40.py)
+        set_tests_properties(test_bfs_two_grids_v40 PROPERTIES
+            LABELS "bfs;schur;diagnostic;regression" TIMEOUT 20)
+        add_test(NAME test_bfs_schur_fingerprint_v40
+            COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_schur_fingerprint_v40.py)
+        set_tests_properties(test_bfs_schur_fingerprint_v40 PROPERTIES
+            LABELS "bfs;schur;diagnostic;regression" TIMEOUT 20)
+    endif()
+    add_cfdx_test(test_pcd_reverse_commutator_v39
+        tests/unit/test_pcd_reverse_commutator_v39.cpp)
+    set_tests_properties(test_pcd_reverse_commutator_v39 PROPERTIES
+        LABELS "pcd;linalg;regression;experimental" TIMEOUT 20)
+    add_cfdx_test(test_pcd_pressure_operator_capture_v38
+        tests/unit/test_pcd_pressure_operator_capture_v38.cpp)
+    set_tests_properties(test_pcd_pressure_operator_capture_v38 PROPERTIES
+        LABELS "pcd;diagnostic;regression" TIMEOUT 30)
+
     add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
     add_cfdx_test(test_pcd_pressure_inflow_boundary tests/validation/test_pcd_pressure_inflow_boundary.cpp)
+    set_tests_properties(test_pcd_fp_strong_component_anchor PROPERTIES LABELS "pcd;linalg;qualification")
     add_test(NAME test_pcd_fp_replay_capture COMMAND test_pcd_fp_replay --self-test)
     set_tests_properties(test_pcd_fp_replay_capture PROPERTIES LABELS "pcd;linalg;replay")
     add_cfdx_test(test_pressure_velocity_jacobian_certificate
@@ -1766,6 +2190,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 LABELS "diagnostics;integration;convergence"
                 ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
                 TIMEOUT 90)
+            # V36 meshio-free end-to-end trace qualification on a generated
+            # native HDF5 quick mesh. Software-only, never a physical BFS PASS.
+            add_test(NAME test_cell_hotspots_native_hdf5_v36
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_cell_hotspots_native_hdf5_v36.py)
+            set_tests_properties(test_cell_hotspots_native_hdf5_v36 PROPERTIES
+                LABELS "diagnostics;integration;native;regression"
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/bfs_re200_n16.h5;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+                FIXTURES_REQUIRED cfdx_validation_meshes_quick
+                TIMEOUT 100)
             add_test(NAME test_production_solver_e2e
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
@@ -1907,4 +2341,116 @@ if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
         test_coupled_comparison_v5_protocol
         PROPERTIES LABELS "schur;benchmark;unit;v5"
     )
+endif()
+
+# V7: portable double-double scalar assembly (no wide long double needed).
+
+
+# V7: portable double-double scalar assembly (no wide long double needed).
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_portable_double_double_v7 tests/unit/test_portable_double_double_v7.cpp)
+    set_tests_properties(test_portable_double_double_v7 PROPERTIES
+        LABELS "pressure;assembly;precision;portability")
+endif()
+
+# V35 merge: targeted V23-V34 SST qualification tests.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_sst_block_preconditioner_v23 tests/unit/test_sst_block_preconditioner_v23.cpp)
+    add_cfdx_test(test_sst_spatial_block_preconditioner_v24 tests/unit/test_sst_spatial_block_preconditioner_v24.cpp)
+    add_cfdx_test(test_sst_globalization_v25 tests/unit/test_sst_globalization_v25.cpp)
+    add_cfdx_test(test_sst_globalization_v26 tests/unit/test_sst_globalization_v26.cpp)
+    add_cfdx_test(test_sst_trust_subspace_v27 tests/unit/test_sst_trust_subspace_v27.cpp)
+    add_cfdx_test(test_sst_adaptive_trust_v28 tests/unit/test_sst_adaptive_trust_v28.cpp)
+    add_cfdx_test(test_sst_pseudo_transient_v29 tests/unit/test_sst_pseudo_transient_v29.cpp)
+    add_cfdx_test(test_sst_coupled_ptc_v30 tests/unit/test_sst_coupled_ptc_v30.cpp)
+    add_cfdx_test(test_sst_outer_ptc_v31 tests/unit/test_sst_outer_ptc_v31.cpp)
+    add_cfdx_test(test_sst_outer_ptc_balance_v32 tests/unit/test_sst_outer_ptc_balance_v32.cpp)
+    add_cfdx_test(test_sst_hotspot_v31 tests/unit/test_sst_hotspot_v31.cpp)
+    add_cfdx_test(test_sst_row_trace_v33 tests/unit/test_sst_row_trace_v33.cpp)
+    add_cfdx_test(test_sst_anisotropic_oracles_v33 tests/unit/test_sst_anisotropic_oracles_v33.cpp)
+    add_cfdx_test(test_sst_branch_preconditioner_v34 tests/unit/test_sst_branch_preconditioner_v34.cpp)
+endif()
+
+# CFDX integrated radiation V57 research branch, opt-in by construction.
+# This does NOT switch the production DOM/CHT solver and does not run in CI
+# unless specifically requested. Long five-depth campaigns are separate.
+option(CFDX_ENABLE_RADIATION_RESEARCH_V57
+    "Build standalone V57 HO angular hi+lo / SMM research qualification" OFF)
+if(CFDX_ENABLE_RADIATION_RESEARCH_V57)
+    if(NOT CFDX_BUILD_TESTS)
+        message(FATAL_ERROR "Radiation V57 research requires CFDX_BUILD_TESTS=ON")
+    endif()
+    add_cfdx_test(test_dom_angular_hilo_v57 tests/validation/test_dom_angular_hilo_v57.cpp)
+    add_cfdx_test(test_dom_holo_hilo_v57 tests/validation/test_dom_holo_hilo_v57.cpp)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_dom_angular_hilo_v57 PRIVATE -O1 -g0)
+        target_compile_options(test_dom_holo_hilo_v57 PRIVATE -O1 -g0)
+    endif()
+    add_test(NAME test_dom_angular_hilo_v57_analytic COMMAND test_dom_angular_hilo_v57 --analytic)
+    add_test(NAME test_dom_angular_hilo_v57_extreme COMMAND test_dom_angular_hilo_v57 --extreme)
+    add_test(NAME test_dom_angular_hilo_v57_family COMMAND test_dom_angular_hilo_v57 --family)
+    add_test(NAME test_dom_holo_hilo_v57_extreme_one COMMAND test_dom_holo_hilo_v57 --extreme-one)
+    add_test(NAME test_dom_holo_hilo_v57_family_one COMMAND test_dom_holo_hilo_v57 --family-one)
+    set_tests_properties(test_dom_angular_hilo_v57 test_dom_angular_hilo_v57_analytic
+        test_dom_angular_hilo_v57_extreme test_dom_angular_hilo_v57_family
+        test_dom_holo_hilo_v57 test_dom_holo_hilo_v57_extreme_one
+        test_dom_holo_hilo_v57_family_one PROPERTIES
+        LABELS "radiation;v57;experimental;cpu;hilo" TIMEOUT 600 RUN_SERIAL TRUE)
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_dom_holo_hilo_v57_extreme COMMAND test_dom_holo_hilo_v57 --extreme)
+        add_test(NAME test_dom_holo_hilo_v57_family COMMAND test_dom_holo_hilo_v57 --family)
+        set_tests_properties(test_dom_holo_hilo_v57_extreme test_dom_holo_hilo_v57_family
+            PROPERTIES LABELS "radiation;v57;experimental;cpu;long" TIMEOUT 1200 RUN_SERIAL TRUE)
+    endif()
+    # Legacy comparators are available when explicitly requested by --extended.
+    add_cfdx_test(test_dom_hilo_arithmetic_v55 tests/validation/test_dom_hilo_arithmetic_v55.cpp)
+    add_cfdx_test(test_dom_holo_hilo_v56 tests/validation/test_dom_holo_hilo_v56.cpp)
+    add_cfdx_test(test_dom_independent_angular_v54 tests/validation/test_dom_independent_angular_v54.cpp)
+    add_cfdx_test(test_dom_holo_amg_v53 tests/validation/test_dom_holo_amg_v53.cpp)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        foreach(tgt IN ITEMS test_dom_holo_hilo_v56 test_dom_independent_angular_v54 test_dom_holo_amg_v53)
+            target_compile_options(${tgt} PRIVATE -O0 -g0)
+        endforeach()
+    endif()
+    add_test(NAME test_dom_independent_angular_v54_analytic COMMAND test_dom_independent_angular_v54 --analytic)
+    set_tests_properties(test_dom_hilo_arithmetic_v55 test_dom_holo_hilo_v56
+        test_dom_independent_angular_v54 test_dom_independent_angular_v54_analytic
+        test_dom_holo_amg_v53
+        PROPERTIES LABELS "radiation;v57;research;legacy" TIMEOUT 600 RUN_SERIAL TRUE)
+    # Real 640-cell V54 stress is opt-in LONG, not part of the fast research suite.
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_dom_independent_angular_v54_stress
+            COMMAND test_dom_independent_angular_v54 --stress-640)
+        set_tests_properties(test_dom_independent_angular_v54_stress PROPERTIES
+            LABELS "radiation;v57;research;legacy;long" TIMEOUT 1200 RUN_SERIAL TRUE)
+    endif()
+endif()
+
+# V74 (partial lot, adapted): independent SST wall-regime audit only. The
+# fixed-direction continuation test is deferred until the V72 joint
+# fixed-point header lands on this branch (V61-V73 lots pending).
+if(CFDX_BUILD_TESTS)
+    add_executable(test_bfs_wall_regime_v74
+        tests/unit/test_bfs_wall_regime_v74.cpp)
+    target_include_directories(test_bfs_wall_regime_v74 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_wall_regime_v74 COMMAND test_bfs_wall_regime_v74)
+    set_tests_properties(test_bfs_wall_regime_v74 PROPERTIES
+        LABELS "bfs;sst;v74;wall;validation" TIMEOUT 30)
+endif()
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_v74_evidence_falsification
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v74_evidence.py)
+    set_tests_properties(test_bfs_v74_evidence_falsification PROPERTIES
+        LABELS "bfs;sst;v74;falsification" TIMEOUT 30)
+endif()
+
+
+# TH-03 geometry provenance and V78 reference-domain regression gates.
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_th03_native_geometry_gate
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_th03_native_geometry_gate.py)
+    add_test(NAME test_bfs_geometry_comparability_v78
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_geometry_comparability_v78.py)
+    set_tests_properties(test_th03_native_geometry_gate test_bfs_geometry_comparability_v78
+        PROPERTIES LABELS "bfs;th03;geometry;v78;falsification" TIMEOUT 30)
 endif()

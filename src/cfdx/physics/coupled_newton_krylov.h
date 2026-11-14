@@ -33,6 +33,9 @@ struct CoupledNewtonKrylovResult {
     double physical_merit_after = std::numeric_limits<double>::infinity();
     double linear_true_relative_residual = std::numeric_limits<double>::infinity();
     double accepted_step = 0.0;
+    // Diagnostic only: true-Krylov-qualified physical direction. May be
+    // populated even when the internal frozen-merit line search rejects.
+    std::vector<double> linear_direction;
     std::size_t residual_evaluations = 0;
     std::string reason;
 };
@@ -51,6 +54,7 @@ inline void validate_coupled_newton_controls(const CoupledNewtonKrylovControls& 
 
 using CoupledResidual = std::function<std::vector<double>(const std::vector<double>&)>;
 using CoupledStateAdmissible = std::function<bool(const std::vector<double>&)>;
+using CoupledRightPreconditioner = std::function<std::vector<double>(const std::vector<double>&)>;
 
 inline double coupled_newton_norm2(const std::vector<double>& v) {
     double sum = 0.0;
@@ -190,7 +194,8 @@ inline CoupledNewtonKrylovResult coupled_newton_krylov_step(
     const std::vector<double>& accepted_state,
     const std::vector<double>& fixed_physical_scales,
     const CoupledNewtonKrylovControls& controls = {},
-    const CoupledStateAdmissible& admissible = {}) {
+    const CoupledStateAdmissible& admissible = {},
+    const CoupledRightPreconditioner& right_preconditioner = {}) {
     validate_coupled_newton_controls(controls);
     if (!full_residual || accepted_state.empty() ||
         accepted_state.size()!=fixed_physical_scales.size())
@@ -216,17 +221,29 @@ inline CoupledNewtonKrylovResult coupled_newton_krylov_step(
     }
     std::vector<double> rhs=base;
     for (double& value:rhs) value=-value;
-    const auto apply=[&](const std::vector<double>& direction) {
-        return coupled_newton_directional_jvp(eval,accepted_state,direction,
+    // For a fixed LINEAR P^-1, GMRES solves (J P^-1)y=-F and the physical
+    // Newton displacement is dx=P^-1 y. The independent Krylov check is
+    // ||J dx+F||/||F||, never a residual of the preconditioner matrix.
+    const auto recover=[&](const std::vector<double>& y) {
+        auto value=right_preconditioner ? right_preconditioner(y) : y;
+        if (value.size()!=y.size())
+            throw std::invalid_argument("coupled JFNK: incomplete right preconditioner");
+        (void)coupled_newton_norm2(value);
+        return value;
+    };
+    const auto apply=[&](const std::vector<double>& y) {
+        return coupled_newton_directional_jvp(eval,accepted_state,recover(y),
                                               controls.finite_difference_step);
     };
-    std::vector<double> direction;
+    std::vector<double> preconditioned_direction;
     if (!coupled_newton_gmres(apply,rhs,controls.krylov_dimension,
-                             controls.linear_relative_tolerance,direction,
+                             controls.linear_relative_tolerance,preconditioned_direction,
                              result.linear_true_relative_residual)) {
         result.reason="Krylov true directional residual not satisfied";
         return result;
     }
+    const auto direction=recover(preconditioned_direction);
+    result.linear_direction=direction;
     for (std::size_t k=0;k<=controls.maximum_backtracks;++k) {
         const double alpha=std::ldexp(1.0,-static_cast<int>(k));
         auto candidate=accepted_state;

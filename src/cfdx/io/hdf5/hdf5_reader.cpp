@@ -440,7 +440,9 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         cfdx::core::BoundaryPatches bp;
         cfdx::core::Patch patch;
         patch.name = "boundary";
-        patch.type = cfdx::core::PatchType::WALL;
+        // Without metadata the physical role is unknown; a case may resolve
+        // it from an explicit named BoundarySpec, never by assuming no-slip.
+        patch.type = cfdx::core::PatchType::UNKNOWN;
         for (std::size_t f = 0; f < neighbour.size(); ++f) {
             if (neighbour[f] < 0)
                 patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(f));

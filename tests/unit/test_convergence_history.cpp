@@ -72,6 +72,29 @@ int main()
     h.momentum_conservation_residual = {0.2, 0.3, 0.4};
     h.momentum_conservation_normalized = {0.5, 0.6, 0.7};
     h.momentum_conservation_worst_cell = {1, 2, 3};
+    // Persist the *resolved* Schur/linear plan and independent returned-state
+    // certificate, not merely the requested numerical configuration.
+    result.requested_coupled_schur_model = CoupledSchurModel::PCD;
+    result.resolved_coupled_schur_model = CoupledSchurModel::PCD;
+    result.coupled_schur_model_resolved = true;
+    result.coupled_linear_plan_resolved = true;
+    result.coupled_linear_plan.krylov = cfdx::core::KrylovModel::FGMRES;
+    result.coupled_linear_plan.preconditioner = cfdx::core::PreconditionerModel::PCD;
+    h.global_nonlinear_v8.algorithm = PressureVelocityAlgorithm::COUPLED;
+    h.global_nonlinear_v8.schur = CoupledSchurModel::PCD;
+    h.global_nonlinear_v8.momentum.global_relative = 1e-10;
+    h.global_nonlinear_v8.momentum.max_active_component_relative = 2e-10;
+    h.global_nonlinear_v8.momentum.component_relative = {1e-10, 2e-10, 0};
+    h.global_nonlinear_v8.continuity = 3e-10;
+    h.global_nonlinear_v8.k = 4e-10;
+    h.global_nonlinear_v8.omega = 5e-10;
+    h.global_nonlinear_v8.eddy_viscosity_closure = 6e-10;
+    h.global_nonlinear_v8.merit = 6e-10;
+    h.global_nonlinear_v8.sst = true;
+    h.global_nonlinear_v8.sst_transport_committed = true;
+    h.global_nonlinear_v8.bounded = true;
+    h.global_nonlinear_v8.all_finite = true;
+    h.global_nonlinear_v8.converged = true;
     result.history.push_back(h);
 
     const auto path = std::filesystem::temp_directory_path() /
@@ -86,6 +109,12 @@ int main()
     buffer << in.rdbuf();
     const std::string json = buffer.str();
     assert(json.find("\"format\": \"CFDX-CONVERGENCE\"") != std::string::npos);
+    assert(json.find("\"requested_schur\": \"pcd\"") != std::string::npos);
+    assert(json.find("\"resolved_schur\": \"pcd\"") != std::string::npos);
+    assert(json.find("\"preconditioner\": \"pcd\"") != std::string::npos);
+    assert(json.find("\"global_nonlinear_v8\": {") != std::string::npos);
+    assert(json.find("\"momentum_max_active_component_relative\": 2") != std::string::npos);
+    assert(json.find("\"sst_transport_committed\": true") != std::string::npos);
     assert(json.find("\"schema_version\": 1") != std::string::npos);
     assert(json.find("\"history\": [") != std::string::npos);
     assert(json.find("\"high_order_fraction\": 1") != std::string::npos);
@@ -103,6 +132,16 @@ int main()
     assert(json.find("\"momentum_conservation_worst_cell\": [1,2,3]") != std::string::npos);
     assert(json.find("\\\"normally\\\"") != std::string::npos);
 
+    // If V8 was not evaluated, nulls must stay null rather than becoming
+    // a forged 0.0 certificate or invalid NaN JSON.
+    IncompressibleSolveResult missing = result;
+    missing.history[0].global_nonlinear_v8 = GlobalNonlinearResidualV8{};
+    write_convergence_history(path.string() + ".missing", missing);
+    std::ifstream missing_stream(path.string() + ".missing");
+    std::stringstream missing_content;
+    missing_content << missing_stream.rdbuf();
+    assert(missing_content.str().find("\"evaluated\": false") != std::string::npos);
+    assert(missing_content.str().find("\"k\": null") != std::string::npos);
     IncompressibleSolveResult bad = result;
     bad.history[0].momentum_residual = std::numeric_limits<double>::quiet_NaN();
     bool rejected = false;
@@ -115,5 +154,6 @@ int main()
 
     std::filesystem::remove(path, ec);
     std::filesystem::remove(path.string() + ".bad", ec);
+    std::filesystem::remove(path.string() + ".missing", ec);
     return 0;
 }

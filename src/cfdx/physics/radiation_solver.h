@@ -11,6 +11,8 @@
 #include <stdexcept>
 #include <vector>
 #include <limits>
+#include <optional>
+#include <map>
 
 namespace cfdx::physics {
 
@@ -34,6 +36,16 @@ struct RadiationSolveResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<RadiationIteration> history;
+    // V41 opt-in independent wall-flux diagnostic, computed from the FINAL
+    // accepted directional intensities. Positive = radiant power leaving gas.
+    std::map<std::string,double> wall_outward_W;
+    // V42 opt-in: defect of the FINAL nonlinear DOM FV operator, not a
+    // difference between successive Picard iterates. Empty in legacy mode.
+    bool accepted_state_verified_v42 = false;
+    double max_cell_transport_residual_v42 =
+        std::numeric_limits<double>::quiet_NaN();
+    double relative_energy_closure_v42 =
+        std::numeric_limits<double>::quiet_NaN();
 };
 
 inline void validate_radiation_transport_controls(const RadiationTransportControls& c)
@@ -131,8 +143,12 @@ using DomWallBoundaryConditions = std::map<std::string, DomWallBoundaryCondition
 // Direction-aware diffuse-gray DOM wall treatment. For each boundary face,
 // incoming ordinates are set from the emitted blackbody intensity plus the
 // diffusely reflected outgoing irradiation:
-// I_in = epsilon I_b(T_w) + (1-epsilon) G_out/pi,
-// G_out = sum_{m: s_m.n>0} w_m I_m (s_m.n).
+// I_in = epsilon I_b(T_w) + (1-epsilon) G_out/H_in,
+// G_out = sum_{m: s_m.n>0} w_m I_m (s_m.n),
+// H_in = sum_{m: s_m.n<0} w_m |s_m.n|.
+// Important: for a finite angular quadrature H_in is generally not pi.
+// Dividing by the CONTINUOUS hemispherical integral pi violates the
+// isothermal diffuse-gray equilibrium and discrete wall-power conservation.
 // Outgoing ordinates use zero-gradient/extrapolation from the owner cell.
 inline void validate_dom_wall_conditions(
     const cfdx::core::Mesh& mesh,
@@ -154,14 +170,191 @@ inline void validate_dom_wall_conditions(
     }
 }
 
+// V38: cache the same outgoing diffuse reflection used by the V37 wall
+// operator. Rebuilt on each outer iteration and updated after every accepted
+// angular solve so the historical Gauss-Seidel order is unchanged.
+// H_in/H_out remain the DISCRETE angular measures from V37; never replace
+// either by pi without a separate quadrature qualification.
+struct DomDiffuseWallCache {
+    std::vector<long double> outgoing_irradiation;
+    std::vector<long double> incoming_measure;
+    std::vector<long double> outgoing_measure;
+    std::size_t direction_count=0;
+};
+
+inline DomDiffuseWallCache make_dom_diffuse_wall_cache(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const std::vector<DiscreteDirection>& directions,
+    const std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>>& intensities)
+{
+    if (directions.empty() || intensities.size()!=directions.size() ||
+        geometry.face_area_vectors.size()!=mesh.n_faces())
+        throw std::invalid_argument("DOM cache: dimensions inconsistent");
+    DomDiffuseWallCache cache;
+    cache.direction_count=directions.size();
+    cache.outgoing_irradiation.assign(mesh.n_faces(),0.0L);
+    cache.incoming_measure.assign(mesh.n_faces(),0.0L);
+    cache.outgoing_measure.assign(mesh.n_faces(),0.0L);
+    for (const auto& intensity:intensities)
+        if (intensity.size()!=mesh.n_cells())
+            throw std::invalid_argument("DOM cache: intensity size mismatch");
+    for (std::size_t p=0;p<mesh.boundary().n_patches();++p)
+        for (const auto f:mesh.boundary().patch(p).face_ids) {
+            const auto Sf=geometry.face_area_vectors[f];
+            const double area=Sf.mag();
+            if (!(area>0.0) || !std::isfinite(area))
+                throw std::runtime_error("DOM cache: invalid wall area");
+            const std::size_t owner=mesh.ownership().owner(f);
+            if (owner>=mesh.n_cells())
+                throw std::invalid_argument("DOM cache: invalid owner");
+            for (std::size_t m=0;m<directions.size();++m) {
+                const auto& d=directions[m];
+                const double mu=(d.dx*Sf.x+d.dy*Sf.y+d.dz*Sf.z)/area;
+                if (!std::isfinite(mu) || !std::isfinite(d.weight) || d.weight<0.0)
+                    throw std::invalid_argument("DOM cache: invalid quadrature");
+                if (mu>0.0) {
+                    const double I=intensities[m](owner);
+                    if (!(I>=0.0) || !std::isfinite(I))
+                        throw std::invalid_argument("DOM cache: nonphysical outgoing intensity");
+                    const long double coefficient=static_cast<long double>(d.weight)*mu;
+                    cache.outgoing_measure[f]+=coefficient;
+                    cache.outgoing_irradiation[f]+=coefficient*I;
+                } else if (mu<0.0) {
+                    cache.incoming_measure[f]-=static_cast<long double>(d.weight)*mu;
+                }
+            }
+            const long double Hminus=cache.incoming_measure[f];
+            const long double Hplus=cache.outgoing_measure[f];
+            if (!(Hminus>0.0L) || !(Hplus>0.0L) ||
+                !std::isfinite(Hminus) || !std::isfinite(Hplus) ||
+                !std::isfinite(cache.outgoing_irradiation[f]) ||
+                std::abs(Hminus-Hplus)>1e-10L*std::max(Hminus,Hplus))
+                throw std::invalid_argument("DOM cache: unbalanced wall hemispheres");
+        }
+    return cache;
+}
+
+// Delta is the ACCEPTED change in one angle's cell intensities. The caller
+// must not update the cache for a trial that is later rolled back.
+inline void update_dom_diffuse_wall_cache(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const DiscreteDirection& direction,
+    const std::vector<double>& accepted_intensity_delta,
+    DomDiffuseWallCache& cache)
+{
+    if (accepted_intensity_delta.size()!=mesh.n_cells() ||
+        cache.outgoing_irradiation.size()!=mesh.n_faces() ||
+        cache.incoming_measure.size()!=mesh.n_faces() ||
+        cache.outgoing_measure.size()!=mesh.n_faces())
+        throw std::invalid_argument("DOM cache update: dimensions inconsistent");
+    for (std::size_t p=0;p<mesh.boundary().n_patches();++p)
+        for (const auto f:mesh.boundary().patch(p).face_ids) {
+            const auto Sf=geometry.face_area_vectors[f];
+            const double area=Sf.mag();
+            if (!(area>0.0) || !std::isfinite(area))
+                throw std::runtime_error("DOM cache update: invalid wall area");
+            const double mu=(direction.dx*Sf.x+direction.dy*Sf.y+
+                             direction.dz*Sf.z)/area;
+            if (mu>0.0) {
+                const double delta=accepted_intensity_delta[mesh.ownership().owner(f)];
+                if (!std::isfinite(delta))
+                    throw std::invalid_argument("DOM cache update: invalid intensity delta");
+                cache.outgoing_irradiation[f]+=
+                    static_cast<long double>(direction.weight)*mu*delta;
+                if (!std::isfinite(cache.outgoing_irradiation[f]))
+                    throw std::runtime_error("DOM cache update: nonfinite irradiance");
+            }
+        }
+}
+
+// Independently report whether a quadrature integrates a hemispherical flux
+// close to pi: global 0th/1st/2nd sphere moments do NOT imply this property.
+struct DomHemisphereMoments {
+    double outgoing=0.0, incoming=0.0, relative_pi_error=0.0;
+};
+inline DomHemisphereMoments dom_hemisphere_moments(
+    const std::vector<DiscreteDirection>& directions,
+    const std::array<double,3>& outward_normal)
+{
+    validate_discrete_directions(directions);
+    const double norm=std::hypot(outward_normal[0],outward_normal[1],outward_normal[2]);
+    if (!(norm>0.0) || !std::isfinite(norm))
+        throw std::invalid_argument("DOM hemisphere: invalid normal");
+    long double Hp=0.0L,Hm=0.0L;
+    for (const auto& d:directions) {
+        const double mu=(d.dx*outward_normal[0]+d.dy*outward_normal[1]+
+                         d.dz*outward_normal[2])/norm;
+        if (mu>0) Hp+=static_cast<long double>(d.weight)*mu;
+        else if (mu<0) Hm-=static_cast<long double>(d.weight)*mu;
+    }
+    if (!(Hp>0.0L) || !(Hm>0.0L) ||
+        std::abs(Hp-Hm)>1e-10L*std::max(Hp,Hm))
+        throw std::invalid_argument("DOM hemisphere: unbalanced angular measure");
+    return {static_cast<double>(Hp),static_cast<double>(Hm),
+        std::abs(static_cast<double>(Hp)/M_PI-1.0)};
+}
+
+// The discrete-isothermal balance (H+ == H-) is not the same as the
+// physical hemispherical condition (H+ == pi). A separate preflight reports
+// the maximum error over actual 3D wall-face normals. It never silently
+// rescales physical emission, reflection or the angular quadrature.
+struct DomWallQuadratureCertificate {
+    std::size_t faces_checked=0, worst_face=0;
+    double maximum_relative_pi_error=0.0;
+};
+inline DomWallQuadratureCertificate audit_dom_wall_quadrature(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const std::vector<DiscreteDirection>& directions)
+{
+    if (geometry.face_area_vectors.size()!=mesh.n_faces())
+        throw std::invalid_argument("DOM quadrature audit: geometry size mismatch");
+    DomWallQuadratureCertificate result;
+    for (std::size_t p=0;p<mesh.boundary().n_patches();++p)
+        for (const auto f:mesh.boundary().patch(p).face_ids) {
+            const auto Sf=geometry.face_area_vectors[f];
+            const auto m=dom_hemisphere_moments(directions,{Sf.x,Sf.y,Sf.z});
+            ++result.faces_checked;
+            if (m.relative_pi_error>result.maximum_relative_pi_error) {
+                result.maximum_relative_pi_error=m.relative_pi_error;
+                result.worst_face=f;
+            }
+        }
+    if (result.faces_checked==0)
+        throw std::invalid_argument("DOM quadrature audit: no boundary faces");
+    return result;
+}
+inline DomWallQuadratureCertificate require_dom_wall_quadrature_accuracy(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const std::vector<DiscreteDirection>& directions,
+    double maximum_allowed_relative_pi_error)
+{
+    if (!(maximum_allowed_relative_pi_error>=0.0) ||
+        !std::isfinite(maximum_allowed_relative_pi_error))
+        throw std::invalid_argument("DOM quadrature audit: invalid tolerance");
+    auto cert=audit_dom_wall_quadrature(mesh,geometry,directions);
+    if (cert.maximum_relative_pi_error>maximum_allowed_relative_pi_error)
+        throw std::runtime_error("DOM quadrature fails physical hemisphere moment gate");
+    return cert;
+}
+
 inline ScalarBoundaryFaceValues build_dom_diffuse_gray_face_values(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const std::vector<DiscreteDirection>& directions,
     const std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>>& intensities,
     const DomWallBoundaryConditions& walls,
-    std::size_t direction_index)
+    std::size_t direction_index,
+    const DomDiffuseWallCache* cache = nullptr)
 {
+    if (cache && (cache->direction_count!=directions.size() ||
+        cache->outgoing_irradiation.size()!=mesh.n_faces() ||
+        cache->incoming_measure.size()!=mesh.n_faces() ||
+        cache->outgoing_measure.size()!=mesh.n_faces()))
+        throw std::invalid_argument("DOM wall operator: cache size mismatch");
     if (intensities.size()!=directions.size() || direction_index>=directions.size())
         throw std::invalid_argument("DOM wall operator: direction/intensity size mismatch");
     const std::size_t nf=mesh.n_faces();
@@ -185,19 +378,178 @@ inline ScalarBoundaryFaceValues build_dom_diffuse_gray_face_values(
             if (target_mu>=0.0)
                 continue; // outgoing ordinate: zero-gradient/extrapolated
 
-            double Gout=0.0;
-            for (std::size_t m=0; m<directions.size(); ++m) {
+            long double Gout=cache ? cache->outgoing_irradiation[f] : 0.0L;
+            long double incoming_measure=cache ? cache->incoming_measure[f] : 0.0L;
+            long double outgoing_measure=cache ? cache->outgoing_measure[f] : 0.0L;
+            if (!cache) for (std::size_t m=0; m<directions.size(); ++m) {
                 const auto& d=directions[m];
                 const double mu=d.dx*nx+d.dy*ny+d.dz*nz;
-                if (mu>0.0)
-                    Gout += directions[m].weight*
+                if (mu>0.0) {
+                    Gout += static_cast<long double>(d.weight)*
                         intensities[m](mesh.ownership().owner(f))*mu;
+                    outgoing_measure+=static_cast<long double>(d.weight)*mu;
+                } else if (mu<0.0) {
+                    incoming_measure-=static_cast<long double>(d.weight)*mu;
+                }
             }
+            if (!(incoming_measure>0.0L) || !(outgoing_measure>0.0L) ||
+                !std::isfinite(incoming_measure) || !std::isfinite(outgoing_measure) ||
+                !std::isfinite(Gout) || Gout < -1e-12L ||
+                std::abs(incoming_measure-outgoing_measure) >
+                    1e-10L*std::max(incoming_measure,outgoing_measure))
+                throw std::invalid_argument(
+                    "DOM wall quadrature has no balanced incoming/outgoing hemisphere");
             pv[f]=wall.emissivity*Ib +
-                  (1.0-wall.emissivity)*Gout/M_PI;
+                  (1.0-wall.emissivity)*static_cast<double>(Gout/incoming_measure);
         }
     }
     return values;
+}
+
+// V42 independent accepted-state audit of the isotropic-scattering DOM
+// equation: div(s I) - I div(s) = ka Ib + ks G/(4*pi) - (ka+ks) I.
+// Fluxes are reconstructed face by face (UPWIND) from the ACCEPTED field;
+// diffuse wall reflection is rebuilt from all accepted ordinates. The
+// bounded-convection term is included to match the production FV contract.
+// This checks the DISCRETE transport balance; a separate quadrature oracle is
+// still mandatory before claiming physical hemisphere accuracy.
+struct DomAcceptedStateDefectV42 {
+    double max_cell_relative=0.0;
+    double max_cell_absolute=0.0;
+    double relative_global_energy=0.0;
+    double wall_outward_W=0.0;
+    double gas_emission_minus_absorption_W=0.0;
+    std::size_t worst_direction=0, worst_cell=0;
+};
+inline DomAcceptedStateDefectV42 audit_dom_accepted_state_v42(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    const std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>>& intensities,
+    const std::vector<DiscreteDirection>& directions,
+    const RadiationTransportControls& controls,
+    const DomWallBoundaryConditions& walls,
+    std::vector<double>* directional_cell_defects=nullptr)
+{
+    validate_radiation_transport_controls(controls);
+    validate_discrete_directions(directions);
+    validate_dom_wall_conditions(mesh,walls);
+    const std::size_t nc=mesh.n_cells(), nf=mesh.n_faces();
+    if (temperature.size()!=nc || intensities.size()!=directions.size() ||
+        geometry.cell_volumes.size()!=nc ||
+        geometry.face_area_vectors.size()!=nf ||
+        geometry.face_patch.size()!=nf)
+        throw std::invalid_argument("DOM V42 audit: incompatible field/geometry sizes");
+    std::vector<long double> G(nc,0.0L);
+    for(std::size_t m=0;m<directions.size();++m) {
+        if (intensities[m].size()!=nc)
+            throw std::invalid_argument("DOM V42 audit: invalid angle field size");
+        for(std::size_t c=0;c<nc;++c) {
+            const double I=intensities[m](c);
+            if (!(I>=0.0) || !std::isfinite(I))
+                throw std::invalid_argument("DOM V42 audit: negative or nonfinite intensity");
+            G[c]+=static_cast<long double>(directions[m].weight)*I;
+        }
+    }
+    DomAcceptedStateDefectV42 audit;
+    std::vector<double> local_defects;
+    if (directional_cell_defects)
+        local_defects.assign(nc*directions.size(),0.0);
+    long double total_wall=0.0L;
+    long double total_gas=0.0L, gas_l1=0.0L, emission_absorption=0.0L;
+    for(std::size_t c=0;c<nc;++c) {
+        if (!(geometry.cell_volumes[c]>0.0) ||
+            !std::isfinite(geometry.cell_volumes[c]))
+            throw std::invalid_argument("DOM V42 audit: invalid cell volume");
+        const double Ib=blackbody_intensity(temperature(c));
+        const long double power=static_cast<long double>(geometry.cell_volumes[c])*
+            controls.absorption*(4.0L*M_PI*Ib-G[c]);
+        total_gas+=power;
+        gas_l1+=std::abs(power);
+        emission_absorption+=static_cast<long double>(geometry.cell_volumes[c])*
+            controls.absorption*(4.0L*M_PI*Ib+G[c]);
+    }
+    const auto cache=make_dom_diffuse_wall_cache(mesh,geometry,directions,intensities);
+    const auto& own=mesh.ownership();
+    for(std::size_t m=0;m<directions.size();++m) {
+        const auto& d=directions[m];
+        const auto wall_values=build_dom_diffuse_gray_face_values(
+            mesh,geometry,directions,intensities,walls,m,&cache);
+        std::vector<long double> divergence(nc,0.0L), div_s(nc,0.0L);
+        std::vector<long double> face_l1(nc,0.0L);
+        for(std::size_t f=0;f<nf;++f) {
+            const auto patch=geometry.face_patch[f];
+            const auto neighbour=own.neighbour(f);
+            if (neighbour<0 && patch<mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type==cfdx::core::PatchType::EMPTY)
+                continue;
+            const auto Sf=geometry.face_area_vectors[f];
+            const long double F=static_cast<long double>(d.dx)*Sf.x+
+                static_cast<long double>(d.dy)*Sf.y+
+                static_cast<long double>(d.dz)*Sf.z;
+            if (!std::isfinite(F))
+                throw std::invalid_argument("DOM V42 audit: nonfinite direction flux");
+            const auto o=own.owner(f);
+            if (o>=nc) throw std::invalid_argument("DOM V42 audit: invalid owner");
+            double I_face=intensities[m](o);
+            if (neighbour>=0) {
+                const auto n=static_cast<std::size_t>(neighbour);
+                if (n>=nc) throw std::invalid_argument("DOM V42 audit: invalid neighbour");
+                if (F<0.0L) I_face=intensities[m](n);
+            } else if (F<0.0L) {
+                if (patch>=mesh.boundary().n_patches())
+                    throw std::invalid_argument("DOM V42 audit: unassigned boundary face");
+                const auto& name=mesh.boundary().patch(patch).name;
+                I_face=wall_values.values.at(name).at(f);
+                if (!(I_face>=0.0) || !std::isfinite(I_face))
+                    throw std::invalid_argument("DOM V42 audit: invalid incoming wall intensity");
+            }
+            const long double power=F*I_face;
+            divergence[o]+=power;div_s[o]+=F;face_l1[o]+=std::abs(power);
+            if(neighbour>=0) {
+                const auto n=static_cast<std::size_t>(neighbour);
+                divergence[n]-=power;div_s[n]-=F;face_l1[n]+=std::abs(power);
+            } else {
+                const long double weighted=static_cast<long double>(d.weight)*power;
+                total_wall+=weighted;
+            }
+        }
+        for(std::size_t c=0;c<nc;++c) {
+            const long double I=intensities[m](c);
+            const long double Ib=blackbody_intensity(temperature(c));
+            const long double V=geometry.cell_volumes[c];
+            const long double emission=V*controls.absorption*Ib;
+            const long double scattering=V*controls.scattering*G[c]/(4.0L*M_PI);
+            const long double extinction=V*(controls.absorption+controls.scattering)*I;
+            const long double defect=divergence[c]-I*div_s[c]-
+                emission-scattering+extinction;
+            const long double scale=std::max(1e-25L,face_l1[c]+
+                std::abs(I*div_s[c])+std::abs(emission)+
+                std::abs(scattering)+std::abs(extinction));
+            if (directional_cell_defects)
+                local_defects[m*nc+c]=static_cast<double>(defect);
+            const double relative=static_cast<double>(std::abs(defect)/scale);
+            if(!std::isfinite(relative))
+                throw std::runtime_error("DOM V42 audit: nonfinite cell defect");
+            if (relative>audit.max_cell_relative) {
+                audit.max_cell_relative=relative;
+                audit.worst_cell=c;audit.worst_direction=m;
+            }
+            audit.max_cell_absolute=std::max(audit.max_cell_absolute,
+                static_cast<double>(std::abs(defect)));
+        }
+    }
+    audit.wall_outward_W=static_cast<double>(total_wall);
+    audit.gas_emission_minus_absorption_W=static_cast<double>(total_gas);
+    audit.relative_global_energy=static_cast<double>(
+        std::abs(total_wall-total_gas)/
+        // Normalize by actual emitting/absorbing powers, NOT by the much
+        // larger streaming gross wall intensity that cancels at equilibrium.
+        std::max(1e-20L,gas_l1+std::abs(total_wall)+emission_absorption));
+    if (!std::isfinite(audit.relative_global_energy))
+        throw std::runtime_error("DOM V42 audit: nonfinite energy closure");
+    if (directional_cell_defects)
+        directional_cell_defects->swap(local_defects);
+    return audit;
 }
 
 // DOM solve with physically coupled diffuse-gray wall boundary conditions.
@@ -212,7 +564,10 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& radiation_source,
     const std::vector<DiscreteDirection>& directions,
     const RadiationTransportControls& controls,
-    const DomWallBoundaryConditions& walls)
+    const DomWallBoundaryConditions& walls,
+    bool use_wall_cache = true,
+    bool compute_wall_power_v41 = false,
+    bool verify_accepted_state_v42 = false)
 {
     validate_radiation_transport_controls(controls);
     validate_discrete_directions(directions);
@@ -223,6 +578,20 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
         throw std::invalid_argument("radiation field size mismatch");
 
     const std::size_t nc=mesh.n_cells();
+    // Keep the caller state untouched until ALL strict criteria pass. The
+    // legacy path performs no field copies and retains its prior behaviour.
+    using CellField=cfdx::core::Field<double,cfdx::core::Location::CELL>;
+    std::optional<CellField> staged_G, staged_source;
+    if (verify_accepted_state_v42) {
+        staged_G.emplace(irradiation);
+        staged_source.emplace(radiation_source);
+        for(std::size_t c=0;c<nc;++c)
+            if (!std::isfinite(irradiation(c)) ||
+                !std::isfinite(radiation_source(c)))
+                throw std::invalid_argument("DOM V42: nonfinite initial field");
+    }
+    auto& active_G=verify_accepted_state_v42 ? *staged_G : irradiation;
+    auto& active_source=verify_accepted_state_v42 ? *staged_source : radiation_source;
     std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>> intensities;
     intensities.reserve(directions.size());
     for (std::size_t m=0;m<directions.size();++m) {
@@ -236,8 +605,13 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
             {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
 
     RadiationSolveResult result;
+    std::vector<double> accepted_delta(nc,0.0);
     for (std::size_t iter=1;iter<=controls.max_iterations;++iter) {
-        auto old_source=radiation_source;
+        auto old_source=active_source;
+        DomDiffuseWallCache wall_cache;
+        if (use_wall_cache)
+            wall_cache=make_dom_diffuse_wall_cache(
+                mesh,geometry,directions,intensities);
         double max_delta=0.0;
 
         std::vector<double> J(nc,0.0);
@@ -247,7 +621,8 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
 
         for (std::size_t m=0;m<directions.size();++m) {
             const auto wall_values=build_dom_diffuse_gray_face_values(
-                mesh,geometry,directions,intensities,walls,m);
+                mesh,geometry,directions,intensities,walls,m,
+                use_wall_cache ? &wall_cache : nullptr);
             cfdx::core::Field<double,cfdx::core::Location::FACE> directional_flux(
                 mesh.n_faces(),"sI","W/m2",1);
             const auto& d=directions[m];
@@ -287,38 +662,83 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
                     throw std::runtime_error(
                         "DOM diffuse-gray wall solve produced non-physical intensity");
                 const double bounded=std::max(0.0,intensity(c));
-                max_delta=std::max(max_delta,std::abs(bounded-intensities[m](c)));
+                accepted_delta[c]=bounded-intensities[m](c);
+                max_delta=std::max(max_delta,std::abs(accepted_delta[c]));
                 intensities[m](c)=bounded;
             }
+            if (use_wall_cache)
+                update_dom_diffuse_wall_cache(
+                    mesh,geometry,d,accepted_delta,wall_cache);
         }
 
         for (std::size_t c=0;c<nc;++c) {
             double G=0.0;
             for (std::size_t m=0;m<directions.size();++m)
                 G+=directions[m].weight*intensities[m](c);
-            irradiation(c)=G;
-            radiation_source(c)=controls.absorption*
+            active_G(c)=G;
+            active_source(c)=controls.absorption*
                 (4.0*M_PI*blackbody_intensity(temperature(c))-G);
         }
 
         double source_delta=0.0;
         for (std::size_t c=0;c<nc;++c)
             source_delta=std::max(source_delta,
-                std::abs(radiation_source(c)-old_source(c)));
+                std::abs(active_source(c)-old_source(c)));
 
         double scale=1.0, source_scale=1.0;
         for (std::size_t c=0;c<nc;++c) {
-            scale=std::max(scale,std::abs(irradiation(c)));
-            source_scale=std::max(source_scale,std::abs(radiation_source(c)));
+            scale=std::max(scale,std::abs(active_G(c)));
+            source_scale=std::max(source_scale,std::abs(active_source(c)));
         }
         const double rel_i=max_delta/scale;
         const double rel_s=source_delta/source_scale;
         result.history.push_back({iter,max_delta,source_delta});
         result.iterations=iter;
         if (rel_i<=controls.tolerance && rel_s<=controls.tolerance) {
+            if (verify_accepted_state_v42) {
+                const auto defect=audit_dom_accepted_state_v42(
+                    mesh,geometry,temperature,intensities,directions,controls,walls);
+                result.max_cell_transport_residual_v42=defect.max_cell_relative;
+                result.relative_energy_closure_v42=defect.relative_global_energy;
+                if (defect.max_cell_relative>controls.tolerance ||
+                    defect.relative_global_energy>controls.tolerance)
+                    continue; // Never accept a small Picard delta alone.
+                result.accepted_state_verified_v42=true;
+            }
             result.converged=true;
             break;
         }
+    }
+    if(result.converged && compute_wall_power_v41) {
+        // One flux evaluation on the accepted angular field. The discrete
+        // outgoing measure and incoming diffuse-gray radiation are evaluated
+        // using identical quadrature; NO hidden rescale to physical pi.
+        const auto cache=make_dom_diffuse_wall_cache(
+            mesh,geometry,directions,intensities);
+        for(std::size_t p=0;p<mesh.boundary().n_patches();++p) {
+            const auto& patch=mesh.boundary().patch(p);
+            if(patch.type==cfdx::core::PatchType::EMPTY) continue;
+            const auto& wall=walls.at(patch.name);
+            const long double Ib=blackbody_intensity(wall.temperature);
+            long double watts=0.0L;
+            for(const auto f:patch.face_ids) {
+                const long double Hminus=cache.incoming_measure[f];
+                const long double incoming_intensity=
+                    wall.emissivity*Ib + (1.0-wall.emissivity)*
+                    cache.outgoing_irradiation[f]/Hminus;
+                watts+=static_cast<long double>(geometry.face_area_vectors[f].mag())*
+                    (cache.outgoing_irradiation[f]-Hminus*incoming_intensity);
+            }
+            if(!std::isfinite(watts))
+                throw std::runtime_error("DOM V41 nonfinite final wall power");
+            result.wall_outward_W[patch.name]=static_cast<double>(watts);
+        }
+    }
+    // Strict mode atomically publishes both physical fields only after the
+    // accepted nonlinear state satisfies local and global FV balances.
+    if(result.converged && verify_accepted_state_v42) {
+        irradiation=std::move(*staged_G);
+        radiation_source=std::move(*staged_source);
     }
     return result;
 }

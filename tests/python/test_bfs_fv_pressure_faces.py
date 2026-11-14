@@ -1,5 +1,4 @@
 """Conservative implicit-FV-face bridge; never a full Rhie--Chow certificate."""
-
 from __future__ import annotations
 
 import sys
@@ -13,18 +12,16 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from audit_bfs_fv_pressure_faces import (
-    read_split,
-    refine_implicit_faces,
-    verify_face_operator,
+from audit_bfs_fv_pressure_faces import (  # noqa: E402
+    read_split, refine_implicit_faces, verify_face_operator,
 )
 
 
 def inputs():
     # Three cells, two internal oriented FV faces, two Dirichlet outlets.
     a = csr_matrix(np.array([[3, -2, 0], [-2, 4, -2], [0, -2, 3]], dtype=float))
-    high = np.array([2.0, 3.0, 1.0])
-    low = np.array([0.0, 1e-9, 0.0])
+    high = np.array([2., 3., 1.])
+    low = np.array([0., 1e-9, 0.])
     rhs = np.asarray(a @ high + a @ low)
     owner = np.array([0, 1, 0, 2], dtype=np.int64)
     neighbour = np.array([1, 2, -1, -1], dtype=np.int64)
@@ -47,9 +44,7 @@ def test_real_fv_topology_conservative_split_operator():
 def test_graph_mismatch_is_rejected():
     a, b, h, l, o, n, outlet = inputs()
     n[1] = 0
-    with pytest.raises(
-        ValueError, match="multiple physical faces|CSR off-diagonal graph"
-    ):
+    with pytest.raises(ValueError, match="multiple physical faces|CSR off-diagonal graph"):
         verify_face_operator(a, b, h, l, o, n, outlet, target_tolerance=1e-11)
 
 
@@ -69,14 +64,12 @@ def test_asymmetric_operator_is_rejected():
 
 def test_split_rejects_stale_checksum_and_invalid_rows(tmp_path):
     path = tmp_path / "p.split"
-    path.write_text(
-        "CFDX_PRESSURE_SPLIT_V1\n2 abcdef1234567890\n0x1p+0 0x0p+0\n0x2p+0 0x0p+0\n"
-    )
+    path.write_text("CFDX_PRESSURE_SPLIT_V1\n2 abcdef1234567890\n0x1p+0 0x0p+0\n0x2p+0 0x0p+0\n")
     with pytest.raises(ValueError, match="different captured CSR"):
         read_split(path, 2, "deadbeef12345678")
     high, low = read_split(path, 2, "abcdef1234567890")
-    assert np.array_equal(high, [1.0, 2.0])
-    assert np.array_equal(low, [0.0, 0.0])
+    assert np.array_equal(high, [1., 2.])
+    assert np.array_equal(low, [0., 0.])
     path.write_text(path.read_text() + "0x1p+0 0x0p+0\n")
     with pytest.raises(ValueError, match="extra"):
         read_split(path, 2, "abcdef1234567890")
@@ -93,7 +86,6 @@ def test_zero_refinement_reports_both_gates_and_no_physics():
 
 def test_native_capture_checksum_is_recomputed_not_trusted(tmp_path):
     import struct
-
     from audit_bfs_fv_pressure_faces import verify_capture_checksum
     from seed_bfs_pressure_from_capture import read_capture
 
@@ -123,9 +115,8 @@ def test_native_capture_checksum_is_recomputed_not_trusted(tmp_path):
     a, b, _ = read_capture(path)
     verify_capture_checksum(path, a, b, footer)
     # A malicious/stale footer copied from the original must be rejected.
-    path.write_text(
-        path.read_text().replace(f"{bits(-1.0):016x}", f"{bits(-2.0):016x}", 1)
-    )
+    path.write_text(path.read_text().replace(f"{bits(-1.0):016x}",
+                                              f"{bits(-2.0):016x}", 1))
     bad, bad_rhs, _ = read_capture(path)
     with pytest.raises(ValueError, match="checksum mismatch"):
         verify_capture_checksum(path, bad, bad_rhs, footer)

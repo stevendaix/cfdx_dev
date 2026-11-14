@@ -19,7 +19,7 @@ def case(tmp_path_factory):
         max_iterations=2,
     )
     hybrid = root / "smoke_hybrid.cfdx.h5"
-    report = initialise_case(raw, hybrid)
+    report = initialise_case(raw, hybrid, require_native_geometry=False)
     return raw, hybrid, report
 
 
@@ -61,13 +61,13 @@ def test_fields_are_nonuniform_positive_and_same_grid(case):
 def test_reject_accidental_overwrite(case):
     raw, hybrid, _ = case
     with pytest.raises(ValueError, match="new, absent"):
-        initialise_case(raw, hybrid)
+        initialise_case(raw, hybrid, require_native_geometry=False)
     with pytest.raises(ValueError, match="new, absent"):
-        initialise_case(raw, raw)
+        initialise_case(raw, raw, require_native_geometry=False)
 
 
 def test_reject_bad_bl_length(case, tmp_path):
     raw, _, _ = case
     with pytest.raises(ValueError, match="invalid BL"):
-        initialise_case(raw, tmp_path / "bad.cfdx.h5", delta_h=-1)
+        initialise_case(raw, tmp_path / "bad.cfdx.h5", delta_h=-1, require_native_geometry=False)
     assert not (tmp_path / "bad.cfdx.h5").exists()

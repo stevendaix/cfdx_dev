@@ -140,6 +140,7 @@ inline double hemispherical_irradiation(
     const std::vector<double>& intensities,
     const std::array<double,3>& normal)
 {
+    validate_discrete_directions(directions);
     if (directions.size() != intensities.size())
         throw std::invalid_argument("DOM direction/intensity size mismatch");
     const double nn = std::sqrt(normal[0]*normal[0] + normal[1]*normal[1] +
@@ -150,10 +151,12 @@ inline double hemispherical_irradiation(
     for (std::size_t m = 0; m < directions.size(); ++m) {
         const auto& d = directions[m];
         const double mu = (d.dx*normal[0] + d.dy*normal[1] + d.dz*normal[2]) / nn;
-        if (mu < 0.0) {
+        // G_out is the irradiation incident on the wall from the fluid:
+        // with an outward normal, these ordinates satisfy d.n > 0.
+        if (mu > 0.0) {
             if (!std::isfinite(intensities[m]) || intensities[m] < 0.0)
-                throw std::invalid_argument("incoming DOM intensity must be finite and non-negative");
-            G += directions[m].weight * (-mu) * intensities[m];
+                throw std::invalid_argument("wall-directed DOM intensity must be finite and non-negative");
+            G += directions[m].weight * mu * intensities[m];
         }
     }
     return G;
@@ -173,7 +176,15 @@ inline void apply_diffuse_gray_wall(
         throw std::invalid_argument("DOM wall direction/intensity size mismatch");
     const double G = hemispherical_irradiation(
         directions, incoming_intensities, outward_normal);
-    const double Iw = gray_diffuse_wall_intensity(emissivity, temperature, G);
+    // V37 uses the actual discrete hemisphere measure to conserve the gray
+    // reflection. Using G/pi while the quadrature integrates H != pi would
+    // create an artificial isothermal source at an otherwise adiabatic wall.
+    if (!std::isfinite(emissivity) || emissivity<0.0 || emissivity>1.0 ||
+        !std::isfinite(temperature) || temperature<0.0)
+        throw std::invalid_argument("DOM auxiliary wall: invalid properties");
+    const auto moments=dom_hemisphere_moments(directions,outward_normal);
+    const double Iw=emissivity*blackbody_intensity(temperature)+
+        (1.0-emissivity)*G/moments.incoming;
     const double nn = std::sqrt(outward_normal[0]*outward_normal[0] +
                                 outward_normal[1]*outward_normal[1] +
                                 outward_normal[2]*outward_normal[2]);
@@ -181,7 +192,7 @@ inline void apply_diffuse_gray_wall(
         const double mu = (directions[m].dx*outward_normal[0] +
                            directions[m].dy*outward_normal[1] +
                            directions[m].dz*outward_normal[2]) / nn;
-        if (mu > 0.0)
+        if (mu < 0.0)
             boundary_intensities[m] = Iw;
     }
 }

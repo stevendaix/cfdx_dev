@@ -117,6 +117,39 @@ class ValidateFichesContractTests(unittest.TestCase):
             write_fiche(Path(tmp), name="07-benchmarks-references.md", text=text)
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
+    def test_v9_bfs_campaign_report_is_exempt_from_method_fiche_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_fiche(
+                Path(tmp),
+                name="50-bfs-multi-schur-qualification-v9.md",
+                text="# V9 BFS campaign report\\n\\n## 1. Scope\\n",
+            )
+            self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
+    def test_v10_bfs_diagnostics_report_is_exempt_from_method_fiche_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_fiche(
+                Path(tmp),
+                name="51-bfs-six-schur-production-diagnostics-v10.md",
+                text="# V10 BFS diagnostics report\\n\\n## 1. Scope\\n",
+            )
+            self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
+    def test_v11_v13_v14_bfs_campaign_reports_are_exempt_from_method_fiche_template(
+        self,
+    ):
+        report_names = (
+            "52-bfs-v11-pression-pcd-sst.md",
+            "53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md",
+            "54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md",
+        )
+        for name in report_names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                write_fiche(
+                    Path(tmp), name=name, text="# BFS campaign evidence report\n"
+                )
+                self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
     def test_fiche_without_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             text = valid_fiche_text().replace(DOI_LINE + "\n", "")

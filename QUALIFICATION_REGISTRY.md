@@ -59,3 +59,59 @@ Légende — Implémenté / Test / Oracle / SHA : ✓ = prouvé, ~ = partiel, �
 *2026-10-13 — correctif post-audit PR #888 : porteur de qualification initialisé au repos (l'initialisation au point fixe gelait le résidu relatif des gates du moniteur → STAGNATED, #663) ; l'audit de conservation indépendant devient un critère d'acceptation **bloquant** (gates global + local normalisées par l'échelle brute — débit frontière total + source, plancher 1 W — tolérance 1e-12, finitude totale exigée) ; parsing numérique strict («500abc» rejeté), températures kelvin > 0 exigées (déclarées et initiales), contrat géométrie au point d'entrée du noyau, sérialisation JSON échappée avec valeurs non finies → null, VTU écrit atomiquement, validation du modèle d'énergie déplacée avant la résolution fluide, `compressible` désormais réellement accepté par le code (contrat fiche 14 §5). Registre JSON, fiche 14 et ce tableau mis à jour dans le même commit (§16.7). Statut inchangé : READY ≠ PASS (gouvernance #118).*
 
 *2026-10-13 — correctif post-fusion PR #888 (branche de fix) : la CI restait rouge sur `test_production_energy_stage_vv` (Release + DebugSanitizers) malgré l'initialisation au repos ; cause racine identifiée — l'ancre de jauge de pression du porteur élimine la ligne de continuité de la cellule de référence, et posée sur la cellule d'entrée d'un cas à débit imposé elle rend le bilan de masse global incorrigible (CG pression en échec récurrent ~509 itérations, résidu ~1e-4) ; l'ancre est désormais la cellule de sortie (convergence géométrique depuis le repos, ~90 itérations, aucune tolérance modifiée). Durcissements P1/P2 : heat_flux réservé aux patches WALL, contradiction Dirichlet+heat_flux rejetée, dynamic_viscosity exigée (matériau fluide complet ; rejet des déclarations partielles dans l'app), gate locale de conservation normalisée par l'échelle propre à chaque cellule (bloquante), routage explicite solid_conduction/compressible rejetés par cfdx_production_solver, contrat géométrie complété (finitude centres/vecteurs de surface, indices de patch valides), artéfacts étendus aux nouvelles gates. Statut inchangé : READY ≠ PASS — la campagne T2 sur un HEAD exact mergé reste requise (gouvernance #118).*
+
+## BFS Driver–Seegmiller — V13 (2026-11-09)
+
+**Non qualifié physiquement.** Les captures Fp du BFS réduit (712 cellules)
+montrent des noyaux numériques bilatéraux (2 modes, puis 1 avec Dirichlet
+expérimental) et un RHS incompatible à `6.27946816675e-2` en norme relative.
+Le résidu Fp original ne peut être certifié par la seule projection. Le garde
+non linéaire U,p,k,omega,nu_t reste expérimental / opt-in. Un premier état
+BFS Block-local a été commis sans converger : U `5.275372423e-1`, continuité
+`1.760025754e-3`. L'audit de paroi `omega,nut,G` est indépendant mais ne
+remplace aucune fonction de paroi OpenFOAM. Les campagnes complètes des six
+Schur, les trois maillages de référence et les mesures `x_r/h,Cf` restent à
+exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md`.
+
+### État BFS V14 — 2026-11-09
+
+Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.
+
+## BFS Driver–Seegmiller — V13 (2026-11-09)
+
+**Non qualifié physiquement.** Les captures Fp du BFS réduit (712 cellules)
+montrent des noyaux numériques bilatéraux (2 modes, puis 1 avec Dirichlet
+expérimental) et un RHS incompatible à `6.27946816675e-2` en norme relative.
+Le résidu Fp original ne peut être certifié par la seule projection. Le garde
+non linéaire U,p,k,omega,nu_t reste expérimental / opt-in. Un premier état
+BFS Block-local a été commis sans converger : U `5.275372423e-1`, continuité
+`1.760025754e-3`. L'audit de paroi `omega,nut,G` est indépendant mais ne
+remplace aucune fonction de paroi OpenFOAM. Les campagnes complètes des six
+Schur, les trois maillages de référence et les mesures `x_r/h,Cf` restent à
+exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md`.
+
+### État BFS V14 — 2026-11-09
+
+Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.

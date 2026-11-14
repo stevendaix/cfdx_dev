@@ -220,6 +220,10 @@ def inspect_family(family: str, family_dir: Path, runs: Path, exe: Path) -> dict
             "mixed farfield pressure policies across N64/N128/N256"
         )
     if len(verified_schemes) > 1:
+        result["reasons"].append(
+            "mixed final convection schemes across N64/N128/N256"
+        )
+    if len(verified_schemes) > 1:
         result["reasons"].append("mixed final convection schemes across N64/N128/N256")
     result["pressure_boundary_policy"] = (
         next(iter(verified_pressure_policies))

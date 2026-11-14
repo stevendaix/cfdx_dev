@@ -21,11 +21,14 @@ namespace cfdx::io {
 //   3 — adds the mesh identity that a restart reader validates against.
 //   4 — adds the named omega field for production SST restart state.
 //   5 — adds the optional authoritative face mass-flux section.
+//   6 — adds a portable pressure-low field and ordered topology identity for
+//       the experimental split-pressure production restart.
 enum : int {
     DatRestartVersionFields = 2,
     DatRestartVersionIdentity = 3,
     DatRestartVersionSST = 4,
     DatRestartVersionFaceFields = 5,
+    DatRestartVersionCompensatedPressure = 6,
 };
 
 // Geometry identity of the mesh a checkpoint belongs to.
@@ -90,6 +93,58 @@ inline DatRestartIdentity dat_restart_identity(const cfdx::core::Mesh& mesh)
         dat_restart_geometry_checksum(mesh)};
 }
 
+// DAT6 must bind pressure-low to the exact CELL and FACE ordering, not merely
+// the same point coordinates. The ordered mesh incidence and patch membership
+// make this identity independent of host endianness or raw struct padding.
+inline std::uint64_t dat_restart_topology_checksum(const cfdx::core::Mesh& mesh)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    const auto mix = [&hash](std::uint64_t word) {
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= static_cast<std::uint8_t>((word >> (8 * byte)) & 0xFFULL);
+            hash *= 1099511628211ULL;
+        }
+    };
+    mix(mesh.n_faces());
+    mix(mesh.n_cells());
+    for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+        mix(mesh.ownership().owner(f));
+        // Signed boundary sentinel is deliberately converted modulo 2^64.
+        mix(static_cast<std::uint64_t>(mesh.ownership().neighbour(f)));
+        const auto begin=mesh.faces().offsets_data()[f];
+        const auto end=mesh.faces().offsets_data()[f+1];
+        mix(end-begin);
+        for (auto at=begin; at<end; ++at) mix(mesh.faces().vertices_data()[at]);
+    }
+    for (std::size_t c=0; c<mesh.n_cells(); ++c) {
+        const auto begin=mesh.cells().offsets_data()[c];
+        const auto end=mesh.cells().offsets_data()[c+1];
+        mix(end-begin);
+        for (auto at=begin; at<end; ++at) mix(mesh.cells().faces_data()[at]);
+    }
+    for (std::size_t patch=0; patch<mesh.boundary().n_patches(); ++patch) {
+        const auto& b=mesh.boundary().patch(patch);
+        for (const char ch : b.name) mix(static_cast<unsigned char>(ch));
+        mix(0xFFU);
+        mix(static_cast<std::uint64_t>(b.type));
+        mix(b.face_ids.size());
+        for (const auto f : b.face_ids) mix(f);
+    }
+    return hash;
+}
+
+inline void validate_dat_restart_topology(
+    const cfdx::core::Mesh& mesh, int version, std::istream& in)
+{
+    if (version < DatRestartVersionCompensatedPressure) return;
+    std::string key;
+    std::uint64_t recorded=0;
+    if (!(in >> key >> recorded) || key != "topology")
+        throw std::runtime_error("DAT6: missing or malformed topology identity");
+    if (recorded != dat_restart_topology_checksum(mesh))
+        throw std::runtime_error("DAT6: checkpoint cell/face ordering mismatch");
+}
+
 inline std::string describe_dat_restart_identity(const DatRestartIdentity& id)
 {
     return "points=" + std::to_string(id.n_points) +
@@ -145,6 +200,9 @@ struct DatRestartFields {
     // previous iteration's rAU, which is not re-derivable from U and p.
     // Persisting the flux makes a restart replay the same sequence.
     cfdx::core::Field<double, cfdx::core::Location::FACE>* face_mass_flux = nullptr;
+    // Only DAT6 may carry the low part of the production pressure; a requested
+    // field MUST be present and needs the authoritative face mass flux as well.
+    cfdx::core::Field<double, cfdx::core::Location::CELL>* pressure_low = nullptr;
 };
 
 inline void validate_optional_restart_field(
@@ -186,7 +244,11 @@ inline void write_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
     validate_optional_restart_field(mesh, fields.omega, "omega");
+    validate_optional_restart_field(mesh, fields.pressure_low, "pressure low");
     validate_optional_restart_face_field(mesh, fields.face_mass_flux, "face mass flux");
+    if (fields.pressure_low && !fields.face_mass_flux)
+        throw std::invalid_argument(
+            "DAT6: pressure low requires authoritative face mass flux");
 
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         if (!std::isfinite(U.component_data(0)[c]) || !std::isfinite(U.component_data(1)[c]) ||
@@ -208,6 +270,7 @@ inline void write_dat_restart_fields(
     reject_non_finite(fields.k, "k");
     reject_non_finite(fields.second_turbulence, "second turbulence");
     reject_non_finite(fields.omega, "omega");
+    reject_non_finite(fields.pressure_low, "pressure low");
     if (fields.face_mass_flux) {
         for (std::size_t f = 0; f < fields.face_mass_flux->size(); ++f)
             if (!std::isfinite((*fields.face_mass_flux)(f)))
@@ -220,12 +283,16 @@ inline void write_dat_restart_fields(
     std::ofstream out(tmp_path);
     if (!out) throw std::runtime_error("write_dat_restart_fields: cannot open " + path);
     out.precision(std::numeric_limits<double>::max_digits10);
-    out << "CFDX-DAT " << DatRestartVersionFaceFields << "\n";
+    const int version = fields.pressure_low
+        ? DatRestartVersionCompensatedPressure : DatRestartVersionFaceFields;
+    out << "CFDX-DAT " << version << "\n";
     out << "cells " << mesh.n_cells() << "\n";
     out << "iteration " << iteration << "\n";
     out << "time " << time << "\n";
     out << "identity " << identity.n_points << ' ' << identity.n_faces << ' '
         << identity.n_cells << ' ' << identity.geometry_checksum << "\n";
+    if (version >= DatRestartVersionCompensatedPressure)
+        out << "topology " << dat_restart_topology_checksum(mesh) << "\n";
     out << "field U 3\n";
     for (std::size_t c=0;c<mesh.n_cells();++c)
         out << U.component_data(0)[c] << ' ' << U.component_data(1)[c] << ' ' << U.component_data(2)[c] << "\n";
@@ -241,6 +308,7 @@ inline void write_dat_restart_fields(
     write_field("k", fields.k);
     write_field("second_turbulence", fields.second_turbulence);
     write_field("omega", fields.omega);
+    write_field("p_low", fields.pressure_low);
     // Facial section: appended after the cellular optional fields so cellular
     // readers stop before it. The declared face count lets a reader reject a
     // checkpoint written on a mesh with a different face count before any
@@ -277,7 +345,10 @@ inline DatRestartState read_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
     validate_optional_restart_field(mesh, fields.omega, "omega");
+    validate_optional_restart_field(mesh, fields.pressure_low, "pressure low");
     validate_optional_restart_face_field(mesh, fields.face_mass_flux, "face mass flux");
+    if (fields.pressure_low && !fields.face_mass_flux)
+        throw std::invalid_argument("DAT6: requested pressure low requires face mass flux");
 
     // Parse into candidates: malformed/truncated checkpoints must not leave
     // caller-owned carrier or optional fields partially overwritten.
@@ -294,12 +365,16 @@ inline DatRestartState read_dat_restart_fields(
     auto candidate_face_flux = fields.face_mass_flux
         ? *fields.face_mass_flux
         : cfdx::core::Field<double, cfdx::core::Location::FACE>{};
+    auto candidate_pressure_low = fields.pressure_low
+        ? *fields.pressure_low
+        : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
     const auto target_fields = fields;
     if (fields.temperature) fields.temperature = &candidate_temperature;
     if (fields.k) fields.k = &candidate_k;
     if (fields.second_turbulence) fields.second_turbulence = &candidate_second;
     if (fields.omega) fields.omega = &candidate_omega;
     if (fields.face_mass_flux) fields.face_mass_flux = &candidate_face_flux;
+    if (fields.pressure_low) fields.pressure_low = &candidate_pressure_low;
     auto& U = candidate_U;
     auto& p = candidate_p;
 
@@ -310,7 +385,8 @@ inline DatRestartState read_dat_restart_fields(
     if (!(in >> magic >> version) || magic != "CFDX-DAT" ||
         (version != 1 && version != DatRestartVersionFields &&
          version != DatRestartVersionIdentity && version != DatRestartVersionSST &&
-         version != DatRestartVersionFaceFields))
+         version != DatRestartVersionFaceFields &&
+         version != DatRestartVersionCompensatedPressure))
         throw std::runtime_error("read_dat_restart_fields: unsupported DAT format");
     std::size_t cells = 0; std::string key;
     if (!(in >> key >> cells) || key != "cells" || cells != mesh.n_cells())
@@ -321,6 +397,7 @@ inline DatRestartState read_dat_restart_fields(
     if (!(in >> key >> state.time) || key != "time" || !std::isfinite(state.time))
         throw std::runtime_error("read_dat_restart_fields: invalid time");
     validate_dat_restart_identity(mesh, version, in);
+    validate_dat_restart_topology(mesh, version, in);
 
 
 
@@ -347,7 +424,7 @@ inline DatRestartState read_dat_restart_fields(
     // the optional-fields section, so the former v1/v2 tails are unreachable.
     if (!(in >> key) || key != "optional_fields")
         throw std::runtime_error("read_dat_restart_fields: missing optional fields section");
-    bool got_t=false, got_k=false, got_second=false, got_omega=false, got_mdot=false;
+    bool got_t=false, got_k=false, got_second=false, got_omega=false, got_mdot=false, got_p_low=false;
     while (in >> key) {
         if (key == "face_fields") {
             if (version < DatRestartVersionFaceFields)
@@ -401,14 +478,20 @@ inline DatRestartState read_dat_restart_fields(
         auto* target = name == "T" ? fields.temperature :
                        name == "k" ? fields.k :
                        name == "second_turbulence" ? fields.second_turbulence :
-                       name == "omega" ? fields.omega : nullptr;
+                       name == "omega" ? fields.omega :
+                       name == "p_low" ? fields.pressure_low : nullptr;
         if (name == "T") got_t=true;
         else if (name == "k") got_k=true;
         else if (name == "second_turbulence") got_second=true;
         else if (name == "omega") got_omega=true;
+        else if (name == "p_low") {
+            if (version < DatRestartVersionCompensatedPressure || got_p_low)
+                throw std::runtime_error("DAT6: invalid or duplicate p_low field");
+            got_p_low=true;
+        }
         else throw std::runtime_error("read_dat_restart_fields: unknown optional field " + name);
         if (!target) {
-            for (std::size_t i=0;i<mesh.n_cells();++i) { double ignored; if (!(in>>ignored)) throw std::runtime_error("read_dat_restart_fields: invalid optional values"); }
+            for (std::size_t i=0;i<mesh.n_cells();++i) { double ignored; if (!(in>>ignored) || !std::isfinite(ignored)) throw std::runtime_error("read_dat_restart_fields: invalid optional values"); }
         } else {
             for (std::size_t i=0;i<mesh.n_cells();++i) {
                 double value; if (!(in>>value) || !std::isfinite(value)) throw std::runtime_error("read_dat_restart_fields: invalid optional value");
@@ -420,6 +503,8 @@ inline DatRestartState read_dat_restart_fields(
     if (fields.k && !got_k) throw std::runtime_error("read_dat_restart_fields: requested k but DAT has none");
     if (fields.second_turbulence && !got_second) throw std::runtime_error("read_dat_restart_fields: requested turbulence field but DAT has none");
     if (fields.omega && !got_omega) throw std::runtime_error("read_dat_restart_fields: requested omega but DAT has none");
+    if (fields.pressure_low && (!got_p_low || version < DatRestartVersionCompensatedPressure))
+        throw std::runtime_error("DAT6: requested pressure low but checkpoint has none");
     if (fields.face_mass_flux && !got_mdot)
         throw std::runtime_error("read_dat_restart_fields: requested mdot but DAT has none");
     target_U = candidate_U;
@@ -429,6 +514,7 @@ inline DatRestartState read_dat_restart_fields(
     if (target_fields.second_turbulence) *target_fields.second_turbulence = candidate_second;
     if (target_fields.omega) *target_fields.omega = candidate_omega;
     if (target_fields.face_mass_flux) *target_fields.face_mass_flux = candidate_face_flux;
+    if (target_fields.pressure_low) *target_fields.pressure_low = candidate_pressure_low;
     return state;
 }
 

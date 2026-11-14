@@ -54,32 +54,24 @@ def validate_links(registry: dict, mapping: dict) -> None:
     if any(not isinstance(i, str) for i in ids) or len(ids) != len(set(ids)):
         raise PortfolioError("registry case IDs missing or duplicated")
     if set(ids) != set(evidence_gate.REQUIRED_QOI):
-        raise PortfolioError(
-            "physical-evidence verifier no longer covers every case ID"
-        )
+        raise PortfolioError("physical-evidence verifier no longer covers every case ID")
     if set(ids) != set(links):
         raise PortfolioError(
-            f"case mapping drift: missing={sorted(set(ids) - set(links))}; "
-            f"extra={sorted(set(links) - set(ids))}"
+            f"case mapping drift: missing={sorted(set(ids)-set(links))}; "
+            f"extra={sorted(set(links)-set(ids))}"
         )
     for case_id, link in links.items():
         if not isinstance(link, dict):
             raise PortfolioError(f"invalid mapping for {case_id}")
         for field in ("contract_tests", "campaign_tests", "reference_workflows"):
             items = link.get(field)
-            if (
-                not isinstance(items, list)
-                or any(not isinstance(n, str) or not n for n in items)
-                or len(items) != len(set(items))
-            ):
+            if not isinstance(items, list) or any(
+                not isinstance(n, str) or not n for n in items
+            ) or len(items) != len(set(items)):
                 raise PortfolioError(f"invalid {field} for {case_id}")
         if set(link["contract_tests"]) & set(link["campaign_tests"]):
             raise PortfolioError(f"duplicate contract/campaign test for {case_id}")
-        if (
-            not link["contract_tests"]
-            or not isinstance(link.get("next_action"), str)
-            or not link["next_action"].strip()
-        ):
+        if not link["contract_tests"] or not isinstance(link.get("next_action"), str) or not link["next_action"].strip():
             raise PortfolioError(f"missing contract or action for {case_id}")
         if not isinstance(link.get("domain_group"), str) or not link["domain_group"]:
             raise PortfolioError(f"missing domain_group for {case_id}")
@@ -89,18 +81,12 @@ def validate_links(registry: dict, mapping: dict) -> None:
                 or not workflow.endswith(".yml")
                 or not (ROOT / ".github/workflows" / workflow).is_file()
             ):
-                raise PortfolioError(
-                    f"invalid or missing reference workflow {workflow} for {case_id}"
-                )
+                raise PortfolioError(f"invalid or missing reference workflow {workflow} for {case_id}")
     backlog = mapping.get("unregistered_backlog")
     if not isinstance(backlog, list):
         raise PortfolioError("unregistered_backlog must be a list")
     extras = [row.get("id") for row in backlog if isinstance(row, dict)]
-    if (
-        len(extras) != len(backlog)
-        or len(extras) != len(set(extras))
-        or set(extras) & set(ids)
-    ):
+    if len(extras) != len(backlog) or len(extras) != len(set(extras)) or set(extras) & set(ids):
         raise PortfolioError("backlog IDs missing, duplicated, or registered already")
     for item in backlog:
         if not isinstance(item.get("reason"), str) or not item["reason"]:
@@ -117,11 +103,7 @@ def read_manifest(path: Path | None) -> dict[str, bool] | None:
     if not isinstance(tests, list) or not tests:
         raise PortfolioError("CTest JSON manifest is empty or invalid")
     names = [item.get("name") for item in tests if isinstance(item, dict)]
-    if (
-        len(names) != len(tests)
-        or any(not isinstance(n, str) or not n for n in names)
-        or len(names) != len(set(names))
-    ):
+    if len(names) != len(tests) or any(not isinstance(n, str) or not n for n in names) or len(names) != len(set(names)):
         raise PortfolioError("CTest manifest has empty or duplicated test names")
     # CTest accepts DISABLED tests in --show-only. They must not be counted as
     # executable or even a valid mandatory anchor in the strict inventory.
@@ -129,11 +111,7 @@ def read_manifest(path: Path | None) -> dict[str, bool] | None:
     for item in tests:
         properties = {p.get("name"): p.get("value") for p in item.get("properties", [])}
         enabled[item["name"]] = properties.get("DISABLED") not in (
-            True,
-            "TRUE",
-            "ON",
-            "1",
-            1,
+            True, "TRUE", "ON", "1", 1
         )
     return enabled
 
@@ -150,10 +128,7 @@ def read_junits(paths: list[Path]) -> dict[str, str]:
                 raise PortfolioError(f"unnamed JUnit testcase in {path}")
             if node.find("failure") is not None or node.find("error") is not None:
                 state = "FAIL"
-            elif node.find("skipped") is not None or node.get("status") in (
-                "notrun",
-                "skipped",
-            ):
+            elif node.find("skipped") is not None or node.get("status") in ("notrun", "skipped"):
                 state = "SKIPPED"
             else:
                 state = "PASS"
@@ -164,9 +139,7 @@ def read_junits(paths: list[Path]) -> dict[str, str]:
     return results
 
 
-def test_state(
-    name: str, registered: dict[str, bool] | set[str] | None, junit: dict[str, str]
-) -> str:
+def test_state(name: str, registered: dict[str, bool] | set[str] | None, junit: dict[str, str]) -> str:
     if registered is not None and name not in registered:
         return "NOT_REGISTERED"
     if isinstance(registered, dict) and registered.get(name) is False:
@@ -219,63 +192,48 @@ def make_portfolio(
     for case in registry["cases"]:
         ident = case["id"]
         linked = mapping["cases"][ident]
-        contract = {
-            n: test_state(n, registered, junit) for n in linked["contract_tests"]
-        }
-        campaign = {
-            n: test_state(n, registered, junit) for n in linked["campaign_tests"]
-        }
+        contract = {n: test_state(n, registered, junit) for n in linked["contract_tests"]}
+        campaign = {n: test_state(n, registered, junit) for n in linked["campaign_tests"]}
         physical = ev_by_id[ident]
         physical_ok = physical["verification_status"] == "EVIDENCE_GATES_PASS"
         missing_checks = [
             item["check"] for item in physical["checks"] if item["status"] != "PASS"
         ]
-        rows.append(
-            {
-                "id": ident,
-                "domain_group": linked["domain_group"],
-                "name": case.get("case", ident),
-                "registry_status": case.get("status", "UNKNOWN"),
-                "contracts": contract,
-                "contract_status": aggregate_status(contract),
-                "campaigns": campaign,
-                "campaign_status": aggregate_status(campaign),
-                "physical_evidence_status": physical["verification_status"],
-                "physical_failed_checks": missing_checks,
-                "reference_workflows": linked["reference_workflows"],
-                "next_action": linked["next_action"],
-                "tracking_note": (
-                    "Physical evidence gates passed; independent physical review and exact-source correspondence still required"
-                    if physical_ok
-                    else "Not physically qualified on supplied evidence"
-                ),
-            }
-        )
+        rows.append({
+            "id": ident,
+            "domain_group": linked["domain_group"],
+            "name": case.get("case", ident),
+            "registry_status": case.get("status", "UNKNOWN"),
+            "contracts": contract,
+            "contract_status": aggregate_status(contract),
+            "campaigns": campaign,
+            "campaign_status": aggregate_status(campaign),
+            "physical_evidence_status": physical["verification_status"],
+            "physical_failed_checks": missing_checks,
+            "reference_workflows": linked["reference_workflows"],
+            "next_action": linked["next_action"],
+            "tracking_note": (
+                "Physical evidence gates passed; independent physical review and exact-source correspondence still required"
+                if physical_ok else "Not physically qualified on supplied evidence"
+            ),
+        })
     backlog = []
     for item in mapping["unregistered_backlog"]:
-        checks = {
-            name: test_state(name, registered, junit)
-            for name in item["existing_checks"]
-        }
-        backlog.append(
-            {
-                "id": item["id"],
-                "domain_group": item["domain"],
-                "registry_status": "NOT_IN_REGISTRY",
-                "checks": checks,
-                "checks_status": aggregate_status(checks),
-                "reason": item["reason"],
-                "physical_evidence_status": "NOT_APPLICABLE_UNREGISTERED",
-            }
-        )
-    missed = sorted(
-        {
-            name
-            for row in rows
-            for name, result in {**row["contracts"], **row["campaigns"]}.items()
-            if result in ("NOT_REGISTERED", "DISABLED")
-        }
-    )
+        checks = {name: test_state(name, registered, junit) for name in item["existing_checks"]}
+        backlog.append({
+            "id": item["id"],
+            "domain_group": item["domain"],
+            "registry_status": "NOT_IN_REGISTRY",
+            "checks": checks,
+            "checks_status": aggregate_status(checks),
+            "reason": item["reason"],
+            "physical_evidence_status": "NOT_APPLICABLE_UNREGISTERED",
+        })
+    missed = sorted({
+        name for row in rows
+        for name, result in {**row["contracts"], **row["campaigns"]}.items()
+        if result in ("NOT_REGISTERED", "DISABLED")
+    })
     by_domain = {}
     for domain in sorted({row["domain_group"] for row in rows}):
         subset = [row for row in rows if row["domain_group"] == domain]
@@ -284,20 +242,14 @@ def make_portfolio(
             "registry_legacy_pass": sum(r["registry_status"] == "PASS" for r in subset),
             "contract_run_pass": sum(r["contract_status"] == "PASS" for r in subset),
             "campaign_run_pass": sum(r["campaign_status"] == "PASS" for r in subset),
-            "evidence_gates_pass": sum(
-                r["physical_evidence_status"] == "EVIDENCE_GATES_PASS" for r in subset
-            ),
+            "evidence_gates_pass": sum(r["physical_evidence_status"] == "EVIDENCE_GATES_PASS" for r in subset),
         }
     board = {
         "schema": SCHEMA,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "provenance": {
-            "source_archive": (
-                str(source_archive) if source_archive is not None else None
-            ),
-            "source_archive_sha256": (
-                file_sha256(source_archive) if source_archive is not None else None
-            ),
+            "source_archive": str(source_archive) if source_archive is not None else None,
+            "source_archive_sha256": file_sha256(source_archive) if source_archive is not None else None,
             "declared_source_revision": source_revision,
             "physical_evidence_directory": str(evidence_dir),
             "ctest_manifest_provided": registered is not None,
@@ -306,18 +258,14 @@ def make_portfolio(
         },
         "summary": {
             "registered_cases": len(rows),
-            "registry_status": dict(
-                sorted(Counter(row["registry_status"] for row in rows).items())
-            ),
+            "registry_status": dict(sorted(Counter(row["registry_status"] for row in rows).items())),
             "physical_evidence_gates_pass": evidence["coverage"]["evidence_pass"],
             "registered_missing_ctest_anchors": missed,
             "unregistered_backlog": len(backlog),
             "ctest_inventory_size": len(registered) if registered is not None else None,
             "provided_junit_test_results": len(junit),
             "ctest_junit_pass": sum(s == "PASS" for s in junit.values()),
-            "ctest_junit_fail_or_ambiguous": sum(
-                s in ("FAIL", "SKIPPED", "DUPLICATE") for s in junit.values()
-            ),
+            "ctest_junit_fail_or_ambiguous": sum(s in ("FAIL", "SKIPPED", "DUPLICATE") for s in junit.values()),
             "by_domain": by_domain,
         },
         "cases": rows,
@@ -343,24 +291,18 @@ def markdown_report(report: dict, previous: dict | None = None) -> str:
         "# CFDX — Qualification simultanée : tableau de bord",
         "",
         f"Généré : {report['generated_at_utc']}.",
-        (
-            f"Source archive SHA-256 : `{src['source_archive_sha256'] or 'NON FOURNIE'}`. "
-            "Correspondance binaire/source : **non attestée**."
-        ),
+        f"Source archive SHA-256 : `{src['source_archive_sha256'] or 'NON FOURNIE'}`. "
+        "Correspondance binaire/source : **non attestée**.",
         f"Révision source déclarée : `{markdown_table_cell(src['declared_source_revision'] or 'NON FOURNIE')}`.",
         "",
-        (
-            f"**{summary['registered_cases']} cas enregistrés ; {summary['unregistered_backlog']} "
-            "campagnes supplémentaires à inscrire.** "
-            f"Preuves physiques vérifiables dans le dossier fourni : **{summary['physical_evidence_gates_pass']}/{summary['registered_cases']}**. "
-            f"Manifest CTest : **{summary['ctest_inventory_size'] if summary['ctest_inventory_size'] is not None else 'non fourni'}** tests, "
-            f"JUnit importés : **{summary['provided_junit_test_results']}**."
-        ),
+        f"**{summary['registered_cases']} cas enregistrés ; {summary['unregistered_backlog']} "
+        "campagnes supplémentaires à inscrire.** "
+        f"Preuves physiques vérifiables dans le dossier fourni : **{summary['physical_evidence_gates_pass']}/{summary['registered_cases']}**. "
+        f"Manifest CTest : **{summary['ctest_inventory_size'] if summary['ctest_inventory_size'] is not None else 'non fourni'}** tests, "
+        f"JUnit importés : **{summary['provided_junit_test_results']}**.",
         "",
-        (
-            "> `PASS` de la colonne registre = historique. `PASS` de test = résultat JUnit. "
-            "Les deux sont indépendants de `EVIDENCE_GATES_PASS`, et ce dernier n'est pas une certification scientifique automatique."
-        ),
+        "> `PASS` de la colonne registre = historique. `PASS` de test = résultat JUnit. "
+        "Les deux sont indépendants de `EVIDENCE_GATES_PASS`, et ce dernier n'est pas une certification scientifique automatique.",
         "",
         "## Vue par domaine",
         "",
@@ -373,65 +315,34 @@ def markdown_report(report: dict, previous: dict | None = None) -> str:
             f"{row['contract_run_pass']} | {row['campaign_run_pass']} | {row['evidence_gates_pass']} |"
         )
     out += [
-        "",
-        "## Suivi détaillé des 25 cas",
-        "",
+        "", "## Suivi détaillé des 25 cas", "",
         "| Cas | Domaine | Registre | Contrats CTest | Campagne CFDX CTest | Preuve physique | Prochaine action |",
         "|---|---|---|---|---|---|---|",
     ]
     for row in report["cases"]:
         out.append(
-            "| "
-            + " | ".join(
-                markdown_table_cell(v)
-                for v in (
-                    f"`{row['id']}`",
-                    row["domain_group"],
-                    row["registry_status"],
-                    row["contract_status"],
-                    row["campaign_status"],
-                    row["physical_evidence_status"],
-                    row["next_action"],
-                )
-            )
-            + " |"
+            "| " + " | ".join(markdown_table_cell(v) for v in (
+                f"`{row['id']}`", row["domain_group"], row["registry_status"],
+                row["contract_status"], row["campaign_status"],
+                row["physical_evidence_status"], row["next_action"]
+            )) + " |"
         )
     out += ["", "## Tests réellement fournis / non exécutés", ""]
     for row in report["cases"]:
         line = [f"- **`{row['id']}`** :"]
-        line.append(
-            "contrats "
-            + (", ".join(f"`{n}`={s}" for n, s in row["contracts"].items()) or "aucun")
-        )
-        line.append(
-            "campagnes "
-            + (", ".join(f"`{n}`={s}" for n, s in row["campaigns"].items()) or "aucune")
-        )
+        line.append("contrats " + (", ".join(f"`{n}`={s}" for n, s in row["contracts"].items()) or "aucun"))
+        line.append("campagnes " + (", ".join(f"`{n}`={s}" for n, s in row["campaigns"].items()) or "aucune"))
         if row["reference_workflows"]:
-            line.append(
-                "workflows référence uniquement "
-                + ", ".join(f"`{w}`" for w in row["reference_workflows"])
-            )
+            line.append("workflows référence uniquement " + ", ".join(f"`{w}`" for w in row["reference_workflows"]))
         out.append(" ".join(line))
-    out += [
-        "",
-        "## Campagnes à créer / déclarer dans le registre",
-        "",
-        "| Proposition | Tests déjà présents | Manque |",
-        "|---|---|---|",
-    ]
+    out += ["", "## Campagnes à créer / déclarer dans le registre", "",
+            "| Proposition | Tests déjà présents | Manque |", "|---|---|---|"]
     for row in report["unregistered_backlog"]:
-        out.append(
-            f"| `{row['id']}` | {row['checks_status']} | {markdown_table_cell(row['reason'])} |"
-        )
+        out.append(f"| `{row['id']}` | {row['checks_status']} | {markdown_table_cell(row['reason'])} |")
     missed = summary["registered_missing_ctest_anchors"]
     out += [
-        "",
-        "## Contrat de suivi et de promotion",
-        "",
-        f"- Ancrages CTest déclarés, absents ou désactivés : **{len(missed)}**"
-        + (f" ({', '.join(missed)})" if missed else "")
-        + ".",
+        "", "## Contrat de suivi et de promotion", "",
+        f"- Ancrages CTest déclarés, absents ou désactivés : **{len(missed)}**" + (f" ({', '.join(missed)})" if missed else "" ) + ".",
         "- Le dossier `qualification_evidence/<CAS>/` doit contenir des preuves réelles d'au moins trois maillages, la configuration, le binaire, le journal, la référence et les oracles hashés.",
         "- Chaque campagne en échec ou non exécutée reste visible : jamais de `PASS` par absence de résultat ni par héritage de la CI.",
         "- La comparaison aux références physiques et les bilans massiques/momentum/énergie/rayonnement sont obligatoires selon le cas.",
@@ -446,21 +357,10 @@ def markdown_report(report: dict, previous: dict | None = None) -> str:
             if before is None:
                 changed.append(f"- `{cur['id']}` : nouveau cas")
                 continue
-            for key in (
-                "registry_status",
-                "contract_status",
-                "campaign_status",
-                "physical_evidence_status",
-            ):
+            for key in ("registry_status", "contract_status", "campaign_status", "physical_evidence_status"):
                 if before.get(key) != cur.get(key):
-                    changed.append(
-                        f"- `{cur['id']}` {key}: `{before.get(key)}` → `{cur.get(key)}`"
-                    )
-        out += (
-            changed
-            if changed
-            else ["Aucun changement de statut mesuré entre ces deux bilans."]
-        )
+                    changed.append(f"- `{cur['id']}` {key}: `{before.get(key)}` → `{cur.get(key)}`")
+        out += changed if changed else ["Aucun changement de statut mesuré entre ces deux bilans."]
     out += ["", "*Document de suivi, non certificat de validation physique.*", ""]
     return "\n".join(out)
 
@@ -477,29 +377,11 @@ def write_csv(path: Path, rows: list[dict]) -> None:
     tmp = path.with_name(path.name + ".tmp")
     with tmp.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
-        writer.writerow(
-            (
-                "case_id",
-                "domain",
-                "registry_status",
-                "contract_status",
-                "campaign_status",
-                "physical_evidence_status",
-                "next_action",
-            )
-        )
+        writer.writerow(("case_id", "domain", "registry_status", "contract_status", "campaign_status", "physical_evidence_status", "next_action"))
         for row in rows:
-            writer.writerow(
-                (
-                    row["id"],
-                    row["domain_group"],
-                    row["registry_status"],
-                    row["contract_status"],
-                    row["campaign_status"],
-                    row["physical_evidence_status"],
-                    row["next_action"],
-                )
-            )
+            writer.writerow((row["id"], row["domain_group"], row["registry_status"],
+                             row["contract_status"], row["campaign_status"],
+                             row["physical_evidence_status"], row["next_action"]))
     os.replace(tmp, path)
 
 
@@ -507,72 +389,30 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", type=Path, default=REGISTRY)
     parser.add_argument("--links", type=Path, default=LINKS)
-    parser.add_argument(
-        "--ctest-manifest", type=Path, help="ctest --show-only=json-v1 output"
-    )
-    parser.add_argument(
-        "--junit",
-        type=Path,
-        action="append",
-        default=[],
-        help="actual CTest JUnit XML; can repeat",
-    )
-    parser.add_argument(
-        "--evidence-dir", type=Path, default=ROOT / "qualification_evidence"
-    )
-    parser.add_argument(
-        "--source-archive", type=Path, help="optional immutable source ZIP, sha256 only"
-    )
-    parser.add_argument(
-        "--source-revision",
-        default=os.environ.get("GITHUB_SHA"),
-        help="declared source commit (not proof of binary/source matching)",
-    )
-    parser.add_argument(
-        "--previous-report", type=Path, help="previous board JSON for progress diff"
-    )
+    parser.add_argument("--ctest-manifest", type=Path, help="ctest --show-only=json-v1 output")
+    parser.add_argument("--junit", type=Path, action="append", default=[], help="actual CTest JUnit XML; can repeat")
+    parser.add_argument("--evidence-dir", type=Path, default=ROOT / "qualification_evidence")
+    parser.add_argument("--source-archive", type=Path, help="optional immutable source ZIP, sha256 only")
+    parser.add_argument("--source-revision", default=os.environ.get("GITHUB_SHA"), help="declared source commit (not proof of binary/source matching)")
+    parser.add_argument("--previous-report", type=Path, help="previous board JSON for progress diff")
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument(
-        "--strict-links",
-        action="store_true",
-        help="fail only on missing CTest anchor names",
-    )
-    parser.add_argument(
-        "--require-evidence",
-        action="store_true",
-        help="fail if any registered case lacks independent physical evidence",
-    )
+    parser.add_argument("--strict-links", action="store_true", help="fail only on missing CTest anchor names")
+    parser.add_argument("--require-evidence", action="store_true", help="fail if any registered case lacks independent physical evidence")
     args = parser.parse_args(argv)
     try:
         registry, mapping = read_json(args.registry), read_json(args.links)
         registered = read_manifest(args.ctest_manifest)
         junit = read_junits(args.junit)
-        previous = (
-            read_json(args.previous_report)
-            if args.previous_report is not None
-            else None
-        )
+        previous = read_json(args.previous_report) if args.previous_report is not None else None
         if previous is not None and previous.get("schema") != SCHEMA:
             raise PortfolioError("incompatible previous portfolio report")
         report, physical = make_portfolio(
-            registry,
-            mapping,
-            registered,
-            junit,
-            args.evidence_dir,
-            args.source_archive,
-            args.source_revision,
+            registry, mapping, registered, junit, args.evidence_dir, args.source_archive, args.source_revision
         )
         out = args.output_dir
         md = markdown_report(report, previous)
-        atomic_write(
-            out / "qualification_portfolio.json",
-            json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
-        )
-        atomic_write(
-            out / "physical_evidence_gate.json",
-            json.dumps(physical, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
-        )
+        atomic_write(out / "qualification_portfolio.json", json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
+        atomic_write(out / "physical_evidence_gate.json", json.dumps(physical, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
         atomic_write(out / "qualification_portfolio.md", md)
         write_csv(out / "qualification_portfolio.csv", report["cases"])
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

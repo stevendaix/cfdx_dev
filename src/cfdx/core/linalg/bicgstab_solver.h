@@ -111,6 +111,20 @@ inline SolverResult solve_bicgstab(
         return result;
     }
 
+    if (preconditioner && !preconditioner->setup(A)) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.residual = res;
+        result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
+        return result;
+    }
+
+    if (preconditioner && !preconditioner->setup(A)) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.residual = res;
+        result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
+        return result;
+    }
+
     double rho=1.0,alpha=1.0,omega=1.0;
     for(std::size_t i=0;i<n;++i){w.v(i)=0.0;w.p(i)=0.0;}
 

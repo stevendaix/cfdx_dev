@@ -77,7 +77,6 @@ def test_shear_strength_is_physically_bounded(tmp_path):
             shear_strength=0.1,
         )
 
-
 @pytest.mark.parametrize("family", ["quasi_isotropic", "anisotropic"])
 def test_valid_n64_generation_end_to_end(family, tmp_path):
     rows = build_families(tmp_path, levels=(64,), make_hdf5=False, only_family=family)

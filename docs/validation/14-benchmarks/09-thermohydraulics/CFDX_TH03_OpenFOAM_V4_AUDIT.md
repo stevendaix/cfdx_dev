@@ -36,7 +36,8 @@ aucun binaire `blockMesh` OpenFOAM n'était disponible dans cet environnement.
 
 ```bash
 PYTHONPATH=src/cfdx/python python scripts/generate_th03_openfoam_blockmesh.py \
-  --resolution full --max-iterations 300 --output build/th03_v4/full.cfdx.h5
+  --resolution full --allow-reconstructed-mesh --max-iterations 300 --output build/th03_v4/full.cfdx.h5
+# Reconstructed geometry is diagnostic only; physical runs require --openfoam-case.
 
 PYTHONPATH=src/cfdx/python python scripts/audit_th03_openfoam_mesh.py \
   build/th03_v4/full.cfdx.h5 --output build/th03_v4/mesh_audit.json
@@ -130,6 +131,94 @@ aucune des prédictions physiques.
    et avec les incertitudes expérimentales associées.
 
 **Un `PASS_GEOMETRY_ONLY` ne devient jamais un `PASS_PHYSICAL`.**
+
+
+## Mise au point reproductible du 8 novembre 2026 (PCD / pression BFS V4)
+
+Le générateur V4 conservait `value_type=OUTLET_PRESSURE` mais déclarait le type
+physique `OUTLET`. Le contrat de production refuse ce mélange; le générateur
+produit désormais `PRESSURE_OUTLET` pour le même patch OpenFOAM `outlet`.
+Aucune coordonnée, connectivité, face ou topologie du maillage n'est modifiée.
+Pour transmettre un cas complet au solveur, utiliser l'extension obligatoire
+`.cfdx.h5` plutôt qu'un simple `.h5` (réservé au maillage nu).
+
+Le `omega_inlet=181728 s^-1` rapporté plus haut est le *réglage historique*;
+le générateur actuel utilise `k/(nu * (nut/nu)) = 1.09e-3 /
+(1.56e-5 * 0.009) ≃ 7763.53 s^-1` : il faut garder cette différence dans
+l'identité numérique de chaque campagne. La transcription 6-blocs CFDX n'est
+pas une identité `polyMesh` OpenFOAM; importer l'original pour cette preuve.
+
+Après correction du BC, exécution réelle sur 20 540 cellules, 82 493 faces,
+0 face inversée et non-orthogonalité maximale 9.413° :
+
+| Méthode sur le BFS complet | Résidu vrai relatif | Cible | Statut |
+|---|---:|---:|---|
+| Solveur production, meilleure des trois tentatives | 3.50092e-10 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, AMG natif + FGMRES | 2.36158e-10 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, AMG directionnel + FGMRES | 2.66335e-10 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, ILU0 + FGMRES | 1.70569e-3 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, Jacobi + FGMRES | 6.62776e-2 | 1e-11 | ÉCHEC |
+| LU direct SciPy indépendant, même CSR | 3.91293e-10 | 1e-11 | ÉCHEC |
+
+La capture native contient 20 540 inconnues et 102 034 termes CSR, 10 249
+lignes reconnues anisotropes; la norme du second membre vaut 1.82046e-3.
+La LU directe donne une norme de correction ≈ 4.29202e7. Ce résultat est une
+preuve de mauvais conditionnement et de perte de précision en FP64, pas une
+preuve de bug AMG unique ni une excuse pour relâcher le critère.
+
+Les champs SST, la vitesse de frottement et le rattachement de ce maillage
+**ne sont pas validés**, parce que la première itération non linéaire est
+rejetée. Les valeurs de `x_r/h` issues des maillages 192/402 cellules ne
+représentent pas ce cas V4. Ne pas inventer `Cf`, `Cp`, `y+` ou `x_r`.
+
+Le pilote de production accepte en option `--pressure-replay-prefix` et
+`--pressure-replay-iterations` (ensemble), pour capturer le vrai système
+après jauge, sans changer les équations ni les tolérances. Voir
+`docs/audits/49-pcd-fp-bfs-v4-boundaries-2026-11-08.md`.
+
+
+## Mise au point reproductible du 8 novembre 2026 (PCD / pression BFS V4)
+
+Le générateur V4 conservait `value_type=OUTLET_PRESSURE` mais déclarait le type
+physique `OUTLET`. Le contrat de production refuse ce mélange; le générateur
+produit désormais `PRESSURE_OUTLET` pour le même patch OpenFOAM `outlet`.
+Aucune coordonnée, connectivité, face ou topologie du maillage n'est modifiée.
+Pour transmettre un cas complet au solveur, utiliser l'extension obligatoire
+`.cfdx.h5` plutôt qu'un simple `.h5` (réservé au maillage nu).
+
+Le `omega_inlet=181728 s^-1` rapporté plus haut est le *réglage historique*;
+le générateur actuel utilise `k/(nu * (nut/nu)) = 1.09e-3 /
+(1.56e-5 * 0.009) ≃ 7763.53 s^-1` : il faut garder cette différence dans
+l'identité numérique de chaque campagne. La transcription 6-blocs CFDX n'est
+pas une identité `polyMesh` OpenFOAM; importer l'original pour cette preuve.
+
+Après correction du BC, exécution réelle sur 20 540 cellules, 82 493 faces,
+0 face inversée et non-orthogonalité maximale 9.413° :
+
+| Méthode sur le BFS complet | Résidu vrai relatif | Cible | Statut |
+|---|---:|---:|---|
+| Solveur production, meilleure des trois tentatives | 3.50092e-10 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, AMG natif + FGMRES | 2.36158e-10 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, AMG directionnel + FGMRES | 2.66335e-10 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, ILU0 + FGMRES | 1.70569e-3 | 1e-11 | ÉCHEC |
+| Rejeu CSR pression, Jacobi + FGMRES | 6.62776e-2 | 1e-11 | ÉCHEC |
+| LU direct SciPy indépendant, même CSR | 3.91293e-10 | 1e-11 | ÉCHEC |
+
+La capture native contient 20 540 inconnues et 102 034 termes CSR, 10 249
+lignes reconnues anisotropes; la norme du second membre vaut 1.82046e-3.
+La LU directe donne une norme de correction ≈ 4.29202e7. Ce résultat est une
+preuve de mauvais conditionnement et de perte de précision en FP64, pas une
+preuve de bug AMG unique ni une excuse pour relâcher le critère.
+
+Les champs SST, la vitesse de frottement et le rattachement de ce maillage
+**ne sont pas validés**, parce que la première itération non linéaire est
+rejetée. Les valeurs de `x_r/h` issues des maillages 192/402 cellules ne
+représentent pas ce cas V4. Ne pas inventer `Cf`, `Cp`, `y+` ou `x_r`.
+
+Le pilote de production accepte en option `--pressure-replay-prefix` et
+`--pressure-replay-iterations` (ensemble), pour capturer le vrai système
+après jauge, sans changer les équations ni les tolérances. Voir
+`docs/audits/49-pcd-fp-bfs-v4-boundaries-2026-11-08.md`.
 
 
 ## Mise au point reproductible du 8 novembre 2026 (PCD / pression BFS V4)

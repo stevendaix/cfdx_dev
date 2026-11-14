@@ -12,6 +12,7 @@ that the C++ reader (``cfdx::io::read_mesh_hdf5``) can ingest it directly.
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import h5py
@@ -498,8 +499,27 @@ def _write_mesh_topology(f: h5py.File, m: dict) -> None:
     metadata, patch_ids, patch_offsets = _boundary_patch_metadata(m)
     if metadata is not None:
         f.attrs["boundary_patches"] = metadata
+        f.attrs["boundary_patch_hash"] = _boundary_patch_integrity_hash(
+            metadata, patch_ids, patch_offsets
+        )
         f.create_dataset("patch_face_ids", data=patch_ids)
         f.create_dataset("patch_face_offsets", data=patch_offsets)
+
+
+def _boundary_patch_integrity_hash(
+    metadata: str, face_ids: np.ndarray, face_offsets: np.ndarray
+) -> str:
+    """Hash patch names/types and their ordered face assignment independently.
+
+    The mesh topology hash deliberately excludes physical patch semantics.
+    This second digest closes that gap for native OpenFOAM provenance checks.
+    """
+    digest = hashlib.sha256()
+    digest.update(metadata.encode("utf-8"))
+    for values in (face_ids, face_offsets):
+        array = np.ascontiguousarray(values, dtype=np.uint64)
+        digest.update(array.tobytes(order="C"))
+    return digest.hexdigest()
 
 
 def _gap_report_to_json(gap) -> str:

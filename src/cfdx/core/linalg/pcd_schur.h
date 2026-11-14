@@ -59,6 +59,10 @@ namespace cfdx::core {
 enum class PcdSchurActionMode {
     LegacySingleConvectionDiffusionInverse,
     LumpedMassCommutator,
+    // V39 research A/B only: -Kp^{-1} Fp Mp^{-1} with a positive lumped Mp.
+    // Do not treat this as mathematically interchangeable with the previous
+    // mode, or promote it from a single captured Schur experiment.
+    ReverseLumpedMassCommutatorExperimental,
     // Research only: the full (non-lumped) pressure mass is inverted by an
     // explicit callback, whose true residual is checked on every action.
     ConsistentMassCommutator
@@ -91,6 +95,8 @@ public:
     const char* name() const noexcept override {
         if (mode_ == PcdSchurActionMode::LumpedMassCommutator)
             return "pcd_lumped_mass_commutator";
+        if (mode_ == PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental)
+            return "pcd_reverse_lumped_mass_v39_experimental";
         if (mode_ == PcdSchurActionMode::ConsistentMassCommutator)
             return "pcd_consistent_mass_commutator";
         return "pcd_schur";
@@ -121,7 +127,8 @@ public:
         if (pressure_reference_cell_ &&
             *pressure_reference_cell_ >= np)
             return false;
-        if (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+        if ((mode_ == PcdSchurActionMode::LumpedMassCommutator ||
+             mode_ == PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental) &&
             !positive_diagonal_lumped_mass(pressure_mass_, np))
             return false;
         if (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
@@ -146,7 +153,8 @@ public:
         if (pressure_null_space_ &&
             pressure_null_space_->dimension() != np)
             return false;
-        if (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+        if ((mode_ == PcdSchurActionMode::LumpedMassCommutator ||
+             mode_ == PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental) &&
             !positive_diagonal_lumped_mass(pressure_mass_, np))
             return false;
         if (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
@@ -180,7 +188,8 @@ public:
         // Any matrix used by a nested inverse must keep the numerical state
         // of its callback. Updating only the matrix would silently continue
         // solving the old operator, even though the graph is unchanged.
-        if ((mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+        if (((mode_ == PcdSchurActionMode::LumpedMassCommutator ||
+              mode_ == PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental) &&
              (!positive_diagonal_lumped_mass(pressure_mass, np) ||
               !same_values(pressure_laplacian_, pressure_laplacian))) ||
             (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
@@ -224,7 +233,8 @@ public:
             !same_pattern(pressure_laplacian_, pressure_laplacian) ||
             !same_pattern(pressure_convection_diffusion_,
                           pressure_convection_diffusion) ||
-            (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+            ((mode_ == PcdSchurActionMode::LumpedMassCommutator ||
+              mode_ == PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental) &&
              !positive_diagonal_lumped_mass(pressure_mass, np)) ||
             (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
              (!pressure_mass_solve ||
@@ -267,7 +277,23 @@ public:
         }
 
         Vector candidate(np, 0.0);
-        if (mode_ != PcdSchurActionMode::LegacySingleConvectionDiffusionInverse) {
+        if (mode_ == PcdSchurActionMode::ReverseLumpedMassCommutatorExperimental) {
+            // -Kp^-1 Fp Mp^-1: rightmost factor acts FIRST. The Kp
+            // callback is independently checked on the CURRENT matrix.
+            // Output is transactional if the callback fails.
+            Vector mass_inverse_rhs(np, 0.0);
+            for (std::size_t row = 0; row < np; ++row)
+                mass_inverse_rhs(row) = rhs(row) / pressure_mass_(row, row);
+            Vector fp_product(np, 0.0);
+            pressure_convection_diffusion_.matvec_into(
+                mass_inverse_rhs, fp_product);
+            if (!fp_product.is_valid() ||
+                !laplacian_solve_(fp_product, candidate) ||
+                candidate.size() != np || !candidate.is_valid() ||
+                !laplacian_inverse_is_current(fp_product, candidate))
+                return false;
+            candidate *= -1.0;
+        } else if (mode_ != PcdSchurActionMode::LegacySingleConvectionDiffusionInverse) {
             // Apply -Mp^{-1} Fp Kp^{-1} in the mathematically correct order.
             // This requires an explicitly verified *lumped* Mp; a general
             // mass matrix must not be silently inverted using its diagonal.

@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 
+
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -154,6 +155,7 @@ def test_two_grid_assumed_gci_requires_verified_physical_cases():
     b["converged"] = False
     with pytest.raises(ValueError, match="physically verified"):
         assumed_order_two_grid(a, b)
+
 
 
 def write_synthetic_raw_wall_faces(path: Path, cdp: float, cdv: float) -> None:
@@ -394,25 +396,17 @@ def test_two_grid_provisional_cannot_mix_vanleer_and_muscl(tmp_path):
     for n, scheme in ((64, "TVD_VANLEER"), (128, "MUSCL_CELL_LIMITED")):
         run = tmp_path / "runs" / name / f"n{n}"
         run.mkdir(parents=True)
-        (run / "run_summary.json").write_text(
-            json.dumps(
-                {
-                    "mesh": str((folder / f"naca0012_{name}_n{n}.h5").resolve()),
-                    "scheme": scheme,
-                    "algorithm": "SIMPLE",
-                    "linear_tolerance": 1e-12,
-                    "wall_traction": "FACE_WLS",
-                    "nonlinear_tolerance": 1e-8,
-                    "exit_code": 0,
-                    "pressure_boundary_policy": "ZERO_NORMAL_GRADIENT",
-                    "kinematic_face_flux_certified": True,
-                }
-            )
-        )
+        (run / "run_summary.json").write_text(json.dumps({
+            "mesh": str((folder / f"naca0012_{name}_n{n}.h5").resolve()),
+            "scheme": scheme, "algorithm": "SIMPLE",
+            "linear_tolerance": 1e-12, "wall_traction": "FACE_WLS",
+            "nonlinear_tolerance": 1e-8, "exit_code": 0,
+            "pressure_boundary_policy": "ZERO_NORMAL_GRADIENT",
+            "kinematic_face_flux_certified": True,
+        }))
         (run / "force.csv").write_text(
             "case,h,converged,res_mom,res_mass,cd,cdp,cdv,cl,cm\n"
-            f"N{n},0.01,yes,1e-11,1e-11,0.12,0.04,0.08,0,0\n"
-        )
+            f"N{n},0.01,yes,1e-11,1e-11,0.12,0.04,0.08,0,0\n")
         write_synthetic_raw_wall_faces(run / "raw_wall_faces.csv", 0.04, 0.08)
         (run / "history.csv").write_text(
             "iteration,momentum_rhs_relative,continuity_normalized,"
@@ -424,8 +418,7 @@ def test_two_grid_provisional_cannot_mix_vanleer_and_muscl(tmp_path):
             "momentum_component_max,pressure_residual,velocity_change_inf,"
             "pressure_change_inf\n"
             "1,1e-11,1e-12,2e-11,1e-13,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,"
-            f"{scheme},1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n"
-        )
+            f"{scheme},1e-11,1e-11,0,1e-11,1e-12,1e-12,1e-12\n")
     result = GCI.inspect_family(name, folder, tmp_path / "runs", Path(sys.executable))
     assert result["status"] == "BLOCKED"
     assert "two_grid_assumed_order_only" not in result

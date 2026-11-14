@@ -39,7 +39,7 @@ def source(tmp_path_factory):
         v19_full_pressure_flux_step=True,
         pressure_tolerance=1e-10,
     )
-    initialise_case(raw, hybrid)
+    initialise_case(raw, hybrid, require_native_geometry=False)
     return d, hybrid
 
 
