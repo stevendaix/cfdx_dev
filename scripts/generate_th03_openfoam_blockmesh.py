@@ -1111,7 +1111,8 @@ def main() -> int:
         help="Experimental extended-precision local SST residual gate; original FP64 also logged.",
     )
     parser.add_argument(
-        "--openfoam-kqr-wall-v16", action="store_true",
+        "--openfoam-kqr-wall-v16",
+        action="store_true",
         help="kqRWallFunction: k zeroGradient, NOT k=0; other OpenFOAM wall laws still separate",
     )
     parser.add_argument(
