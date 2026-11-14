@@ -1,14 +1,14 @@
 """Regression tests for the fail-closed TH-03 native geometry contract."""
+import importlib
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-import h5py
-
-from scripts.require_th03_native_geometry import native_case_path
+native_case_path = importlib.import_module(
+    "scripts.require_th03_native_geometry"
+).native_case_path
 
 
 class TestTh03NativeGeometryGate(unittest.TestCase):
