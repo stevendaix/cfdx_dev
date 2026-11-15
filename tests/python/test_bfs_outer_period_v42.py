@@ -57,9 +57,10 @@ class TestGlobalMeritForensics(unittest.TestCase):
                 audit(p)
 
     def test_missing_file(self):
-        with tempfile.TemporaryDirectory() as d:
-            with self.assertRaisesRegex(ValueError, "missing or empty"):
-                audit(pathlib.Path(d) / "missing.log")
+        with tempfile.TemporaryDirectory() as d, self.assertRaisesRegex(
+            ValueError, "missing or empty"
+        ):
+            audit(pathlib.Path(d) / "missing.log")
 
 
 if __name__ == "__main__":
