@@ -1,4 +1,3 @@
-@@ -0,0 +1,57 @@
 """V62 fail-closed falsifications of six-input selfp/ILU reference oracle."""
 import tempfile
 import unittest

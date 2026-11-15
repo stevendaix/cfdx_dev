@@ -1,4 +1,3 @@
-@@ -0,0 +1,198 @@
 #pragma once
 // V84: opt-in, bounded, finite-window progress policy for the FULL returned
 // physical U,p,phi,k,omega,nu_t FV state. It NEVER creates a final certificate.

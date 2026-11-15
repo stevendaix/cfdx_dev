@@ -1,4 +1,3 @@
-@@ -0,0 +1,105 @@
 #!/usr/bin/env python3
 """Reproduce V64 read-only 2x2 momentum/SST attribution on the SAME BFS input.
 

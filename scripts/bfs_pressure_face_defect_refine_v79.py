@@ -1,4 +1,3 @@
-@@ -0,0 +1,79 @@
 #!/usr/bin/env python3
 """One read-only Newton defect correction of a captured CFDX face residual.
 

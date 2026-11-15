@@ -1,4 +1,3 @@
-@@ -0,0 +1,114 @@
 #!/usr/bin/env python3
 """Prepare (or explicitly execute) V65 BFS152 three-way comparison.
 

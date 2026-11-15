@@ -1,4 +1,3 @@
-@@ -0,0 +1,77 @@
 #!/usr/bin/env python3
 """Run bounded V85 native BFS campaign with fail-closed evidence summary.
 

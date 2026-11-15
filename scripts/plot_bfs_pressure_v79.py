@@ -1,4 +1,3 @@
-@@ -0,0 +1,97 @@
 #!/usr/bin/env python3
 """Reproducible plots from native V79 physical-face and CSR oracle logs.
 

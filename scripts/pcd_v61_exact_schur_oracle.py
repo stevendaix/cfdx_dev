@@ -1,4 +1,3 @@
-@@ -0,0 +1,148 @@
 #!/usr/bin/env python3
 """V61 independent frozen 4N BFS/PCD oracle (optional SciPy; never CFD qualification).
 

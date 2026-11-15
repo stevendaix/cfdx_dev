@@ -1,4 +1,3 @@
-@@ -0,0 +1,89 @@
 #!/usr/bin/env python3
 """Fail-closed V69 same-candidate SST/RC Picard experiment log audit.
 

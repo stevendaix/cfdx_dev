@@ -1,4 +1,3 @@
-@@ -0,0 +1,174 @@
 #!/usr/bin/env python3
 """V62: bounded, read-only PETSc-selfp Schur diagnostic on ORIGINAL six captures.
 

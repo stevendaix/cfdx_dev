@@ -1,4 +1,3 @@
-@@ -0,0 +1,34 @@
 """Read-only V77 wall evidence must fail closed on missing/mutated values."""
 import pathlib
 import sys

@@ -1,4 +1,3 @@
-@@ -0,0 +1,257 @@
 #!/usr/bin/env python3
 """Read-only V81 evidence plots from actual CFDX logs, fail-closed on missing rows.
 

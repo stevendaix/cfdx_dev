@@ -1,4 +1,3 @@
-@@ -0,0 +1,176 @@
 #pragma once
 // V73: after-SST, same-state diagnostic of the EXISTING V71 Picard direction.
 // Does not introduce a new Schur/Newton, alter the primal FV equations, or

@@ -1,4 +1,3 @@
-@@ -0,0 +1,31 @@
 #pragma once
 // V87: necessary-only pre-SST velocity screening for the *opt-in* BFS V86
 // campaign. If a trial already exceeds V86's speed bound before SST, a

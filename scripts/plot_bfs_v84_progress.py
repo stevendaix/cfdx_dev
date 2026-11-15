@@ -1,4 +1,3 @@
-@@ -0,0 +1,168 @@
 #!/usr/bin/env python3
 """CFDX V84 diagnostic: physical-residual ledger + identical-scale VTU maps.
 

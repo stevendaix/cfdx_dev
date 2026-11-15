@@ -1,4 +1,3 @@
-@@ -0,0 +1,44 @@
 #!/usr/bin/env python3
 """Enable V86 BFS-only field trust region without changing FV equations or mesh.
 

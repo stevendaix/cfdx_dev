@@ -1,4 +1,3 @@
-@@ -0,0 +1,161 @@
 #!/usr/bin/env python3
 """V73 audit: exact V72 history and fail-closed independent physical trials.
 

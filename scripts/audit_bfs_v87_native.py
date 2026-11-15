@@ -1,4 +1,3 @@
-@@ -0,0 +1,71 @@
 #!/usr/bin/env python3
 """Fail-closed V87 pre-SST and post-SST audit. Not a convergence certificate."""
 import argparse, json, re

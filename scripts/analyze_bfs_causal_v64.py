@@ -1,4 +1,3 @@
-@@ -0,0 +1,135 @@
 #!/usr/bin/env python3
 """Fail-closed parser for the four-corner BFS V64 read-only physical diagnostic.
 

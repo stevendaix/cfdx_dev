@@ -1,4 +1,3 @@
-@@ -0,0 +1,97 @@
 """Fail-closed tests for V76 plots and the V75 budget import.
 
 No synthetic data is ever sent to the reference plotter or reported as

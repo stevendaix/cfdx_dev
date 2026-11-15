@@ -1,4 +1,3 @@
-@@ -0,0 +1,99 @@
 #include "cfdx/physics/global_outer_progress_v84.h"
 #include "cfdx/physics/global_nonlinear_contraction_v14.h"
 #include <cmath>

@@ -1,4 +1,3 @@
-@@ -0,0 +1,173 @@
 #pragma once
 
 // CFDX V82 -- bounded, positive, fully reassembled SST trial selection.

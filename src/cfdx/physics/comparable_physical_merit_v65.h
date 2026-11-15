@@ -1,4 +1,3 @@
-@@ -0,0 +1,154 @@
 #pragma once
 // V65: opt-in, state-only, same-operator merit for the existing V47 backtracking.
 // This does NOT define a new physical model, alter the primal F(X), or loosen

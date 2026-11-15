@@ -1,4 +1,3 @@
-@@ -0,0 +1,402 @@
 #!/usr/bin/env python3
 """V76 comparison plots. Never relabel reference or V74 results as CFDX-V76.
 

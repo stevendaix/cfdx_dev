@@ -1,4 +1,3 @@
-@@ -0,0 +1,109 @@
 #pragma once
 // V75: read-only, common-state forensic ledger for k and omega.
 // No turbulence source, wall law, residual tolerance, or accepted state is changed.

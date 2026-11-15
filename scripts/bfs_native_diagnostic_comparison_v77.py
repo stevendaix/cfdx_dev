@@ -1,4 +1,3 @@
-@@ -0,0 +1,378 @@
 #!/usr/bin/env python3
 """CFDX BFS152 V78 diagnostic-only comparison using ACTUAL accepted VTU fields.
 

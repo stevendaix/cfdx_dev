@@ -1,4 +1,3 @@
-@@ -0,0 +1,106 @@
 #!/usr/bin/env python3
 """Audit actual V13 committed global rows against linear/SST statuses.
 

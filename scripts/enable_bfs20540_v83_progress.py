@@ -1,4 +1,3 @@
-@@ -0,0 +1,77 @@
 #!/usr/bin/env python3
 """Make an opt-in BFS20540 V83 experiment without changing mesh or physics.
 

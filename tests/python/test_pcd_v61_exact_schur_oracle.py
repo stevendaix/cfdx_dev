@@ -1,4 +1,3 @@
-@@ -0,0 +1,62 @@
 """Fail-closed perturbation tests for the V61 actual-capture Schur oracle."""
 import sys
 import tempfile

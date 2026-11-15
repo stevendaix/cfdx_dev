@@ -1,4 +1,3 @@
-@@ -0,0 +1,127 @@
 #!/usr/bin/env python3
 """Strict non-regression / falsification audit for private V71 BFS152 trials.
 

@@ -1,4 +1,3 @@
-@@ -0,0 +1,308 @@
 #!/usr/bin/env python3
 """V75 independent log countercheck; synthetic self-tests with --log omitted.
 

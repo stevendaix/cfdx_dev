@@ -1,4 +1,3 @@
-@@ -0,0 +1,167 @@
 #!/usr/bin/env python3
 """Fail-closed read-only BFS152 V66 evidence auditor.
 

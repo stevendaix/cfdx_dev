@@ -1,4 +1,3 @@
-@@ -0,0 +1,249 @@
 #pragma once
 // V66: bounded, read-only diagnosis of the V65 BFS152 step rejection.
 // No change to F_phys, V13/V14 merit, Rhie-Chow, SST, or nonlinear updates.

@@ -1,4 +1,3 @@
-@@ -0,0 +1,181 @@
 #pragma once
 // V74: repeat ONE V73-certified direction on private, reassembled physical
 // states. No grid search, no change to primal equations, no production commit.

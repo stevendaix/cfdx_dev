@@ -1,4 +1,3 @@
-@@ -0,0 +1,73 @@
 #!/usr/bin/env python3
 """Run ONE bounded, private first SST transport on a given CFDX HDF5 case.
 

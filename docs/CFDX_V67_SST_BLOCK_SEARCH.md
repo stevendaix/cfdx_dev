@@ -1,4 +1,3 @@
-@@ -0,0 +1,107 @@
 # CFDX V67 — diagnostic causal des pas couplés BFS152
 
 **Branche :** à partir de V66, sans modification de SOU/MUSCL, Rhie–Chow,

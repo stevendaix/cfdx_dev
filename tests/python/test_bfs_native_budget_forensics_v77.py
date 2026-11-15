@@ -1,4 +1,3 @@
-@@ -0,0 +1,72 @@
 """Fail-closed forensic contract for signed V75 budget / V76 private block."""
 import tempfile
 import unittest

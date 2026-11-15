@@ -1,4 +1,3 @@
-@@ -0,0 +1,98 @@
 #!/usr/bin/env python3
 """CFDX BFS wall-family preflight: descriptive, fail-closed; NOT a wall-law validation."""
 import argparse

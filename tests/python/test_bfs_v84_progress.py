@@ -1,4 +1,3 @@
-@@ -0,0 +1,68 @@
 """Fail-closed V84 native progress evidence/plot tests."""
 from pathlib import Path
 import importlib.util

@@ -1,4 +1,3 @@
-@@ -0,0 +1,69 @@
 #include "cfdx/physics/bfs_sst_flux_picard_v69.h"
 #include <cmath>
 #include <iostream>

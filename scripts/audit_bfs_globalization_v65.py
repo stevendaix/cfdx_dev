@@ -1,4 +1,3 @@
-@@ -0,0 +1,205 @@
 #!/usr/bin/env python3
 """Fail-closed BFS152 V65 evaluation of same-state V47 versus historical COUPLED.
 

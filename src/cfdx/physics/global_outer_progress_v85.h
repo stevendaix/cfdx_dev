@@ -1,4 +1,3 @@
-@@ -0,0 +1,145 @@
 #pragma once
 // V85: strictly opt-in *progression* ledger for the same independent FV U,p,phi,k,omega
 // residual as V8. Does not certify convergence, does not modify SST equations.

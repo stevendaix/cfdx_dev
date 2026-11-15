@@ -1,4 +1,3 @@
-@@ -0,0 +1,111 @@
 #!/usr/bin/env python3
 """V80 evidence from native pressure & full U,p,k,omega logs, strictly fail closed.
 

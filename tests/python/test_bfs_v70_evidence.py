@@ -1,4 +1,3 @@
-@@ -0,0 +1,83 @@
 """Falsification gates for V70 native replay, no fake CFD certification."""
 import unittest
 from scripts.audit_bfs_v70_conservative import check_v70_evidence

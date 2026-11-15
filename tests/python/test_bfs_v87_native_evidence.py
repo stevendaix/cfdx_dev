@@ -1,4 +1,3 @@
-@@ -0,0 +1,41 @@
 """Falsification tests: an early screen cannot become a certification."""
 import unittest
 from scripts.audit_bfs_v87_native import audit

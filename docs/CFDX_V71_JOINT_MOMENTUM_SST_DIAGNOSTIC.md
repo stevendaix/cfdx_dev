@@ -1,4 +1,3 @@
-@@ -0,0 +1,144 @@
 # CFDX V71 — audit de co-itération momentum–pression–flux–SST
 
 ## Contrat du lot

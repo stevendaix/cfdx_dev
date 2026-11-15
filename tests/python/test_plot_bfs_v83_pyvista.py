@@ -1,4 +1,3 @@
-@@ -0,0 +1,84 @@
 """Tests for native CFDX cell-field maps and honest VTK/PyVista export."""
 from __future__ import annotations
 import importlib.util

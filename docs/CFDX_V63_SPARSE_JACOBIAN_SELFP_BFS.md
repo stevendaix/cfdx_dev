@@ -1,4 +1,3 @@
-@@ -0,0 +1,76 @@
 # CFDX V63 — Jacobien physique creux et Schur selfp natif (recherche)
 
 Date : 13 novembre 2026. Base : V62 reunifiee BFS/SST + rayonnement HO–LO/DOM V57. Pas de changement des seuils, pas de promotion automatique.

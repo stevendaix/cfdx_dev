@@ -1,4 +1,3 @@
-@@ -0,0 +1,65 @@
 """Diagnostic-only CFDX VTU postprocessing invariants for V77."""
 import pathlib
 import sys

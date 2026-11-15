@@ -1,4 +1,3 @@
-@@ -0,0 +1,100 @@
 #!/usr/bin/env python3
 """Fail-closed read-only BFS152 audit of sole-phi SST FV substitution.
 

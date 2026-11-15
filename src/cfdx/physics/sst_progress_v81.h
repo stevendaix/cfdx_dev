@@ -1,4 +1,3 @@
-@@ -0,0 +1,54 @@
 #pragma once
 // V81 forensic-only, not a solver or a convergence criterion.
 // All quantities retain the units and thresholds of the production gates.

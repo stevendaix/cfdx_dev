@@ -1,4 +1,3 @@
-@@ -0,0 +1,344 @@
 #!/usr/bin/env python3
 """BFS20 540: honest cell-data maps from native CFDX VTU files.
 

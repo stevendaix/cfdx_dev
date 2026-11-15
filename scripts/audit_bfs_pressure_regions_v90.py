@@ -1,4 +1,3 @@
-@@ -0,0 +1,124 @@
 #!/usr/bin/env python3
 """Independent, fail-closed V90 pressure/spatial audit on accepted native VTU.
 

@@ -1,4 +1,3 @@
-@@ -0,0 +1,118 @@
 # CFDX V64 — diagnostic causal du BFS152, sans nouveau solveur
 
 13 novembre 2026. Base : ZIP de sources V63 livré dans cette conversation.

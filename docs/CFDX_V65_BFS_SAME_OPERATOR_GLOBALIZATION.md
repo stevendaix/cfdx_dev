@@ -1,4 +1,3 @@
-@@ -0,0 +1,137 @@
 # CFDX V65 — BFS152, globalisation V47 et comparaison stricte de residus physiques
 
 **Date :** 13 novembre 2026. **Base :** CFDX V64, reconstruite depuis l'archive BFS V6 d'origine.

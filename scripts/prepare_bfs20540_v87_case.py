@@ -1,4 +1,3 @@
-@@ -0,0 +1,59 @@
 #!/usr/bin/env python3
 """Enable V87 pre-SST velocity screen on V86 BFS20540 trust case only.
 

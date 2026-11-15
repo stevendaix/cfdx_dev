@@ -1,4 +1,3 @@
-@@ -0,0 +1,137 @@
 // V72: true repeated private Picard / Rhie-Chow / SST sequence,
 // six physical certificates, stale operator injection, no production commit.
 #include "cfdx/physics/bfs_joint_fixed_point_v72.h"

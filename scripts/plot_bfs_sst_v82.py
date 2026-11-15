@@ -1,4 +1,3 @@
-@@ -0,0 +1,129 @@
 #!/usr/bin/env python3
 """CFDX V82: compare real first private BFS20540 SST transactions (NOT Cf/Cp)."""
 from __future__ import annotations

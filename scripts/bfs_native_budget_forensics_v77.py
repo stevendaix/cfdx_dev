@@ -1,4 +1,3 @@
-@@ -0,0 +1,167 @@
 #!/usr/bin/env python3
 """V77 native V75/V76 signed-budget forensics on the REAL production stderr.
 

@@ -1,4 +1,3 @@
-@@ -0,0 +1,63 @@
 #!/usr/bin/env python3
 """Prepare non-destructive 100-outer-iteration V85 six-block BFS case.
 

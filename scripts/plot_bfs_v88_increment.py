@@ -1,4 +1,3 @@
-@@ -0,0 +1,102 @@
 #!/usr/bin/env python3
 """Render gauge-invariant and per-cell step changes from REAL committed CFDX VTUs.
 
