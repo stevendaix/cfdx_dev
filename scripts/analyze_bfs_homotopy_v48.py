@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Fail-closed forensic verifier for the experimental V48 Rhie-Chow path.
 
 No SST internal certificate or V13/V14 commit by itself qualifies Driver-Seegmiller.

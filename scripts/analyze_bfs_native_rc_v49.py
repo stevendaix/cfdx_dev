@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Fail-closed, read-only V49 BFS native-flux forensic certificate.
 
 The oracle is a diagnostic only. A successful evidence check NEVER grants
