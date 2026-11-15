@@ -4621,9 +4621,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
         solver_plan.preconditioner != PreconditionerModel::PCD &&
         solver_plan.preconditioner != PreconditionerModel::MGR &&
-        solver_plan.preconditioner != PreconditionerModel::BraessSarazin)
+        solver_plan.preconditioner != PreconditionerModel::BraessSarazin &&
+        solver_plan.preconditioner != PreconditionerModel::NativeFieldSplit)
         throw std::invalid_argument(
-            "coupled solver requires coupled_block_schur, pcd, mgr, or braess_sarazin");
+            "coupled solver requires coupled_block_schur, pcd, mgr, braess_sarazin, or native_field_split");
 
     // N8 owns the linear-solver/preconditioner policy. The coupled FV
     // assembler remains N9-owned, but an explicit BlockSchur request must use

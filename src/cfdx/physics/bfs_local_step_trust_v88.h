@@ -1,4 +1,3 @@
-@@ -0,0 +1,44 @@
 #pragma once
 // V88 opt-in pre-SST trust-region check of the *increment* of U, rather
 // than only the magnitude of U. A failed trial is recomputed by the existing

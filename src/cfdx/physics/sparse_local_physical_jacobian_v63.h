@@ -1,4 +1,3 @@
-@@ -0,0 +1,309 @@
 #pragma once
 // V63: opt-in SPARSE colored-Fphys Jacobian experiment, not an analytic
 // differentiator nor a certified generalized Newton matrix. It differs from

@@ -1,4 +1,3 @@
-@@ -0,0 +1,253 @@
 #pragma once
 // V72: bounded, private-only continuation of V71's EXISTING Picard operators.
 // No alternative Schur, no alternate F_phys, no altered final tolerance.

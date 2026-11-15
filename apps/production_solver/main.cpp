@@ -2531,9 +2531,19 @@ int main(int argc, char** argv)
             // --bfs-pimple selects OpenFOAM-style PIMPLE with multiple pressure
             // correctors per outer iteration.
             if (options.bfs_converged) {
+                if (!options.experimental_sst || controls.sst_runtime == nullptr)
+                    throw std::invalid_argument(
+                        "--bfs-converged requires --experimental-sst (post-SST momentum "
+                        "reassembly and V8 certificate need an SST production runtime)");
+                auto* sst_rt = controls.sst_runtime;
+                const double saved_density = controls.density;
+                const double saved_kinematic_viscosity = controls.kinematic_viscosity;
                 controls = bfs_converged_controls(
                     controls.coupling.alpha_u, controls.coupling.alpha_p,
                     controls.convergence.max_iterations, controls.linear_tolerance);
+                controls.sst_runtime = sst_rt;
+                controls.density = saved_density;
+                controls.kinematic_viscosity = saved_kinematic_viscosity;
                 std::cout << "BFS converged settings: COUPLED+NativeFieldSplit, "
                           << "alpha_u=" << controls.coupling.alpha_u
                           << " alpha_p=" << controls.coupling.alpha_p

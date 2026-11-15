@@ -1,4 +1,3 @@
-@@ -0,0 +1,75 @@
 #pragma once
 // V61: three-scale candidate-owned V60 remainder, RC and SST audit.
 // No finite-difference extrapolation is substituted into accepted Fphys:

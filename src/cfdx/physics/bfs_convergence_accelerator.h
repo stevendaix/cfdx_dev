@@ -30,11 +30,11 @@ inline IncompressibleSolverControls bfs_converged_controls(
     c.algorithm = PressureVelocityAlgorithm::COUPLED;
     c.coupling.alpha_u = alpha_u;
     c.coupling.alpha_p = alpha_p;
-    c.coupling.coupled_max_iterations = 500;
+    c.coupling.coupled_max_iterations = 2000;
     c.coupling.coupled_linear_tolerance = linear_tol;
     c.coupling.schur_model = CoupledSchurModel::PCD;
     c.coupled_linear_solver.krylov = cfdx::core::KrylovModel::FGMRES;
-    c.coupled_linear_solver.preconditioner = cfdx::core::PreconditionerModel::NativeFieldSplit;
+    c.coupled_linear_solver.preconditioner = cfdx::core::PreconditionerModel::PCD;
     c.coupled_linear_solver.gmres_restart = 512;
     c.linear_max_iterations = 500;
     c.linear_tolerance = linear_tol;

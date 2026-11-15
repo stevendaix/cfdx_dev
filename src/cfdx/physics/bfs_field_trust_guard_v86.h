@@ -1,4 +1,3 @@
-@@ -0,0 +1,45 @@
 #pragma once
 // V86 experimental step safeguard for the *specific* TH03 BFS campaign.
 // This is a trust-region test, not a universal physical law or convergence

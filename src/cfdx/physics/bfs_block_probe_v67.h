@@ -1,4 +1,3 @@
-@@ -0,0 +1,130 @@
 #pragma once
 // CFDX V67: READ-ONLY counterfactual block damping study on one native
 // six-field state. The actual candidate, residual, SGS/SST transport, RC face

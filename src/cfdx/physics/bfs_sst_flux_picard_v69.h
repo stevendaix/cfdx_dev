@@ -1,4 +1,3 @@
-@@ -0,0 +1,144 @@
 #pragma once
 // V69. Experimental, strictly read-only SST/RC fixed-point audit.
 // The caller supplies the *production* SST transport as a pure transformation

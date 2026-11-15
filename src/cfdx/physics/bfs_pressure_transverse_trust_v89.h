@@ -1,4 +1,3 @@
-@@ -0,0 +1,100 @@
 #pragma once
 // CFDX V89 - EXPERIMENTAL, opt-in, BFS SIMPLE/SST only.
 // A trial is recomputed with a smaller nonlinear step when rejected;

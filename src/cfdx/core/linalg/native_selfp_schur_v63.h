@@ -1,4 +1,3 @@
-@@ -0,0 +1,129 @@
 #pragma once
 // V63 RESEARCH ONLY. Additional, explicitly named seventh Schur option.
 // Nothing here changes PCD/LSC/BFBt/BlockLocal/SIMPLE/SIMPLEC.

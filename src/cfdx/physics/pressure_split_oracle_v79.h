@@ -1,4 +1,3 @@
-@@ -0,0 +1,74 @@
 #pragma once
 // V79: independent pressure split oracle. READ-ONLY; no solver state mutation,
 // no production certificate, no pressure/flux acceptance. A small CSR residual

@@ -1,4 +1,3 @@
-@@ -0,0 +1,194 @@
 #pragma once
 // V76 experimental PRIVATE 4x4 SST Newton/block-regularized update.
 // Four log unknowns: (k_a, omega_a, k_b, omega_b). A complete physical
