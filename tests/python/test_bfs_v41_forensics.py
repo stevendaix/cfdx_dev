@@ -13,9 +13,8 @@ spec.loader.exec_module(module)
 
 class V41ForensicsTest(unittest.TestCase):
     def test_missing_log_fails_closed(self):
-        with tempfile.TemporaryDirectory() as temp:
-            with self.assertRaises(ValueError):
-                module.parse_production_log(pathlib.Path(temp) / "missing.log")
+        with tempfile.TemporaryDirectory() as temp, self.assertRaises(ValueError):
+            module.parse_production_log(pathlib.Path(temp) / "missing.log")
 
     def test_only_inner_convergence_not_global(self):
         with tempfile.TemporaryDirectory() as temp:
