@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Mutation tests of the V50 fail-closed forensic contract."""
 import pathlib
 import sys
