@@ -90,7 +90,7 @@ def physical_input_identity(path: Path) -> dict:
         dataset_hashes = {}
         for name, obj in h5.items():
             if not isinstance(obj, h5py.Dataset):
-                raise ValueError("unexpected HDF5 group in BFS case")
+                raise ValueError("unexpected HDF5 group in BFS case")  # noqa: TRY004
             arr = np.asarray(obj[()])
             data = hashlib.sha256()
             data.update(str(arr.dtype).encode("ascii"))
