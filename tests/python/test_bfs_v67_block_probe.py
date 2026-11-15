@@ -8,8 +8,8 @@ def fake_log():
     for retry in RETRIES:
         beta = 2.0 ** (-retry)
         parts.append(
-            "GLOBAL_SAME_OPERATOR_TRIAL_V65 iteration=23 retry=%d beta=%.12e ratio=%.12e"
-            % (retry, beta, 0.99)
+            f"GLOBAL_SAME_OPERATOR_TRIAL_V65 iteration=23 retry={retry:d} "
+            f"beta={beta:.12e} ratio={0.99:.12e}"
         )
         for k, w in FRACTIONS:
             ratio = 0.99 if w < 0.75 else 0.998
