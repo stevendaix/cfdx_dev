@@ -1,5 +1,6 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/bfs_convergence_accelerator.h"
 #include "cfdx/physics/coupled_matrix_capture_v16.h"
 #include "cfdx/physics/coupled_fingerprint_v40.h"
 #include "cfdx/physics/production_boundary_contract.h"
@@ -92,6 +93,10 @@ struct Options {
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
     std::vector<std::size_t> pressure_replay_iterations;
+    // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
+    bool bfs_converged = false;
+    bool bfs_fieldsplit = false;
+    bool bfs_pimple = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
     bool probe_stream = false;    bool cell_hotspots = false;
@@ -724,6 +729,9 @@ Options parse(int argc, char** argv)
         else if (arg == "--pressure-replay-iterations")
             o.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
                 value("--pressure-replay-iterations"));
+        else if (arg == "--bfs-converged") o.bfs_converged = true;
+        else if (arg == "--bfs-fieldsplit") o.bfs_fieldsplit = true;
+        else if (arg == "--bfs-pimple") o.bfs_pimple = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--probe-stream") o.probe_stream = true;
@@ -754,9 +762,13 @@ Options parse(int argc, char** argv)
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
-                         "  probe field: p | u_x | u_y | u_z | u_mag\n";
+                         "  probe field: p | u_x | u_y | u_z | u_mag\n"
+                         "  [--bfs-converged] (PETSc/OpenFOAM-inspired converged BFS settings)\n"
+                         "  [--bfs-fieldsplit] (PETSc PCFIELDSPLIT Full Schur for coupled U-p)\n"
+                          "  [--bfs-pimple] (OpenFOAM-style PIMPLE multiple pressure correctors)\n"
+                          ;
             std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
-                         "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
+                          "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
@@ -2511,6 +2523,35 @@ int main(int argc, char** argv)
             if (!staged.converged || staged.final_parameter != 1.0)
                 result.converged = false;
         } else {
+            // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
+            // --bfs-converged enables a recommended configuration for separated
+            // flow: COUPLED algorithm with Full Schur field split, adaptive
+            // relaxation, post-SST momentum reassembly and V8 certificate.
+            // --bfs-fieldsplit selects the PETSc PCFIELDSPLIT preconditioner.
+            // --bfs-pimple selects OpenFOAM-style PIMPLE with multiple pressure
+            // correctors per outer iteration.
+            if (options.bfs_converged) {
+                controls = bfs_converged_controls(
+                    controls.coupling.alpha_u, controls.coupling.alpha_p,
+                    controls.convergence.max_iterations, controls.linear_tolerance);
+                std::cout << "BFS converged settings: COUPLED+NativeFieldSplit, "
+                          << "alpha_u=" << controls.coupling.alpha_u
+                          << " alpha_p=" << controls.coupling.alpha_p
+                          << " post-SST-momentum=1 V8-certificate=1\n";
+            }
+            if (options.bfs_fieldsplit) {
+                controls.coupled_linear_solver.krylov = KrylovModel::FGMRES;
+                controls.coupled_linear_solver.preconditioner = PreconditionerModel::NativeFieldSplit;
+                controls.coupled_linear_solver.gmres_restart = 512;
+                std::cout << "BFS fieldsplit: PETSc PCFIELDSPLIT Full Schur\n";
+            }
+            if (options.bfs_pimple) {
+                bfs_pimple_settings(controls);
+                std::cout << "BFS PIMPLE: n_pressure_correctors="
+                          << controls.coupling.n_pressure_correctors
+                          << " alpha_u=" << controls.coupling.alpha_u
+                          << " alpha_p=" << controls.coupling.alpha_p << "\n";
+            }
             result = solve_steady_incompressible(
                 mesh, U, p, ubc, pbc, controls, options.restart.string(),
                 solver_restart_fields);

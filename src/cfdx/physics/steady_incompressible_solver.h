@@ -8,6 +8,7 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
+#include "cfdx/core/linalg/native_fieldsplit.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
@@ -5507,6 +5508,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             options.velocity_approximation = CoupledSchurVelocityApproximation::Diagonal;
             options.velocity_inverse_scale = 1.0 / solver_request.braess_sarazin_alpha;
         }
+
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
             nc, options, has_fixed_pressure
                 ? std::numeric_limits<std::size_t>::max() : reference_cell);
@@ -5516,6 +5518,25 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 schur_amg->last_error());
         }
         coupled_preconditioner = std::move(schur_amg);
+    } else if (solver_plan.preconditioner == PreconditionerModel::NativeFieldSplit) {
+        // PETSc PCFIELDSPLIT-style field split with Full Schur factorization.
+        // first_field = velocity [0, 3nv), second_field = pressure [3nv, 4nv).
+        // Full Schur gives the strongest coupling for separated flows such as
+        // BFS, where the SIMPLE segregated predictor/corrector stalls on the
+        // momentum-pressure feedback loop through the recirculation zone.
+        std::vector<std::size_t> velocity_field(3 * nc);
+        std::vector<std::size_t> pressure_field(nc);
+        std::iota(velocity_field.begin(), velocity_field.end(), 0);
+        std::iota(pressure_field.begin(), pressure_field.end(), 3 * nc);
+        auto field_split = std::make_unique<NativeFieldSplitPreconditioner>(
+            std::move(velocity_field), std::move(pressure_field),
+            FieldSplitStrategy::FullSchur);
+        if (!field_split->setup(A)) {
+            throw std::runtime_error(
+                std::string("coupled NativeFieldSplit setup failed: ") +
+                field_split->last_error());
+        }
+        coupled_preconditioner = std::move(field_split);
     } else {
         std::vector<std::size_t> fine_variables(nv);
         std::vector<std::size_t> coarse_variables(np);
@@ -5525,7 +5546,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::make_unique<NativeMGRPreconditioner>(
                 std::move(fine_variables), std::move(coarse_variables));
     }
-
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)
