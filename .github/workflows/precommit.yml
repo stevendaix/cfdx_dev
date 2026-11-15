@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           mapfile -t python_files < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" -- '*.py')
           if (("${#python_files[@]}" == 0)); then exit 0; fi
-          ruff check --fix --unsafe-fixes --select RUF007,SIM102,RUF059,RUF100,PIE810,ISC004,FLY002,SIM117,SIM115,SIM118,PERF102,PLW1510,PLC0206 "${python_files[@]}" || true
+          ruff check --fix --select SIM102,SIM117,SIM115,PLW1510,PLC0206 "${python_files[@]}" || true
           if git diff --quiet; then
             echo "No selected Ruff changes"
             exit 0
