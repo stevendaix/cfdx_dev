@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Fail-closed evidence gate for a local convection tangent (NOT global JFNK)."""
 from __future__ import annotations
 import argparse

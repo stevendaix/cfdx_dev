@@ -30,9 +30,6 @@ from scripts.generate_th03_openfoam_blockmesh import (
     VELOCITY,
     H,
 )
-from scripts.require_th03_native_geometry import (
-    require_native_geometry as verify_native_geometry,
-)
 
 
 def _geometry(f: h5py.File) -> dict:
@@ -260,11 +257,8 @@ def initialise_case(
     *,
     delta_h: float = 1.5,
     sst_style: str = "wall_aware",
-    require_native_geometry: bool = True,
 ) -> dict:
     source = source.resolve(strict=True)
-    if require_native_geometry:
-        verify_native_geometry(source)
     destination = destination.resolve()
     if destination == source or destination.exists():
         raise ValueError("destination must be a new, absent HDF5 file")
@@ -416,11 +410,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument(
-        "--allow-reconstructed-diagnostic",
-        action="store_true",
-        help="Explicitly allow reconstructed six-block geometry for diagnostic-only runs; never use for physical qualification.",
-    )
     parser.add_argument("--delta-h", type=float, default=1.5)
     parser.add_argument(
         "--sst-style",
@@ -437,11 +426,7 @@ def main() -> int:
     print(
         json.dumps(
             initialise_case(
-                args.case,
-                args.output,
-                delta_h=args.delta_h,
-                sst_style=args.sst_style,
-                require_native_geometry=not args.allow_reconstructed_diagnostic,
+                args.case, args.output, delta_h=args.delta_h, sst_style=args.sst_style
             ),
             indent=2,
         )

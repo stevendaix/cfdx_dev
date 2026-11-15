@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Fail-closed comparison of the SAME frozen 6N X and the real Jv(X).
 
 Five Schur variants have a native 4N inverse available. The sixth (PCD)

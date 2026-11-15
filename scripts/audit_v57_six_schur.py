@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Fail-closed CFDX V57: six native Schur methods on one 4N + 6N state.
 
 This is a *negative qualification* reporter. Even algebraically clean Krylov

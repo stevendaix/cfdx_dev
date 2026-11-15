@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """V54 fail-closed forensic gate: frozen 6N Amat versus physical F(X).
 
 This only inspects a recorded diagnostic; it cannot certify a physical BFS or
