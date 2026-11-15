@@ -104,7 +104,7 @@ def physical_input_identity(path: Path) -> dict:
             if isinstance(value, np.generic):
                 value = value.item()
             if not isinstance(value, (str, int, float, bool)):
-                raise ValueError(f"unsupported HDF5 attribute type: {key}")
+                raise ValueError(f"unsupported HDF5 attribute type: {key}")  # noqa: TRY004
             attrs[str(key)] = value
         common = {
             "attributes": attrs,
