@@ -31,11 +31,11 @@ def audit(replay, captures, timeout=60):
         raise ValueError("replay binary or captures directory is missing")
     hashes = {kind: {} for kind in ("A", "b", "x0")}
     for method in METHODS:
-        for kind in hashes:
+        for kind, per_method in hashes.items():
             path = captures / f"{method}_{kind}.mtx"
             if not path.is_file():
                 raise ValueError(f"missing physical operator: {path.name}")
-            hashes[kind][method] = hash_file(path)
+            per_method[method] = hash_file(path)
     for kind, per_method in hashes.items():
         if len(set(per_method.values())) != 1:
             raise ValueError(f"six-method input mismatch: {kind}; refuse to compare")
