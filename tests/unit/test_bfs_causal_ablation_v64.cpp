@@ -1,4 +1,3 @@
-@@ -0,0 +1,91 @@
 // V64 falsification tests: no solver mocks may be called "physical BFS".
 #include "cfdx/physics/bfs_causal_ablation_v64.h"
 #include <algorithm>

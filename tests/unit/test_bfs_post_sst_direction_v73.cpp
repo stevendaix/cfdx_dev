@@ -1,4 +1,3 @@
-@@ -0,0 +1,140 @@
 // V73: the same U,p,k,omega state and real V71 operators for every private
 // search direction; verify face, rAU, momentum/SST evidence and fail closed.
 #include "cfdx/physics/bfs_post_sst_direction_v73.h"

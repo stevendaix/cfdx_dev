@@ -1,4 +1,3 @@
-@@ -0,0 +1,78 @@
 #include "cfdx/physics/global_nonlinear_contraction_v14.h"
 #include "cfdx/physics/global_nonlinear_acceptance_v13.h"
 #include <cmath>

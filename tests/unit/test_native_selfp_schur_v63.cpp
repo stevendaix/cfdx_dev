@@ -1,4 +1,3 @@
-@@ -0,0 +1,51 @@
 #include "cfdx/core/linalg/native_selfp_schur_v63.h"
 #include <stdexcept>
 #include <cmath>

@@ -128,6 +128,29 @@ struct TurbulenceTransportControls {
     SSTV30ContinuationState* sst_continuation_state_v30 = nullptr;
     // V29: separately gated OpenFOAM-style owner matrix manipulation.
     bool sst_weighted_wall_matrix_v29_experimental = false;
+    // Maximum number of k-floor (positivity bound) activations tolerated in a
+    // single SST transport before the bounded-provisional gate rejects the
+    // iterate. Default 0 preserves the strict "no clipping" contract. A small
+    // positive bound permits physically-correct k->0 in separated/recirculation
+    // regions (OpenFOAM-style bounded k) without failing the outer SIMPLE step.
+    std::size_t sst_max_k_floor_events = 0;
+    // OpenFOAM-style SIMPLE outer under-relaxation for k and omega. After the
+    // SST transport returns a new (k, omega), the caller blends:
+    //   k_new = k_old + alpha * (k_sst - k_old)
+    //   omega_new = omega_old + alpha * (omega_sst - omega_old)
+    // and recomputes nu_t from the relaxed fields. This is the standard
+    // segregated-cavitation stabilization: it lets inner=1 (one linear solve
+    // per outer SIMPLE step) converge without the SST nonlinear residual
+    // exploding. Default 1.0 preserves the historical no-relaxation path.
+    double sst_simple_relaxation = 1.0;
+    // Opt-in (OpenFOAM/PETSc-inspired): treat the turbulence production terms
+    // point-implicitly (linearized on the diagonal) instead of fully explicit
+    // sources. The production P_k ~ k and P_omega ~ omega^2 are moved to the
+    // diagonal via their local derivatives, which strengthens the M-matrix
+    // diagonal and accelerates the segregated Picard fixed-point (the dominant
+    // cost in separated/recirculation flows). Default false preserves the
+    // historical explicit-production path; the final FV gates are unchanged.
+    bool sst_implicit_production_experimental = false;
     // Existing scalar solve blends candidate and old state with 0.7.
     // Expose the same parameter (default preserved) for a controlled
     // 0.7 / 0.9 / 1.0 contract study; 1.0 performs no post-solve damping.
@@ -343,6 +366,8 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !std::isfinite(c.sst_wall_omega_factor) ||
        !std::isfinite(c.sst_linear_relaxation) ||
        !(c.sst_linear_relaxation > 0.0 && c.sst_linear_relaxation <= 1.0) ||
+       !std::isfinite(c.sst_simple_relaxation) ||
+       !(c.sst_simple_relaxation > 0.0 && c.sst_simple_relaxation <= 1.0) ||
        (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||

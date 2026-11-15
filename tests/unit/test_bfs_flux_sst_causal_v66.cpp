@@ -1,4 +1,3 @@
-@@ -0,0 +1,48 @@
 #include "cfdx/physics/bfs_flux_sst_causal_v66.h"
 #include <cmath>
 #include <functional>

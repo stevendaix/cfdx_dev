@@ -1,4 +1,3 @@
-@@ -0,0 +1,85 @@
 // V70: exercise BOTH the atomic SST transaction helper and the actual
 // production rollback pattern (NonlinearStateRollback + phi/SST snapshots).
 // A projected state must either publish all five components or none.

@@ -1,4 +1,3 @@
-@@ -0,0 +1,32 @@
 #include "cfdx/physics/sst_progress_v81.h"
 #include <cmath>
 #include <iostream>
