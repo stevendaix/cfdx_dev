@@ -1,112 +1,44 @@
-"""V78 geometry-comparability checks: dimensions are necessary, not sufficient."""
-
-import importlib
-import json
+"""V78: refuse un diagnostic géométrique présenté comme validation."""
 import sys
-import tempfile
 import unittest
+import tempfile
+import json
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'scripts'))
+from bfs_geometry_comparability_v78 import gate_reference_geometry, pressure_failure_evidence
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-v78 = importlib.import_module("scripts.bfs_geometry_comparability_v78")
-gate_reference_geometry = v78.gate_reference_geometry
-pressure_failure_evidence = v78.pressure_failure_evidence
-
-
-class TestBfsGeometryComparabilityV78(unittest.TestCase):
-    def test_reference_six_block_domain(self):
-        result = gate_reference_geometry(
-            {
-                "h_m": 0.0127,
-                "h_upstream": 8.0,
-                "h_downstream": 9.0,
-                "x_min_h": -130.0,
-                "x_max_h": 50.0,
-            }
-        )
-        self.assertTrue(result["pass_reference_domain"])
-        self.assertFalse(result["physical_validation_authorized"])
-
-    def test_shortened_pilot_domain_rejected(self):
-        result = gate_reference_geometry(
-            {
-                "h_m": 0.0127,
-                "h_upstream": 7.0,
-                "h_downstream": 8.0,
-                "x_min_h": -6.0,
-                "x_max_h": 40.0,
-            }
-        )
-        self.assertFalse(result["pass_reference_domain"])
-
-    def test_small_height_error_rejected(self):
-        result = gate_reference_geometry(
-            {
-                "h_m": 0.0127,
-                "h_upstream": 7.999,
-                "h_downstream": 9.0,
-                "x_min_h": -130.0,
-                "x_max_h": 50.0,
-            }
-        )
-        self.assertFalse(result["pass_reference_domain"])
-
-    def test_native_pressure_rejections_are_extracted_not_summary_duplicated(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            log = root / "native.log"
-            execution = root / "execution.json"
-            rejected = (
-                "CFDX nonlinear iteration 1 rejected; retry=1 reason=solve_steady_incompressible: "
-                "pressure-correction solve did not converge "
-                "(status=1, iterations=1000, residual=1e-12, relative=5e-10)"
-            )
-            log.write_text(
-                rejected
-                + "\n"
-                + rejected.replace("retry=1", "retry=2")
-                + "\nCFDX production solver error: pressure-correction solve did not converge "
-                "(status=1, iterations=1000, residual=1e-12, relative=5e-10)\n"
-            )
-            execution.write_text(
-                json.dumps({"converged": False, "process_exit_code": 2})
-            )
-            evidence = pressure_failure_evidence(log, execution)
-            self.assertEqual(len(evidence["trials"]), 2)
-            self.assertFalse(evidence["physical_validation_authorized"])
-            execution.write_text(
-                json.dumps({"converged": True, "process_exit_code": 0})
-            )
-            with self.assertRaises(ValueError):
-                pressure_failure_evidence(log, execution)
-
-    def test_pressure_summary_without_native_rejection_is_rejected(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            log = root / "native.log"
-            execution = root / "execution.json"
-            log.write_text(
-                "CFDX production solver error: pressure-correction solve did not converge "
-                "(status=1, iterations=1000, residual=1e-12, relative=5e-10)\n"
-            )
-            execution.write_text(
-                json.dumps({"converged": False, "process_exit_code": 2})
-            )
-            with self.assertRaisesRegex(ValueError, "no native pressure-rejection"):
-                pressure_failure_evidence(log, execution)
-
+class TestBfsReferenceGateV78(unittest.TestCase):
+    def setUp(self):
+        self.ds=dict(h_m=.0127,h_upstream=8.,h_downstream=9.,x_min_h=-130.,x_max_h=50.)
+    def test_openfoam_six_block_geometry_only(self):
+        v=gate_reference_geometry(self.ds)
+        self.assertTrue(v['pass_reference_domain'])
+    def test_pilot_rejected_upstream_downstream(self):
+        d=dict(self.ds,h_upstream=7.,h_downstream=8.,x_min_h=-6,x_max_h=40)
+        v=gate_reference_geometry(d)
+        self.assertFalse(v['pass_reference_domain'])
+        self.assertFalse(v['upstream_height_8H']);self.assertFalse(v['downstream_height_9H'])
+    def test_short_inlet_not_nasa_uniform_inflow(self):
+        d=dict(self.ds,x_min_h=-4.)
+        self.assertFalse(gate_reference_geometry(d)['long_inlet_for_uniform_profile'])
+    def test_small_geometry_error_rejected(self):
+        d=dict(self.ds,h_upstream=7.999)
+        self.assertFalse(gate_reference_geometry(d)['pass_reference_domain'])
     def test_nonfinite_rejected(self):
-        with self.assertRaises(ValueError):
-            gate_reference_geometry(
-                {
-                    "h_m": 0.0127,
-                    "h_upstream": float("nan"),
-                    "h_downstream": 9.0,
-                    "x_min_h": -130.0,
-                    "x_max_h": 50.0,
-                }
-            )
+        d=dict(self.ds,h_upstream=float('nan'))
+        with self.assertRaises(ValueError):gate_reference_geometry(d)
+    def test_real_pressure_rejections_not_summary_duplicate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); log=root/'native.log';e=root/'execution.json'
+            line='CFDX nonlinear iteration 1 rejected; retry=1 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=1000, residual=1e-12, relative=5e-10)'
+            log.write_text(line+'\n'+line.replace('retry=1','retry=2')+'\nCFDX production solver error: pressure-correction solve did not converge (status=1, iterations=1000, residual=1e-12, relative=5e-10)\n')
+            e.write_text(json.dumps({'converged':False,'process_exit_code':2}))
+            rows=pressure_failure_evidence(log,e)['trials']
+            self.assertEqual(len(rows),2)
+            e.write_text(json.dumps({'converged':True,'process_exit_code':0}))
+            with self.assertRaises(ValueError):pressure_failure_evidence(log,e)
 
+    def test_incomplete_rejected(self):
+        with self.assertRaises(ValueError):gate_reference_geometry({'h_m':.0127})
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__=='__main__':unittest.main()

@@ -95,6 +95,10 @@ struct TurbulenceTransportControls {
     // V22 experimental: a joint SST [k,omega] matrix-free Newton candidate
     // with full FV reassembly and positivity/physical-residual globalization.
     bool sst_jfnk_v22_experimental = false;
+    // V82 opt-in: frozen FV spatial k-omega 2x2 implicit predictor, whose
+    // candidates are accepted only after full wall-projected SST reassembly.
+    // The outer U/p/Rhie-Chow global transaction remains mandatory.
+    bool sst_implicit_spatial_rescue_v82_experimental = false;
     // V23: local 2x2 source-coupled RIGHT preconditioner for V22 JFNK.
     // Never changes SST equations or linear/nonlinear acceptance gates.
     bool sst_block_preconditioner_v23_experimental = false;
@@ -347,6 +351,10 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
          c.sst_jfnk_v22_experimental || c.sst_coupled_ptc_v30_experimental ||
          c.sst_pseudo_transient_v29_experimental)) ||
        (c.sst_anderson_m2_v20 && (c.sst_picard_damping != 1.0 || c.sst_nonlinear_line_search)) ||
+       (c.sst_implicit_spatial_rescue_v82_experimental &&
+        (c.sst_jfnk_v22_experimental || c.sst_anderson_m2_v20 ||
+         c.sst_nonlinear_line_search || c.sst_picard_damping != 1.0 ||
+         c.sst_two_cycle_rescue_v41_experimental)) ||
        (c.sst_block_preconditioner_v23_experimental &&
         !c.sst_jfnk_v22_experimental) ||
        (c.sst_spatial_block_preconditioner_v24_experimental &&

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Mutation tests: the real V58 Krylov failure must remain fail-closed."""
 import sys
 import unittest

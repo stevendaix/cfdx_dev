@@ -13,6 +13,8 @@
 #include "cfdx/physics/sst_pseudo_transient_v29.h"
 #include "cfdx/physics/sst_hotspot_derivatives_v31.h"
 #include "cfdx/physics/sst_row_trace_v33.h"
+#include "cfdx/physics/sst_progress_v81.h"
+#include "cfdx/physics/sst_implicit_spatial_rescue_v82.h"
 #include "cfdx/physics/sst_stall_forensics_v42.h"
 #include "cfdx/physics/sst_two_cycle_v41.h"
 #include "cfdx/physics/sst_branch_preconditioner_v34.h"
@@ -1663,7 +1665,144 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         bool line_accepted = true;
         double line_old_merit = std::numeric_limits<double>::quiet_NaN();
         double line_new_merit = std::numeric_limits<double>::quiet_NaN();
-        if (controls.sst_jfnk_v22_experimental && !inner.converged) {
+        if (controls.sst_implicit_spatial_rescue_v82_experimental && !inner.converged) {
+            // V82: one CHEAP frozen nonlinear k-omega 2x2 / spatial CSR
+            // direction, without a matrix-free GMRES per trial. F1/F2,
+            // gradients, eddy viscosity, wall omega and G are reassembled
+            // at EVERY trial. Never mark a frozen matrix solve as converged.
+            const auto raw_k=k,raw_w=omega;
+            k=old_k;omega=old_w;
+            refresh_projected(k,omega);
+            const auto start_k=k,start_w=omega;
+            SSTV82SearchResult v82;
+            v82.reason="not_computed";
+            try {
+                const auto base_sample=sst_reassembled_returned_state_residual(
+                    mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    controls,k_bcs,omega_bcs,face_values_now(),sources_now());
+                const auto base_full=sst_coupled_residual_v22(
+                    mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    controls,k_bcs,omega_bcs,face_values_now(),sources_now());
+                std::vector<double> physical(2*n),scales(2*n),left(2*n,1.),rhs(2*n);
+                std::vector<double> picard_direction(2*n,0.);
+                for (std::size_t i=0;i<n;++i) {
+                    physical[i]=start_k(i);physical[n+i]=start_w(i);
+                    if (raw_k(i)>=controls.k_min && raw_w(i)>=controls.omega_min &&
+                        std::isfinite(raw_k(i)) && std::isfinite(raw_w(i))) {
+                        picard_direction[i]=std::log(raw_k(i)/physical[i]);
+                        picard_direction[n+i]=std::log(raw_w(i)/physical[n+i]);
+                    }
+                }
+                for (std::size_t i=0;i<2*n;++i) {
+                    scales[i]=base_full.row_norms[i]*base_full.local_scales[i];
+                    if (!(scales[i]>0.) || !std::isfinite(scales[i]))
+                        throw std::invalid_argument("V82 invalid FV row scaling");
+                    rhs[i]=-base_full.values[i]/scales[i];
+                }
+                const auto local_blocks=sst_local_source_blocks_v23(
+                    mesh,geometry,k,omega,strain_rate,wall_distance,controls,
+                    k_bcs,omega_bcs,face_values_now(),sources_now(),
+                    base_full,scales,left);
+                const auto equations=sst_reassembled_equations_v22(
+                    mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    controls,k_bcs,omega_bcs,face_values_now(),sources_now());
+                const SSTSpatialBlockPreconditionerV24 block_action(
+                    equations.first.matrix,equations.second.matrix,
+                    physical,scales,left,local_blocks);
+                const auto spatial_direction=block_action.apply(rhs);
+                const SSTV82PhysicalTrial baseline{
+                    physical,base_sample.k_local_relative,
+                    base_sample.omega_local_relative,base_sample.k_row_scaled,
+                    base_sample.omega_row_scaled};
+                const SSTV82Evaluator evaluator=[&](const auto& candidate) {
+                    auto ck=start_k,cw=start_w;
+                    for (std::size_t i=0;i<n;++i) {
+                        ck(i)=candidate[i];cw(i)=candidate[n+i];
+                    }
+                    ScalarBoundaryFaceValues staged_faces;
+                    SSTWallProductionV17 staged_wall;
+                    const ScalarBoundaryFaceValues* faces=omega_face_values;
+                    const SSTWallProductionV17* wall=nullptr;
+                    if (wall_refresh) {
+                        if (controls.sst_owner_consistent_projection_v21)
+                            sst_synchronize_wall_owner_v21(ck,cw,*wall_refresh,
+                                staged_faces,staged_wall,controls.omega_min);
+                        else {
+                            (*wall_refresh)(ck,cw,staged_faces,staged_wall);
+                            staged_wall.validate(n);
+                        }
+                        faces=&staged_faces;wall=&staged_wall;
+                    }
+                    const auto sample=sst_reassembled_returned_state_residual(
+                        mesh,geometry,mass_flux,ck,cw,strain_rate,wall_distance,
+                        controls,k_bcs,omega_bcs,faces,wall);
+                    SSTV82PhysicalTrial result;
+                    result.state.resize(2*n);
+                    for (std::size_t i=0;i<n;++i) {
+                        result.state[i]=ck(i);result.state[n+i]=cw(i);
+                    }
+                    result.k_local=sample.k_local_relative;
+                    result.omega_local=sample.omega_local_relative;
+                    result.k_row=sample.k_row_scaled;
+                    result.omega_row=sample.omega_row_scaled;
+                    return result;
+                };
+                std::vector<double> raw_state(2*n);
+                for (std::size_t i=0;i<n;++i) {
+                    raw_state[i]=raw_k(i);raw_state[n+i]=raw_w(i);
+                }
+                v82=sst_implicit_spatial_search_v82(
+                    baseline,spatial_direction,picard_direction,n,
+                    controls.k_min,controls.omega_min,evaluator,raw_state);
+            } catch (const std::exception& error) {
+                v82.reason=std::string("rejected:")+error.what();
+            }
+            line_old_merit=v82.merit_before;
+            line_new_merit=v82.merit_after;
+            // `accepted` means a true FV merit descent. If no candidate
+            // passes, retain the original Picard continuation as a PRIVATE
+            // iterate (the historical V80 behavior), never as a certified
+            // nonlinear descent. Only the final returned FV gates and outer
+            // U/p/Rhie-Chow transaction can authorize production commit.
+            const bool v82_picard_fallback=!v82.accepted &&
+                v82.legacy_fallback_available;
+            line_accepted=v82.accepted || v82_picard_fallback;
+            line_alpha=v82.accepted ? v82.alpha :
+                (v82_picard_fallback ? 1. : 0.);
+            k=old_k;omega=old_w;
+            const auto& selected_state=v82.accepted ? v82.state :
+                v82.legacy_fallback_state;
+            if (line_accepted) {
+                for (std::size_t i=0;i<n;++i) {
+                    k(i)=selected_state[i];omega(i)=selected_state[n+i];
+                }
+                if (v82_picard_fallback)
+                    line_new_merit=v82.legacy_fallback_merit;
+                consecutive_line_search_stalls=0;
+            } else {
+                ++consecutive_line_search_stalls;
+            }
+            refresh_projected(k,omega);
+            if (std::getenv("CFDX_SST_DIAGNOSTICS"))
+                std::cerr << std::scientific << std::setprecision(11)
+                          << "SST_IMPLICIT_V82 iteration=" << iter
+                          << " selected=" << v82.selected
+                          << " accepted=" << (v82.accepted?1:0)
+                          << " alpha=" << v82.alpha
+                          << " evaluations=" << v82.evaluations
+                          << " legacy_picard_fallback=" << (v82_picard_fallback?1:0)
+                          << " k_before=" << v82.k_before
+                          << " k_after=" << v82.k_after
+                          << " omega_before=" << v82.omega_before
+                          << " omega_after=" << v82.omega_after
+                          << " old_merit=" << v82.merit_before
+                          << " new_merit=" << v82.merit_after
+                          << " reason=" << (v82_picard_fallback ?
+                              "legacy_picard_private_not_descent" : v82.reason)
+                          << " fixed_rhie_chow=1"
+                          << " outer_U_p_flux_qualified=0"
+                          << " physical_qualified=0\n";
+        } else if (controls.sst_jfnk_v22_experimental && !inner.converged) {
             // V22: joint [Rk,Romega] JFNK. The Krylov action is built by
             // finite differences of the SAME FV assembly as the returned
             // SST certificate. Fixed row scales only condition the linear
@@ -2615,6 +2754,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             controls.sst_nonlinear_line_search ||
             controls.sst_anderson_m2_v20 ||
             controls.sst_jfnk_v22_experimental ||
+            controls.sst_implicit_spatial_rescue_v82_experimental ||
             !v33_trace_cells.empty() ||
             std::getenv("CFDX_SST_DIAGNOSTICS") != nullptr;
         SSTNonlinearResidualSample returned;
@@ -2624,6 +2764,96 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                 controls,k_bcs,omega_bcs,face_values_now(),sources_now());
             result.k_residual = returned.k_raw_inf;
             result.second_residual = returned.omega_raw_inf;
+        }
+        // V81 read-only SST large-BFS progress & signed row budgets. Staged
+        // state only: this does not modify a gate, source, flux or solver field.
+        if (const char* progress=std::getenv("CFDX_SST_PROGRESS_V81")) {
+            if (std::string(progress)!="1")
+                throw std::invalid_argument("CFDX_SST_PROGRESS_V81 requires 1");
+            if (!must_audit_returned)
+                throw std::runtime_error("V81 needs reassembled returned residual");
+            if (iter==1 || iter==10 || iter%50==0 || iter==max_iterations) {
+                const auto gate=sst_progress_distance_v81(
+                    returned.k_row_scaled,returned.omega_row_scaled,dk,dw,tolerance);
+                std::size_t peak_k=0,peak_w=0;
+                double max_k=k(0),max_w=omega(0),min_y=wall_distance(0);
+                for(std::size_t c=0;c<n;++c) {
+                    if (k(c)>max_k){max_k=k(c);peak_k=c;}
+                    if (omega(c)>max_w){max_w=omega(c);peak_w=c;}
+                    min_y=std::min(min_y,wall_distance(c));
+                }
+                std::cerr<<std::scientific<<std::setprecision(15)
+                    <<"SST_PROGRESS_V81 iteration="<<iter
+                    <<" k_gate_factor="<<gate.k_row_factor
+                    <<" omega_gate_factor="<<gate.omega_row_factor
+                    <<" dk_gate_factor="<<gate.dk_factor
+                    <<" domega_gate_factor="<<gate.domega_factor
+                    <<" worst_factor="<<gate.worst_factor
+                    <<" k_local="<<returned.k_local_relative
+                    <<" omega_local="<<returned.omega_local_relative
+                    <<" max_k="<<max_k<<" max_k_cell="<<peak_k
+                    <<" max_omega="<<max_w<<" max_omega_cell="<<peak_w
+                    <<" min_y="<<min_y
+                    <<" omega_viscous_factor6="<<sst_viscous_wall_omega_v81(
+                        controls.molecular_viscosity,controls.beta1,min_y,6.)
+                    <<" k_worst_cell="<<returned.k_worst_cell
+                    <<" omega_worst_cell="<<returned.omega_worst_cell
+                    <<" committed=0 qualified=0\n";
+                const auto cross=sst_boundary_gradient_dot(
+                    k,omega,mesh,geometry,k_bcs,omega_bcs,face_values_now(),
+                    controls.sst_use_wls_boundary_gradients,controls.sst_gradient_dimension);
+                std::vector<std::size_t> cells={returned.k_worst_cell,
+                    returned.omega_worst_cell,peak_k,peak_w};
+                std::sort(cells.begin(),cells.end());
+                cells.erase(std::unique(cells.begin(),cells.end()),cells.end());
+                for(const auto row:cells) {
+                    const auto budgets=sst_reassembled_discrete_cell_budgets(
+                        mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                        controls,k_bcs,omega_bcs,face_values_now(),row,sources_now());
+                    const auto [f1,f2]=compute_sst_blending(
+                        k(row),omega(row),wall_distance(row),
+                        controls.molecular_viscosity,controls.beta_star,
+                        cross[row],controls.density,controls.sst_sigma_w2);
+                    const double wall_g=sources_now()?sources_now()->for_cell(row):-1.;
+                    const auto branch=sst_v33_source_branches(
+                        k(row),omega(row),strain_rate(row),f2,wall_g,controls.density,
+                        controls.a1,controls.beta_star,controls.sst_production_limiter,
+                        controls.k_min,controls.omega_min);
+                    const auto actual=sst_cell_sources(
+                        k(row),omega(row),strain_rate(row),f1,f2,cross[row],
+                        controls,wall_g);
+                    if(std::abs(actual.sk-branch.limited_production)>
+                            1e-11*std::max(1.,std::abs(actual.sk)))
+                        throw std::runtime_error("V81 source audit mismatch");
+                    for (const auto& item : {
+                        std::pair<const char*,SSTCellDiscreteBudget>{"k",budgets.first},
+                        {"omega",budgets.second}}) {
+                        const auto& b=item.second;
+                        std::cerr<<std::scientific<<std::setprecision(15)
+                            <<"SST_PROGRESS_ROW_V81 iteration="<<iter
+                            <<" cell="<<row<<" field="<<item.first
+                            <<" k="<<k(row)<<" omega="<<omega(row)
+                            <<" y="<<wall_distance(row)<<" strain="<<strain_rate(row)
+                            <<" nut="<<actual.nut
+                            <<" limited="<<(branch.production_limited?1:0)
+                            <<" omega_viscosity_branch="<<(branch.omega_viscosity_branch?1:0)
+                            <<" wall_g="<<(branch.wall_production?1:0)
+                            <<" owner_constraint="<<(b.owner_constraint_row?1:0)
+                            <<" convection="<<b.convection
+                            <<" diffusion="<<b.diffusion
+                            <<" production="<<b.physical_production
+                            <<" destruction="<<b.physical_destruction
+                            <<" cross="<<b.physical_cross_diffusion
+                            <<" residual="<<b.full_residual
+                            <<" closure="<<b.closure_error
+                            <<" source_identity="<<b.nonlinear_source_identity_error
+                            <<" wall_orth_flux="<<b.wall_orthogonal_flux
+                            <<" wall_molecular_flux="<<b.wall_molecular_diffusion_flux
+                            <<" local_relative="<<b.relative_local
+                            <<" committed=0 qualified=0\n";
+                    }
+                }
+            }
         }
         // V18: distinguish the exact owner equation from residuals of the
         // unconstrained PDE. The target is refreshed on the SAME trial k/w
@@ -2956,7 +3186,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         // continued repeat will reassemble the same operator indefinitely.
         // Exit early as UNCONVERGED; the carrier transaction will roll back.
         if ((controls.sst_nonlinear_line_search || controls.sst_anderson_m2_v20 ||
-             controls.sst_jfnk_v22_experimental) &&
+             controls.sst_jfnk_v22_experimental ||
+             controls.sst_implicit_spatial_rescue_v82_experimental) &&
             consecutive_line_search_stalls >= 8 && !inner.converged) {
             if (std::getenv("CFDX_SST_DIAGNOSTICS"))
                 std::cerr << "SST_LINESEARCH_STAGNATED iteration=" << iter

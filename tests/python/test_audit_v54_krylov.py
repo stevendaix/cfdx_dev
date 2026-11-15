@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Fail-closed mutation coverage for V54 physical/Krylov fidelity evidence."""
 from __future__ import annotations
 import sys
