@@ -425,6 +425,9 @@ def make_case_setup(
     sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
+    sst_transport_tolerance: float = 1.0e-8,
+    sst_max_k_floor_events: int = 0,
+    sst_simple_relaxation: float = 1.0,
     openfoam_kqr_wall_v16: bool = False,
     *,
     sst_provisional: bool = False,
@@ -468,6 +471,12 @@ def make_case_setup(
         raise ValueError("invalid pressure tolerance")
     if not isinstance(sst_inner_iterations, int) or sst_inner_iterations <= 0:
         raise ValueError("SST inner iterations must be a positive integer")
+    if not (math.isfinite(sst_transport_tolerance) and sst_transport_tolerance > 0):
+        raise ValueError("SST transport tolerance must be finite and positive")
+    if not isinstance(sst_max_k_floor_events, int) or sst_max_k_floor_events < 0:
+        raise ValueError("SST max k-floor events must be a non-negative integer")
+    if not (math.isfinite(sst_simple_relaxation) and 0.0 < sst_simple_relaxation <= 1.0):
+        raise ValueError("SST simple relaxation must be in (0, 1]")
     if v19_full_pressure_flux_step and not (
         v18_sparse_flux_pressure_jacobian or v18_full_flux_pressure_oracle
     ):
@@ -491,8 +500,6 @@ def make_case_setup(
         raise ValueError("SST scalar linear relaxation must be finite and in (0,1]")
     if v19_omega_corner_equal_faces and not v18_omega_owner_cells:
         raise ValueError("V19 corner equal-faces requires V18 owner omega constraints")
-    if v18_omega_owner_cells and not v17_active_wall_operator:
-        raise ValueError("V18 omega owner cells require V17 active wall operator")
     if v17_active_wall_operator and not (
         openfoam_kqr_wall_v16 and sst_molecular_wall_diffusion
     ):
@@ -602,6 +609,15 @@ def make_case_setup(
     setup.numerics.under_relaxation_pressure = alpha_p
     setup.numerics.raw_settings["sst_transport_max_iterations"] = str(
         sst_inner_iterations
+    )
+    setup.numerics.raw_settings["sst_transport_tolerance"] = str(
+        sst_transport_tolerance
+    )
+    setup.numerics.raw_settings["sst_max_k_floor_events"] = str(
+        sst_max_k_floor_events
+    )
+    setup.numerics.raw_settings["sst_simple_relaxation"] = str(
+        sst_simple_relaxation
     )
     setup.numerics.raw_settings["sst_scale_aware_convergence"] = str(
         bool(sst_relative_gate)
@@ -765,6 +781,9 @@ def write_case(
     sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
+    sst_transport_tolerance: float = 1.0e-8,
+    sst_max_k_floor_events: int = 0,
+    sst_simple_relaxation: float = 1.0,
     openfoam_kqr_wall_v16: bool = False,
     sst_provisional: bool = False,
     sst_picard_damping: float = 1.0,
@@ -810,6 +829,9 @@ def write_case(
         sst_omega_first,
         sst_wall_factor,
         sst_inner_iterations,
+        sst_transport_tolerance=sst_transport_tolerance,
+        sst_max_k_floor_events=sst_max_k_floor_events,
+        sst_simple_relaxation=sst_simple_relaxation,
         openfoam_kqr_wall_v16=openfoam_kqr_wall_v16,
         sst_provisional=sst_provisional,
         sst_picard_damping=sst_picard_damping,
@@ -993,6 +1015,24 @@ def main() -> int:
         help="Inner SST Picard limit (default 800); diagnostic A/B only.",
     )
     parser.add_argument(
+        "--sst-transport-tolerance",
+        type=float,
+        default=1.0e-8,
+        help="Inner SST relative convergence tolerance (default 1e-8).",
+    )
+    parser.add_argument(
+        "--sst-max-k-floor-events",
+        type=int,
+        default=0,
+        help="Max k-floor activations per SST transport before provisional rejection.",
+    )
+    parser.add_argument(
+        "--sst-simple-relaxation",
+        type=float,
+        default=1.0,
+        help="OpenFOAM-style SIMPLE outer under-relaxation for k/omega (default 1.0).",
+    )
+    parser.add_argument(
         "--sst-newton-sink",
         action="store_true",
         help="Experimental Newton-linearized omega destruction (default off).",
@@ -1136,6 +1176,9 @@ def main() -> int:
             sst_omega_first=args.sst_omega_first,
             sst_wall_factor=args.sst_wall_factor,
             sst_inner_iterations=args.sst_inner_iterations,
+            sst_transport_tolerance=args.sst_transport_tolerance,
+            sst_max_k_floor_events=args.sst_max_k_floor_events,
+            sst_simple_relaxation=args.sst_simple_relaxation,
             openfoam_kqr_wall_v16=args.openfoam_kqr_wall_v16,
             sst_provisional=args.sst_provisional,
             sst_picard_damping=args.sst_picard_damping,

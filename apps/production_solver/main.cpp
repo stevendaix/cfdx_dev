@@ -2037,13 +2037,49 @@ int main(int argc, char** argv)
                     throw std::invalid_argument(
                         "SST transport budget must be a decimal integer in [10, 2000]");
                 }
-                if (end != declared.size() || parsed < 10 || parsed > 2000)
+                if (end != declared.size() || parsed < 1 || parsed > 2000)
                     throw std::invalid_argument(
-                        "SST transport budget must be a decimal integer in [10, 2000]");
+                        "SST transport budget must be a decimal integer in [1, 2000]");
                 sst_inner_budget = static_cast<std::size_t>(parsed);
             }
             experimental_sst_runtime.max_transport_iterations = sst_inner_budget;
             experimental_sst_runtime.transport_tolerance = 1e-8;
+            {
+                const auto tol_it = case_setup.numerics.raw_settings.find(
+                    "sst_transport_tolerance");
+                if (tol_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t parsed = 0;
+                    double tol = 0.0;
+                    try { tol = std::stod(tol_it->second, &parsed); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_transport_tolerance");
+                    }
+                    if (parsed != tol_it->second.size() ||
+                        !std::isfinite(tol) || tol <= 0.0)
+                        throw std::invalid_argument(
+                            "sst_transport_tolerance must be finite and positive");
+                    experimental_sst_runtime.transport_tolerance = tol;
+                }
+            }
+            {
+                const auto kf_it = case_setup.numerics.raw_settings.find(
+                    "sst_max_k_floor_events");
+                if (kf_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t end = 0;
+                    unsigned long parsed = 0;
+                    try { parsed = std::stoul(kf_it->second, &end, 10); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_max_k_floor_events");
+                    }
+                    if (end != kf_it->second.size() || parsed > 100000)
+                        throw std::invalid_argument(
+                            "sst_max_k_floor_events must be a non-negative integer");
+                    sst_controls.sst_max_k_floor_events =
+                        static_cast<std::size_t>(parsed);
+                    experimental_sst_runtime.transport.sst_max_k_floor_events =
+                        sst_controls.sst_max_k_floor_events;
+                }
+            }
             const auto provisional = case_setup.numerics.raw_settings.find(
                 "sst_outer_provisional");
             if (provisional != case_setup.numerics.raw_settings.end()) {
@@ -2261,9 +2297,6 @@ int main(int argc, char** argv)
                     throw std::invalid_argument(
                         "v18_omega_wall_owner_constraints_experimental must be enabled or disabled");
                 if (owner_wall_v18->second=="enabled") {
-                    if (!experimental_sst_runtime.active_openfoam_wall_operator_v17)
-                        throw std::invalid_argument(
-                            "V18 owner omega constraints require V17 atomic wall operator");
                     experimental_sst_runtime.omega_wall_owner_constraints_v18=true;
                     std::cout << "V18 experimental omega OWNER constraint active; "
                                  "area-weighted corner targets, equation rows and "

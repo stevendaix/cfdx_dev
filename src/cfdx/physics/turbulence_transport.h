@@ -65,7 +65,9 @@ struct TurbulenceTransportControls {
     // Opt-in block Gauss-Seidel coupling: omega is solved before k, and the
     // k equation is reassembled with the updated omega (F1/F2 remain frozen
     // for the current inner iteration, as in the existing Picard scheme).
-    bool sst_sequential_omega_first = false;
+    // Default true: Gauss-Seidel omega-first ordering matches OpenFOAM
+    // kOmegaSST::correct() which solves omega before k.
+    bool sst_sequential_omega_first = true;
     // Explicit wall-value policy; this is NOT a complete OpenFOAM wall function.
     // 6: original face Dirichlet approximation; 60: Menter first-cell
     // spacing estimate applied as a face Dirichlet (requires qualification).

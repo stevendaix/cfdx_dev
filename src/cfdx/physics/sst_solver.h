@@ -842,11 +842,13 @@ inline TurbulenceTransportResult solve_sst_transport(
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
             nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k,
-            nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr,
+            1.0,controls.sst_linear_relaxation);
         auto eqw=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
             omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
-            nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr,
+            1.0,controls.sst_linear_relaxation);
         if (controls.sst_weighted_wall_matrix_v29_experimental)
             sst_apply_omega_owner_constraints_v29(eqw,wall_production);
         else
@@ -900,7 +902,8 @@ inline TurbulenceTransportResult solve_sst_transport(
             eqk=assemble_scalar_equation(
                 mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
                 nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
-                nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr);
+                nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr,
+                1.0,controls.sst_linear_relaxation);
             const ScalarSolveControls updated_k_sc{
                 2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
             rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
@@ -1056,11 +1059,13 @@ inline std::pair<ScalarEquation,ScalarEquation> sst_reassembled_equations_v22(
     auto eqk=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
         nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
-        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr,
+        1.0,controls.sst_linear_relaxation);
     auto eqw=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
         omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega,
-        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr,
+        1.0,controls.sst_linear_relaxation);
     if (controls.sst_weighted_wall_matrix_v29_experimental)
         sst_apply_omega_owner_constraints_v29(eqw,wall_production);
     else

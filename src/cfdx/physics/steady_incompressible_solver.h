@@ -7152,7 +7152,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // A Picard step uses the previous accepted wall state to assemble
         // momentum, then post-SST residuals use the final candidate wall state.
         std::optional<SSTWallOperatorV17> active_wall_operator_v17;
-        if (controls.sst_runtime && controls.sst_runtime->active_openfoam_wall_operator_v17) {
+        const bool need_wall_operator =
+            controls.sst_runtime &&
+            (controls.sst_runtime->active_openfoam_wall_operator_v17 ||
+             controls.sst_runtime->omega_wall_owner_constraints_v18);
+        if (need_wall_operator) {
             std::map<std::string,std::array<double,3>> wall_velocity;
             for (const auto& [name,bc] : velocity_bcs)
                 if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
@@ -7166,7 +7170,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 ref,controls.sst_runtime->transport,
                 controls.sst_runtime->omega_wall_owner_constraints_v18);
         }
-        const auto* active_wall_face_mu_v17 = active_wall_operator_v17
+        const auto* active_wall_face_mu_v17 =
+            (controls.sst_runtime && controls.sst_runtime->active_openfoam_wall_operator_v17)
             ? &active_wall_operator_v17->momentum_face_mu : nullptr;
         Field<double, Location::CELL> transpose_force;
         if (include_transpose_stress) {
@@ -10931,7 +10936,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " target=" << controls.sst_runtime->transport_tolerance
                           << "\n";
             SSTWallRefreshV17 wall_refresh_v17;
-            if (controls.sst_runtime->active_openfoam_wall_operator_v17) {
+            if (need_wall_operator) {
                 wall_refresh_v17=[&](const auto& candidate_k,const auto& candidate_omega,
                                      ScalarBoundaryFaceValues& omega_faces,
                                      SSTWallProductionV17& production) {
@@ -10973,7 +10978,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime->transport_tolerance,
                 &controls.sst_runtime->omega_face_values,
                 controls.sst_runtime->allow_bounded_provisional_transport,
-                controls.sst_runtime->active_openfoam_wall_operator_v17
+                need_wall_operator
                     ? &wall_refresh_v17 : nullptr);
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
@@ -10988,7 +10993,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
-            if (controls.sst_runtime->active_openfoam_wall_operator_v17) {
+            if (need_wall_operator) {
                 const auto ref=prepare_openfoam_wall_triplet_v15(
                     mesh,geometry,controls.sst_runtime->wall_omega_sst_patches,
                     U,*controls.sst_runtime->state,fixed_velocity_values,
