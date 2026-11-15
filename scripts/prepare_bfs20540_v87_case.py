@@ -52,9 +52,10 @@ def prepare(preimage, destination):
                     raise RuntimeError("Unexpected modified metadata: " + key)
 
             def verify(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    if name not in b or not np.array_equal(obj[...], b[name][...]):
-                        raise RuntimeError("Unexpected changed physical data: " + name)
+                if isinstance(obj, h5py.Dataset) and (
+                    name not in b or not np.array_equal(obj[...], b[name][...])
+                ):
+                    raise RuntimeError("Unexpected changed physical data: " + name)
 
             a.visititems(verify)
     except BaseException:
