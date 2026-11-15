@@ -42,6 +42,8 @@ struct PhysicalResidualV51 {
     std::vector<double> signed_raw; // [momentum x3, divergence, SST x2]
     std::vector<double> normalized; // separate, NOT differenced by J*v
     std::vector<double> face_flux;
+    // V65 read-only coefficients of the SAME candidate-owned RC fixed point.
+    std::vector<double> inverse_momentum_diagonal; // 3*N; no history data
     std::vector<double> eddy_viscosity;
     double flux_fixed_point_defect=std::numeric_limits<double>::infinity();
     double merit=std::numeric_limits<double>::infinity();
@@ -82,6 +84,13 @@ inline void validate_physical_result_v51(const PhysicalCandidateV51& x,
         if (!std::isfinite(v)) throw std::runtime_error("V51 nonfinite scaled residual");
     for (double v:r.face_flux)
         if (!std::isfinite(v)) throw std::runtime_error("V51 nonfinite face flux");
+    if (!r.inverse_momentum_diagonal.empty()) {
+        if (r.inverse_momentum_diagonal.size()!=3*n)
+            throw std::runtime_error("V65 incomplete candidate-owned rAU");
+        for (double v:r.inverse_momentum_diagonal)
+            if (!(v>0.) || !std::isfinite(v))
+                throw std::runtime_error("V65 nonpositive/nonfinite candidate-owned rAU");
+    }
     for (double v:r.eddy_viscosity)
         if (!(v>=0.0) || !std::isfinite(v))
             throw std::runtime_error("V51 invalid candidate turbulent viscosity");
@@ -166,7 +175,9 @@ std::vector<double> physical_directional_jv_v51(
 inline void verify_candidate_replay_v51(const PhysicalResidualV51& a,
                                         const PhysicalResidualV51& b) {
     if (a.signed_raw!=b.signed_raw || a.normalized!=b.normalized ||
-        a.face_flux!=b.face_flux || a.eddy_viscosity!=b.eddy_viscosity ||
+        a.face_flux!=b.face_flux ||
+        a.inverse_momentum_diagonal!=b.inverse_momentum_diagonal ||
+        a.eddy_viscosity!=b.eddy_viscosity ||
         a.flux_fixed_point_defect!=b.flux_fixed_point_defect ||
         a.flux_closed!=b.flux_closed || a.merit!=b.merit ||
         a.stages_v57.has_value()!=b.stages_v57.has_value() ||

@@ -8,8 +8,10 @@
 #include "cfdx/physics/coupled_newton_krylov.h"
 #include "cfdx/physics/physical_six_candidate_v51.h"
 #include "cfdx/physics/frozen_physical_jacobian_v54.h"
+#include "cfdx/physics/sparse_local_physical_jacobian_v63.h"
 #include "cfdx/physics/hybrid_physical_jv_v57.h"
 #include "cfdx/physics/physical_remainder_audit_v60.h"
+#include "cfdx/physics/physical_remainder_rates_v61.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -32,6 +34,11 @@ struct GlobalPhysicalNewtonControlsV52 {
     // V54: bounded explicit 6N Amat, separate from the V53 Schur Pmat.
     // Never used in ordinary production (2 evaluations per Jacobian column).
     bool v54_frozen_jacobian=false;
+    // V61: opt-in two-scale Richardson matrix on genuinely smooth columns.
+    // A kink/invalid column vetoes Newton; all Krylov fidelity gates remain.
+    bool v61_richardson_frozen=false;
+    bool v62_common_active_set_anchor=false; // same anchor for every column; forensic only
+    bool v63_sparse_local_jacobian=false; // colored Fphys CSR, NOT analytically qualified
     // V57 forensic only: verify TRUE Krylov residual and action additivity
     // at every Arnoldi update, rather than trusting the final Hessenberg norm.
     bool v57_true_krylov_each_step=false;
@@ -42,6 +49,7 @@ struct GlobalPhysicalNewtonControlsV52 {
     bool v59_frozen_sou_active_set=false;
     // Read-only audit on two REAL preconditioned Krylov vectors, OFF by default.
     bool v60_remainder_audit=false;
+    bool v61_multirate_remainder_audit=false;  // 18 fresh Fphys probes; off by default
     double v57_convective_fidelity_tolerance=1e-3;
     double v57_krylov_consistency_tolerance=1e-6; // algebraic, not CFD tolerance
 
@@ -92,11 +100,26 @@ struct GlobalPhysicalNewtonStepV52 {
     PhysicalRemainderAdditivityV60 v60_remainder;
     bool v60_remainder_consistent=false;
     bool v60_full_additive=false;
+    PhysicalRemainderRatesV61 v61_multirate;
+    bool v61_multirate_ok=false;
     bool sst_two_by_two_ready=false;
     bool v53_global_block_ready=false;
     std::size_t v53_probe_evaluations=0;
     bool v54_frozen_jacobian_ready=false;
+    bool v63_sparse_ready=false;
+    bool v63_sparse_trusted=false;
+    std::size_t v63_colors=0,v63_nonzeros=0,v63_evaluations=0,v63_rejected_columns=0;
+    double v63_stencil_leak=0.,v63_max_sided=0.;
     bool v54_krylov_fidelity_ok=true;
+    bool v61_column_gate_ok=true;
+    bool v62_anchor_within_guard=true;
+    double v62_anchor_shift=0.;
+    double v62_anchor_physical_displacement=0.;
+    std::size_t v61_richardson_columns=0;
+    std::size_t v61_rejected_columns=0;
+    std::size_t v61_worst_column=0;
+    double v61_maximum_sided=0.;
+    double v61_maximum_halving=0.;
     std::size_t v54_jacobian_evaluations=0;
     std::size_t v54_basis_audits=0;
     double v54_maximum_jv_fidelity=0.0;
@@ -133,6 +156,15 @@ inline void validate_global_physical_newton_v52(
         !std::isfinite(c.v54_fidelity_tolerance) ||
         c.v54_fidelity_tolerance<=0.0 || c.v54_fidelity_tolerance>0.5 ||
         (c.v54_frozen_jacobian && x.fields.size()>FrozenPhysicalJacobianV54::max_unknowns) ||
+        (c.v61_richardson_frozen &&
+         (!c.v54_frozen_jacobian || !c.v57_true_krylov_each_step)) ||
+        (c.v62_common_active_set_anchor &&
+         !(c.v57_true_krylov_each_step &&
+           ((c.v61_richardson_frozen && c.v54_frozen_jacobian) ||
+            (c.v63_sparse_local_jacobian && !c.v54_frozen_jacobian)))) ||
+        (c.v63_sparse_local_jacobian &&
+         (c.v54_frozen_jacobian || c.v57_hybrid_convective_jv ||
+          !c.v57_true_krylov_each_step || !c.v53_extended_krylov)) ||
         !std::isfinite(c.linear_relative_tolerance) ||
         !(c.linear_relative_tolerance>0.0 && c.linear_relative_tolerance<1.0) ||
         !std::isfinite(c.sufficient_decrease) ||
@@ -153,7 +185,8 @@ inline void validate_global_physical_newton_v52(
          (!c.v57_hybrid_convective_jv || !c.v57_true_krylov_each_step ||
           c.v58_symmetric_sou_ties)) ||
         (c.v60_remainder_audit &&
-         (!c.v57_hybrid_convective_jv || !c.v57_true_krylov_each_step)))
+         (!c.v57_hybrid_convective_jv || !c.v57_true_krylov_each_step)) ||
+        (c.v61_multirate_remainder_audit && !c.v60_remainder_audit))
         throw std::invalid_argument("V52 invalid JFNK controls or pressure gauge");
 }
 
@@ -323,7 +356,8 @@ GlobalPhysicalNewtonResultV52 global_physical_newton_v52(
     const GlobalPhysicalRightPreconditionerV52& right_preconditioner={},
     const GlobalPhysicalNativeSchurV52& native_schur={},
     const GlobalPhysicalPmatBuilderV53& v53_builder={},
-    const GlobalPhysicalConvectiveTangentV57& v57_convective={}) {
+    const GlobalPhysicalConvectiveTangentV57& v57_convective={},
+    const SparseLocalPhysicalJacobianV63::Graph& v63_face_graph={}) {
     validate_global_physical_newton_v52(controls,initial);
     if((controls.v53_extended_krylov ||
         (controls.v53_central_difference && !controls.v57_hybrid_convective_jv)) &&
@@ -484,19 +518,75 @@ GlobalPhysicalNewtonResultV52 global_physical_newton_v52(
         // independent of Pmat and of the previous direction history. Only
         // bounded small cases may build this expensive forensic reference.
         std::unique_ptr<FrozenPhysicalJacobianV54> v54_amatrix;
+        std::unique_ptr<SparseLocalPhysicalJacobianV63> v63_amatrix;
+        if(controls.v63_sparse_local_jacobian) {
+            v63_amatrix=std::make_unique<SparseLocalPhysicalJacobianV63>(
+                current,physical_base,state_scale,row_scale,v63_face_graph,
+                2u,controls.difference_step,controls.pin_pressure,
+                controls.reference_cell,controls.reference_pressure,
+                controls.v57_krylov_consistency_tolerance,evaluate,
+                controls.k_min,controls.omega_min,
+                controls.v62_common_active_set_anchor,
+                controls.v54_fidelity_tolerance);
+            const auto& s=v63_amatrix->statistics();
+            record.v63_sparse_ready=true;
+            record.v63_sparse_trusted=s.trusted;
+            record.v63_colors=s.colors;
+            record.v63_nonzeros=s.nonzeros;
+            record.v63_evaluations=s.physical_evaluations;
+            record.v63_rejected_columns=s.rejected_columns;
+            record.v63_stencil_leak=s.maximum_outside_stencil;
+            record.v63_max_sided=s.maximum_sided;
+            if(controls.v62_common_active_set_anchor) {
+                record.v62_anchor_shift=s.anchor_normalized_distance;
+                record.v62_anchor_physical_displacement=s.anchor_displacement;
+                record.v62_anchor_within_guard=
+                    s.anchor_displacement<=controls.v54_fidelity_tolerance;
+            }
+            record.candidate_evaluations+=s.physical_evaluations;
+            if(!s.trusted) {
+                record.reason="V63 sparse physical Jacobian: nonlocal or nonsmooth dependencies";
+                answer.steps.push_back(std::move(record));
+                break; // do not run Arnoldi on incomplete/discontinuous Amat
+            }
+        }
         if(controls.v54_frozen_jacobian) {
             v54_amatrix=std::make_unique<FrozenPhysicalJacobianV54>(
                 current,physical_base,state_scale,row_scale,
                 controls.pin_pressure,controls.reference_cell,
                 controls.reference_pressure,controls.difference_step,
-                evaluate,controls.k_min,controls.omega_min);
+                evaluate,controls.k_min,controls.omega_min,
+                controls.v61_richardson_frozen,controls.v54_fidelity_tolerance,
+                controls.v62_common_active_set_anchor);
+            if(controls.v61_richardson_frozen) {
+                const auto& stats=v54_amatrix->statistics();
+                record.v61_column_gate_ok=stats.v61_columns_trusted;
+                record.v61_richardson_columns=stats.v61_richardson_columns;
+                record.v61_rejected_columns=stats.v61_rejected_columns;
+                record.v61_worst_column=stats.v61_worst_column;
+                record.v61_maximum_sided=stats.v61_maximum_sided_disagreement;
+                record.v61_maximum_halving=stats.v61_maximum_halving_disagreement;
+                record.v62_anchor_within_guard=stats.v62_anchor_within_guard;
+                record.v62_anchor_shift=stats.v62_anchor_normalized_distance;
+                record.v62_anchor_physical_displacement=
+                    stats.v62_anchor_physical_displacement;
+            }
             record.v54_frozen_jacobian_ready=true;
             record.v54_jacobian_evaluations=v54_amatrix->statistics().evaluations;
             record.v54_centered_columns=v54_amatrix->statistics().centered_columns;
             record.v54_one_sided_columns=v54_amatrix->statistics().one_sided_columns;
             record.candidate_evaluations+=record.v54_jacobian_evaluations;
+            if(controls.v61_richardson_frozen && !record.v61_column_gate_ok) {
+                record.reason=controls.v62_common_active_set_anchor &&
+                    !record.v62_anchor_within_guard
+                    ? "V62 active-set anchor changes physical residual beyond unchanged guard"
+                    : "V61/V62 frozen Jacobian has ambiguous or unresolved physical columns";
+                answer.steps.push_back(std::move(record));
+                break;  // A pretty linear Arnoldi residual cannot override this.
+            }
         }
         const auto apply=[&](const std::vector<double>& step) {
+            if(v63_amatrix)return v63_amatrix->apply(step);
             if(v54_amatrix)return v54_amatrix->apply(step);
             const double norm=coupled_newton_norm2(step);
             if(norm==0.0) return std::vector<double>(size,0.0);
@@ -570,8 +660,34 @@ GlobalPhysicalNewtonResultV52 global_physical_newton_v52(
         // independent finite differences Fphys(X+h*z) at h and h/2. Thus
         // freezing Amat cannot silently hide its inaccuracy to the nonlinear F.
         const std::function<bool(const std::vector<double>&)> basis_audit=
-            v54_amatrix ? std::function<bool(const std::vector<double>&)>(
+            (v54_amatrix || v63_amatrix) ?
+            std::function<bool(const std::vector<double>&)>(
                 [&](const std::vector<double>& v) {
+                    if(v63_amatrix) {
+                        const auto errors=v63_amatrix->audit_direction(v,evaluate);
+                        record.candidate_evaluations+=errors.evaluations;
+                        ++record.v54_basis_audits;
+                        record.v54_maximum_jv_fidelity=std::max(
+                            record.v54_maximum_jv_fidelity,errors.fidelity);
+                        record.v54_maximum_halving_discrepancy=std::max(
+                            record.v54_maximum_halving_discrepancy,errors.halving);
+                        record.v54_maximum_sided_nonsmoothness=std::max(
+                            record.v54_maximum_sided_nonsmoothness,errors.sided);
+                        bool ok=errors.fidelity<=controls.v54_fidelity_tolerance &&
+                            errors.halving<=controls.v54_fidelity_tolerance &&
+                            errors.sided<=controls.v54_fidelity_tolerance;
+                        for(std::size_t block=0;block<6;++block) {
+                            record.v54_block_fidelity[block]=std::max(
+                                record.v54_block_fidelity[block],errors.block_fidelity[block]);
+                            record.v54_block_sided[block]=std::max(
+                                record.v54_block_sided[block],errors.block_sided[block]);
+                            // A good whole-vector error does not excuse a bad
+                            // SST/pressure/momentum block (same existing gate).
+                            ok &=errors.block_fidelity[block]<=controls.v54_fidelity_tolerance;
+                        }
+                        record.v54_krylov_fidelity_ok &=ok;
+                        return ok || controls.v57_true_krylov_each_step;
+                    }
                     const auto errors=v54_amatrix->audit_direction(v,evaluate);
                     ++record.v54_basis_audits;
                     record.v54_maximum_jv_fidelity=std::max(
@@ -658,8 +774,24 @@ GlobalPhysicalNewtonResultV52 global_physical_newton_v52(
                 record.v60_full_additive=record.v60_remainder_consistent &&
                     audit.rhie_chow_flux<=controls.v57_krylov_consistency_tolerance &&
                     audit.convection<=controls.v57_krylov_consistency_tolerance;
+                if(controls.v61_multirate_remainder_audit) {
+                    // Reuse the already-computed coarse evidence in V60 in
+                    // the certificate; the additional V61 probes are deliberately
+                    // independent. Fail if ANY scale is non-additive.
+                    record.v61_multirate=audit_physical_remainder_rates_v61(
+                        current,v,w,h,evaluate,
+                        controls.v57_krylov_consistency_tolerance,
+                        controls.k_min,controls.omega_min);
+                    record.candidate_evaluations+=record.v61_multirate.evaluations;
+                    record.v61_multirate_ok=record.v61_multirate.all_scales_additive;
+                }
             }
             // A missing second basis is NOT a certificate of additivity.
+        }
+        if(controls.v61_multirate_remainder_audit && !record.v61_multirate_ok) {
+            record.reason="V61 three-scale freshly reassembled momentum/RC/SST additivity failed";
+            answer.steps.push_back(std::move(record));
+            break;
         }
         if(controls.v60_remainder_audit && !record.v60_full_additive) {
             record.reason="V60 freshly reassembled blocks/RC/convection fail Krylov additivity";

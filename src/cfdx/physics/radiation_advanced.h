@@ -151,8 +151,6 @@ inline double hemispherical_irradiation(
     for (std::size_t m = 0; m < directions.size(); ++m) {
         const auto& d = directions[m];
         const double mu = (d.dx*normal[0] + d.dy*normal[1] + d.dz*normal[2]) / nn;
-        // G_out is the irradiation incident on the wall from the fluid:
-        // with an outward normal, these ordinates satisfy d.n > 0.
         if (mu > 0.0) {
             if (!std::isfinite(intensities[m]) || intensities[m] < 0.0)
                 throw std::invalid_argument("wall-directed DOM intensity must be finite and non-negative");
