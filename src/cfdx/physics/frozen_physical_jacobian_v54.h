@@ -8,6 +8,7 @@
 // is audited independently and can refuse the Newton direction.
 #include "cfdx/physics/physical_six_candidate_v51.h"
 #include "cfdx/physics/convective_face_tangent_v55.h"
+#include "cfdx/physics/generalized_anchor_v62.h"
 #include "cfdx/physics/coupled_newton_krylov.h"
 #include <algorithm>
 #include <array>
@@ -34,6 +35,22 @@ struct FrozenPhysicalJacobianStatsV54 {
     std::size_t maximum_flux_sign_flips=0;
     std::size_t maximum_near_zero_flux_crossings=0;
     double maximum_flux_sided_asymmetry=0.;
+    // V61: strict optional multi-rate differentiation. It is neither a
+    // smoothing of Fphys nor permission to accept a nonsmooth Newton step.
+    bool v61_richardson_requested=false;
+    bool v61_columns_trusted=true;
+    std::size_t v61_richardson_columns=0;
+    std::size_t v61_rejected_columns=0;
+    std::size_t v61_worst_column=0;
+    double v61_maximum_sided_disagreement=0.;
+    double v61_maximum_halving_disagreement=0.;
+    // V62: no column-specific active-set choices. All 6N columns are sampled
+    // at ONE nearby physical state, while the accepted Fphys remains at x.
+    bool v62_anchor_requested=false;
+    bool v62_anchor_within_guard=true;
+    std::size_t v62_anchor_attempts=0;
+    double v62_anchor_normalized_distance=0.;
+    double v62_anchor_physical_displacement=0.;
 };
 
 struct FrozenDerivativeAuditV54 {
@@ -62,7 +79,10 @@ public:
                               bool pin_pressure,std::size_t pin_cell,
                               double reference_pressure,double relative_step,
                               Evaluate&& evaluate,double k_min=0.,
-                              double omega_min=0.)
+                              double omega_min=0.,
+                              bool richardson_v61=false,
+                              double v61_consistency_limit=0.05,
+                              bool generalized_anchor_v62=false)
       : n_(base.cells),size_(base.fields.size()),x_(base),
         state_scale_(state_scale),row_scale_(row_scale),
         pin_pressure_(pin_pressure),pin_cell_(pin_cell),
@@ -72,7 +92,11 @@ public:
         validate_physical_result_v51(base,physical_base);
         if(size_>max_unknowns || pin_cell_>=n_ ||
            !std::isfinite(relative_step) || relative_step<1e-9 ||
-           relative_step>1e-3 || !std::isfinite(pressure_reference_))
+           relative_step>1e-3 || !std::isfinite(pressure_reference_) ||
+           (generalized_anchor_v62 && !richardson_v61) ||
+           (richardson_v61 && (!std::isfinite(v61_consistency_limit) ||
+                               !(v61_consistency_limit>0.) ||
+                               v61_consistency_limit>0.5)))
             throw std::invalid_argument("V54 invalid bounded frozen Jacobian settings");
         for(std::size_t b=0;b<6;++b)
             if(!std::isfinite(state_scale[b]) || !(state_scale[b]>0.) ||
@@ -91,15 +115,61 @@ public:
         step_=radius;
         coefficients_.assign(size_*size_,0.0);
         stats_.rows=size_;
+        stats_.v61_richardson_requested=richardson_v61;
+        stats_.v62_anchor_requested=generalized_anchor_v62;
         stats_.stored_bytes=coefficients_.size()*sizeof(double);
-        std::vector<double> shifted=y_;
+        // The reference nonlinear residual and line-search ALWAYS use x_ / f0_.
+        // Only the *linearization point* is displaced for a consistent
+        // Bouligand active-set selection; no primal physics is altered.
+        std::vector<double> y_center=y_;
+        std::vector<double> f_center=f0_;
+        if(generalized_anchor_v62) {
+            bool admissible=false;
+            for(std::size_t attempt=0;attempt<12;++attempt) {
+                ++stats_.v62_anchor_attempts;
+                const double displacement=std::ldexp(32.*step_,
+                    -static_cast<int>(attempt));
+                anchor_v62_=generalized_anchor_candidate_v62(x_,state_scale_,
+                    pin_pressure_,pin_cell_,displacement);
+                try {validate_physical_candidate_v51(anchor_v62_,k_min_,omega_min_);}
+                catch(const std::invalid_argument&) {continue;}
+                const auto at_anchor=evaluate_physical_candidate_v51(
+                    anchor_v62_,evaluate,k_min_,omega_min_);
+                ++stats_.evaluations;
+                f_center=rows(anchor_v62_,at_anchor);
+                for(std::size_t i=0;i<size_;++i)
+                    y_center[i]=anchor_v62_.fields[i]/state_scale_[i/n_];
+                std::vector<double> delta(size_),physical_delta(size_);
+                for(std::size_t i=0;i<size_;++i) {
+                    delta[i]=y_center[i]-y_[i];
+                    physical_delta[i]=f_center[i]-f0_[i];
+                }
+                stats_.v62_anchor_normalized_distance=coupled_newton_norm2(delta);
+                stats_.v62_anchor_physical_displacement=
+                    coupled_newton_norm2(physical_delta)/
+                    std::max({coupled_newton_norm2(f0_),
+                              coupled_newton_norm2(f_center),1e-12});
+                // Same unchanged V54 physical fidelity tolerance. A large
+                // shift cannot silently be called a local generalized J.
+                admissible=true;
+                break;
+            }
+            if(!admissible)
+                throw std::runtime_error("V62 cannot construct admissible common active-set anchor");
+            stats_.v62_anchor_within_guard=std::isfinite(
+                stats_.v62_anchor_physical_displacement) &&
+                stats_.v62_anchor_physical_displacement<=v61_consistency_limit;
+            if(!stats_.v62_anchor_within_guard)
+                stats_.v61_columns_trusted=false;
+        }
+        std::vector<double> shifted=y_center;
         for(std::size_t column=0;column<size_;++column) {
             auto probe=[&](double increment, bool& valid) {
-                shifted[column]=y_[column]+increment;
-                PhysicalCandidateV51 candidate=x_;
+                shifted[column]=y_center[column]+increment;
+                PhysicalCandidateV51 candidate=generalized_anchor_v62?anchor_v62_:x_;
                 for(std::size_t i=0;i<size_;++i)
                     candidate.fields[i]=shifted[i]*state_scale_[i/n_];
-                shifted[column]=y_[column];
+                shifted[column]=y_center[column];
                 try {
                     validate_physical_candidate_v51(candidate,k_min_,omega_min_);
                 }catch(const std::invalid_argument&) {
@@ -119,14 +189,64 @@ public:
                 throw std::runtime_error("V54 neither finite difference probe admissible");
             if(positive && negative)++stats_.centered_columns;
             else ++stats_.one_sided_columns;
+            // V61: evaluate the SAME candidate-owned physical operator on a
+            // second scale. The quotient of averaged one-sided derivatives
+            // is NOT a valid generalized Jacobian at a multiple limiter tie.
+            // A column with incompatible lateral slopes or inconsistent
+            // h/h/2 derivatives is marked untrusted, never silently repaired.
+            std::vector<double> plus_half,minus_half;
+            bool half_positive=false,half_negative=false;
+            if(richardson_v61) {
+                plus_half=probe(0.5*step_,half_positive);
+                minus_half=probe(-0.5*step_,half_negative);
+                if(!positive || !negative || !half_positive || !half_negative)
+                    stats_.v61_columns_trusted=false;
+            }
+            long double lateral2=0.,norm2=0.,halving2=0.;
             for(std::size_t row=0;row<size_;++row) {
-                const double entry=positive && negative
+                const double historical=positive && negative
                     ?(plus[row]-minus[row])/(2.0*step_)
-                    :positive?(plus[row]-f0_[row])/step_
-                             :(f0_[row]-minus[row])/step_;
+                    :positive?(plus[row]-f_center[row])/step_
+                             :(f_center[row]-minus[row])/step_;
+                double entry=historical;
+                if(richardson_v61 && positive && negative &&
+                   half_positive && half_negative) {
+                    const double half=(plus_half[row]-minus_half[row])/step_;
+                    const double right=(plus_half[row]-f_center[row])/(0.5*step_);
+                    const double left=(f_center[row]-minus_half[row])/(0.5*step_);
+                    // For smooth F the central error is O(h^2). Extrapolate
+                    // to O(h^4), but only an independent physical direction
+                    // audit may certify the resulting frozen Amat.
+                    entry=(4.*half-historical)/3.;
+                    const long double lateral=static_cast<long double>(right)-left;
+                    const long double between=static_cast<long double>(half)-historical;
+                    const long double scale=std::max({std::abs(right),std::abs(left),
+                                              std::abs(half),std::abs(historical)});
+                    lateral2+=lateral*lateral;
+                    halving2+=between*between;
+                    norm2+=scale*scale;
+                }
                 if(!std::isfinite(entry))
-                    throw std::runtime_error("V54 nonfinite explicit Jacobian entry");
+                    throw std::runtime_error("V61 nonfinite explicit Jacobian entry");
                 coefficients_[row*size_+column]=entry;
+            }
+            if(richardson_v61) {
+                const double denom=std::max(std::sqrt(static_cast<double>(norm2)),1e-12);
+                const double sided=std::sqrt(static_cast<double>(lateral2))/denom;
+                const double halving=std::sqrt(static_cast<double>(halving2))/denom;
+                stats_.v61_maximum_sided_disagreement=std::max(
+                    stats_.v61_maximum_sided_disagreement,sided);
+                stats_.v61_maximum_halving_disagreement=std::max(
+                    stats_.v61_maximum_halving_disagreement,halving);
+                const bool trusted=positive && negative && half_positive &&
+                    half_negative && std::isfinite(sided) &&
+                    std::isfinite(halving) && sided<=v61_consistency_limit &&
+                    halving<=v61_consistency_limit;
+                if(!trusted) {
+                    ++stats_.v61_rejected_columns;
+                    stats_.v61_worst_column=column;
+                    stats_.v61_columns_trusted=false;
+                } else ++stats_.v61_richardson_columns;
             }
         }
     }
@@ -283,6 +403,10 @@ public:
 
     const FrozenPhysicalJacobianStatsV54& statistics() const noexcept {return stats_;}
     std::size_t size() const noexcept {return size_;}
+    // Read-only forensic anchor, never the state accepted by Newton.
+    const PhysicalCandidateV51& anchor_candidate_v62() const noexcept {
+        return stats_.v62_anchor_requested ? anchor_v62_ : x_;
+    }
 private:
     std::vector<double> rows(const PhysicalCandidateV51& candidate,
                              const PhysicalResidualV51& r) const {
@@ -296,7 +420,7 @@ private:
         return output;
     }
     std::size_t n_=0,size_=0;
-    PhysicalCandidateV51 x_;
+    PhysicalCandidateV51 x_,anchor_v62_;
     Scales state_scale_{},row_scale_{};
     bool pin_pressure_=false;
     std::size_t pin_cell_=0;

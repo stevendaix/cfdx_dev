@@ -27,7 +27,8 @@ inline GlobalNonlinearAcceptanceV13 evaluate_global_nonlinear_trial_v13(
     const GlobalNonlinearResidualV8& trial,
     const ConvergenceCriteria& physical_gates,
     double allowed_growth = 1.20,
-    double noise_guard_multiplier = 10.0)
+    double noise_guard_multiplier = 10.0,
+    bool allow_provisional_progress = false)
 {
     if (!(allowed_growth >= 1.0 && allowed_growth <= 2.0) ||
         !std::isfinite(allowed_growth) ||
@@ -41,7 +42,10 @@ inline GlobalNonlinearAcceptanceV13 evaluate_global_nonlinear_trial_v13(
     if (!previous.all_finite || !trial.all_finite ||
         !previous.sst || !trial.sst ||
         !previous.bounded || !trial.bounded ||
-        !previous.sst_transport_committed || !trial.sst_transport_committed ||
+        (!previous.sst_transport_committed &&
+         !(allow_provisional_progress && !previous.converged)) ||
+        (!trial.sst_transport_committed &&
+         !(allow_provisional_progress && !trial.converged)) ||
         previous.algorithm != trial.algorithm ||
         previous.schur != trial.schur)
         throw std::invalid_argument("V13 joint trial: missing comparable accepted U,p,SST state");

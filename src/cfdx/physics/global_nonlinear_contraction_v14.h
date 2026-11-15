@@ -27,8 +27,13 @@ public:
     }
 
     GlobalContractionTrialV14 evaluate(const GlobalNonlinearResidualV8& trial,
-                                      bool same_physical_operator=true) const {
-        validate(trial);
+                                      bool same_physical_operator=true,
+                                      bool allow_provisional_progress=false) const {
+        validate(trial,allow_provisional_progress);
+        if (has_last_ && !last_.sst_transport_committed &&
+            !allow_provisional_progress)
+            throw std::invalid_argument(
+                "V14 previously provisional SST is not a qualified baseline");
         GlobalContractionTrialV14 result;
         result.baseline=!has_last_ || !same_physical_operator;
         result.new_merit=trial.merit;
@@ -50,8 +55,10 @@ public:
     }
 
     void commit(const GlobalNonlinearResidualV8& accepted,
-                bool same_physical_operator=true) {
-        const auto trial=evaluate(accepted,same_physical_operator);
+                bool same_physical_operator=true,
+                bool allow_provisional_progress=false) {
+        const auto trial=evaluate(accepted,same_physical_operator,
+                                  allow_provisional_progress);
         if (!trial.allowed)
             throw std::logic_error("V14 rejected state cannot enter committed ledger");
         if (trial.baseline) contraction_steps_=0;
@@ -65,10 +72,15 @@ public:
     bool has_last() const noexcept { return has_last_; }
 
 private:
-    static void validate(const GlobalNonlinearResidualV8& state) {
+    static void validate(const GlobalNonlinearResidualV8& state,
+                         bool allow_provisional_progress) {
+        // The provisional path is a progress ledger, NOT a convergence
+        // certificate. In particular, never forge sst_transport_committed.
+        const bool unqualified_progress = allow_provisional_progress &&
+            !state.sst_transport_committed && !state.converged;
         if (!state.all_finite || !state.sst || !state.bounded ||
-            !state.sst_transport_committed || !std::isfinite(state.merit) ||
-            state.merit<0.)
+            !(state.sst_transport_committed || unqualified_progress) ||
+            !std::isfinite(state.merit) || state.merit<0.)
             throw std::invalid_argument("V14 expected a complete finite SST physical certificate");
     }
     double max_ratio_;
