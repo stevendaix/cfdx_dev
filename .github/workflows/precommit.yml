@@ -40,7 +40,10 @@ jobs:
           set -euo pipefail
           mapfile -t python_files < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" -- '*.py')
           if (("${#python_files[@]}" == 0)); then exit 0; fi
-          ruff check --fix --select SIM102,SIM117,SIM115,PLW1510,PLC0206 "${python_files[@]}" || true
+          # These transformations were reviewed as semantics-preserving:
+          # boolean conjunction, context-manager nesting, explicit check=False,
+          # and dictionary key/value iteration.
+          ruff check --fix --unsafe-fixes --select SIM102,SIM117,SIM115,PLW1510,PLC0206 "${python_files[@]}" || true
           if git diff --quiet; then
             echo "No selected Ruff changes"
             exit 0
