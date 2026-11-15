@@ -77,11 +77,10 @@ class V84Evidence(unittest.TestCase):
 
     def test_no_native_commit_no_plots(self):
         p = self.write("GLOBAL_PROGRESS_TRIAL_V84 iteration=1 accepted=1\n")
-        with tempfile.TemporaryDirectory() as d:
-            with self.assertRaises(RuntimeError):
-                M.make_figures(
-                    p, Path(d), Path("unused.h5"), Path(d) / "figures", "vtk"
-                )
+        with tempfile.TemporaryDirectory() as d, self.assertRaises(RuntimeError):
+            M.make_figures(
+                p, Path(d), Path("unused.h5"), Path(d) / "figures", "vtk"
+            )
 
 
 if __name__ == "__main__":
