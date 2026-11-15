@@ -15,23 +15,13 @@ def fake_log():
             ratio = 0.99 if w < 0.75 else 0.998
             growth = 1.1 if k < 1.0 else 2.0
             parts.append(
-                "BFS_BLOCK_COUNTERFACTUAL_V67 iteration=23 retry=%d beta=%.12e "
-                "k_fraction=%.12e omega_fraction=%.12e merit_ratio=%.12e "
-                "largest_growth=%.12e worst_block=5 joint_ok=%d monotone_ok=%d "
-                "original_guards_ok=%d armijo_reference=%.12e "
+                f"BFS_BLOCK_COUNTERFACTUAL_V67 iteration=23 retry={retry:d} beta={beta:.12e} "
+                f"k_fraction={k:.12e} omega_fraction={w:.12e} merit_ratio={ratio:.12e} "
+                f"largest_growth={growth:.12e} worst_block=5 "
+                f"joint_ok={int(growth <= 1.2):d} monotone_ok={int(ratio <= 0.995):d} "
+                f"original_guards_ok={int(growth <= 1.2 and ratio <= 0.995):d} "
+                f"armijo_reference={1.0 - 0.005 * beta:.12e} "
                 "counterfactual=1 transport_solved=0 committed=0 qualified=0"
-                % (
-                    retry,
-                    beta,
-                    k,
-                    w,
-                    ratio,
-                    growth,
-                    growth <= 1.2,
-                    ratio <= 0.995,
-                    growth <= 1.2 and ratio <= 0.995,
-                    1.0 - 0.005 * beta,
-                )
             )
     # Full-six counterfactual sequence from the same retry-zero full trial.
     for power in range(11):
