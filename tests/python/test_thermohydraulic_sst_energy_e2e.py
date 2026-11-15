@@ -82,11 +82,13 @@ def write_sst_thermal_case(
                 ]
                 if name == "inlet":
                     # This fixture isolates SST/thermal coupling, not a
-                    # pressure-driven channel-flow qualification. Keep the
-                    # inherited zero-gradient, zero-velocity inlet so the
-                    # isothermal buoyant case is a true hydrostatic equilibrium.
+                    # pressure-driven channel-flow qualification. Prescribe
+                    # the zero velocity explicitly; the production adapter
+                    # does not implement a zero-gradient velocity inlet.
                     # k and omega remain prescribed above to seed positive
                     # eddy viscosity for the turbulent-Prandtl A/B test.
+                    patch["value_type"] = "fixed"
+                    patch["velocity_vector"] = [0.0, 0.0, 0.0]
                     patch["turbulence_intensity"] = 0.05
                     patch["turbulence_length_scale"] = 0.1
         del case.attrs["case_setup_json"]
