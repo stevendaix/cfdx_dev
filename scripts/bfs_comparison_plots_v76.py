@@ -17,6 +17,7 @@ import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import itertools
 
 # Public TMR numerical rows; source URLs in V76 report.
 CF_EXP = np.array(
@@ -218,7 +219,7 @@ def load_tecplot(path, cols):
 
 def bzero(points, near=(3.0, 12.0)):
     p = points[(points[:, 0] >= near[0]) & (points[:, 0] <= near[1])]
-    for a, b in zip(p[:-1], p[1:]):
+    for a, b in itertools.pairwise(p):
         if a[1] < 0.0 and b[1] >= 0.0:
             return float(a[0] - a[1] * (b[0] - a[0]) / (b[1] - a[1]))
     return None

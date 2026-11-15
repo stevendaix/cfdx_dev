@@ -12,6 +12,7 @@ import json
 import math
 import re
 from pathlib import Path
+import itertools
 
 
 def fields(line: str) -> dict[str, str]:
@@ -56,7 +57,7 @@ def audit(text: str) -> dict:
         raise ValueError("missing or out-of-order committed V13 iteration")
     rows = [records[i] for i in sorted(records)]
     worsening = [
-        row["iteration"] for last, row in zip(rows, rows[1:]) if row["U"] > last["U"]
+        row["iteration"] for last, row in itertools.pairwise(rows) if row["U"] > last["U"]
     ]
     if any(row["qualified"] and not row["converged"] for row in rows):
         raise ValueError("inconsistent V13 qualification flags")

@@ -11,8 +11,8 @@ def stream(n=3):
                 f"BFS_PHASE_V10 iteration={i} phase=COUPLED_LINEAR_END status=0 true_relative=1e-12",
                 f"BFS_PHASE_V10 iteration={i} phase=SST_TRANSPORT_END converged=1 k_residual=1e-11 omega_residual=2e-11",
                 f"POST_SST_MOMENTUM iteration={i} relative_nut_change=0.02 old_nut_operator=0.2 refreshed_nut_operator=0.25",
-                f"GLOBAL_NONLINEAR_COMMITTED_V13 iteration={i} U={1 if i == 1 else 0.5 if i == 2 else 0.6} "
-                f"p_continuity=0.1 k=1e-11 omega=1e-11 merit=0.6 converged=0 qualified=0",
+                (f"GLOBAL_NONLINEAR_COMMITTED_V13 iteration={i} U={1 if i == 1 else 0.5 if i == 2 else 0.6} "
+                f"p_continuity=0.1 k=1e-11 omega=1e-11 merit=0.6 converged=0 qualified=0"),
             ]
         )
     return "\n".join(out)

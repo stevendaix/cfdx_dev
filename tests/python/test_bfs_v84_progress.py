@@ -30,7 +30,7 @@ class V84Evidence(unittest.TestCase):
 
     def test_accepted_native_only(self):
         p = self.write(COMMIT.format(iteration=2, merit="0.995", U="0.995"))
-        trials, records = M.scan_ledger(p)
+        _trials, records = M.scan_ledger(p)
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["iteration"], 2)
 

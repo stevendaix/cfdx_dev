@@ -28,7 +28,7 @@ def change_case(source, destination, iterations, molecular, newton, omega_first)
     if not 1 <= iterations <= 800:
         raise ValueError("diagnostic SST budget must be in [1,800]")
     with h5py.File(source, "r") as old, h5py.File(destination, "w") as new:
-        for key in old.keys():
+        for key in old:
             old.copy(key, new)
         for key, value in old.attrs.items():
             new.attrs[key] = value

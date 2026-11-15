@@ -18,6 +18,7 @@ import json
 import math
 import re
 from pathlib import Path
+import itertools
 
 SOURCE = "https://tmbwg.github.io/turbmodels/Backstep_validation/"
 STATIONS = (-4.0, 1.0, 4.0, 6.0, 10.0)
@@ -47,7 +48,7 @@ def read_nasa_cf(path: Path) -> list[dict]:
         if uncertainty <= 0:
             raise ComparisonError("invalid NASA Cf uncertainty")
         rows.append(dict(x_h=x, cf=cf, sigma=uncertainty))
-    if len(rows) < 10 or any(b["x_h"] <= a["x_h"] for a, b in zip(rows, rows[1:])):
+    if len(rows) < 10 or any(b["x_h"] <= a["x_h"] for a, b in itertools.pairwise(rows)):
         raise ComparisonError("NASA Cf file truncated or nonmonotone")
     return rows
 
@@ -113,12 +114,12 @@ def _interpolate(rows: list[dict], coordinate: str, value: str, at: float) -> fl
     ordered = sorted(rows, key=lambda r: float(r[coordinate]))
     if any(
         float(b[coordinate]) <= float(a[coordinate])
-        for a, b in zip(ordered, ordered[1:])
+        for a, b in itertools.pairwise(ordered)
     ):
         raise ComparisonError("duplicate or nonmonotone computed coordinates")
     if not float(ordered[0][coordinate]) <= at <= float(ordered[-1][coordinate]):
         raise ComparisonError("computed domain does not cover experimental station")
-    for a, b in zip(ordered, ordered[1:]):
+    for a, b in itertools.pairwise(ordered):
         x0, x1 = float(a[coordinate]), float(b[coordinate])
         if x0 <= at <= x1:
             alpha = (at - x0) / (x1 - x0)

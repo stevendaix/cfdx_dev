@@ -45,7 +45,7 @@ def test_profiles_preserve_physical_case_and_hdf5(reference, tmp_path, profile):
     assert detail["physics_signature_sha256"] == case_physics_signature(reference)
     assert detail["sst_inner_budget"] == 800
     with h5py.File(reference) as before, h5py.File(generated) as after:
-        for key in before.keys():
+        for key in before:
             assert np.array_equal(before[key][()], after[key][()]), key
         setup = json.loads(after.attrs["case_setup_json"])
         raw = setup["numerics"]["raw_settings"]

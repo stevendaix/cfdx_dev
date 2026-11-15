@@ -15,7 +15,7 @@ A = "BFS_JOINT_FIXED_POINT_V72 iteration=23 retry=8 cycle=1 gamma=0.03125 pressu
 C = "BFS_JOINT_CERTIFICATE_V72 iteration=23 cycle=1 mass=0.0006 boundary_net=0.0 face_identity=0.0 continuity_face_gap=0.0 rc_fixed_point=0.0 momentum_scaled=0.1 k_scaled=0.1 omega_scaled=0.01 replay=1 mass_closed=0 six_blocks_closed=0 linear_momentum_reissued=0 linear_sst_reissued=0 commit_authorized=0 private_trial=1 committed=0 qualified=0"
 S = "BFS_JOINT_SUMMARY_V72 iteration=23 attempted_cycles=1 accepted_private_cycles=1 initial_mass=0.0008 final_mass=0.0006 mass_closed=0 all_physical_blocks_closed=0 status=cycle_budget_exhausted_without_full_certificate commit_authorized=0 committed=0 qualified=0"
 BASE = "\n".join(HISTORY) + "\n"
-LOG = BASE + "\n".join((A, C, S)) + "\n"
+LOG = BASE + f"{A}\n{C}\n{S}" + "\n"
 result = audit(BASE, LOG)
 assert result["accepted_private_cycles"] == 1
 bad = [

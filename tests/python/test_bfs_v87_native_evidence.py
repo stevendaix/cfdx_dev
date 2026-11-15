@@ -23,7 +23,7 @@ class TestV87Evidence(unittest.TestCase):
             audit(BAD + "\n" + SST)
 
     def test_valid_retry_and_commit(self):
-        r = audit("\n".join((BAD, ROLL, OK, SST, POST, COMMIT)))
+        r = audit(f"{BAD}\n{ROLL}\n{OK}\n{SST}\n{POST}\n{COMMIT}")
         self.assertEqual(r["committed_iterations"], [3])
         self.assertEqual(r["early_passes_to_sst"], 1)
 

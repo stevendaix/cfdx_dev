@@ -123,7 +123,7 @@ def parse_lines(lines):
 
     if len(branch) != 18 or len(krylov) != 6 or len(jfnk) != 1:
         raise ValueError("truncated or duplicate Krylov proof")
-    for key, record in branch.items():
+    for key in branch:
         rows = faces.get(key, [])
         lim = limiter.get(key, [])
         if len(rows) != len(lim) or len(rows) > 2:

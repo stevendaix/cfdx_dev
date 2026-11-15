@@ -5,14 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from audit_bfs_v71_joint import audit
 
 hist = (
-    "\n".join(
-        [
-            "GLOBAL_SAME_OPERATOR_TRIAL_V65 iteration=23 accepted=0",
-            "GLOBAL_SAME_OPERATOR_COMMITTED_V65 iteration=22 committed=1",
-            "BFS_SST_RC_PICARD_V69 iteration=23 private_transport=1",
-            "INCOMPRESSIBLE_ITER iteration=22 converged=0",
-        ]
-    )
+    "GLOBAL_SAME_OPERATOR_TRIAL_V65 iteration=23 accepted=0\nGLOBAL_SAME_OPERATOR_COMMITTED_V65 iteration=22 committed=1\nBFS_SST_RC_PICARD_V69 iteration=23 private_transport=1\nINCOMPRESSIBLE_ITER iteration=22 converged=0"
     + "\n"
 )
 valid = (

@@ -13,7 +13,7 @@ N = "NATIVE_RC_ORACLE_V49 iteration=1 retry=0 closed=1 fixed_point_iterations=25
 C = "NATIVE_SIX_COMMITTED_V50 iteration=1 cells=2 entries=12 fingerprint=1234 merit=1.25 U=1.25 continuity=0.008 k=0.06 omega=0.05 flux_gap_l1=0.03 committed=1 physical_converged=0 qualified=0"
 G = "NATIVE_SIX_FINAL_GATE_V50 iteration=1 native_available=1 eligible=0 gap=0.03 tolerance=1e-8 experimental=1 qualified=0"
 V = "GLOBAL_NONLINEAR_COMMITTED_V13 iteration=1 U=1.9 p_continuity=0.01 k=1e-12 omega=1e-12 nut_closure=0 merit=1.9 converged=0 qualified=0"
-LOG = "\n".join((T, N, C, V))
+LOG = f"{T}\n{N}\n{C}\n{V}"
 
 
 class Forensics(unittest.TestCase):

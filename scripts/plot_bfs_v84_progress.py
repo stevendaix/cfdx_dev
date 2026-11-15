@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from PIL import Image
+import itertools
 
 V83_SCRIPT = Path(__file__).resolve().parent / "plot_bfs_v83_pyvista.py"
 spec = importlib.util.spec_from_file_location("cfdx_v83_vtk_pyvista", V83_SCRIPT)
@@ -56,7 +57,7 @@ def scan_ledger(path):
                 "This script requires nonconverged native provisional states"
             )
         numbers.append(entry)
-    if any(b["iteration"] <= a["iteration"] for a, b in zip(numbers, numbers[1:])):
+    if any(b["iteration"] <= a["iteration"] for a, b in itertools.pairwise(numbers)):
         raise ValueError("Non-increasing committed iteration records")
     return trials, numbers
 
@@ -92,13 +93,13 @@ def make_figures(log, cases, h5, out, backend="auto"):
         raise RuntimeError("No VTU matches a native COMMITTED record")
     if backend == "auto":
         try:
-            import pyvista  # noqa F401
+            import pyvista
         except ImportError:
             backend = "vtk"
         else:
             backend = "pyvista"
     if backend == "pyvista":
-        import pyvista  # noqa F401
+        import pyvista
     from vtk.util.numpy_support import numpy_to_vtk
 
     states = []

@@ -78,7 +78,7 @@ class TestNativeCase(unittest.TestCase):
     def test_native_render_writes_real_map(self):
         if self.native is None:
             self.skipTest("Set CFDX_V83_NATIVE_VTU for real map test")
-        mesh, a = M.load_vtu(self.native)
+        mesh, _a = M.load_vtu(self.native)
         surface = M._vtk_surface(mesh)
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "render.png"

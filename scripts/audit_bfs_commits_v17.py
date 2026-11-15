@@ -12,6 +12,7 @@ import json
 import math
 import re
 from pathlib import Path
+import itertools
 
 try:
     from qualify_bfs_global_contraction_v14 import QualificationError, certify
@@ -61,7 +62,7 @@ def audit(text: str) -> dict:
     ]
     if any(
         next_state["iteration"] <= state["iteration"]
-        for state, next_state in zip(states, states[1:])
+        for state, next_state in itertools.pairwise(states)
     ):
         raise ValueError("out-of-order or duplicate committed iterations")
     record = {

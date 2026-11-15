@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+import itertools
 
 
 def parse_line(line):
@@ -77,7 +78,7 @@ def audit(text):
             committed.append(int(d["iteration"]))
     # Timed-out logs may end after preflight on an unfinished SST solve;
     # this may not be falsely labelled a pass. Record as incomplete.
-    if any(b <= a for a, b in zip(committed, committed[1:])):
+    if any(b <= a for a, b in itertools.pairwise(committed)):
         raise ValueError("Non-monotonic or duplicate committed iterations")
     return {
         "schema": "CFDX-V87-PRESST-EVIDENCE/1",

@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 
 from qualify_bfs_schur_evidence import validate_bfs_evidence
+import itertools
 
 EXPERIMENTAL_XR_H = 6.26
 EXPERIMENTAL_XR_UNCERTAINTY = 0.10
@@ -66,10 +67,10 @@ def cf_and_reattachment(
     rows.sort(key=lambda item: item[0])
     if len(rows) < 4 or len({x for x, _ in rows}) != len(rows):
         raise ValueError("insufficient distinct downstream wall faces for Cf")
-    if any(x2 <= x1 for (x1, _), (x2, _) in zip(rows, rows[1:])):
+    if any(x2 <= x1 for (x1, _), (x2, _) in itertools.pairwise(rows)):
         raise ValueError("nonmonotone downstream wall geometry")
     zero_crossings = []
-    for (x0, y0), (x1, y1) in zip(rows, rows[1:]):
+    for (x0, y0), (x1, y1) in itertools.pairwise(rows):
         if y0 < 0.0 <= y1:
             crossing = x1 if y1 == 0.0 else x0 - y0 * (x1 - x0) / (y1 - y0)
             zero_crossings.append(crossing)

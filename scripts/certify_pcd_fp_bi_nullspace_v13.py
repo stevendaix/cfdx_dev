@@ -77,7 +77,7 @@ def analyze(
 ) -> dict:
     if not (0 < rank_rtol < 1e-6 and math.isfinite(rank_rtol)):
         raise CertificateError("invalid numerical rank threshold")
-    A, b, initial, sha256 = read_capture(path, max_rows)
+    A, b, _initial, sha256 = read_capture(path, max_rows)
     dense = A.toarray()
     u, s, vt = np.linalg.svd(dense, full_matrices=False)
     spectral = float(s[0])

@@ -50,10 +50,7 @@ def run(
         k: v
         for k, v in os.environ.items()
         if not (
-            k.startswith("CFDX_FPHYS_")
-            or k.startswith("CFDX_COUPLED_SELFP_")
-            or k.startswith("CFDX_POST_SST_")
-            or k.startswith("CFDX_BFS_")
+            k.startswith(("CFDX_FPHYS_", "CFDX_COUPLED_SELFP_", "CFDX_POST_SST_", "CFDX_BFS_"))
         )
     }
     env["CFDX_FPHYS_CANDIDATE_V51"] = "1"

@@ -13,19 +13,19 @@ FULL = "BFS_PHASE_V10 iteration=1 phase=SST_TRANSPORT_BEGIN\nBFS_PHASE_V10 itera
 
 class NativeEvidenceTests(unittest.TestCase):
     def test_pressure_only(self):
-        x = parse("\n".join([CSR, FACE, FLUX]))
+        x = parse(f"{CSR}\n{FACE}\n{FLUX}")
         self.assertTrue(x["pressure_native_verified"])
         self.assertEqual(x["accepted_outer_iterations"], [])
         self.assertFalse(x["converged_cfd"])
 
     def test_outer_transaction_requires_sst(self):
-        x = parse("\n".join([CSR, FACE, FLUX, FULL]))
+        x = parse(f"{CSR}\n{FACE}\n{FLUX}\n{FULL}")
         self.assertEqual(x["accepted_outer_iterations"], [1])
         self.assertFalse(x["converged_cfd"])
 
     def test_missing_face(self):
         with self.assertRaises(ValueError):
-            parse("\n".join([CSR, FLUX]))
+            parse(f"{CSR}\n{FLUX}")
 
     def test_forged_commit(self):
         with self.assertRaises(ValueError):

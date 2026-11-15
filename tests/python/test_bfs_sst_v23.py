@@ -12,15 +12,15 @@ from diagnose_bfs_sst_v23 import compare, first_retry_samples
 def fake_log(merit: float, *, block: bool, selected: str = "picard") -> str:
     return "\n".join(
         [
-            "SST_JFNK_V22 iteration=10 proposed=1 linear_true_relative=0.1 "
+            ("SST_JFNK_V22 iteration=10 proposed=1 linear_true_relative=0.1 "
             f"block_probe={int(block)} block_proposed={int(block)} "
             f"block_linear_true_relative=0.22 coupled_blocks={712 if block else 0} "
-            f"selected={selected}",
-            "SST_TRANSPORT_DIAGNOSTIC iteration=10 "
+            f"selected={selected}"),
+            ("SST_TRANSPORT_DIAGNOSTIC iteration=10 "
             "k_returned_nonlinear_raw=0.002 omega_returned_nonlinear_raw=0.001 "
-            f"k_local_relative={merit} omega_local_relative=0.2",
-            "SST_ACCEPTANCE_GATES iteration=10 tolerance=1e-8 "
-            "outer_update_ok=0 returned_equations_ok=0",
+            f"k_local_relative={merit} omega_local_relative=0.2"),
+            ("SST_ACCEPTANCE_GATES iteration=10 tolerance=1e-8 "
+            "outer_update_ok=0 returned_equations_ok=0"),
         ]
     )
 

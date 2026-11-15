@@ -51,7 +51,7 @@ def prepare(preimage, destination):
         with h5py.File(preimage, "r") as before, h5py.File(destination, "r") as after:
             if set(before.keys()) != set(after.keys()):
                 raise RuntimeError("HDF5 groups changed")
-            for name in before.attrs.keys():
+            for name in before.attrs:
                 if name == "case_setup_json":
                     old = json.loads(before.attrs[name])
                     new = json.loads(after.attrs[name])

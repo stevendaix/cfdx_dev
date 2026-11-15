@@ -14,15 +14,15 @@ def fake(
 ) -> str:
     return "\n".join(
         [
-            "SST_JFNK_V22 iteration=10 proposed=1 linear_true_relative=0.24 "
+            ("SST_JFNK_V22 iteration=10 proposed=1 linear_true_relative=0.24 "
             f"block_probe=1 block_proposed=0 block_linear_true_relative=0.74 "
             f"spatial_probe={int(spatial)} spatial_proposed=0 "
             f"spatial_linear_true_relative={linear} spatial_offcell={5256 if spatial else 0} "
-            f"selected={selected}",
-            "SST_TRANSPORT_DIAGNOSTIC iteration=10 k_returned_nonlinear_raw=1e-6 "
-            "omega_returned_nonlinear_raw=1.7 k_local_relative=0.8899 omega_local_relative=0.2",
-            f"SST_ACCEPTANCE_GATES iteration=10 tolerance={tolerance} "
-            "outer_update_ok=0 returned_equations_ok=0",
+            f"selected={selected}"),
+            ("SST_TRANSPORT_DIAGNOSTIC iteration=10 k_returned_nonlinear_raw=1e-6 "
+            "omega_returned_nonlinear_raw=1.7 k_local_relative=0.8899 omega_local_relative=0.2"),
+            (f"SST_ACCEPTANCE_GATES iteration=10 tolerance={tolerance} "
+            "outer_update_ok=0 returned_equations_ok=0"),
             "SST_JACOBIAN_AUDIT_V24 iteration=10 cell=357 max_relative_difference=0.1154",
             "CFDX nonlinear iteration 1 rejected",
         ]

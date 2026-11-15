@@ -138,9 +138,8 @@ def audit(baseline, candidate):
         for k in ("momentum_scaled", "k_scaled", "omega_scaled"):
             if number(row, k) < 0.0:
                 raise ValueError("negative residual")
-    if selected:
-        if abs(number(summary, "final_mass") - selected_mass[-1]) > 1e-12:
-            raise ValueError("summary does not match certified final state")
+    if selected and abs(number(summary, "final_mass") - selected_mass[-1]) > 1e-12:
+        raise ValueError("summary does not match certified final state")
     if boolean(summary, "mass_closed") != (number(summary, "final_mass") <= 1e-10):
         raise ValueError("false summary mass closure")
     return {

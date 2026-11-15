@@ -13,6 +13,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
+import itertools
 
 
 def sha(path):
@@ -74,7 +75,7 @@ def run(binary, case, out, max_seconds=900, limit=100):
     candidates = records(stderr, "GLOBAL_PROGRESS_TRIAL_V85")
     physical = records(stderr, "BFS_FIELD_COMMITTED_V85")
     iterations = [int(x["iteration"]) for x in progress]
-    if any(b <= a for a, b in zip(iterations, iterations[1:])) or any(
+    if any(b <= a for a, b in itertools.pairwise(iterations)) or any(
         i > limit for i in iterations
     ):
         raise RuntimeError("Corrupted V85 committed iteration sequence")

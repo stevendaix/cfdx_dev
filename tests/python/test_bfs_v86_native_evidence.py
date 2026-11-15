@@ -14,13 +14,13 @@ C = "BFS_FIELD_COMMITTED_V85 iteration=1 cells=20540 reverse_ux_cells=0 ux_min=3
 
 class TestNativeEvidence(unittest.TestCase):
     def test_accepted_finite(self):
-        c, f, t = read_evidence("\n".join((A, B, C)))
+        c, f, _t = read_evidence(f"{A}\n{B}\n{C}")
         self.assertEqual(list(c), [1])
         self.assertEqual(int(f[1]["reverse_ux_cells"]), 0)
 
     def test_missing_field_denied(self):
         with self.assertRaisesRegex(ValueError, "matching field"):
-            read_evidence("\n".join((A, B)))
+            read_evidence(f"{A}\n{B}")
 
     def test_false_certification_denied(self):
         with self.assertRaisesRegex(ValueError, "falsely claims"):
@@ -48,14 +48,14 @@ class TestNativeEvidence(unittest.TestCase):
 
     def test_duplicate_committed(self):
         with self.assertRaisesRegex(ValueError, "Duplicate"):
-            read_evidence("\n".join((A, B, B, C)))
+            read_evidence(f"{A}\n{B}\n{B}\n{C}")
 
     def test_nonfinite_refused(self):
         with self.assertRaisesRegex(ValueError, "Bad native physical"):
             read_evidence("\n".join((A, B.replace("k=0.28", "k=nan"), C)))
 
     def test_no_fabricated_states(self):
-        c, f, t = read_evidence(
+        c, f, _t = read_evidence(
             "BFS_PHASE_V10 iteration=1 corrector=0 phase=PRESSURE_LINEAR_BEGIN"
         )
         self.assertFalse(c)

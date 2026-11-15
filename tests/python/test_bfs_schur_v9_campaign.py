@@ -218,7 +218,7 @@ def test_imported_reference_candidate_keeps_boundary_and_field_datasets(tmp_path
     assert result["physical_qualification"] == "NOT_QUALIFIED"
     assert result["input_kind"] == "EXTERNAL_BFS_REFERENCE_CANDIDATE"
     with h5py.File(source) as before, h5py.File(output) as after:
-        for key in before.keys():
+        for key in before:
             assert (before[key][()] == after[key][()]).all()
         assert before.attrs["geometry_hash"] == after.attrs["geometry_hash"]
         assert before.attrs["topology_hash"] == after.attrs["topology_hash"]

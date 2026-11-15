@@ -40,7 +40,7 @@ def verify_cases(reference, experimental):
     with h5py.File(reference) as a, h5py.File(experimental) as b:
         if set(a.keys()) != set(b.keys()):
             raise ValueError("HDF5 dataset lists differ")
-        for key in a.keys():
+        for key in a:
             if a[key][()].tobytes() != b[key][()].tobytes():
                 raise ValueError(f"HDF5 geometry or field differs: {key}")
         attrs_a, attrs_b = dict(a.attrs), dict(b.attrs)

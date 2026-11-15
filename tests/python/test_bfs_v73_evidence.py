@@ -136,13 +136,7 @@ def audit(baseline, log):
 
 
 def falsify():
-    old = "\n".join(
-        (
-            "GLOBAL_SAME_OPERATOR_TRIAL_V65 id=1",
-            "GLOBAL_SAME_OPERATOR_COMMITTED_V65 id=1",
-            "INCOMPRESSIBLE_ITER id=1",
-        )
-    )
+    old = "GLOBAL_SAME_OPERATOR_TRIAL_V65 id=1\nGLOBAL_SAME_OPERATOR_COMMITTED_V65 id=1\nINCOMPRESSIBLE_ITER id=1"
     trial = (
         "BFS_POST_SST_DIRECTION_V73 iteration=23 retry=8 evaluated=1 "
         "gamma=0.1 pressure_fraction=0.25 original_guards=1 "

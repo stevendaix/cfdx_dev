@@ -30,9 +30,8 @@ def first_attempt(text: str) -> dict:
             gates[int(row["iteration"])] = row
         elif (
             line.startswith("SST_JACOBIAN_AUDIT_V24 ") and row.get("iteration") == "10"
-        ):
-            if "max_relative_difference" in row:
-                audits[int(row["cell"])] = row
+        ) and "max_relative_difference" in row:
+            audits[int(row["cell"])] = row
     if 10 not in steps or 10 not in diag or 10 not in gates:
         raise ValueError("missing complete first-attempt physical iteration 10")
     s, d, g = steps[10], diag[10], gates[10]

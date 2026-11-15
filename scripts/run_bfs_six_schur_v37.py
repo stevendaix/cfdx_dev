@@ -290,7 +290,7 @@ def run_one(
     env.pop("CFDX_COUPLED_SELFP_ILU_V63", None)
     env.pop("CFDX_FPHYS_JFNK_V63_SPARSE_LOCAL", None)
     for key in tuple(env):
-        if key.startswith("CFDX_NACA_") or key.startswith("CFDX_PCD_FP_CAPTURE_"):
+        if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
             env.pop(key)
     env["CFDX_BFS_STAGE_TRACE"] = "1"
     if schur == "pcd" and pcd_inner_trace:

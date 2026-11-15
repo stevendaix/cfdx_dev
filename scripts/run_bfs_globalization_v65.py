@@ -58,10 +58,7 @@ def run_one(solver: Path, case: Path, dest: Path, deadline: float, v65: bool):
         k: v
         for k, v in os.environ.items()
         if not (
-            k.startswith("CFDX_FPHYS_")
-            or k.startswith("CFDX_POST_SST_")
-            or k.startswith("CFDX_BFS_")
-            or k.startswith("CFDX_COUPLED_SELFP_")
+            k.startswith(("CFDX_FPHYS_", "CFDX_POST_SST_", "CFDX_BFS_", "CFDX_COUPLED_SELFP_"))
         )
     }
     if v65:

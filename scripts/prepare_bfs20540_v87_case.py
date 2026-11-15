@@ -45,7 +45,7 @@ def prepare(preimage, destination):
             raw["v87_bfs_early_velocity_screen"] = "enabled"
             f.attrs.modify("case_setup_json", json.dumps(setup, separators=(",", ":")))
         with h5py.File(preimage, "r") as a, h5py.File(destination, "r") as b:
-            for key in a.attrs.keys():
+            for key in a.attrs:
                 if key == "case_setup_json":
                     continue
                 if key not in b.attrs or not np.array_equal(a.attrs[key], b.attrs[key]):

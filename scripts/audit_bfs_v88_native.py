@@ -84,9 +84,7 @@ def audit(log_text):
         if r["continue_sst"] == 0:
             for line in lines[r["line"] :]:
                 if (
-                    line.startswith("BFS_LOCAL_STEP_TRIAL_V88 ")
-                    or line.startswith("BFS_EARLY_FIELD_TRIAL_V87 ")
-                    or line.startswith("CFDX nonlinear iteration ")
+                    line.startswith(("BFS_LOCAL_STEP_TRIAL_V88 ", "BFS_EARLY_FIELD_TRIAL_V87 ", "CFDX nonlinear iteration "))
                 ):
                     break
                 if "phase=SST_TRANSPORT_BEGIN" in line:
