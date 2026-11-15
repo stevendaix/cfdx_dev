@@ -1,7 +1,7 @@
 """Independent proof tools for BFS pressure, not a solver qualification."""
+
 from __future__ import annotations
 
-import json
 import struct
 from pathlib import Path
 
@@ -9,13 +9,13 @@ import h5py
 import numpy as np
 import pytest
 
-from scripts.audit_bfs_pressure_roundoff import audit, extended_residual
-from scripts.seed_bfs_pressure_from_capture import build_seed, read_capture
+from scripts.audit_bfs_pressure_roundoff import audit
 from scripts.generate_th03_openfoam_blockmesh import make_structured_mesh, write_case
+from scripts.seed_bfs_pressure_from_capture import build_seed, read_capture
 
 
 def _floathex(value: float) -> str:
-    return f"{struct.unpack('=Q',struct.pack('=d', value))[0]:x}"
+    return f"{struct.unpack('=Q', struct.pack('=d', value))[0]:x}"
 
 
 def capture(path: Path, n: int, bad=False) -> None:
@@ -28,7 +28,7 @@ def capture(path: Path, n: int, bad=False) -> None:
         for i in range(n):
             s.write(f"{i:x} {_floathex(0.0 if bad and i == 0 else 2.0)}\n")
         for i in range(n):
-            s.write(f"{_floathex(2.0 + i*0.01)} {_floathex(0.0)}\n")
+            s.write(f"{_floathex(2.0 + i * 0.01)} {_floathex(0.0)}\n")
 
 
 def test_roundoff_audit_never_promotes_solver(tmp_path):
@@ -56,7 +56,9 @@ def test_seed_preserves_mesh_and_bc_and_is_not_qualified(tmp_path):
     case = tmp_path / "raw.cfdx.h5"
     output = tmp_path / "seeded.cfdx.h5"
     cap = tmp_path / "capture.cfdxlin"
-    write_case(case, make_structured_mesh("smoke"), mesh_source="seed-test", max_iterations=1)
+    write_case(
+        case, make_structured_mesh("smoke"), mesh_source="seed-test", max_iterations=1
+    )
     with h5py.File(case) as f:
         n = int(f.attrs["n_cells"])
         original_setup = str(f.attrs["case_setup_json"])
@@ -78,7 +80,9 @@ def test_seed_preserves_mesh_and_bc_and_is_not_qualified(tmp_path):
 
 def test_seed_rejects_incorrect_mesh_dimension(tmp_path):
     case = tmp_path / "raw.cfdx.h5"
-    write_case(case, make_structured_mesh("smoke"), mesh_source="seed-test", max_iterations=1)
+    write_case(
+        case, make_structured_mesh("smoke"), mesh_source="seed-test", max_iterations=1
+    )
     cap = tmp_path / "capture.cfdxlin"
     capture(cap, 5)
     with pytest.raises(ValueError, match="does not match mesh"):

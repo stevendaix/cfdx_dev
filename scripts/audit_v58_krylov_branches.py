@@ -4,16 +4,22 @@ Le diagnostic des pentes de flux utilise phi +/- h dphi a rAU fige. Ce n'est
 pas une reevaluation du flux Rhie-Chow couple a l'etat perturbe et il ne
 constitue pas une qualification de Newton.
 """
+
 import argparse
 import json
 import math
 import re
 from pathlib import Path
 
-MARKERS = ("FPHYS_KRYLOV_BRANCH_V58 ", "FPHYS_KRYLOV_FACE_V58 ",
-           "FPHYS_LIMITER_STATE_V58 ", "FPHYS_KRYLOV_FACE_GAP_V58 ",
-           "FPHYS_GAP_STATE_V58 ", "FPHYS_KRYLOV_TRUTH_V57 ",
-           "FPHYS_JFNK_V52 ")
+MARKERS = (
+    "FPHYS_KRYLOV_BRANCH_V58 ",
+    "FPHYS_KRYLOV_FACE_V58 ",
+    "FPHYS_LIMITER_STATE_V58 ",
+    "FPHYS_KRYLOV_FACE_GAP_V58 ",
+    "FPHYS_GAP_STATE_V58 ",
+    "FPHYS_KRYLOV_TRUTH_V57 ",
+    "FPHYS_JFNK_V52 ",
+)
 
 
 def fields(line):
@@ -39,7 +45,12 @@ def parse_lines(lines):
         if prefix.startswith("FPHYS_JFNK_V52 "):
             if any(r.get(k) != "0" for k in ("production_committed", "qualified")):
                 raise ValueError("unsafe Newton qualification or commit")
-            for k in ("linear_true_relative", "arnoldi_relative", "jv_linearity", "v57_hybrid_convection_gap"):
+            for k in (
+                "linear_true_relative",
+                "arnoldi_relative",
+                "jv_linearity",
+                "v57_hybrid_convection_gap",
+            ):
                 number(r, k)
             if r.get("selected_schur") != "bfbt":
                 raise ValueError("not the captured BFBt Krylov experiment")
@@ -67,7 +78,13 @@ def parse_lines(lines):
                 raise ValueError("duplicate branch or false native Rhie-Chow claim")
             if int(r.get("faces", "0")) != 634:
                 raise ValueError("not the captured BFS152 topology")
-            for k in ("ambiguous", "effective_kinks", "unresolved", "inert", "roundoff_limited"):
+            for k in (
+                "ambiguous",
+                "effective_kinks",
+                "unresolved",
+                "inert",
+                "roundoff_limited",
+            ):
                 n = int(r.get(k, "-1"))
                 if n < 0 or n > 634:
                     raise ValueError("invalid branch count " + k)
@@ -84,7 +101,15 @@ def parse_lines(lines):
                     number(r, k)
                 faces.setdefault(key, []).append(r)
             elif prefix.startswith("FPHYS_LIMITER_STATE_V58 "):
-                for k in ("up", "down", "increment", "full", "lower", "upper", "reconstructed"):
+                for k in (
+                    "up",
+                    "down",
+                    "increment",
+                    "full",
+                    "lower",
+                    "upper",
+                    "reconstructed",
+                ):
                     number(r, k)
                 limiter.setdefault(key, []).append(r)
             elif prefix.startswith("FPHYS_KRYLOV_FACE_GAP_V58 "):
@@ -129,17 +154,25 @@ def parse_lines(lines):
     max_a = max(number(x, "nonadditivity") for x in krylov.values())
     linear_limit = number(last, "consistency_limit")
     true = number(last, "true")
-    if not (max_a > linear_limit and true > .3 and jfnk[0].get("private_accepted") == "0"):
+    if not (
+        max_a > linear_limit and true > 0.3 and jfnk[0].get("private_accepted") == "0"
+    ):
         raise ValueError("this measured failed Krylov result has been falsified")
     if abs(true - number(jfnk[0], "linear_true_relative")) > 1e-9:
         raise ValueError("inconsistent final linear residual")
-    return {"status": "BLOCKED_KRYLOV_NONADDITIVE", "global_newton_qualified": False,
-            "face_ids_root": [5, 65], "near_triple_tie_face_ids": [10, 593],
-            "base_mass_flux_nonzero": True, "krylov_directions": 6,
-            "max_nonadditivity": max_a, "linear_truth_final": true,
-            "linear_target_experimental": .3,
-            "native_rc_reclosure_at_face_offsets": False,
-            "production_committed": False}
+    return {
+        "status": "BLOCKED_KRYLOV_NONADDITIVE",
+        "global_newton_qualified": False,
+        "face_ids_root": [5, 65],
+        "near_triple_tie_face_ids": [10, 593],
+        "base_mass_flux_nonzero": True,
+        "krylov_directions": 6,
+        "max_nonadditivity": max_a,
+        "linear_truth_final": true,
+        "linear_target_experimental": 0.3,
+        "native_rc_reclosure_at_face_offsets": False,
+        "production_committed": False,
+    }
 
 
 def main():

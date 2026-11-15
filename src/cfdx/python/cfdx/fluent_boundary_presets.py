@@ -4,10 +4,11 @@ These are *physical* boundary choices, not a replacement for the FVM operators.
 Unsupported Fluent BCs fail closed, rather than masquerading as velocity-inlet
 or zero-gradient. This module is GUI-independent and can be used from a CLI.
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from math import isfinite
-from typing import Sequence
 
 from .io.schema import BCType, BCValueType, BoundarySpec
 
@@ -25,8 +26,7 @@ SIMPLE_BOUNDARY_CHOICES = (
 
 UNSUPPORTED_CHOICE_REASONS = {
     "pressure-inlet": (
-        "pression totale / relation de Bernoulli non integree "
-        "au solveur incompressible"
+        "pression totale / relation de Bernoulli non integree au solveur incompressible"
     ),
     "mass-flow-inlet": "conversion de debit en flux de face non integree et non qualifiee",
     "pressure-far-field": (
@@ -69,22 +69,27 @@ def make_simple_boundary(
     else:
         vector = list(velocity)
         if len(vector) != 3 or any(
-            isinstance(x, bool)
-            or not isinstance(x, (int, float))
-            or not isfinite(x)
+            isinstance(x, bool) or not isinstance(x, (int, float)) or not isfinite(x)
             for x in vector
         ):
-            raise ValueError("la vitesse doit contenir 3 composantes reelles finies (m/s)")
+            raise ValueError(
+                "la vitesse doit contenir 3 composantes reelles finies (m/s)"
+            )
         vector = [float(x) for x in vector]
 
-    if pressure_pa is not None and (isinstance(pressure_pa, bool) or not isfinite(pressure_pa)):
+    if pressure_pa is not None and (
+        isinstance(pressure_pa, bool) or not isfinite(pressure_pa)
+    ):
         raise ValueError("la pression de sortie doit etre finie (Pa)")
     if wall_temperature_k is not None and (
-        isinstance(wall_temperature_k, bool) or
-        not isinstance(wall_temperature_k, (int, float)) or
-        not isfinite(wall_temperature_k) or wall_temperature_k <= 0
+        isinstance(wall_temperature_k, bool)
+        or not isinstance(wall_temperature_k, (int, float))
+        or not isfinite(wall_temperature_k)
+        or wall_temperature_k <= 0
     ):
-        raise ValueError("la temperature de paroi doit etre en kelvins et strictement positive")
+        raise ValueError(
+            "la temperature de paroi doit etre en kelvins et strictement positive"
+        )
 
     needs_velocity = kind in ("velocity-inlet", "moving-wall")
     if needs_velocity != (vector is not None):
@@ -93,9 +98,13 @@ def make_simple_boundary(
             "pour Velocity Inlet et Moving Wall"
         )
     if (pressure_pa is not None) != (kind == "pressure-outlet"):
-        raise ValueError("la pression relative est requise uniquement pour Pressure Outlet")
+        raise ValueError(
+            "la pression relative est requise uniquement pour Pressure Outlet"
+        )
     if wall_temperature_k is not None and kind != "no-slip-wall":
-        raise ValueError("la temperature de paroi ne s'applique qu'a Wall / No Slip dans ce preset")
+        raise ValueError(
+            "la temperature de paroi ne s'applique qu'a Wall / No Slip dans ce preset"
+        )
 
     spec = BoundarySpec(patch_name=patch_name.strip())
     if kind == "velocity-inlet":

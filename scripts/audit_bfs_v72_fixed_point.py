@@ -4,6 +4,7 @@ This does not issue an industrial convergence certificate or authorize commits.
 It compares the canonical V65/V69/INCOMPRESSIBLE_ITER history against V71,
 then validates V72 repeated-cycle and newly reassembled six-field evidence.
 """
+
 import argparse
 import json
 import math
@@ -62,10 +63,15 @@ def audit(baseline, candidate):
     if not attempts or not summaries or len(summaries) != 1:
         raise ValueError("missing/duplicated V72 evidence")
     summary = summaries[0]
-    if not (number(summary, "initial_mass") >= 0. and
-            number(summary, "final_mass") >= 0.):
+    if not (
+        number(summary, "initial_mass") >= 0.0 and number(summary, "final_mass") >= 0.0
+    ):
         raise ValueError("negative mass")
-    if boolean(summary, "commit_authorized") or boolean(summary, "committed") or boolean(summary, "qualified"):
+    if (
+        boolean(summary, "commit_authorized")
+        or boolean(summary, "committed")
+        or boolean(summary, "qualified")
+    ):
         raise ValueError("private V72 result unlawfully committed or qualified")
     evaluated = 0
     selected = 0
@@ -73,64 +79,93 @@ def audit(baseline, candidate):
     for row in attempts:
         if row["iteration"] != "23" or row.get("retry") != "8":
             raise ValueError("V72 probe outside specified pilot")
-        for k in ("mass_before", "mass_after", "omega_after", "merit_ratio",
-                  "worst_growth", "rAU_change", "nut_change", "phi_change"):
-            if number(row, k) < 0.:
+        for k in (
+            "mass_before",
+            "mass_after",
+            "omega_after",
+            "merit_ratio",
+            "worst_growth",
+            "rAU_change",
+            "nut_change",
+            "phi_change",
+        ):
+            if number(row, k) < 0.0:
                 raise ValueError("negative V72 metric " + k)
-        if boolean(row, "committed") or boolean(row, "qualified") or not boolean(row, "private_trial"):
+        if (
+            boolean(row, "committed")
+            or boolean(row, "qualified")
+            or not boolean(row, "private_trial")
+        ):
             raise ValueError("V72 attempt published a private state")
         if boolean(row, "evaluated"):
             evaluated += 1
         if boolean(row, "selected"):
             selected += 1
-            if not (boolean(row, "evaluated") and boolean(row, "v65_guards") and
-                    boolean(row, "mass_improved")):
+            if not (
+                boolean(row, "evaluated")
+                and boolean(row, "v65_guards")
+                and boolean(row, "mass_improved")
+            ):
                 raise ValueError("selected cycle violates acceptance contract")
             selected_mass.append(number(row, "mass_after"))
-    if selected != int(summary["accepted_private_cycles"]) or selected != len(certificates):
+    if selected != int(summary["accepted_private_cycles"]) or selected != len(
+        certificates
+    ):
         raise ValueError("selected cycles and certificates mismatch")
-    if selected > int(summary["attempted_cycles"]) or int(summary["attempted_cycles"]) > 16:
+    if (
+        selected > int(summary["attempted_cycles"])
+        or int(summary["attempted_cycles"]) > 16
+    ):
         raise ValueError("invalid fixed-point budget")
     for i, row in enumerate(certificates):
         if not boolean(row, "replay"):
             raise ValueError("new F_phys replay missing")
         for k in ("face_identity", "continuity_face_gap", "rc_fixed_point"):
-            if number(row, k)>1e-10 or number(row,k)<0.:
+            if number(row, k) > 1e-10 or number(row, k) < 0.0:
                 raise ValueError("nonconservative face identity or unclosed RC")
-        if abs(number(row, "mass") - selected_mass[i])>1e-12:
+        if abs(number(row, "mass") - selected_mass[i]) > 1e-12:
             raise ValueError("certificate from a different state")
-        if (boolean(row, "linear_momentum_reissued") or boolean(row, "linear_sst_reissued") or
-                boolean(row, "commit_authorized") or boolean(row, "committed") or
-                boolean(row, "qualified")):
+        if (
+            boolean(row, "linear_momentum_reissued")
+            or boolean(row, "linear_sst_reissued")
+            or boolean(row, "commit_authorized")
+            or boolean(row, "committed")
+            or boolean(row, "qualified")
+        ):
             raise ValueError("unsubstantiated production linear certificate / commit")
-        if boolean(row, "mass_closed")!=(number(row, "mass")<=1e-10):
+        if boolean(row, "mass_closed") != (number(row, "mass") <= 1e-10):
             raise ValueError("false mass closure certificate")
         for k in ("momentum_scaled", "k_scaled", "omega_scaled"):
-            if number(row, k)<0.:
+            if number(row, k) < 0.0:
                 raise ValueError("negative residual")
     if selected:
-        if abs(number(summary, "final_mass")-selected_mass[-1])>1e-12:
+        if abs(number(summary, "final_mass") - selected_mass[-1]) > 1e-12:
             raise ValueError("summary does not match certified final state")
-    if boolean(summary, "mass_closed")!=(number(summary, "final_mass")<=1e-10):
+    if boolean(summary, "mass_closed") != (number(summary, "final_mass") <= 1e-10):
         raise ValueError("false summary mass closure")
-    return {"status":"diagnostic_only_no_commit_certificate",
-            "historical_identity":counts,"attempts":len(attempts),
-            "evaluated":evaluated,"accepted_private_cycles":selected,
-            "final_physical_mass":number(summary,"final_mass"),
-            "mass_closed":boolean(summary,"mass_closed"),
-            "full_production_convergence_qualified":False}
+    return {
+        "status": "diagnostic_only_no_commit_certificate",
+        "historical_identity": counts,
+        "attempts": len(attempts),
+        "evaluated": evaluated,
+        "accepted_private_cycles": selected,
+        "final_physical_mass": number(summary, "final_mass"),
+        "mass_closed": boolean(summary, "mass_closed"),
+        "full_production_convergence_qualified": False,
+    }
 
 
 def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument("--baseline",required=True,type=Path)
-    parser.add_argument("--log",required=True,type=Path)
-    parser.add_argument("--output",type=Path)
-    args=parser.parse_args()
-    result=audit(args.baseline.read_text(),args.log.read_text())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--baseline", required=True, type=Path)
+    parser.add_argument("--log", required=True, type=Path)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    result = audit(args.baseline.read_text(), args.log.read_text())
     if args.output:
-        args.output.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
-    print(json.dumps(result,sort_keys=True))
+        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, sort_keys=True))
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

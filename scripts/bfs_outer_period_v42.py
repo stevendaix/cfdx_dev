@@ -3,43 +3,71 @@
 This is an evidence-only observer. It does not prove periodicity of the full
 fields and can never certify global CFD convergence. No solver flags change.
 """
+
 from __future__ import annotations
+
 import argparse
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
+from pathlib import Path
 
 _EVENT = re.compile(r"([A-Za-z_][A-Za-z_0-9]*)=([^ ]+)")
 _TAG = "GLOBAL_NONLINEAR_COMMITTED_V13 "
 
 
-def audit(path: Path, *, min_cycles: int = 4, max_period: int = 8,
-          stability: float = 0.01, min_amplitude: float = 0.1) -> dict:
+def audit(
+    path: Path,
+    *,
+    min_cycles: int = 4,
+    max_period: int = 8,
+    stability: float = 0.01,
+    min_amplitude: float = 0.1,
+) -> dict:
     path = Path(path)
     if not path.is_file() or not path.stat().st_size:
         raise ValueError("missing or empty CFDX production log")
-    if min_cycles < 3 or max_period < 2 or not (0 < stability < 1) or not (0 < min_amplitude < 1):
+    if (
+        min_cycles < 3
+        or max_period < 2
+        or not (0 < stability < 1)
+        or not (0 < min_amplitude < 1)
+    ):
         raise ValueError("invalid periodicity detection controls")
     records: list[dict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.startswith(_TAG):
             continue
         fields = dict(_EVENT.findall(line))
-        required = ("iteration", "U", "p_continuity", "k", "omega", "merit", "converged")
+        required = (
+            "iteration",
+            "U",
+            "p_continuity",
+            "k",
+            "omega",
+            "merit",
+            "converged",
+        )
         if any(field not in fields for field in required):
             raise ValueError("incomplete committed-state evidence")
         index = int(fields["iteration"])
         measurements = {key: float(fields[key]) for key in required[1:-1]}
-        if index <= 0 or any(not math.isfinite(v) or v < 0 for v in measurements.values()):
+        if index <= 0 or any(
+            not math.isfinite(v) or v < 0 for v in measurements.values()
+        ):
             raise ValueError("invalid global iteration or physical residual")
         if fields["converged"] not in ("0", "1"):
             raise ValueError("invalid global qualification marker")
         if records and index != records[-1]["iteration"] + 1:
             raise ValueError("non-contiguous committed global history")
-        records.append({"iteration": index, **measurements,
-                        "converged": fields["converged"] == "1"})
+        records.append(
+            {
+                "iteration": index,
+                **measurements,
+                "converged": fields["converged"] == "1",
+            }
+        )
     if not records:
         raise ValueError("no committed global nonlinear states")
     # Verify that this evidence never falsely equates periodic residuals to
@@ -65,21 +93,23 @@ def audit(path: Path, *, min_cycles: int = 4, max_period: int = 8,
         tail = records[-window:]
         merit = [r["merit"] for r in tail]
         phases = [merit[j::period] for j in range(period)]
-        means = [sum(v)/len(v) for v in phases]
+        means = [sum(v) / len(v) for v in phases]
         if not all(v > 0 for v in means):
             continue
-        spread = max((max(v) - min(v))/m for v, m in zip(phases, means))
-        amplitude = (max(means)-min(means))/max(means)
+        spread = max((max(v) - min(v)) / m for v, m in zip(phases, means))
+        amplitude = (max(means) - min(means)) / max(means)
         if spread <= stability and amplitude >= min_amplitude:
-            result.update({
-                "status": "REPEATING_UNCONVERGED_GLOBAL_MERIT",
-                "period": period,
-                "phase_means": means,
-                "relative_phase_spread_max": spread,
-                "relative_cycle_amplitude": amplitude,
-                "window_first_iteration": tail[0]["iteration"],
-                "window_last_iteration": tail[-1]["iteration"],
-            })
+            result.update(
+                {
+                    "status": "REPEATING_UNCONVERGED_GLOBAL_MERIT",
+                    "period": period,
+                    "phase_means": means,
+                    "relative_phase_spread_max": spread,
+                    "relative_cycle_amplitude": amplitude,
+                    "window_first_iteration": tail[0]["iteration"],
+                    "window_last_iteration": tail[-1]["iteration"],
+                }
+            )
             return result
     result["status"] = "NO_PERIOD_DETECTED"
     return result
@@ -89,7 +119,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--log", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--require-period", type=int, choices=tuple(range(2,9)))
+    p.add_argument("--require-period", type=int, choices=tuple(range(2, 9)))
     args = p.parse_args()
     try:
         outcome = audit(args.log)
@@ -98,9 +128,14 @@ def main() -> None:
     except (ValueError, KeyError, OverflowError) as exc:
         p.error(str(exc))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(outcome, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print("BFS_GLOBAL_MERIT_PERIOD_V42 status=" + outcome["status"] +
-          " physical_qualified=0")
+    args.output.write_text(
+        json.dumps(outcome, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(
+        "BFS_GLOBAL_MERIT_PERIOD_V42 status="
+        + outcome["status"]
+        + " physical_qualified=0"
+    )
 
 
 if __name__ == "__main__":

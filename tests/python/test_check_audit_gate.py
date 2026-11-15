@@ -150,7 +150,6 @@ class ValidateFichesContractTests(unittest.TestCase):
                 )
                 self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
-
     def test_legacy_bfs_campaign_reports_are_exempt_from_method_fiche_template(
         self,
     ):
@@ -178,7 +177,9 @@ class ValidateFichesContractTests(unittest.TestCase):
         )
         for name in report_names:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
-                write_fiche(Path(tmp), name=name, text="# Historical campaign report\\n")
+                write_fiche(
+                    Path(tmp), name=name, text="# Historical campaign report\\n"
+                )
                 self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
     def test_fiche_without_reference_is_rejected(self):

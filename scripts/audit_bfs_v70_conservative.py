@@ -3,6 +3,7 @@
 This tool checks evidence, not CFD convergence. Original V69 accepted and
 rejected transactions MUST be byte-identical when V70's private probes run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,11 +45,15 @@ def check_v70_evidence(log: str, reference: str) -> dict:
         original = records(reference, tag)
         current = records(log, tag)
         if not original or original != current:
-            raise ValueError(f"{tag}: missing reference or changed production trajectory")
+            raise ValueError(
+                f"{tag}: missing reference or changed production trajectory"
+            )
         counts[tag] = len(current)
-    if counts["GLOBAL_SAME_OPERATOR_TRIAL_V65"] != 149 or \
-       counts["GLOBAL_SAME_OPERATOR_COMMITTED_V65"] != 22 or \
-       counts["BFS_SST_RC_PICARD_V69"] != 6:
+    if (
+        counts["GLOBAL_SAME_OPERATOR_TRIAL_V65"] != 149
+        or counts["GLOBAL_SAME_OPERATOR_COMMITTED_V65"] != 22
+        or counts["BFS_SST_RC_PICARD_V69"] != 6
+    ):
         raise ValueError("incomplete historical BFS152/V69 replay")
     entries = records(log, "BFS_SST_RC_CONSERVATIVE_V70")
     if not entries:
@@ -62,9 +67,16 @@ def check_v70_evidence(log: str, reference: str) -> dict:
         if v.get("iteration") != "23" or v.get("retry") != "8":
             raise ValueError("V70 tested a different outer state")
         if "cycle" in v:
-            for key in ("fraction", "mass_before", "mass_frozen_after",
-                        "mass_true_after_sst", "pressure_delta", "face_delta",
-                        "merit_ratio", "worst_growth"):
+            for key in (
+                "fraction",
+                "mass_before",
+                "mass_frozen_after",
+                "mass_true_after_sst",
+                "pressure_delta",
+                "face_delta",
+                "merit_ratio",
+                "worst_growth",
+            ):
                 numeric(v, key)
             frac = numeric(v, "fraction")
             frozen_before = numeric(v, "mass_before")
@@ -78,22 +90,40 @@ def check_v70_evidence(log: str, reference: str) -> dict:
             if frac == 1 and frozen_after > 1e-10:
                 raise ValueError("V70 full projection did not conserve frozen mass")
             if frac < 1 and not frozen_after < frozen_before:
-                raise ValueError("V70 partial projection did not reduce frozen divergence")
+                raise ValueError(
+                    "V70 partial projection did not reduce frozen divergence"
+                )
             if v.get("candidate_eligible") == "1" and true_after > 1e-10:
                 raise ValueError("V70 false final mass-certification claim")
             closed_count += 1
-            trials.append({k: v[k] for k in (
-                "cycle", "fraction", "mass_before", "mass_frozen_after", "mass_true_after_sst",
-                "pressure_delta", "face_delta", "merit_ratio", "worst_growth",
-                "candidate_eligible")})
+            trials.append(
+                {
+                    k: v[k]
+                    for k in (
+                        "cycle",
+                        "fraction",
+                        "mass_before",
+                        "mass_frozen_after",
+                        "mass_true_after_sst",
+                        "pressure_delta",
+                        "face_delta",
+                        "merit_ratio",
+                        "worst_growth",
+                        "candidate_eligible",
+                    )
+                }
+            )
         elif v.get("closed") != "0" and v.get("certified_private") != "1":
             raise ValueError("V70 unexplained diagnostic record")
     tx = records(log, "BFS_SST_RC_TRANSACTION_V70")
     if len(tx) != 1:
         raise ValueError("V70 rollback/nonmutation proof absent")
     values = parse_values(tx[0])
-    if (values.get("U_p_phi_k_omega_nut_unchanged") != "1" or
-        values.get("committed") != "0" or values.get("qualified") != "0"):
+    if (
+        values.get("U_p_phi_k_omega_nut_unchanged") != "1"
+        or values.get("committed") != "0"
+        or values.get("qualified") != "0"
+    ):
         raise ValueError("V70 carrier/SST snapshot changed")
     return {
         "status": "forensic_only_not_qualified",

@@ -82,8 +82,8 @@
 # discrepancy never replaces convergence, conservation, symmetry or refinement.
 #
 # %%
-from pathlib import Path
 import json
+from pathlib import Path
 
 RESULT = Path("results/n9-s8/comparison.json")
 if RESULT.exists():

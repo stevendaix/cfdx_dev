@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+
 import pytest
 
 S = Path(__file__).resolve().parents[2] / "scripts" / "analyze_sst_rows_v33.py"
@@ -41,8 +42,11 @@ def test_missing_iteration_is_rejected():
 
 def test_truncated_omega_row_is_rejected():
     x = log()
-    x = "\n".join(row for row in x.splitlines() if not
-                  ("iteration=3 " in row and "cell=329 field=omega" in row))
+    x = "\n".join(
+        row
+        for row in x.splitlines()
+        if not ("iteration=3 " in row and "cell=329 field=omega" in row)
+    )
     with pytest.raises(ValueError, match="Missing SST"):
         mod.parse_log(x, [341, 329])
 
@@ -55,7 +59,9 @@ def test_duplicate_row_is_rejected():
 
 def test_nonfinite_value_is_rejected():
     with pytest.raises(ValueError, match="Non-finite"):
-        mod.parse_log(log().replace("full_residual=0.1", "full_residual=nan", 1), [341, 329])
+        mod.parse_log(
+            log().replace("full_residual=0.1", "full_residual=nan", 1), [341, 329]
+        )
 
 
 def test_false_qualification_is_rejected():
@@ -82,11 +88,16 @@ def test_first_attempt_must_be_explicit_when_a_retry_exists():
 
 
 def test_fv_source_scaling_is_fail_closed():
-    invalid = log().replace("dRk_dlogomega_fv_source=-0.002", "dRk_dlogomega_fv_source=-0.003", 1)
+    invalid = log().replace(
+        "dRk_dlogomega_fv_source=-0.002", "dRk_dlogomega_fv_source=-0.003", 1
+    )
     with pytest.raises(ValueError, match="volume scaling"):
         mod.parse_log(invalid, [341, 329])
 
 
 def test_fv_source_units_are_explicit():
     with pytest.raises(ValueError, match="Source derivative units"):
-        mod.parse_log(log().replace("source_units=per_unit_volume", "source_units=unknown", 1), [341, 329])
+        mod.parse_log(
+            log().replace("source_units=per_unit_volume", "source_units=unknown", 1),
+            [341, 329],
+        )

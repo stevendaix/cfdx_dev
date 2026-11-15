@@ -4,13 +4,15 @@ Fail closed on mismatched frozen inputs or an unqualified/fabricated result.
 The certificate is ALWAYS linear-only; neither exit status nor SST activity
 is interpreted as global physical convergence.
 """
+
 from __future__ import annotations
+
 import argparse
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
+from pathlib import Path
 
 KEY_VALUE = re.compile(r"([A-Za-z_][A-Za-z_0-9]*)=([^ ]+)")
 HASH_KEYS = ("A", "b", "x0", "rows", "nnz")
@@ -19,9 +21,11 @@ HASH_KEYS = ("A", "b", "x0", "rows", "nnz")
 def _events(path: Path, tag: str) -> list[dict[str, str]]:
     if not path.is_file() or not path.stat().st_size:
         raise ValueError(f"missing or empty production log: {path}")
-    return [dict(KEY_VALUE.findall(line)) for line in
-            path.read_text(encoding="utf-8").splitlines()
-            if line.startswith(tag + " ")]
+    return [
+        dict(KEY_VALUE.findall(line))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith(tag + " ")
+    ]
 
 
 def _number(event: dict[str, str], key: str) -> float:
@@ -36,7 +40,11 @@ def _fingerprint(path: Path) -> dict[str, str]:
     if not rows:
         raise ValueError(f"missing frozen A,b,x0 fingerprint in {path}")
     fingerprint = {key: rows[0][key] for key in HASH_KEYS}
-    if len(fingerprint["A"]) != 16 or len(fingerprint["b"]) != 16 or len(fingerprint["x0"]) != 16:
+    if (
+        len(fingerprint["A"]) != 16
+        or len(fingerprint["b"]) != 16
+        or len(fingerprint["x0"]) != 16
+    ):
         raise ValueError("malformed V40 FNV64 fingerprint")
     if int(fingerprint["rows"]) <= 0 or int(fingerprint["nnz"]) <= 0:
         raise ValueError("invalid original matrix dimensions")
@@ -62,19 +70,30 @@ def audit(base_log: Path, recovery_log: Path) -> dict:
         raise ValueError("V42 recovery never ran in production")
     linear_targets = []
     for r in retries:
-        if (r.get("attempted") != "1" or r.get("adopted") != "1" or
-            r.get("primary_model") != "PCD" or r.get("recovery_model") != "BlockLocal" or
-            r.get("physical_qualified") != "0" or r.get("original_A_unchanged") != "1" or
-            int(r["primary_status"]) == 0 or int(r["recovery_status"]) != 0 or
-            int(r["recovery_iterations"]) < 1):
+        if (
+            r.get("attempted") != "1"
+            or r.get("adopted") != "1"
+            or r.get("primary_model") != "PCD"
+            or r.get("recovery_model") != "BlockLocal"
+            or r.get("physical_qualified") != "0"
+            or r.get("original_A_unchanged") != "1"
+            or int(r["primary_status"]) == 0
+            or int(r["recovery_status"]) != 0
+            or int(r["recovery_iterations"]) < 1
+        ):
             raise ValueError("V42 log does not prove an honest BlockLocal recovery")
         target = _number(r, "unchanged_tolerance")
         measured = _number(r, "true_relative")
         if not (target > 0 and 0 <= measured <= target):
             raise ValueError("V42 retry does not meet the unchanged true-residual gate")
         linear_targets.append(measured)
+
     def proof(path: Path):
-        return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        return {
+            "path": str(path),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+
     return {
         "schema": "CFDX_BFS_PCD_BLOCKLOCAL_RECOVERY_V42/1",
         "original_system_fingerprint": first,
@@ -85,7 +104,8 @@ def audit(base_log: Path, recovery_log: Path) -> dict:
         "pure_pcd_convergence_proven": False,
         "global_physical_convergence_proven": False,
         "qualification": "LINEAR_RECOVERY_ONLY",
-        "baseline_log": proof(base_log), "recovery_log": proof(recovery_log),
+        "baseline_log": proof(base_log),
+        "recovery_log": proof(recovery_log),
     }
 
 
@@ -100,7 +120,9 @@ def main():
     except (ValueError, KeyError, OverflowError) as exc:
         p.error(str(exc))
     a.output.parent.mkdir(parents=True, exist_ok=True)
-    a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    a.output.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print("PCD_BLOCKLOCAL_RECOVERY_V42_CERTIFIED linear_only=1 physical_qualified=0")
 
 

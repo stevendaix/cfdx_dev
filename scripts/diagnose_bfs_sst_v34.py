@@ -4,6 +4,7 @@ This tool never certifies BFS physics or a globally accepted outer iteration.
 The reference HDF5 and V34 HDF5 must be byte-for-byte identical on geometry;
 only one explicit numerics option may vary.
 """
+
 import argparse
 import json
 import math
@@ -35,6 +36,7 @@ def sample(text, prefix, iteration="10"):
 
 def verify_cases(reference, experimental):
     import h5py
+
     with h5py.File(reference) as a, h5py.File(experimental) as b:
         if set(a.keys()) != set(b.keys()):
             raise ValueError("HDF5 dataset lists differ")
@@ -72,7 +74,7 @@ def compare(reference, experimental):
     g0 = sample(reference, "SST_ACCEPTANCE_GATES")
     g1 = sample(experimental, "SST_ACCEPTANCE_GATES")
     correction = sample(experimental, "SST_BRANCH_PRECOND_V34")
-    for gate in (g0,g1):
+    for gate in (g0, g1):
         if gate.get("qualified_bfs") != "0" or gate.get("outer_update_ok") != "0":
             raise ValueError("unexpected qualified/accepted outer state")
         if _number(gate, "tolerance") != 1e-8:
@@ -81,39 +83,43 @@ def compare(reference, experimental):
         raise ValueError("V34 correction falsely qualified or unbounded")
     if not correction.get("cells"):
         raise ValueError("V34 failed to sample a physical hotspot")
-    selected0,selected1 = j0["selected"],j1["selected"]
-    old_merit=max(_number(ctrl,"k_local_relative"),_number(ctrl,"omega_local_relative"))
-    new_merit=max(_number(trial,"k_local_relative"),_number(trial,"omega_local_relative"))
+    selected0, selected1 = j0["selected"], j1["selected"]
+    old_merit = max(
+        _number(ctrl, "k_local_relative"), _number(ctrl, "omega_local_relative")
+    )
+    new_merit = max(
+        _number(trial, "k_local_relative"), _number(trial, "omega_local_relative")
+    )
     return {
         "status": "NOT_CONVERGED_FIRST_OUTER_REJECTED",
-        "iteration":10,
-        "same_physical_threshold":1e-8,
-        "baseline_merit":old_merit,
-        "experimental_merit":new_merit,
-        "merit_difference":new_merit-old_merit,
-        "selected_baseline":selected0,
-        "selected_experimental":selected1,
-        "cells":correction["cells"],
-        "corrected_blocks":int(correction["corrected"]),
-        "maximum_relative_difference":_number(correction,"max_difference"),
-        "maximum_unilateral_gap":_number(correction,"max_unilateral_gap"),
+        "iteration": 10,
+        "same_physical_threshold": 1e-8,
+        "baseline_merit": old_merit,
+        "experimental_merit": new_merit,
+        "merit_difference": new_merit - old_merit,
+        "selected_baseline": selected0,
+        "selected_experimental": selected1,
+        "cells": correction["cells"],
+        "corrected_blocks": int(correction["corrected"]),
+        "maximum_relative_difference": _number(correction, "max_difference"),
+        "maximum_unilateral_gap": _number(correction, "max_unilateral_gap"),
         "source": "first_outer_attempt_only",
     }
 
 
 def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument("--control-log",required=True,type=Path)
-    parser.add_argument("--experiment-log",required=True,type=Path)
-    parser.add_argument("--control-hdf5",required=True,type=Path)
-    parser.add_argument("--experiment-hdf5",required=True,type=Path)
-    parser.add_argument("--output",type=Path)
-    args=parser.parse_args()
-    verify_cases(args.control_hdf5,args.experiment_hdf5)
-    result=compare(args.control_log.read_text(),args.experiment_log.read_text())
-    rendered=json.dumps(result,indent=2,sort_keys=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--control-log", required=True, type=Path)
+    parser.add_argument("--experiment-log", required=True, type=Path)
+    parser.add_argument("--control-hdf5", required=True, type=Path)
+    parser.add_argument("--experiment-hdf5", required=True, type=Path)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    verify_cases(args.control_hdf5, args.experiment_hdf5)
+    result = compare(args.control_log.read_text(), args.experiment_log.read_text())
+    rendered = json.dumps(result, indent=2, sort_keys=True)
     if args.output:
-        args.output.write_text(rendered+"\n")
+        args.output.write_text(rendered + "\n")
     print(rendered)
 
 

@@ -202,6 +202,7 @@ def build_families(
             gen.naca_o_grid = lambda n, nr, *a, **kw: shear_interior_rings(
                 original_grid(n, nr, *a, **kw), n, nr, strength=shear_strength
             )
+
             # naca_o_grid passes BOTH n_surface and trailing-edge regularization.
             # A default-bound `native` in position 2 receives the regularization
             # float instead of the original callable (the N64 TypeError).

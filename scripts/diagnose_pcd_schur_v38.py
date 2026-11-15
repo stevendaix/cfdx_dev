@@ -9,6 +9,7 @@ This bounded-size forensic audit compares *ideal algebraic inverse actions*,
 not finite-budget GMRES/FGMRES actions. Any discrepancy is model error even
 if the inner solvers could be made exact. Computational cost is O(n^3).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,9 +20,9 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+from certify_pcd_fp_bi_nullspace_v13 import read_capture
 from scipy.io import mmread
 from scipy.linalg import LinAlgWarning, lu_factor, lu_solve
-from certify_pcd_fp_bi_nullspace_v13 import read_capture
 
 SCHEMA = "cfdx-pcd-exact-schur-audit/v38"
 
@@ -47,7 +48,9 @@ def matrix_market(path: Path) -> np.ndarray:
 def pressure_operator(path: Path, nmax: int) -> np.ndarray:
     a, rhs, x0, _ = read_capture(path, max_rows=nmax)
     if np.any(rhs != 0.0) or np.any(x0 != 0.0):
-        raise ValueError("V38 pressure-operator capture requires ZERO placeholder vectors")
+        raise ValueError(
+            "V38 pressure-operator capture requires ZERO placeholder vectors"
+        )
     return a.toarray()
 
 
@@ -79,7 +82,8 @@ def normalized_gap(r: np.ndarray, action: np.ndarray, schur: np.ndarray) -> dict
         "schur_true_residual_relative": float(np.linalg.norm(im - r) / norm_r),
         "best_scalar_alpha": alpha,
         "schur_true_residual_after_best_scalar": float(
-            np.linalg.norm(alpha * im - r) / norm_r),
+            np.linalg.norm(alpha * im - r) / norm_r
+        ),
         "action_amplification_l2": float(np.linalg.norm(action) / norm_r),
     }
     if not all(np.isfinite(v) for v in output.values()):
@@ -87,9 +91,14 @@ def normalized_gap(r: np.ndarray, action: np.ndarray, schur: np.ndarray) -> dict
     return output
 
 
-def analyze(coupled_path: Path, coupled_rhs_path: Path,
-            mp_path: Path, kp_path: Path, fp_path: Path,
-            max_cells: int = 256) -> dict:
+def analyze(
+    coupled_path: Path,
+    coupled_rhs_path: Path,
+    mp_path: Path,
+    kp_path: Path,
+    fp_path: Path,
+    max_cells: int = 256,
+) -> dict:
     if not 1 <= max_cells <= 1024:
         raise ValueError("V38 audit max_cells must be within 1..1024")
     mp = pressure_operator(mp_path, max_cells)
@@ -107,17 +116,17 @@ def analyze(coupled_path: Path, coupled_rhs_path: Path,
     b = matrix_market(coupled_rhs_path)
     if A.shape != (4 * n, 4 * n) or b.shape != (4 * n, 1):
         raise ValueError("V38 expects exact 3-component U + 1 pressure block A and b")
-    a_uu = A[:3*n, :3*n]
-    G = A[:3*n, 3*n:]
-    D = A[3*n:, :3*n]
-    C = A[3*n:, 3*n:]
+    a_uu = A[: 3 * n, : 3 * n]
+    G = A[: 3 * n, 3 * n :]
+    D = A[3 * n :, : 3 * n]
+    C = A[3 * n :, 3 * n :]
     # This is the TRUE frozen saddle Schur complement at the captured state.
     # It is not a reassembled nonlinear Jacobian or the FV physical residual.
     with warnings.catch_warnings():
         warnings.simplefilter("error", LinAlgWarning)
         lu, piv = lu_factor(a_uu, check_finite=True)
         schur = C - D @ lu_solve((lu, piv), G)
-        schur_rhs = b[3*n:, 0] - D @ lu_solve((lu, piv), b[:3*n, 0])
+        schur_rhs = b[3 * n :, 0] - D @ lu_solve((lu, piv), b[: 3 * n, 0])
     if not np.isfinite(schur).all() or not np.isfinite(schur_rhs).all():
         raise ValueError("nonfinite coupled Schur complement")
     fp_inverse = np.linalg.pinv(fp, rcond=1e-12)
@@ -129,8 +138,7 @@ def analyze(coupled_path: Path, coupled_rhs_path: Path,
     # Small-system ORACLE ONLY: exact diagonal of the true saddle S. The
     # production SIMPLE/BlockLocal methods do not have this exact diagonal.
     diag_s = np.diag(schur)
-    valid_diag = bool(np.min(np.abs(diag_s)) >
-                      1e-14 * max(1.0, np.max(np.abs(diag_s))))
+    valid_diag = bool(np.min(np.abs(diag_s)) > 1e-14 * max(1.0, np.max(np.abs(diag_s))))
     oracle_diag = np.diag(1.0 / diag_s) if valid_diag else None
     tests = {"actual_coupled_schur_rhs": schur_rhs}
     for idx in sorted({0, n // 4, n // 2, n - 1}):
@@ -144,29 +152,43 @@ def analyze(coupled_path: Path, coupled_rhs_path: Path,
         results[name] = {
             "legacy_negative_fp_inverse": normalized_gap(r, legacy @ r, schur),
             "pcd_lumped_commutator": normalized_gap(r, commutator @ r, schur),
-            "exact_schur_pseudoinverse_reference": normalized_gap(r, schur_inverse @ r, schur),
+            "exact_schur_pseudoinverse_reference": normalized_gap(
+                r, schur_inverse @ r, schur
+            ),
         }
         if oracle_diag is not None:
             results[name]["oracle_only_exact_schur_diagonal"] = normalized_gap(
-                r, oracle_diag @ r, schur)
+                r, oracle_diag @ r, schur
+            )
     eye = np.eye(n)
     overall = {
         "legacy_frobenius_action_error_over_sqrt_n": float(
-            np.linalg.norm(schur @ legacy - eye, ord="fro") / np.sqrt(n)),
+            np.linalg.norm(schur @ legacy - eye, ord="fro") / np.sqrt(n)
+        ),
         "commutator_frobenius_action_error_over_sqrt_n": float(
-            np.linalg.norm(schur @ commutator - eye, ord="fro") / np.sqrt(n)),
+            np.linalg.norm(schur @ commutator - eye, ord="fro") / np.sqrt(n)
+        ),
         "exact_pseudoinverse_frobenius_action_error_over_sqrt_n": float(
-            np.linalg.norm(schur @ schur_inverse - eye, ord="fro") / np.sqrt(n)),
+            np.linalg.norm(schur @ schur_inverse - eye, ord="fro") / np.sqrt(n)
+        ),
         "oracle_only_exact_schur_diagonal_available": valid_diag,
     }
     if oracle_diag is not None:
-        overall["oracle_only_exact_schur_diagonal_frobenius_action_error_over_sqrt_n"] = float(
-            np.linalg.norm(schur @ oracle_diag - eye, ord="fro") / np.sqrt(n))
+        overall[
+            "oracle_only_exact_schur_diagonal_frobenius_action_error_over_sqrt_n"
+        ] = float(np.linalg.norm(schur @ oracle_diag - eye, ord="fro") / np.sqrt(n))
     report = {
         "schema": SCHEMA,
-        "inputs": {k: {"path": str(v), "sha256": digest(v)}
-                   for k, v in (("coupled_A", coupled_path), ("coupled_b", coupled_rhs_path),
-                                ("Mp", mp_path), ("Kp", kp_path), ("Fp", fp_path))},
+        "inputs": {
+            k: {"path": str(v), "sha256": digest(v)}
+            for k, v in (
+                ("coupled_A", coupled_path),
+                ("coupled_b", coupled_rhs_path),
+                ("Mp", mp_path),
+                ("Kp", kp_path),
+                ("Fp", fp_path),
+            )
+        },
         "pressure_cells": n,
         "saddle_matrix_n": int(A.shape[0]),
         "theory": {
@@ -178,8 +200,11 @@ def analyze(coupled_path: Path, coupled_rhs_path: Path,
             "oracle_only_exact_schur_diagonal": "diag(C-D Auu^{-1} G)^{-1}; NOT production SIMPLE",
             "warning": "pseudoinverse simulates ideal inversion, not nested Krylov; NOT physical validation",
         },
-        "spectral": {"Fp": spectral_info(fp), "Kp": spectral_info(kp),
-                     "true_saddle_S": spectral_info(schur)},
+        "spectral": {
+            "Fp": spectral_info(fp),
+            "Kp": spectral_info(kp),
+            "true_saddle_S": spectral_info(schur),
+        },
         "schur_action_error": overall,
         "probes": results,
         "verified_physical_convergence": False,
@@ -189,8 +214,12 @@ def analyze(coupled_path: Path, coupled_rhs_path: Path,
     return report
 
 
-def qualification_gates(report: dict, *, max_action_error: float | None = None,
-                        require_fp_nullity_match: bool = False) -> list[str]:
+def qualification_gates(
+    report: dict,
+    *,
+    max_action_error: float | None = None,
+    require_fp_nullity_match: bool = False,
+) -> list[str]:
     """Optional fail-closed Schur-model gates. They are NEVER physics gates."""
     failures = []
     if max_action_error is not None:
@@ -198,16 +227,18 @@ def qualification_gates(report: dict, *, max_action_error: float | None = None,
             raise ValueError("max_action_error must be positive and finite")
         for model in ("legacy", "commutator"):
             value = report["schur_action_error"][
-                model + "_frobenius_action_error_over_sqrt_n"]
+                model + "_frobenius_action_error_over_sqrt_n"
+            ]
             if not np.isfinite(value) or value > max_action_error:
-                failures.append(f"{model} action error {value:.7g} > {max_action_error:.7g}")
+                failures.append(
+                    f"{model} action error {value:.7g} > {max_action_error:.7g}"
+                )
     if require_fp_nullity_match:
         fp = report["spectral"]["Fp"]["numerical_nullity"]
         exact = report["spectral"]["true_saddle_S"]["numerical_nullity"]
         if fp != exact:
             failures.append(f"Fp nullity {fp} differs from exact Schur nullity {exact}")
     return failures
-
 
 
 def main(argv=None) -> int:
@@ -219,19 +250,34 @@ def main(argv=None) -> int:
     parser.add_argument("--fp", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-cells", type=int, default=256)
-    parser.add_argument("--max-action-error", type=float,
-                        help="optional strict algebraic model gate, NOT a convergence tolerance")
-    parser.add_argument("--require-fp-nullity-match", action="store_true",
-                        help="reject PCD Fp rank deficiency absent in the true pressure Schur")
+    parser.add_argument(
+        "--max-action-error",
+        type=float,
+        help="optional strict algebraic model gate, NOT a convergence tolerance",
+    )
+    parser.add_argument(
+        "--require-fp-nullity-match",
+        action="store_true",
+        help="reject PCD Fp rank deficiency absent in the true pressure Schur",
+    )
     args = parser.parse_args(argv)
     try:
-        report = analyze(args.coupled_A, args.coupled_b, args.mp, args.kp, args.fp,
-                         max_cells=args.max_cells)
+        report = analyze(
+            args.coupled_A,
+            args.coupled_b,
+            args.mp,
+            args.kp,
+            args.fp,
+            max_cells=args.max_cells,
+        )
         failures = qualification_gates(
-            report, max_action_error=args.max_action_error,
-            require_fp_nullity_match=args.require_fp_nullity_match)
+            report,
+            max_action_error=args.max_action_error,
+            require_fp_nullity_match=args.require_fp_nullity_match,
+        )
         report["algebraic_qualification_gate"] = {
-            "requested": args.max_action_error is not None or args.require_fp_nullity_match,
+            "requested": args.max_action_error is not None
+            or args.require_fp_nullity_match,
             "pass": len(failures) == 0,
             "failure_reasons": failures,
             "is_physical_qualification": False,
@@ -240,16 +286,29 @@ def main(argv=None) -> int:
         tmp = args.output.with_name(args.output.name + ".tmp")
         tmp.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
         os.replace(tmp, args.output)
-        print("PCD_SCHUR_V38 pressure_cells={} legacy_error={:.6e} "
-              "commutator_error={:.6e} algebraic_gate={} physical_qualified=0".format(
-                  report["pressure_cells"],
-                  report["schur_action_error"]["legacy_frobenius_action_error_over_sqrt_n"],
-                  report["schur_action_error"]["commutator_frobenius_action_error_over_sqrt_n"],
-                  "FAIL" if failures else "PASS"))
+        print(
+            "PCD_SCHUR_V38 pressure_cells={} legacy_error={:.6e} "
+            "commutator_error={:.6e} algebraic_gate={} physical_qualified=0".format(
+                report["pressure_cells"],
+                report["schur_action_error"][
+                    "legacy_frobenius_action_error_over_sqrt_n"
+                ],
+                report["schur_action_error"][
+                    "commutator_frobenius_action_error_over_sqrt_n"
+                ],
+                "FAIL" if failures else "PASS",
+            )
+        )
         for failure in failures:
             print("PCD_SCHUR_V38_GATE_FAIL: " + failure, file=__import__("sys").stderr)
         return 2 if failures else 0
-    except (ValueError, OSError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as exc:
+    except (
+        ValueError,
+        OSError,
+        RuntimeError,
+        FloatingPointError,
+        np.linalg.LinAlgError,
+    ) as exc:
         print(f"PCD_SCHUR_V38_ERROR: {exc}", file=__import__("sys").stderr)
         return 2
 
