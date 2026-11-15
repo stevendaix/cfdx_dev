@@ -40,9 +40,10 @@ def prepare(preimage, destination):
                 raise ValueError("HDF5 topology modified")
 
             def check(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    if name not in b or not np.array_equal(obj[...], b[name][...]):
-                        raise ValueError("Changed dataset: " + name)
+                if isinstance(obj, h5py.Dataset) and (
+                    name not in b or not np.array_equal(obj[...], b[name][...])
+                ):
+                    raise ValueError("Changed dataset: " + name)
 
             a.visititems(check)
             for name in a.attrs:
