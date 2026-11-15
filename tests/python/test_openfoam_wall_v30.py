@@ -81,6 +81,7 @@ def test_cli_rejects_synthetic_and_malformed_matrix():
             [sys.executable, str(SCRIPT), str(ref), str(can)],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert run.returncode == 3
         assert "INCOMPLETE_NO_NATIVE_OPENFOAM_EXPORT" in run.stdout
@@ -90,6 +91,7 @@ def test_cli_rejects_synthetic_and_malformed_matrix():
             [sys.executable, str(SCRIPT), str(ref), str(can)],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert run.returncode == 3
         assert "FAIL_INVALID_EVIDENCE" in run.stdout
