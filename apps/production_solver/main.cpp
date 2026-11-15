@@ -88,7 +88,6 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
-    bool validate_numerics_only = false;
     std::string high_low_checkpoint_prefix;
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
@@ -718,7 +717,6 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
-        else if (arg == "--validate-numerics-only") o.validate_numerics_only = true;
         else if (arg == "--high-low-checkpoint-prefix")
             o.high_low_checkpoint_prefix = value("--high-low-checkpoint-prefix");
         else if (arg == "--pressure-replay-prefix")
@@ -752,7 +750,6 @@ Options parse(int argc, char** argv)
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
-                         "  [--validate-numerics-only] (validate and print resolved case methods; do not solve)\n"
                          "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
@@ -813,7 +810,6 @@ int main(int argc, char** argv)
             ok = read_case_cfdx_h5(mesh_path, mesh, case_source, case_setup, case_gap);
             if (!ok)
                 throw std::runtime_error("production solver: CFDX case load failed");
-            resolve_generic_production_boundary_patch_types(mesh.boundary(), case_setup);
         } else if (mesh_path.size() >= 3 &&
                    mesh_path.substr(mesh_path.size() - 3) == ".h5") {
             if (hdf5_contains_case_setup(mesh_path))
@@ -865,17 +861,6 @@ int main(int argc, char** argv)
                     "production solver: energy_model 'compressible' is not "
                     "solved by this executable (incompressible carrier "
                     "only); use a compressible solver for this case");
-        }
-
-        if (options.validate_numerics_only) {
-            if (!is_case_hdf5)
-                throw std::invalid_argument(
-                    "--validate-numerics-only requires a .cfdx.h5 case");
-            IncompressibleSolverControls selection_controls;
-            apply_explicit_case_numerics(case_setup, selection_controls);
-            std::cout << "Resolved numerical selections:\n"
-                      << cfdx::core::format_numerics_report(case_setup.numerical_report);
-            return 0;
         }
 
         if (options.initial_pressure_field && (!options.initial_velocity_field ||
@@ -1865,6 +1850,8 @@ int main(int argc, char** argv)
                       &sst_controls.sst_two_cycle_rescue_v41_experimental},
                      {"sst_anderson_m2_v20_experimental", &sst_controls.sst_anderson_m2_v20},
                      {"sst_jfnk_v22_experimental", &sst_controls.sst_jfnk_v22_experimental},
+                     {"sst_implicit_spatial_rescue_v82_experimental",
+                      &sst_controls.sst_implicit_spatial_rescue_v82_experimental},
                      {"sst_block_preconditioner_v23_experimental",
                       &sst_controls.sst_block_preconditioner_v23_experimental},
                      {"sst_branch_preconditioner_v34_experimental",
@@ -2057,6 +2044,131 @@ int main(int argc, char** argv)
                           << provisional->second
                           << " (final SST and conservation gates UNCHANGED)\n";
             }
+            const auto v83_progress = case_setup.numerics.raw_settings.find(
+                "v83_provisional_outer_merit_progress");
+            if (v83_progress != case_setup.numerics.raw_settings.end()) {
+                if (v83_progress->second != "enabled" &&
+                    v83_progress->second != "disabled")
+                    throw std::invalid_argument(
+                        "v83_provisional_outer_merit_progress must be enabled or disabled");
+                experimental_sst_runtime.sst_provisional_merit_progress_v83_experimental =
+                    v83_progress->second == "enabled";
+                if (experimental_sst_runtime.sst_provisional_merit_progress_v83_experimental) {
+                    if (!experimental_sst_runtime.allow_bounded_provisional_transport)
+                        throw std::invalid_argument(
+                            "V83 requires sst_outer_provisional=enabled");
+                    std::cout << "V83 bounded inexact outer progress: EXPERIMENTAL, "
+                                 "physical U/p/flux/SST merit required; final SST gate UNCHANGED\n";
+                }
+            }
+            const auto v84_window = case_setup.numerics.raw_settings.find(
+                "v84_bounded_nonmonotone_outer_progress");
+            if (v84_window != case_setup.numerics.raw_settings.end()) {
+                if (v84_window->second != "enabled" && v84_window->second != "disabled")
+                    throw std::invalid_argument(
+                        "v84_bounded_nonmonotone_outer_progress must be enabled or disabled");
+                controls.nonmonotone_outer_progress_v84_experimental =
+                    v84_window->second == "enabled";
+                if (controls.nonmonotone_outer_progress_v84_experimental)
+                    std::cout << "V84 finite-window full FV progress EXPERIMENTAL; "
+                                 "V8 final convergence thresholds UNCHANGED\n";
+            }
+            const auto v85_window = case_setup.numerics.raw_settings.find(
+                "v85_bounded_nonmonotone_outer_progress");
+            if (v85_window != case_setup.numerics.raw_settings.end()) {
+                if (v85_window->second != "enabled" && v85_window->second != "disabled")
+                    throw std::invalid_argument(
+                        "v85_bounded_nonmonotone_outer_progress must be enabled or disabled");
+                controls.bounded_outer_progress_v85_experimental =
+                    v85_window->second == "enabled";
+                if (controls.bounded_outer_progress_v85_experimental)
+                    std::cout << "V85 six-state recoverable SST window EXPERIMENTAL; "
+                                 "V8 final convergence thresholds UNCHANGED\n";
+            }
+            const auto v86_trust = case_setup.numerics.raw_settings.find(
+                "v86_bfs_physical_trust_region");
+            if (v86_trust != case_setup.numerics.raw_settings.end()) {
+                if (v86_trust->second!="enabled" && v86_trust->second!="disabled")
+                    throw std::invalid_argument(
+                        "v86_bfs_physical_trust_region must be enabled or disabled");
+                if (v86_trust->second=="enabled") {
+                    const auto inlet=ubc.find("inlet");
+                    if (inlet==ubc.end() ||
+                        inlet->second.type!=VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        throw std::invalid_argument(
+                            "V86 BFS trust region requires fixed velocity inlet");
+                    controls.bfs_inlet_speed_v86=inlet->second.value.mag();
+                    controls.bfs_field_trust_v86_experimental=true;
+                    std::cout<<"V86 BFS field trust enabled, U_inlet="
+                             <<controls.bfs_inlet_speed_v86
+                             <<" (velocity<=2 Uin, k<=0.03 Uin^2; NOT a physical certificate)\n";
+                }
+            }
+            const auto v87_screen = case_setup.numerics.raw_settings.find(
+                "v87_bfs_early_velocity_screen");
+            if (v87_screen != case_setup.numerics.raw_settings.end()) {
+                if (v87_screen->second!="enabled" && v87_screen->second!="disabled")
+                    throw std::invalid_argument(
+                        "v87_bfs_early_velocity_screen must be enabled or disabled");
+                controls.bfs_early_velocity_screen_v87_experimental =
+                    v87_screen->second=="enabled";
+                if (controls.bfs_early_velocity_screen_v87_experimental)
+                    std::cout << "V87 pre-SST velocity screen EXPERIMENTAL; "
+                              << "V86 post-SST guard and final thresholds UNCHANGED\n";
+            }
+            const auto v88_step=case_setup.numerics.raw_settings.find(
+                "v88_bfs_local_step_trust");
+            if (v88_step != case_setup.numerics.raw_settings.end()) {
+                if (v88_step->second!="enabled" && v88_step->second!="disabled")
+                    throw std::invalid_argument(
+                        "v88_bfs_local_step_trust must be enabled or disabled");
+                controls.bfs_local_step_trust_v88_experimental =
+                    v88_step->second=="enabled";
+                if (controls.bfs_local_step_trust_v88_experimental)
+                    std::cout << "V88 pre-SST LOCAL delta-U trust enabled "
+                              << "(default 0.5 Uin, same final physical thresholds; EXPERIMENTAL)\n";
+            }
+            const auto v89_trust=case_setup.numerics.raw_settings.find(
+                "v89_bfs_pressure_transverse_trust");
+            if (v89_trust!=case_setup.numerics.raw_settings.end()) {
+                if(v89_trust->second!="enabled" && v89_trust->second!="disabled")
+                    throw std::invalid_argument("v89_bfs_pressure_transverse_trust must be enabled or disabled");
+                controls.bfs_pressure_transverse_trust_v89_experimental =
+                    v89_trust->second=="enabled";
+                if (controls.bfs_pressure_transverse_trust_v89_experimental)
+                    std::cout << "V89 pre/post SST gauge-invariant pressure and transverse "
+                              << "momentum trust EXPERIMENTAL (full U/p/k/omega final gates unchanged)\n";
+            }
+            const auto v90_pseudo = case_setup.numerics.raw_settings.find(
+                "v90_pseudo_provisional_momentum");
+            if (v90_pseudo != case_setup.numerics.raw_settings.end()) {
+                if (v90_pseudo->second != "enabled" && v90_pseudo->second != "disabled")
+                    throw std::invalid_argument(
+                        "v90_pseudo_provisional_momentum must be enabled or disabled");
+                controls.bfs_pseudo_provisional_v90_experimental =
+                    v90_pseudo->second == "enabled";
+                if (controls.bfs_pseudo_provisional_v90_experimental) {
+                    // Explicit configuration is REQUIRED; no arbitrary hidden cap.
+                    const auto cap_it = case_setup.numerics.raw_settings.find(
+                        "v90_pseudo_maximum_diagonal_fraction");
+                    if (cap_it == case_setup.numerics.raw_settings.end())
+                        throw std::invalid_argument("V90 requires explicit pseudo diagonal cap");
+                    std::size_t consumed = 0;
+                    double cap = 0.0;
+                    try { cap = std::stod(cap_it->second, &consumed); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid V90 pseudo diagonal cap");
+                    }
+                    if (consumed != cap_it->second.size() || !std::isfinite(cap) ||
+                        cap <= 0.0 || cap > 1.0)
+                        throw std::invalid_argument("V90 pseudo diagonal cap must be in (0,1]");
+                    controls.pseudo_momentum.maximum_diagonal_fraction = cap;
+                    std::cout << "V90 bounded pseudo-momentum plus provisional SST: "
+                                 "EXPERIMENTAL, cap=" << cap
+                              << ", true steady U/p/k/omega residuals required; "
+                                 "NO final certificate from pseudo mass\n";
+                }
+            }
             std::cout << "SST transport max inner iterations "
                       << sst_inner_budget << " (unchanged tolerance 1e-8)\n";
             if (!boundary_contract.wall_omega_sst_patches.empty()) {
@@ -2242,6 +2354,48 @@ int main(int argc, char** argv)
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
                 const Field<double, Location::CELL>& state_u,
                 const Field<double, Location::CELL>& state_p) {
+                // This callback is invoked only after a committed outer FV
+                // transaction. V86 makes the initial transient of the nonlinear
+                // iteration auditable: snapshots 1..10, then 20,30,..100.
+                // No rejected nonlinear candidate can reach this callback.
+                if (controls.bounded_outer_progress_v85_experimental) {
+                    std::size_t reverse_cells=0;
+                    double ux_min=std::numeric_limits<double>::infinity();
+                    double ux_max=-std::numeric_limits<double>::infinity();
+                    std::size_t ux_min_cell=0;
+                    double speed_max=0.0;
+                    std::size_t speed_max_cell=0;
+                    double p_min=std::numeric_limits<double>::infinity();
+                    double p_max=-std::numeric_limits<double>::infinity();
+                    for (std::size_t c=0;c<state_u.size();++c) {
+                        const double ux=state_u(c,0),pr=state_p(c);
+                        if (!std::isfinite(ux) || !std::isfinite(pr))
+                            throw std::runtime_error("V85 nonfinite accepted U/p fields");
+                        reverse_cells+=ux<0.0?1:0;
+                        if (ux<ux_min) { ux_min=ux; ux_min_cell=c; }
+                        ux_max=std::max(ux_max,ux);
+                        const double speed=std::hypot(ux,std::hypot(state_u(c,1),state_u(c,2)));
+                        if (!std::isfinite(speed))
+                            throw std::runtime_error("V86 nonfinite accepted speed");
+                        if (speed>speed_max) { speed_max=speed; speed_max_cell=c; }
+                        p_min=std::min(p_min,pr);p_max=std::max(p_max,pr);
+                    }
+                    std::cerr << "BFS_FIELD_COMMITTED_V85 iteration=" << iteration
+                              << " cells=" << state_u.size()
+                              << " reverse_ux_cells=" << reverse_cells
+                              << " ux_min=" << ux_min
+                              << " ux_min_cell=" << ux_min_cell
+                              << " speed_max=" << speed_max
+                              << " speed_max_cell=" << speed_max_cell
+                              << " ux_max=" << ux_max
+                              << " pressure_min_pa=" << p_min
+                              << " pressure_max_pa=" << p_max
+                              << " pressure_span_pa=" << p_max-p_min
+                              << " converged=0_or_pending\n";
+                    if (iteration>10 && iteration%10!=0 &&
+                        iteration!=controls.convergence.max_iterations)
+                        return true;
+                }
                 ScalarCellField pressure(state_p);
                 ScalarCellField ux(state_u.size(), "u_x", "m/s");
                 ScalarCellField uy(state_u.size(), "u_y", "m/s");
