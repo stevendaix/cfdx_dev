@@ -512,7 +512,8 @@ def reconfigure_bfs_reference_case(
         setup = json.loads(source.attrs["case_setup_json"])
         numerics = setup.get("numerics")
         if not isinstance(numerics, dict):
-            raise ValueError("reference input has no numerical configuration")
+            # Invalid persisted case metadata is a domain validation failure.
+            raise ValueError("reference input has no numerical configuration")  # noqa: TRY004
         selection = numerics.get("selection")
         if not isinstance(selection, dict) or not isinstance(
             selection.get("entries"), list
