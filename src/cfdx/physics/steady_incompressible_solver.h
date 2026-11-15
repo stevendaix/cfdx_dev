@@ -3,6 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/core/linalg/native_selfp_schur_v63.h"
 #include "cfdx/core/linalg/cell_overlapping_schwarz.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
@@ -29,6 +30,8 @@
 #include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_compensated_assembly.h"
+#include "cfdx/physics/pressure_split_oracle_v79.h"
+#include "cfdx/physics/pressure_native_defect_v80.h"
 #include "cfdx/physics/pcd_fp_equilibration.h"
 #include "cfdx/physics/pcd_fp_strong_component_anchor.h"
 #include "cfdx/physics/pcd_fp_capture.h"
@@ -58,6 +61,13 @@
 #include "cfdx/physics/global_nonlinear_residual_v8.h"
 #include "cfdx/physics/global_nonlinear_acceptance_v13.h"
 #include "cfdx/physics/global_nonlinear_contraction_v14.h"
+#include "cfdx/physics/global_outer_progress_v84.h"
+#include "cfdx/physics/global_outer_progress_v85.h"
+#include "cfdx/physics/bfs_field_trust_guard_v86.h"
+#include "cfdx/physics/bfs_early_velocity_screen_v87.h"
+#include "cfdx/physics/bfs_local_step_trust_v88.h"
+#include "cfdx/physics/bfs_pressure_transverse_trust_v89.h"
+#include "cfdx/physics/bfs_causal_ablation_v64.h"
 #include "cfdx/physics/outer_field_period_v43.h"
 #include "cfdx/physics/coupled_outer_step_v43.h"
 #include "cfdx/physics/coupled_phase_escape_v45.h"
@@ -67,6 +77,19 @@
 #include "cfdx/physics/state_only_rhie_chow_v49.h"
 #include "cfdx/physics/state_only_six_residual_v50.h"
 #include "cfdx/physics/physical_six_candidate_v51.h"
+#include "cfdx/physics/comparable_physical_merit_v65.h"
+#include "cfdx/physics/bfs_flux_sst_causal_v66.h"
+#include "cfdx/physics/bfs_block_probe_v67.h"
+#include "cfdx/physics/bfs_sst_flux_swap_v68.h"
+#include "cfdx/physics/bfs_sst_flux_picard_v69.h"
+#include "cfdx/physics/bfs_sst_rc_conservative_v70.h"
+#include "cfdx/physics/bfs_joint_momentum_sst_v71.h"
+#include "cfdx/physics/bfs_joint_fixed_point_v72.h"
+#include "cfdx/physics/bfs_post_sst_direction_v73.h"
+#include "cfdx/physics/bfs_single_direction_continuation_v74.h"
+#include "cfdx/physics/bfs_wall_regime_v74.h"
+#include "cfdx/physics/bfs_sst_budget_forensics_v75.h"
+#include "cfdx/physics/bfs_sst_implicit_block_v76.h"
 #include "cfdx/physics/physical_chain_tangent_v57.h"
 #include "cfdx/physics/convective_face_audit_v56.h"
 #include "cfdx/physics/convective_branch_oracle_v58.h"
@@ -337,6 +360,10 @@ struct SSTProductionRuntime {
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
     bool allow_bounded_provisional_transport = false;
+    // V83 opt-in: evaluate and commit finite, unclipped but NONCONVERGED
+    // SST outer PROGRESS through the true V8/V13/V14 FV residuals. It never
+    // changes V8 converged or the final SST 1e-8 gate. No COUPLED support.
+    bool sst_provisional_merit_progress_v83_experimental = false;
     // V15 staged reference. Refuses incomplete per-face/cell values, promoted
     // only on a fully accepted carrier+SST outer transaction. NO physical
     // wall-function substitution; all three production operators must still
@@ -379,6 +406,35 @@ struct IncompressibleSolverControls {
     // post-SST global merit between COMMITTED states at identical operator.
     // Never accept by the numerical linear solver's reported residual.
     bool monotone_global_merit_v14_experimental = false;
+    // V84: explicitly replace V13/V14 *progress* checks with a finite-window
+    // policy on the same independent FV residuals. Never alters final V8 gates.
+    // Limited to steady SIMPLE/SST with the V83 provisional path enabled.
+    bool nonmonotone_outer_progress_v84_experimental = false;
+    // V85: opt-in six-state, recoverable nonmonotone progress. V8 final
+    // physical criteria and all nonlinear rollback protections remain in force.
+    // V84 and V85 are mutually exclusive. Only steady SIMPLE + V83 provisional.
+    bool bounded_outer_progress_v85_experimental = false;
+    // V86 opt-in BFS-only field trust region on FULL reassembled candidates.
+    // Forbids explosive speed/k spikes before committing; existing nonlinear
+    // retry reduces the tentative U/p step, never the final convergence gates.
+    bool bfs_field_trust_v86_experimental = false;
+    bool bfs_early_velocity_screen_v87_experimental = false;
+    // V88 only: early local DELTA-U trust guard and deeper FULL rollback retries.
+    // The final FV convergence tolerances and actual Rhie-Chow operator do not change.
+    bool bfs_local_step_trust_v88_experimental = false;
+    double bfs_step_delta_u_limit_v88 = 0.5;
+    // V89 experimental gauge-invariant pressure + transverse momentum trust.
+    // Never enabled by default; only allowed with V88/V85 and full V8 gates.
+    bool bfs_pressure_transverse_trust_v89_experimental = false;
+    // V90: explicitly opt-in pseudo-time MOMENTUM with provisional SST progress.
+    // The pseudo mass is used in the predictor ONLY; the independent final
+    // residual is assembled from the STEADY physical FV equations.
+    bool bfs_pseudo_provisional_v90_experimental = false;
+    double bfs_step_delta_uy_limit_v89 = 0.15;
+    double bfs_pressure_increment_q_limit_v89 = 16.0;
+    double bfs_pressure_cumulative_factor_v89 = 3.0;
+    double bfs_transverse_residual_growth_v89 = 1.5;
+    double bfs_inlet_speed_v86 = 0.0;
     // V43 experimental nonlinear correction for the monolithic COUPLED
     // carrier update. 0 disables it; 0<beta<=1 interpolates U,p between the
     // previous accepted state and the certified linear candidate. Retries use
@@ -1074,6 +1130,104 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument(
             "V43 COUPLED outer step requires steady COUPLED/SST, V7/V8, "
             "no PTC or incomplete paired restart");
+    if (c.bfs_pseudo_provisional_v90_experimental &&
+        (!c.sst_runtime || !c.sst_runtime->sst_provisional_merit_progress_v83_experimental ||
+         !c.sst_runtime->allow_bounded_provisional_transport ||
+         !c.pseudo_momentum.enabled ||
+         !std::isfinite(c.pseudo_momentum.maximum_diagonal_fraction) ||
+         !(c.pseudo_momentum.maximum_diagonal_fraction > 0.0 &&
+           c.pseudo_momentum.maximum_diagonal_fraction <= 1.0) ||
+         !c.bounded_outer_progress_v85_experimental ||
+         !c.bfs_field_trust_v86_experimental ||
+         !c.bfs_local_step_trust_v88_experimental ||
+         !c.bfs_pressure_transverse_trust_v89_experimental ||
+         !c.require_post_sst_momentum_reassembly ||
+         !c.require_global_nonlinear_certificate_v8 ||
+         !c.joint_globalization_v13_experimental ||
+         !c.monotone_global_merit_v14_experimental ||
+         !c.pressure_high_low_production ||
+         c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         c.transient.enabled || c.outer_ptc_v31_experimental))
+        throw std::invalid_argument(
+            "V90 pseudo/provisional requires steady SIMPLE/V83-V89, physical V7/V8/V13/V14, "
+            "and a finite pseudo-momentum diagonal cap <= 1");
+    if (c.sst_runtime &&
+        c.sst_runtime->sst_provisional_merit_progress_v83_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         c.transient.enabled ||
+         (c.pseudo_momentum.enabled && !c.bfs_pseudo_provisional_v90_experimental) ||
+         !c.sst_runtime->allow_bounded_provisional_transport ||
+         !c.require_global_nonlinear_certificate_v8 ||
+         !c.require_post_sst_momentum_reassembly ||
+         !c.joint_globalization_v13_experimental ||
+         !c.monotone_global_merit_v14_experimental ||
+         c.outer_ptc_v31_experimental))
+        throw std::invalid_argument(
+            "V83 inexact SST progress requires steady SIMPLE, bounded "
+            "provisional SST, strict V7/V8/V13/V14 and no outer PTC");
+    if (c.bfs_pressure_transverse_trust_v89_experimental &&
+        (!c.bfs_local_step_trust_v88_experimental ||
+         !c.require_global_nonlinear_certificate_v8 ||
+         !c.require_post_sst_momentum_reassembly ||
+         !c.sst_runtime || !c.pressure_high_low_production ||
+         c.transient.enabled || c.algorithm!=PressureVelocityAlgorithm::SIMPLE ||
+         !(std::isfinite(c.bfs_step_delta_uy_limit_v89) && c.bfs_step_delta_uy_limit_v89>0.0 &&
+           std::isfinite(c.bfs_pressure_increment_q_limit_v89) && c.bfs_pressure_increment_q_limit_v89>0.0 &&
+           std::isfinite(c.bfs_pressure_cumulative_factor_v89) && c.bfs_pressure_cumulative_factor_v89>=1.0 &&
+           std::isfinite(c.bfs_transverse_residual_growth_v89) && c.bfs_transverse_residual_growth_v89>=1.0)))
+        throw std::invalid_argument("V89 needs V88, V8 full U/p/SST, conservative high/low steady SIMPLE");
+    if (c.bfs_local_step_trust_v88_experimental &&
+        (!c.bfs_early_velocity_screen_v87_experimental ||
+         !c.bfs_field_trust_v86_experimental || !c.pressure_high_low_production ||
+         !c.bounded_outer_progress_v85_experimental ||
+         !c.sst_runtime || c.transient.enabled ||
+         c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         !(std::isfinite(c.bfs_step_delta_u_limit_v88) &&
+           c.bfs_step_delta_u_limit_v88 > 0.0 &&
+           c.bfs_step_delta_u_limit_v88 <= 2.0)))
+        throw std::invalid_argument(
+            "V88 local-step safeguard needs V87/V86/V85, steady SIMPLE/SST, "
+            "high/low Rhie-Chow pressure and valid delta-U radius");
+    if (c.bfs_early_velocity_screen_v87_experimental &&
+        (!c.bfs_field_trust_v86_experimental ||
+         !c.bounded_outer_progress_v85_experimental ||
+         c.algorithm!=PressureVelocityAlgorithm::SIMPLE || !c.sst_runtime))
+        throw std::invalid_argument(
+            "V87 early velocity screen requires V86 field trust and V85 SIMPLE/SST");
+    if (c.bfs_field_trust_v86_experimental &&
+        (!c.bounded_outer_progress_v85_experimental ||
+         !std::isfinite(c.bfs_inlet_speed_v86) || c.bfs_inlet_speed_v86<=0.0 ||
+         c.algorithm!=PressureVelocityAlgorithm::SIMPLE || !c.sst_runtime))
+        throw std::invalid_argument("V86 BFS field guard requires steady V85 SIMPLE/SST and inlet speed");
+    if (c.nonmonotone_outer_progress_v84_experimental &&
+        c.bounded_outer_progress_v85_experimental)
+        throw std::invalid_argument("V84 and V85 policies cannot both be enabled");
+    if (c.bounded_outer_progress_v85_experimental &&
+        (!c.sst_runtime ||
+         !c.sst_runtime->sst_provisional_merit_progress_v83_experimental ||
+         !c.require_post_sst_momentum_reassembly ||
+         !c.require_global_nonlinear_certificate_v8 ||
+         !c.joint_globalization_v13_experimental ||
+         !c.monotone_global_merit_v14_experimental ||
+         c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         c.transient.enabled || c.outer_ptc_v31_experimental ||
+         (c.pseudo_momentum.enabled && !c.bfs_pseudo_provisional_v90_experimental)))
+        throw std::invalid_argument(
+            "V85 bounded outer progress requires V83 steady SIMPLE with "
+            "independent V7/V8 residuals and V13/V14 guard configuration");
+    if (c.nonmonotone_outer_progress_v84_experimental &&
+        (!c.sst_runtime ||
+         !c.sst_runtime->sst_provisional_merit_progress_v83_experimental ||
+         !c.require_post_sst_momentum_reassembly ||
+         !c.require_global_nonlinear_certificate_v8 ||
+         !c.joint_globalization_v13_experimental ||
+         !c.monotone_global_merit_v14_experimental ||
+         c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         c.transient.enabled || c.outer_ptc_v31_experimental ||
+         (c.pseudo_momentum.enabled && !c.bfs_pseudo_provisional_v90_experimental)))
+        throw std::invalid_argument(
+            "V84 bounded outer progress requires V83 steady SIMPLE with "
+            "provisional SST, independent V7/V8 residuals and V13/V14 guards");
     if (c.monotone_global_merit_v14_experimental &&
         !c.joint_globalization_v13_experimental)
         throw std::invalid_argument("V14 monotone physical merit requires V13 joint globalization");
@@ -4489,6 +4643,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // preconditioner family selects the surrounding block infrastructure;
     // PCD therefore remains reachable even when the outer plan is the generic
     // coupled-block Schur container.
+    const bool v63_selfp = [] {
+        const char* value=std::getenv("CFDX_COUPLED_SELFP_ILU_V63");
+        return value && std::string(value)=="1";
+    }();
+    if(v63_selfp && (schur_model != CoupledSchurModel::BlockLocal ||
+                     !use_n8_block_schur ||
+                     controls.coupling.coupled_schwarz_experimental))
+        throw std::invalid_argument(
+            "V63 selfp is a separately named, experimental BlockLocal opt-in only");
     const bool use_pcd =
         schur_model == CoupledSchurModel::PCD;
     const bool use_lsc_bfbt =
@@ -4590,7 +4753,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         controls.anisotropy_report_callback("coupled_full_4N", analyze_anisotropy(A));
     }
-    if (use_simple_schur) {
+    if(v63_selfp) {
+        auto native=std::make_unique<cfdx::core::NativeSelfpILUSchurV63>(nc);
+        if(!native->setup(A))
+            throw std::runtime_error(std::string("V63 selfp setup rejected: ")+
+                                     native->last_error());
+        std::cerr << "COUPLED_SELFP_V63 experimental=1"
+                  << " pressure_nnz=" << native->schur_matrix().nnz()
+                  << " triple_terms=" << native->triple_terms()
+                  << " physical_qualified=0\n";
+        coupled_preconditioner=std::move(native);
+    } else if (use_simple_schur) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");
@@ -5905,12 +6078,60 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         return value && std::string(value)=="1";
     };
     const bool v51_requested=opt_in_v51("CFDX_FPHYS_CANDIDATE_V51");
+    const bool comparable_v65=opt_in_v51("CFDX_FPHYS_V65_SAME_OPERATOR");
+    // V66 diagnoses the already-existing V65 strategy. It cannot run on a
+    // different F(X) or bypass any V13/V14/V47 acceptance condition.
+    const bool causal_v66=opt_in_v51("CFDX_FPHYS_V66_OMEGA_FLUX");
+    const bool block_probe_v67=opt_in_v51("CFDX_FPHYS_V67_BLOCK_PROBE");
+    const bool sst_flux_swap_v68=opt_in_v51("CFDX_FPHYS_V68_FLUX_SWAP");
+    const bool sst_rc_picard_v69=opt_in_v51("CFDX_FPHYS_V69_SST_RC_PICARD");
+    const bool conservative_sst_rc_v70=opt_in_v51("CFDX_FPHYS_V70_CONSERVATIVE_SST_RC");
+    const bool joint_private_picard_v71=opt_in_v51("CFDX_FPHYS_V71_JOINT_PICARD");
+    const bool joint_fixed_point_v72=opt_in_v51("CFDX_FPHYS_V72_FIXED_POINT");
+    const bool post_sst_direction_v73=opt_in_v51("CFDX_FPHYS_V73_POST_SST_DIRECTION");
+    const bool fixed_direction_v74=opt_in_v51("CFDX_FPHYS_V74_FIXED_DIRECTION");
+    const bool wall_regime_v74=opt_in_v51("CFDX_FPHYS_V74_WALL_REGIME");
+    const bool sst_budget_v75=opt_in_v51("CFDX_FPHYS_V75_SST_BUDGET");
+    const bool sst_block_v76=opt_in_v51("CFDX_FPHYS_V76_SST_BLOCK");
+    if(sst_block_v76 && (!sst_budget_v75 || !fixed_direction_v74))
+        throw std::invalid_argument("V76 SST block requires opt-in V75/V74 forensics");
+    if(sst_budget_v75 && !fixed_direction_v74)
+        throw std::invalid_argument("V75 SST budget needs V74 fixed direction");
+    if(fixed_direction_v74 && !joint_fixed_point_v72)
+        throw std::invalid_argument("V74 fixed direction needs V72 and the original V65 guards");
+    if(wall_regime_v74 && !joint_fixed_point_v72)
+        throw std::invalid_argument("V74 candidate wall audit needs V72 same-state SST data");
+    if(post_sst_direction_v73 && !joint_fixed_point_v72)
+        throw std::invalid_argument("V73 requires V72 fixed-point with unchanged V65 physical guards");
+    if (joint_fixed_point_v72 && !joint_private_picard_v71)
+        throw std::invalid_argument("V72 requires V71/V69/V68/V65/V51 same-state diagnostics");
+    if (joint_private_picard_v71 && (!sst_rc_picard_v69 || conservative_sst_rc_v70))
+        throw std::invalid_argument("V71 requires V69 and must run without the V70 projection mode");
+    if (conservative_sst_rc_v70 && !sst_rc_picard_v69)
+        throw std::invalid_argument("V70 requires the V69 private SST/RC transport");
+    if (sst_rc_picard_v69 && !sst_flux_swap_v68)
+        throw std::invalid_argument("V69 requires V68 matched-state flux audit");
+    if (sst_flux_swap_v68 && !comparable_v65)
+        throw std::invalid_argument("V68 flux swap requires V65 same-state merit");
+    if (block_probe_v67 && !comparable_v65)
+        throw std::invalid_argument("V67 block probe requires V65 state-only merit");
+    if (causal_v66 && !comparable_v65)
+        throw std::invalid_argument("V66 requires V65 same-state merit opt-in");
+    if (comparable_v65 && (!v51_requested ||
+        !controls.coupled_composite_backtracking_v47_experimental ||
+        !controls.joint_globalization_v13_experimental ||
+        !controls.monotone_global_merit_v14_experimental ||
+        controls.coupled_flux_homotopy_v48_experimental ||
+        mesh.n_cells()>152))
+        throw std::invalid_argument(
+            "V65 same-state acceptance requires V51, V47, V13/V14, no V48 and <=152 cells");
     if ((opt_in_v51("CFDX_FPHYS_JV_V51") ||
          opt_in_v51("CFDX_FPHYS_CROSS_V51") ||
          opt_in_v51("CFDX_FPHYS_JFNK_V52") ||
          opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP") ||
          opt_in_v51("CFDX_FPHYS_JFNK_V53_BLOCK") ||
-         opt_in_v51("CFDX_FPHYS_JV_AUDIT_V53")) && !v51_requested)
+         opt_in_v51("CFDX_FPHYS_JV_AUDIT_V53") ||
+         opt_in_v51("CFDX_FPHYS_CAUSAL_V64")) && !v51_requested)
         throw std::invalid_argument(
             "V51 directional diagnostics require CFDX_FPHYS_CANDIDATE_V51=1");
     if (opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP") &&
@@ -5944,6 +6165,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
          !opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH")))
         throw std::invalid_argument(
             "V60 remainder audit requires native hybrid Jv and Krylov truth");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V61_RICHARDSON") &&
+        (!opt_in_v51("CFDX_FPHYS_JFNK_V54_FROZEN") ||
+         !opt_in_v51("CFDX_FPHYS_JFNK_V57_TRUTH") ||
+         !opt_in_v51("CFDX_FPHYS_JFNK_V52")))
+        throw std::invalid_argument(
+            "V61 Richardson Amat requires frozen V54 plus true V57 Krylov checks");
+    if (opt_in_v51("CFDX_FPHYS_JFNK_V61_RATE_AUDIT") &&
+        !opt_in_v51("CFDX_FPHYS_JFNK_V60_REMAINDER_AUDIT"))
+        throw std::invalid_argument("V61 physical multi-rate audit needs V60 native tape");
     if (opt_in_v51("CFDX_FPHYS_JFNK_V57_HYBRID") &&
         !opt_in_v51("CFDX_FPHYS_JFNK_V52"))
         throw std::invalid_argument("V57 hybrid tangent requires private V52 JFNK");
@@ -5964,10 +6194,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         controls.pseudo_momentum.enabled))
         throw std::invalid_argument(
             "V51 candidate residual requires steady COUPLED SST with V7/V8 and native pressure");
+    if (opt_in_v51("CFDX_FPHYS_CAUSAL_V64") && mesh.n_cells()>152)
+        throw std::invalid_argument("V64 read-only causal ablation limited to BFS152-size meshes");
     // Do not let a phantom fixed-pressure BC suppress the pressure gauge.
     // Validate this before Uniform/Restart initialization changes U or p.
     const bool has_fixed_pressure_boundary =
         has_effective_fixed_pressure_boundary(mesh, pressure_bcs);
+    if (const char* enabled=std::getenv("CFDX_V80_NATIVE_FACE_DEFECT");
+        enabled && *enabled && std::string(enabled)=="1" &&
+        (!controls.pressure_high_low_production ||
+         !controls.v18_sparse_flux_pressure_jacobian ||
+         !controls.v19_full_pressure_flux_step ||
+         controls.algorithm!=PressureVelocityAlgorithm::SIMPLE ||
+         !has_fixed_pressure_boundary ||
+         (controls.sst_runtime &&
+          (!controls.require_post_sst_momentum_reassembly ||
+           !controls.require_global_nonlinear_certificate_v8 ||
+           !controls.joint_globalization_v13_experimental ||
+           !controls.monotone_global_merit_v14_experimental))))
+        throw std::invalid_argument(
+            "V80 native face defect requires SIMPLE/V18/V19 high-low, fixed pressure outlet, and for SST the V7/V8/V13/V14 physical gates");
     // Validate the caller-owned SST bundle before initialization can mutate
     // the carrier fields. Derived SST quantities must be refreshed only after
     // initialization/restart has established the actual velocity field.
@@ -6390,6 +6636,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     bool multisecant_scales_valid=false;
 
     GlobalNonlinearContractionLedgerV14 committed_global_merit_v14;
+    GlobalOuterProgressLedgerV84 committed_progress_v84;
+    GlobalOuterProgressLedgerV85 committed_progress_v85;
+    // V89 reference only changes AFTER a full committed nonlinear transaction.
+    std::optional<double> committed_pressure_baseline_v89;
+    std::optional<double> committed_transverse_residual_v89;
     CoupledPhaseEscapeLedgerV45 coupled_phase_escape_v45;
     CoupledInverseMomentumDiagonalV48 committed_rAU_v48;
     bool committed_rAU_valid_v48 = false;
@@ -6445,6 +6696,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.convergence.relative_tolerance,
             controls.diagnostics.cell_convergence_full_map_path);
     }
+    std::optional<CoupledInverseMomentumDiagonalV48> committed_carrier_rAU_v66;
     std::array<double, 3> pending_cell_rhs_scales{1.0, 1.0, 1.0};
     std::size_t last_committed_cell_iteration = 0;
 
@@ -6454,8 +6706,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // captures the identical HDF5-initialized candidate for every Schur
         // choice; it is read-only, never a production starting-state override.
         const auto v52_shared_pre_solve_state=[&]() -> std::optional<PhysicalCandidateV51> {
-            if (!(v51_requested && opt_in_v51("CFDX_FPHYS_JFNK_V52") &&
-                  opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP")))
+            if (!(v51_requested &&
+                  ((opt_in_v51("CFDX_FPHYS_JFNK_V52") &&
+                    opt_in_v51("CFDX_FPHYS_JFNK_V52_FREEZE_PRESTEP")) ||
+                   opt_in_v51("CFDX_FPHYS_CAUSAL_V64") || comparable_v65)))
                 return std::nullopt;
             PhysicalCandidateV51 capture;
             capture.cells=mesh.n_cells();
@@ -6473,6 +6727,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime->transport.omega_min);
             return capture;
         }();
+        std::vector<double> old_carrier_nut_v66;
+        if (causal_v66 && (iter==22 || iter==23)) {
+            old_carrier_nut_v66.resize(mesh.n_cells());
+            for (std::size_t i=0;i<mesh.n_cells();++i)
+                old_carrier_nut_v66[i]=controls.sst_runtime->state->nu_t(i);
+        }
         const double outer_high_order_fraction =
             convection_high_order_fraction(controls.convection_continuation, iter);
         const bool full_order_eligible =
@@ -6482,11 +6742,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.convection_continuation, iter);
         bool stop_after_iteration = false;
         auto nonlinear_retry_controls = controls.nonlinear_retry;
+        if (controls.bfs_local_step_trust_v88_experimental) {
+            // The V87 retry floors (0.1 U / 0.05 p) were hit after one
+            // rejection. Allow additional *recomputed*, conservative SIMPLE
+            // trials, not in-place clipping or interpolation of accepted phi.
+            nonlinear_retry_controls.max_retries =
+                std::max<std::size_t>(nonlinear_retry_controls.max_retries,5);
+            nonlinear_retry_controls.minimum_alpha_u =
+                std::min(nonlinear_retry_controls.minimum_alpha_u,0.015625);
+            nonlinear_retry_controls.minimum_alpha_p =
+                std::min(nonlinear_retry_controls.minimum_alpha_p,0.00625);
+        }
         if (controls.coupled_composite_backtracking_v47_experimental)
             nonlinear_retry_controls.max_retries =
                 controls.coupled_composite_backtracking_retries_v47;
         NonlinearRetryController retry_controller(nonlinear_retry_controls);
         CoupledCompositeSearchV47 composite_search_v47;
+        // Compare F(X_old) across all retries; a changed answer for the same
+        // physical state invalidates the state-only merit and fails closed.
+        std::optional<PhysicalResidualV51> baseline_physical_v65;
         NonlinearStateRollback transaction(U, p);
         const auto mass_flux_snapshot = mass_flux;
         const Vector pressure_low_snapshot=pressure_low_state;
@@ -6504,9 +6778,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // A rejected trial must never publish an inverse momentum
             // diagonal belonging to an uncommitted Rhie-Chow flux.
             std::optional<CoupledInverseMomentumDiagonalV48> pending_rAU_v48;
+            std::optional<CoupledInverseMomentumDiagonalV48> pending_carrier_rAU_v66;
             // V50 only: a rejected candidate cannot publish a committed
             // physical residual fingerprint. Recreated for every retry.
             std::optional<NativeSixFieldResidualV50> pending_native_six_v50;
+            std::optional<ComparablePhysicalMeritV65> pending_comparable_v65;
             double pending_native_flux_gap_v50=
                 std::numeric_limits<double>::infinity();
             std::optional<MomentumSameStateTrace> pending_same_state_trace;
@@ -7372,6 +7648,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
                 coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
             }
+            // Capture the diagonal that REALLY produced the carrier flux,
+            // before V51 re-assembles a new diagonal from the full SST state.
+            if (causal_v66)
+                pending_carrier_rAU_v66=coupled_rAU;
             if (controls.coupled_composite_backtracking_v47_experimental &&
                 retry_controller.retries()==0 && iter>1) {
                 // Evaluate the PREVIOUS accepted U,p fields under this
@@ -8386,6 +8666,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             Vector p_corr_low(nc,0.0);
             if (controls.pressure_high_low_production) {
                 const double csr_relative=rp.residual_relative;
+                const bool native_v80=std::getenv("CFDX_V80_NATIVE_FACE_DEFECT") &&
+                    std::string(std::getenv("CFDX_V80_NATIVE_FACE_DEFECT"))=="1";
+                const double physical_pressure_tolerance=
+                    controls.pressure_linear_tolerance>0.0
+                    ? controls.pressure_linear_tolerance : linear_tolerance;
+                if (native_v80) {
+                    // Strictly opt-in SIMPLE/V18/V19: refine the assembled
+                    // unscaled CSR in extended precision BEFORE using A as
+                    // a preconditioner for the physical Rhie-Chow residual.
+                    // No tolerance change, no SciPy and no state commit here.
+                    const auto csr=refine_native_pressure_algebraic_v80(
+                        A,b,p_corr,p_corr_low,physical_pressure_tolerance,8,
+                        [&](const Vector& defect,Vector& delta) {
+                            const auto inner=solve_pressure_system(A,defect,delta);
+                            return inner.status!=SolverStatus::DIVERGED &&
+                                inner.status!=SolverStatus::NOT_APPLICABLE;
+                        });
+                    std::cerr << std::scientific << std::setprecision(16)
+                        << "PRESSURE_NATIVE_CSR_V80 iteration=" << iter
+                        << " corrector=" << corr
+                        << " initial_relative=" << csr.initial_relative
+                        << " final_relative=" << csr.final_relative
+                        << " fp64_relative=" << csr.final_double_only_relative
+                        << " attempts=" << csr.attempted
+                        << " accepted=" << csr.accepted
+                        << " csr_converged=" << csr.converged
+                        << " production_commit_authorized=0\n";
+                }
                 const auto physical_residual=[&](const Vector& hi,const Vector& lo) {
                     const auto flux=reconstruct_compensated_rhie_chow_pressure_step(
                         mesh,geometry,canonical_base_flux,hi,lo,rAU,
@@ -8403,9 +8711,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         if(!std::isfinite(delta(c))) return false;
                     return true;
                 };
-                const double physical_pressure_tolerance=
-                    controls.pressure_linear_tolerance>0.0
-                    ? controls.pressure_linear_tolerance : linear_tolerance;
                 const auto true_report=refine_pressure_true_face_high_low(
                     p_corr,p_corr_low,physical_pressure_tolerance,12,
                     physical_residual,inner_direction);
@@ -8420,6 +8725,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " true_face_converged=" << true_report.converged
                           << " requested_tolerance=" << physical_pressure_tolerance
                           << " qualified_bfs=0\n";
+                if (native_v80) {
+                    const auto csr_at_face=cfdx::core::compensated_pressure_residual(
+                        A,b,p_corr,p_corr_low);
+                    std::cerr << std::scientific << std::setprecision(16)
+                        << "PRESSURE_NATIVE_FACE_V80 iteration=" << iter
+                        << " corrector=" << corr
+                        << " initial_relative=" << true_report.initial_relative
+                        << " final_relative=" << true_report.final_relative
+                        << " csr_at_final_face_relative=" << csr_at_face.second
+                        << " accepted=" << true_report.accepted
+                        << " true_face_converged=" << true_report.converged
+                        << " requested_tolerance=" << physical_pressure_tolerance
+                        << " production_commit_authorized=0\n";
+                }
                 // A MAX_ITER algebraic solve may supply a usable direction,
                 // but only a certified TRUE full face residual can promote it.
                 rp.residual_relative=true_report.final_relative;
@@ -8430,6 +8749,54 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     std::sqrt(b2)*true_report.final_relative);
                 rp.status=true_report.converged
                     ? SolverStatus::CONVERGED : SolverStatus::MAX_ITER_REACHED;
+            }
+            // V79 independent high/low oracle on the ACTUAL V18 production
+            // Jacobian. The external SciPy solve is evidence ONLY: never copy
+            // its pressure into p_corr or p_corr_low, never promote SolverStatus,
+            // and never bypass any full-FV linear or nonlinear certificate.
+            if (const char* oracle_file = std::getenv("CFDX_V79_PRESSURE_SPLIT_ORACLE");
+                oracle_file && *oracle_file) {
+                if (!controls.pressure_high_low_production ||
+                    !controls.v18_sparse_flux_pressure_jacobian ||
+                    !has_fixed_pressure_boundary || solved_pressure_matrix != &A)
+                    throw std::invalid_argument(
+                        "V79 split oracle requires V18 sparse full-RC SIMPLE/high-low and fixed p outlet");
+                const auto trial = read_pressure_split_oracle_v79(
+                    oracle_file, A.n_rows(), A.nnz());
+                const double tolerance = controls.pressure_linear_tolerance > 0.0
+                    ? controls.pressure_linear_tolerance : linear_tolerance;
+                const auto csr = audit_pressure_split_oracle_v79(
+                    A,b,trial,tolerance);
+                const auto face_flux = reconstruct_compensated_rhie_chow_pressure_step(
+                    mesh,geometry,canonical_base_flux,trial.high,trial.low,rAU,
+                    controls.density,pressure_bcs,
+                    controls.pressure_projected_face_interpolation);
+                const auto face = pressure_true_face_residual(mesh,face_flux,b);
+                // Optional per-cell ORIGINAL physical-face defect for an
+                // externally solved Newton correction. Strictly diagnostic:
+                // neither this dump nor any later replay promotes the state.
+                if (const char* prefix=std::getenv("CFDX_V79_FACE_DEFECT_PREFIX");
+                    prefix && *prefix && (csr.csr_closed || face.second <= tolerance)) {
+                    const std::string path=std::string(prefix)+"_i"+
+                        std::to_string(iter)+"_c"+std::to_string(corr)+".vec";
+                    std::ofstream out(path);
+                    if (!out) throw std::runtime_error("V79: face-defect file not writable");
+                    out << "CFDX_PRESSURE_FACE_DEFECT_V79\n" << nc << ' '
+                        << A.nnz() << '\n' << std::setprecision(17);
+                    for(std::size_t c=0;c<nc;++c) out << face.first(c) << '\n';
+                    if (!out) throw std::runtime_error("V79: face-defect write failed");
+                }
+                std::cerr << std::scientific << std::setprecision(16)
+                          << "PRESSURE_SPLIT_ORACLE_V79"
+                          << " iter=" << iter << " corrector=" << corr
+                          << " csr_relative=" << csr.csr_relative
+                          << " double_only_relative=" << csr.double_only_relative
+                          << " physical_face_relative=" << face.second
+                          << " csr_closed=" << csr.csr_closed
+                          << " physical_face_closed=" << (face.second <= tolerance)
+                          << " requested_tolerance=" << tolerance
+                          << " production_commit_authorized=0"
+                          << " read_only=1\n";
             }
             // Optional snapshot of the ORIGINAL pressure matrix and right-hand
             // side. Independent of expensive momentum forensic logging.
@@ -10330,6 +10697,117 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             }),
                         mesh, geometry, U, p);
         }
+        // V87: reject a physically impossible-to-commit velocity candidate
+        // before paying for the expensive split SST transport. The V86
+        // FULL field gate still runs AFTER SST; this early check cannot
+        // accept, certify, or change the pressure/continuity thresholds.
+        if (controls.bfs_early_velocity_screen_v87_experimental &&
+            !comparable_v65) {
+            double max_speed=0.0;
+            std::size_t max_cell=0;
+            for (std::size_t ci=0;ci<mesh.n_cells();++ci) {
+                const double speed=std::hypot(U(ci,0),
+                    std::hypot(U(ci,1),U(ci,2)));
+                if (!std::isfinite(speed))
+                    throw NonlinearRetryableFailure(
+                        "V87 pre-SST velocity candidate nonfinite");
+                if (speed>max_speed) {max_speed=speed;max_cell=ci;}
+            }
+            const auto screen=screen_bfs_velocity_before_sst_v87(
+                max_speed,controls.bfs_inlet_speed_v86);
+            // This line is always emitted for audit on opt-in V87,
+            // including rejected trials and non-debug builds.
+            std::cerr<<std::scientific<<std::setprecision(12)
+                     <<"BFS_EARLY_FIELD_TRIAL_V87 iteration="<<iter
+                     <<" continue_sst="<<(screen.may_continue?1:0)
+                     <<" max_speed_over_inlet="<<screen.speed_ratio
+                     <<" max_speed_cell="<<max_cell
+                     <<" reason="<<screen.reason
+                     <<" qualified=0\n";
+            if (!screen.may_continue)
+                throw NonlinearRetryableFailure(
+                    "V87 pre-SST screen: "+screen.reason);
+        }
+        // V88: the physically conservative momentum/pressure candidate has
+        // already been re-solved, and the V87 absolute-speed check has passed.
+        // An extremely large CELL increment can nevertheless produce a huge
+        // SST strain/production jump (cell 7406 on the captured TH03 case).
+        // Reject before SST and re-solve with smaller relaxation via the full
+        // transaction rollback, never clip U/p or modify the accepted flux.
+        if (controls.bfs_local_step_trust_v88_experimental && !comparable_v65) {
+            double max_delta=0.0;
+            std::size_t max_cell=0;
+            double dp_min=std::numeric_limits<double>::infinity();
+            double dp_max=-std::numeric_limits<double>::infinity();
+            for (std::size_t ci=0;ci<mesh.n_cells();++ci) {
+                const double du=std::hypot(U(ci,0)-U_old(ci,0),
+                    std::hypot(U(ci,1)-U_old(ci,1),U(ci,2)-U_old(ci,2)));
+                const double dp=p(ci)-p_old(ci);
+                if (!std::isfinite(du) || !std::isfinite(dp))
+                    throw NonlinearRetryableFailure("V88 nonfinite increment");
+                if (du>max_delta) {max_delta=du;max_cell=ci;}
+                dp_min=std::min(dp_min,dp);
+                dp_max=std::max(dp_max,dp);
+            }
+            const auto step=check_bfs_local_step_v88(
+                max_delta,dp_max-dp_min,controls.bfs_inlet_speed_v86,
+                controls.density,controls.bfs_step_delta_u_limit_v88);
+            std::cerr<<std::scientific<<std::setprecision(12)
+                     <<"BFS_LOCAL_STEP_TRIAL_V88 iteration="<<iter
+                     <<" retry="<<retry_controller.retries()
+                     <<" continue_sst="<<(step.may_continue_sst?1:0)
+                     <<" max_delta_u_over_inlet="<<step.max_delta_velocity_ratio
+                     <<" delta_u_limit="<<controls.bfs_step_delta_u_limit_v88
+                     <<" worst_cell="<<max_cell
+                     <<" delta_pressure_span_over_qin="
+                     <<step.pressure_increment_span_over_qin
+                     <<" alpha_u="<<retry_controller.alpha_u(effective_alpha_u)
+                     <<" alpha_p="<<retry_controller.alpha_p(effective_alpha_p)
+                     <<" reason="<<step.reason
+                     <<" qualified=0 committed=0\n";
+            if (!step.may_continue_sst)
+                throw NonlinearRetryableFailure("V88 local momentum increment: "+step.reason);
+        }
+        // V89: probe the ACTUAL U/p candidate after its Rhie-Chow flux has
+        // been rebuilt, including the low pressure part retained by V80.
+        // A failed trial goes through the existing full rollback/re-solve;
+        // absolutely no clipping, interpolation or certification here.
+        if (controls.bfs_pressure_transverse_trust_v89_experimental && !comparable_v65) {
+            double max_duy=0.0;
+            long double dp_min=std::numeric_limits<long double>::infinity();
+            long double dp_max=-std::numeric_limits<long double>::infinity();
+            for(std::size_t ci=0;ci<mesh.n_cells();++ci) {
+                const double duy=std::abs(U(ci,1)-U_old(ci,1));
+                const long double dp=(static_cast<long double>(p(ci))+
+                    static_cast<long double>(pressure_low_state(ci))) -
+                    (static_cast<long double>(p_old(ci))+
+                    static_cast<long double>(pressure_low_snapshot(ci)));
+                if(!std::isfinite(duy) || !std::isfinite(dp))
+                    throw NonlinearRetryableFailure("V89 nonfinite pressure/transverse increment");
+                max_duy=std::max(max_duy,duy);
+                dp_min=std::min(dp_min,dp);
+                dp_max=std::max(dp_max,dp);
+            }
+            const auto step=check_bfs_pressure_transverse_pre_v89(
+                max_duy,static_cast<double>(dp_max-dp_min),
+                controls.bfs_inlet_speed_v86, controls.density,
+                !committed_pressure_baseline_v89,
+                controls.bfs_step_delta_uy_limit_v89,
+                controls.bfs_pressure_increment_q_limit_v89);
+            std::cerr<<std::scientific<<std::setprecision(12)
+                     <<"BFS_PRESSURE_TRANSVERSE_PRE_V89 iteration="<<iter
+                     <<" retry="<<retry_controller.retries()
+                     <<" may_continue="<<(step.may_continue_sst?1:0)
+                     <<" delta_uy_over_inlet="<<step.transverse_increment_over_inlet
+                     <<" delta_p_span_over_qin="<<step.pressure_increment_span_over_qin
+                     <<" limit_uy="<<controls.bfs_step_delta_uy_limit_v89
+                     <<" limit_dp="<<controls.bfs_pressure_increment_q_limit_v89
+                     <<" alpha_u="<<retry_controller.alpha_u(effective_alpha_u)
+                     <<" alpha_p="<<retry_controller.alpha_p(effective_alpha_p)
+                     <<" reason="<<step.reason<<" qualified=0 committed=0\n";
+            if(!step.may_continue_sst)
+                throw NonlinearRetryableFailure("V89 pressure/transverse pre-SST: "+step.reason);
+        }
         SSTProductionStepResult sst_step;
         std::optional<SSTWallOperatorV17> post_wall_operator_v17;
         const std::vector<double>* post_wall_face_mu_v17=nullptr;
@@ -10931,6 +11409,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             bool capture_stages_v57=false;
                             bool capture_transport_v53=false;
                             std::optional<std::pair<ScalarEquation,ScalarEquation>> transport_v53;
+                            // Read-only V66 per-row SST budget: request exactly
+                            // one row, then verify a fresh F(X) re-evaluation.
+                            std::optional<std::size_t> v66_probe_row;
+                            std::optional<SSTCellDiscreteBudget> v66_probe_result;
+                            // V75 captures the TWO physical SST equation rows,
+                            // never merely the omega row from V66/V73.
+                            bool v75_capture_two_cells=false;
+                            std::optional<std::array<std::pair<SSTCellDiscreteBudget,
+                                SSTCellDiscreteBudget>,2>> v75_probe_result;
+                            // V68 single-state counterfactual: only the FV mass flux changes.
+                            std::optional<std::vector<double>> v68_carrier_flux;
+                            std::optional<BfsSstFluxSwapV68> v68_flux_swap_result;
+                            std::optional<double> v68_source_diffusion_gap;
                             const auto evaluator_v51=[&](const PhysicalCandidateV51& state) {
                                 validate_physical_candidate_v51(
                                     state,runtime.transport.k_min,
@@ -11112,6 +11603,60 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     runtime.omega_boundary_conditions,omega_faces,wall_production,
                                     capture_transport_v53 ? &transport_v53.emplace() : nullptr);
                                 capture_transport_v53=false;
+                                if (v68_carrier_flux) {
+                                    if(v68_carrier_flux->size()!=nf)
+                                        throw std::runtime_error("V68 carrier snapshot incomplete");
+                                    const auto frozen_carrier=from_flux_vector(*v68_carrier_flux);
+                                    const auto carrier_sst=sst_coupled_residual_v22(
+                                        mesh,geometry,frozen_carrier,cand_sst.k,cand_sst.omega,
+                                        cand_sst.strain_rate,cand_sst.wall_distance,
+                                        runtime.transport,runtime.k_boundary_conditions,
+                                        runtime.omega_boundary_conditions,omega_faces,wall_production);
+                                    v68_flux_swap_result=analyze_bfs_sst_flux_swap_v68(
+                                        mesh,geometry,frozen_carrier,flux,cand_sst.k,
+                                        cand_sst.omega,runtime.k_boundary_conditions,
+                                        runtime.omega_boundary_conditions,omega_faces,
+                                        wall_production,carrier_sst,sst,3);
+                                    // Independent V16 FV budget: at identical U,p,k,omega,
+                                    // diffusion, all sources and wall terms MUST remain unchanged.
+                                    double nonconvection_gap=0.;
+                                    for (const std::size_t row: {std::size_t{0},std::size_t{12}}) {
+                                        if(row>=nc)continue;
+                                        const auto ca=sst_reassembled_discrete_cell_budgets(
+                                            mesh,geometry,frozen_carrier,cand_sst.k,
+                                            cand_sst.omega,cand_sst.strain_rate,
+                                            cand_sst.wall_distance,runtime.transport,
+                                            runtime.k_boundary_conditions,
+                                            runtime.omega_boundary_conditions,omega_faces,
+                                            row,wall_production);
+                                        const auto ph=sst_reassembled_discrete_cell_budgets(
+                                            mesh,geometry,flux,cand_sst.k,cand_sst.omega,
+                                            cand_sst.strain_rate,cand_sst.wall_distance,
+                                            runtime.transport,runtime.k_boundary_conditions,
+                                            runtime.omega_boundary_conditions,omega_faces,
+                                            row,wall_production);
+                                        for(std::size_t b=0;b<2;++b){
+                                            const auto& left=b==0?ca.first:ca.second;
+                                            const auto& right=b==0?ph.first:ph.second;
+                                            const double delta=right.full_residual-left.full_residual;
+                                            const double conv=right.convection-left.convection;
+                                            const double dsrc=std::abs(right.diffusion-left.diffusion)+
+                                                std::abs(right.physical_production-left.physical_production)+
+                                                std::abs(right.physical_destruction-left.physical_destruction)+
+                                                std::abs(right.physical_cross_diffusion-left.physical_cross_diffusion);
+                                            const double scale=std::max({1.,std::abs(delta),std::abs(conv)});
+                                            nonconvection_gap=std::max(nonconvection_gap,
+                                                (dsrc+std::abs(delta-conv))/scale);
+                                            if(nonconvection_gap>1e-8)
+                                                throw std::runtime_error("V68 nonconvection/source change under sole phi swap");
+                                            const auto native_row=sst.values[b*nc+row];
+                                            if(std::abs(native_row-right.full_residual)>1e-8*
+                                               std::max({1.,std::abs(native_row),std::abs(right.full_residual)}))
+                                                throw std::runtime_error("V68 SST V16/V22 oracle mismatch");
+                                        }
+                                    }
+                                    v68_source_diffusion_gap=nonconvection_gap;
+                                }
                                 const auto native=make_native_six_residual_v50(
                                     raw_momentum,rhs_scale,div,flux_l1,
                                     sst.values,sst.row_norms,sst.local_scales,true);
@@ -11125,12 +11670,43 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                           residual.signed_raw.begin()+static_cast<std::ptrdiff_t>(4*nc));
                                 residual.normalized=std::move(native.normalized);
                                 residual.face_flux=rc.flux;
+                                residual.inverse_momentum_diagonal.reserve(3*nc);
+                                for (const auto& d:rc.inverse_diagonal)
+                                    residual.inverse_momentum_diagonal.insert(
+                                        residual.inverse_momentum_diagonal.end(),d.begin(),d.end());
                                 residual.eddy_viscosity.resize(nc);
                                 for (std::size_t i=0;i<nc;++i)
                                     residual.eddy_viscosity[i]=cand_sst.nu_t(i);
                                 residual.flux_fixed_point_defect=rc.relative_linf;
                                 residual.flux_closed=true;
                                 residual.merit=native.merit;
+                                if (v66_probe_row) {
+                                    const auto cell=*v66_probe_row;
+                                    const auto budgets=sst_reassembled_discrete_cell_budgets(
+                                        mesh,geometry,flux,cand_sst.k,cand_sst.omega,
+                                        cand_sst.strain_rate,cand_sst.wall_distance,
+                                        runtime.transport,runtime.k_boundary_conditions,
+                                        runtime.omega_boundary_conditions,omega_faces,
+                                        cell,wall_production);
+                                    v66_probe_result=budgets.second;
+                                }
+                                if(v75_capture_two_cells) {
+                                    std::array<std::pair<SSTCellDiscreteBudget,
+                                        SSTCellDiscreteBudget>,2> both{
+                                        sst_reassembled_discrete_cell_budgets(
+                                            mesh,geometry,flux,cand_sst.k,cand_sst.omega,
+                                            cand_sst.strain_rate,cand_sst.wall_distance,
+                                            runtime.transport,runtime.k_boundary_conditions,
+                                            runtime.omega_boundary_conditions,omega_faces,
+                                            0,wall_production),
+                                        sst_reassembled_discrete_cell_budgets(
+                                            mesh,geometry,flux,cand_sst.k,cand_sst.omega,
+                                            cand_sst.strain_rate,cand_sst.wall_distance,
+                                            runtime.transport,runtime.k_boundary_conditions,
+                                            runtime.omega_boundary_conditions,omega_faces,
+                                            12,wall_production)};
+                                    v75_probe_result=std::move(both);
+                                }
                                 if(capture_stages_v57){
                                     auto& stages=residual.stages_v57.emplace();
                                     stages.inverse_momentum_diagonal.reserve(3*nc);
@@ -11327,6 +11903,1528 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                 x,evaluator_v51,runtime.transport.k_min,
                                 runtime.transport.omega_min);
                             verify_candidate_replay_v51(r0,r1);
+                            if (comparable_v65) {
+                                if (!v52_shared_pre_solve_state)
+                                    throw std::logic_error("V65 missing previous committed 6N state");
+                                const auto& before=*v52_shared_pre_solve_state;
+                                const auto f_before=evaluate_physical_candidate_v51(
+                                    before,evaluator_v51,runtime.transport.k_min,
+                                    runtime.transport.omega_min);
+                                // The baseline MUST be independent of trial/retry history.
+                                const auto f_before_replay=evaluate_physical_candidate_v51(
+                                    before,evaluator_v51,runtime.transport.k_min,
+                                    runtime.transport.omega_min);
+                                verify_candidate_replay_v51(f_before,f_before_replay);
+                                if (baseline_physical_v65)
+                                    verify_candidate_replay_v51(*baseline_physical_v65,f_before);
+                                else
+                                    baseline_physical_v65=f_before;
+                                const auto reconstruct_native_v65=[&](
+                                    const PhysicalCandidateV51& state,
+                                    const PhysicalResidualV51& f,
+                                    const std::vector<double>* authoritative) {
+                                    if (f.inverse_momentum_diagonal.size()!=3*nc)
+                                        throw std::runtime_error("V65 missing candidate rAU");
+                                    Field<double,Location::CELL> u(nc,"v65_U","m/s",3);
+                                    Field<double,Location::CELL> pressure(nc,"v65_p","Pa",1);
+                                    std::array<std::vector<double>,3> inverse;
+                                    for (std::size_t d=0;d<3;++d) {
+                                        inverse[d].resize(nc);
+                                        for (std::size_t i=0;i<nc;++i) {
+                                            u.component_data(d)[i]=state.fields[d*nc+i];
+                                            inverse[d][i]=f.inverse_momentum_diagonal[d*nc+i];
+                                        }
+                                    }
+                                    for (std::size_t i=0;i<nc;++i)
+                                        pressure(i)=state.fields[3*nc+i];
+                                    const auto independent=make_rhie_chow_flux_from_physical_velocity(
+                                        mesh,geometry,u,pressure,inverse,controls.density,
+                                        velocity_bcs,pressure_bcs,
+                                        controls.pressure_skew_corrected_gradient);
+                                    std::vector<double> flux(nf);
+                                    for (std::size_t face=0;face<nf;++face)
+                                        flux[face]=independent(face);
+                                    return audit_comparable_flux_v65(state,f,flux,
+                                        [&](std::size_t face){return mesh.ownership().owner(face);},
+                                        [&](std::size_t face){return mesh.ownership().neighbour(face);},
+                                        authoritative);
+                                };
+                                std::vector<double> accepted_flux(nf),trial_flux(nf);
+                                for (std::size_t face=0;face<nf;++face) {
+                                    accepted_flux[face]=mass_flux_snapshot(face);
+                                    trial_flux[face]=mass_flux(face);
+                                }
+                                const auto old_flux=reconstruct_native_v65(
+                                    before,f_before,&accepted_flux);
+                                const auto next_flux=reconstruct_native_v65(
+                                    x,r0,&trial_flux);
+                                const auto evidence=evaluate_comparable_merit_v65(
+                                    before,x,f_before,r0,
+                                    controls.convergence.relative_tolerance,
+                                    controls.convergence.continuity_tolerance,
+                                    iter==1,false);
+                                pending_comparable_v65=evidence;
+                                // V68: true identical-six-state paired SST FV assemblies.
+                                // No SST re-solve, no change to carrier, no trial publication.
+                                if (sst_flux_swap_v68 && iter==23 &&
+                                    (retry_controller.retries()==0 ||
+                                     retry_controller.retries()==8 ||
+                                     retry_controller.retries()==10)) {
+                                    v68_carrier_flux=trial_flux;
+                                    v68_flux_swap_result.reset();
+                                    v68_source_diffusion_gap.reset();
+                                    try {
+                                        const auto reread=evaluate_physical_candidate_v51(
+                                            x,evaluator_v51,runtime.transport.k_min,
+                                            runtime.transport.omega_min);
+                                        verify_candidate_replay_v51(r0,reread);
+                                        if (!v68_flux_swap_result || !v68_source_diffusion_gap)
+                                            throw std::runtime_error("V68 SST physical swap was not captured");
+                                        const auto& swap=*v68_flux_swap_result;
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"BFS_SST_FLUX_SWAP_V68 iteration="<<iter
+                                            <<" retry="<<retry_controller.retries()
+                                            <<" beta="<<coupled_outer_step_applied_v43
+                                            <<" face="<<swap.focus_face
+                                            <<" phi_carrier="<<swap.face_carrier
+                                            <<" phi_physical="<<swap.face_physical
+                                            <<" face_omega_owner="<<swap.face_omega_delta[0]
+                                            <<" face_omega_neighbour="<<swap.face_omega_delta[1]
+                                            <<" omega_phys_linf="<<swap.omega_physical_linf
+                                            <<" omega_carrier_linf="<<swap.omega_carrier_linf
+                                            <<" omega_effect_fraction="<<swap.omega_swap_relative_effect
+                                            <<" omega_delta_linf="<<swap.omega_delta_linf
+                                            <<" omega_worst_phys="<<swap.omega_worst_physical
+                                            <<" omega_worst_carrier="<<swap.omega_worst_carrier
+                                            <<" omega_worst_delta="<<swap.omega_worst_delta
+                                            <<" omega_worst_phys_signed="<<swap.omega_physical_worst_signed
+                                            <<" omega_worst_carrier_signed="<<swap.omega_carrier_worst_signed
+                                            <<" omega_phys_cell0="<<swap.omega_physical_cell0
+                                            <<" omega_carrier_cell0="<<swap.omega_carrier_cell0
+                                            <<" omega_phys_cell12="<<swap.omega_physical_cell12
+                                            <<" omega_carrier_cell12="<<swap.omega_carrier_cell12
+                                            <<" k_phys_linf="<<swap.k_physical_linf
+                                            <<" k_carrier_linf="<<swap.k_carrier_linf
+                                            <<" k_delta_linf="<<swap.k_delta_linf
+                                            <<" worst_k_delta="<<swap.k_worst_delta
+                                            <<" face_identity_gap="<<swap.max_face_identity_gap
+                                            <<" source_diffusion_gap="<<*v68_source_diffusion_gap
+                                            <<" same_six_state=1 sole_phi_changed=1"
+                                            <<" committed=0 qualified=0\n";
+                                    } catch (...) {
+                                        v68_carrier_flux.reset();
+                                        v68_flux_swap_result.reset();
+                                        v68_source_diffusion_gap.reset();
+                                        throw;
+                                    }
+                                    v68_carrier_flux.reset();
+                                    v68_flux_swap_result.reset();
+                                    v68_source_diffusion_gap.reset();
+                                }
+                                // V69: genuine SST transport on the candidate-owned
+                                // Rhie-Chow phi, with a new RC/rAU/mu_t re-closure
+                                // after EACH transport solve. All inputs are private
+                                // copies; no authoritative flux or SST field changes.
+                                // Any failed transport or failed replay is reported
+                                // as an unqualified probe, never accepted as a step.
+                                // V70 snapshots the candidate's *live* derived SST state.
+                                // U,p,k,omega are already captured in x and phi in trial_flux.
+                                // Check all carrier/SST fields after the private projection;
+                                // a leak MUST escape to the outer transaction's rollback.
+                                std::vector<double> v70_original_nut;
+                                if ((conservative_sst_rc_v70 || joint_private_picard_v71) && iter==23 &&
+                                    retry_controller.retries()==8) {
+                                    v70_original_nut.resize(nc);
+                                    for(std::size_t i=0;i<nc;++i)
+                                        v70_original_nut[i]=runtime.state->nu_t(i);
+                                }
+                                if (sst_rc_picard_v69 && iter==23 &&
+                                    (retry_controller.retries()==0 ||
+                                     retry_controller.retries()==8 ||
+                                     retry_controller.retries()==10)) {
+                                    try {
+                                        if (runtime.active_openfoam_wall_operator_v17)
+                                            throw std::runtime_error(
+                                                "V69 pilot requires historical SST wall operator; active V17 not yet supported");
+                                        // Only arm V76 inside the V74 private cycle;
+                                        // the historical V69/V70/V73 diagnostics are unchanged.
+                                        bool v76_inside_fixed_direction=false;
+                                        const auto transport_on_closed_phi=[&](
+                                            const PhysicalCandidateV51& trial,
+                                            const std::vector<double>& phi_values) {
+                                            if(trial.cells!=nc || phi_values.size()!=nf)
+                                                throw std::invalid_argument("V69 incomplete private candidate");
+                                            Field<double,Location::CELL> private_u(nc,"v69_u","m/s",3);
+                                            Field<double,Location::CELL> private_p(nc,"v69_p","Pa",1);
+                                            Field<double,Location::FACE> private_phi(nf,"v69_phi","kg/s",1);
+                                            // The production refresh validates its input
+                                            // BEFORE recomputing strain, wall distance and nu_t.
+                                            // Start from a private valid snapshot, then replace
+                                            // exactly k/omega by the candidate values.
+                                            SSTProductionState private_sst=*runtime.state;
+                                            for(std::size_t i=0;i<nc;++i) {
+                                                for(std::size_t d=0;d<3;++d)
+                                                    private_u.component_data(d)[i]=trial.fields[d*nc+i];
+                                                private_p(i)=trial.fields[3*nc+i];
+                                                private_sst.k(i)=trial.fields[4*nc+i];
+                                                private_sst.omega(i)=trial.fields[5*nc+i];
+                                            }
+                                            for(std::size_t face=0;face<nf;++face)
+                                                private_phi(face)=phi_values[face];
+                                            std::map<std::string,std::array<double,3>> wall_velocity;
+                                            for(const auto& [name,bc]:velocity_bcs)
+                                                if(bc.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
+                                                    wall_velocity.emplace(name,
+                                                        std::array<double,3>{bc.value.x,bc.value.y,bc.value.z});
+                                            const auto step=advance_sst_production_iterate_transactionally(
+                                                mesh,private_u,private_p,private_phi,private_sst,
+                                                runtime.transport,wall_velocity,runtime.wall_patch_names,
+                                                runtime.k_boundary_conditions,
+                                                runtime.omega_boundary_conditions,
+                                                runtime.max_transport_iterations,
+                                                runtime.transport_tolerance,
+                                                &runtime.omega_face_values,false,nullptr);
+                                            if(!step.committed || !step.transport.converged ||
+                                               step.provisional ||
+                                               step.transport.nonfinite_bound_events!=0)
+                                                throw std::runtime_error(
+                                                    "V69 private SST transport failed convergence or bounds");
+                                            PhysicalCandidateV51 corrected=trial;
+                                            for(std::size_t i=0;i<nc;++i) {
+                                                corrected.fields[4*nc+i]=private_sst.k(i);
+                                                corrected.fields[5*nc+i]=private_sst.omega(i);
+                                            }
+                                            if(sst_block_v76 && v76_inside_fixed_direction) {
+                                                // Forensic only. k/omega states are perturbed
+                                                // together; EVERY trial reassembles the full
+                                                // U,p,k,omega physical operator and RC flux.
+                                                // No diagonal predictor is called a native
+                                                // linear solve or allowed to commit.
+                                                const auto base_phys=evaluate_physical_candidate_v51(
+                                                    corrected,evaluator_v51,
+                                                    runtime.transport.k_min,
+                                                    runtime.transport.omega_min);
+                                                const auto eval_v76=[&](const PhysicalCandidateV51& c){
+                                                    return evaluate_physical_candidate_v51(
+                                                        c,evaluator_v51,
+                                                        runtime.transport.k_min,
+                                                        runtime.transport.omega_min);
+                                                };
+                                                const auto guard_v76=[&](
+                                                    const PhysicalCandidateV51& base,
+                                                    const PhysicalResidualV51& base_f,
+                                                    const PhysicalCandidateV51& candidate,
+                                                    const PhysicalResidualV51& candidate_f) {
+                                                    if(!candidate_f.flux_closed)return false;
+                                                    const auto mb=bfs_mass_balance_v70(nc,
+                                                        base_f.face_flux,
+                                                        [&](std::size_t f){return mesh.ownership().owner(f);},
+                                                        [&](std::size_t f){return mesh.ownership().neighbour(f);});
+                                                    const auto mt=bfs_mass_balance_v70(nc,
+                                                        candidate_f.face_flux,
+                                                        [&](std::size_t f){return mesh.ownership().owner(f);},
+                                                        [&](std::size_t f){return mesh.ownership().neighbour(f);});
+                                                    if(mt.divergence_linf>mb.divergence_linf*(1.+1e-10)+1e-13)
+                                                        return false;
+                                                    const auto b=evaluate_comparable_merit_v65(
+                                                        before,base,f_before,base_f,
+                                                        controls.convergence.relative_tolerance,
+                                                        controls.convergence.continuity_tolerance,false,false);
+                                                    const auto t=evaluate_comparable_merit_v65(
+                                                        before,candidate,f_before,candidate_f,
+                                                        controls.convergence.relative_tolerance,
+                                                        controls.convergence.continuity_tolerance,false,false);
+                                                    if(!t.accepted || !(t.trial_merit<b.trial_merit))
+                                                        return false;
+                                                    const double max_um_before=std::max({
+                                                        b.scaled_trial[0],b.scaled_trial[1],b.scaled_trial[2]});
+                                                    const double max_um_after=std::max({
+                                                        t.scaled_trial[0],t.scaled_trial[1],t.scaled_trial[2]});
+                                                    return max_um_after<=max_um_before*(1.+1e-10)+1e-13 &&
+                                                        t.scaled_trial[3]<=b.scaled_trial[3]*(1.+1e-10)+1e-13 &&
+                                                        t.scaled_trial[4]<=b.scaled_trial[4]*(1.+1e-10)+1e-13 &&
+                                                        t.scaled_trial[5]<=b.scaled_trial[5]*(1.+1e-10)+1e-13;
+                                                };
+                                                PhysicalCandidateV51 upgraded;
+                                                const auto report=bfs_private_implicit_sst_block_v76(
+                                                    corrected,base_phys,0,12,
+                                                    runtime.transport.k_min,runtime.transport.omega_min,
+                                                    eval_v76,guard_v76,&upgraded);
+                                                std::cerr<<std::scientific<<std::setprecision(12)
+                                                    <<"BFS_SST_BLOCK_V76 iteration="<<iter
+                                                    <<" attempted="<<(report.attempted?1:0)
+                                                    <<" selected="<<(report.selected?1:0)
+                                                    <<" cell0=0 cell1=12"
+                                                    <<" local_before="<<report.scaled_local_before
+                                                    <<" local_after="<<report.scaled_local_after
+                                                    <<" alpha="<<report.accepted_alpha
+                                                    <<" branch_discrepancy="<<report.max_branch_discrepancy
+                                                    <<" evaluations="<<report.residual_evaluations
+                                                    <<" reason="<<report.reason
+                                                    <<" native_momentum=0 native_sst=0"
+                                                    <<" private_trial=1 committed=0 qualified=0\n";
+                                                if(report.selected)corrected=std::move(upgraded);
+                                            }
+                                            return corrected;
+                                        };
+                                        PhysicalCandidateV51 v70_private_after_sst;
+                                        PhysicalResidualV51 v70_private_after_sst_residual;
+                                        const auto cycles=probe_bfs_sst_flux_picard_v69(
+                                            x,r0,evaluator_v51,transport_on_closed_phi,
+                                            runtime.transport.k_min,runtime.transport.omega_min,2,
+                                            &before,&f_before,
+                                            controls.convergence.relative_tolerance,
+                                            controls.convergence.continuity_tolerance,
+                                            conservative_sst_rc_v70?&v70_private_after_sst:nullptr,
+                                            conservative_sst_rc_v70?&v70_private_after_sst_residual:nullptr);
+                                        for(const auto& cycle:cycles)
+                                            std::cerr<<std::scientific<<std::setprecision(12)
+                                                <<"BFS_SST_RC_PICARD_V69 iteration="<<iter
+                                                <<" retry="<<retry_controller.retries()
+                                                <<" beta="<<coupled_outer_step_applied_v43
+                                                <<" cycle="<<cycle.cycle
+                                                <<" omega_phys_before="<<cycle.omega_before
+                                                <<" omega_phys_after="<<cycle.omega_after
+                                                <<" omega_ratio="<<cycle.omega_ratio
+                                                <<" k_phys_after="<<cycle.k_after
+                                                <<" merit_before="<<cycle.merit_before
+                                                <<" merit_after="<<cycle.merit_after
+                                                <<" merit_ratio="<<cycle.merit_ratio
+                                                <<" continuity_before="<<cycle.continuity_before
+                                                <<" continuity_after="<<cycle.continuity_after
+                                                <<" rc_phi_change_linf="<<cycle.rc_flux_delta_linf
+                                                <<" nut_change_linf="<<cycle.nut_delta_linf
+                                                <<" rc_closed="<<(cycle.rc_closed?1:0)
+                                                <<" v65_merit_ratio="<<cycle.v65_merit_ratio
+                                                <<" v65_worst_growth="<<cycle.v65_worst_growth
+                                                <<" v65_worst_block="<<cycle.v65_worst_block
+                                                <<" v65_joint_ok="<<(cycle.v65_joint_ok?1:0)
+                                                <<" v65_monotone_ok="<<(cycle.v65_monotone_ok?1:0)
+                                                <<" v65_would_pass="<<(cycle.v65_would_pass?1:0)
+                                                <<" private_transport=1 committed=0 qualified=0\n";
+                                        // V70: native candidate-owned pressure projection after
+                                        // V69 SST/RC refresh. The complete operator and the old
+                                        // state are re-evaluated, without EVER modifying U,p,
+                                        // phi, SST or the existing commit certificate. This
+                                        // guarded staging must qualify BEFORE a production
+                                        // carrier/pressure commit can be permitted in a later
+                                        // lot; current V8 momentum certificates refer to a
+                                        // different, pre-projection candidate.
+                                        if(conservative_sst_rc_v70 &&
+                                           retry_controller.retries()==8) {
+                                            try {
+                                                auto private_candidate=v70_private_after_sst;
+                                                auto private_physical=v70_private_after_sst_residual;
+                                                for(std::size_t projection_cycle=1;
+                                                    projection_cycle<=3;++projection_cycle) {
+                                                    const auto pressure_response=[&](
+                                                        const std::vector<double>& delta_pressure) {
+                                                        if(delta_pressure.size()!=nc)
+                                                            throw std::invalid_argument("V70 pressure increment shape");
+                                                        BfsPressureResponseV70 response;
+                                                        response.state=private_candidate;
+                                                        Field<double,Location::CELL> ru(nc,"v70_U","m/s",3);
+                                                        Field<double,Location::CELL> p_old(nc,"v70_p_old","Pa",1);
+                                                        Field<double,Location::CELL> p_new(nc,"v70_p_new","Pa",1);
+                                                        std::array<std::vector<double>,3> inverse;
+                                                        for(std::size_t d=0;d<3;++d) {
+                                                            inverse[d].resize(nc);
+                                                            for(std::size_t i=0;i<nc;++i) {
+                                                                ru.component_data(d)[i]=
+                                                                    private_candidate.fields[d*nc+i];
+                                                                inverse[d][i]=private_physical.
+                                                                    inverse_momentum_diagonal[d*nc+i];
+                                                            }
+                                                        }
+                                                        for(std::size_t i=0;i<nc;++i) {
+                                                            p_old(i)=private_candidate.fields[3*nc+i];
+                                                            p_new(i)=p_old(i)+delta_pressure[i];
+                                                            response.state.fields[3*nc+i]=p_new(i);
+                                                        }
+                                                        // COUPLED owns physical U, not H/A. The
+                                                        // -V*rAU*grad(delta p) velocity correction
+                                                        // is REQUIRED for the same RC pressure
+                                                        // response used in the continuity block.
+                                                        const auto grad_old=gauss_gradient_with_boundary(
+                                                            p_old,mesh,geometry,pressure_bcs,
+                                                            controls.pressure_skew_corrected_gradient);
+                                                        const auto grad_new=gauss_gradient_with_boundary(
+                                                            p_new,mesh,geometry,pressure_bcs,
+                                                            controls.pressure_skew_corrected_gradient);
+                                                        for(std::size_t d=0;d<3;++d)
+                                                            for(std::size_t i=0;i<nc;++i) {
+                                                                const double du=-geometry.cell_volumes[i]*
+                                                                    inverse[d][i]*(grad_new.component_data(d)[i]-
+                                                                                   grad_old.component_data(d)[i]);
+                                                                ru.component_data(d)[i]+=du;
+                                                                response.state.fields[d*nc+i]=
+                                                                    ru.component_data(d)[i];
+                                                            }
+                                                        const auto rc=make_rhie_chow_flux_from_physical_velocity(
+                                                            mesh,geometry,ru,p_new,inverse,
+                                                            controls.density,velocity_bcs,pressure_bcs,
+                                                            controls.pressure_skew_corrected_gradient);
+                                                        response.face_flux.resize(nf);
+                                                        for(std::size_t face=0;face<nf;++face)
+                                                            response.face_flux[face]=rc(face);
+                                                        return response;
+                                                    };
+                                                    // V70 pressure/velocity continuation: the
+                                                    // native full projection may leave the
+                                                    // nonlinear RC fixed point's basin. Never
+                                                    // alter the final mass or V65 tolerances.
+                                                    const auto prior_mass=bfs_mass_balance_v70(nc,
+                                                        private_physical.face_flux,
+                                                        [&](std::size_t f){return mesh.ownership().owner(f);},
+                                                        [&](std::size_t f){return mesh.ownership().neighbour(f);});
+                                                    bool selected=false;
+                                                    bool completed_private=false;
+                                                    for(std::size_t halve=0;halve<=7;++halve) {
+                                                        const double fraction=std::ldexp(1.0,
+                                                            -static_cast<int>(halve));
+                                                        try {
+                                                            const auto projected=bfs_project_pressure_v70(
+                                                                private_candidate,private_physical,
+                                                                pressure_response,
+                                                                [&](std::size_t f){return mesh.ownership().owner(f);},
+                                                                [&](std::size_t f){return mesh.ownership().neighbour(f);},
+                                                                has_fixed_pressure_boundary,
+                                                                controls.pressure_reference_cell,1e-10,fraction);
+                                                            std::cerr<<std::scientific<<std::setprecision(12)
+                                                                <<"BFS_SST_RC_PRESSURE_PROBE_V70 iteration="<<iter
+                                                                <<" retry="<<retry_controller.retries()
+                                                                <<" cycle="<<projection_cycle
+                                                                <<" fraction="<<fraction
+                                                                <<" frozen_mass_before="<<projected.divergence_before
+                                                                <<" frozen_mass_after="<<projected.divergence_after
+                                                                <<" pressure_delta="<<projected.pressure_delta_linf
+                                                                <<" frozen_full="<<(projected.fully_projected?1:0)
+                                                                <<" committed=0 qualified=0\n";
+                                                            // This is the decisive check. The
+                                                            // true physical operator may change
+                                                            // rAU with the pressure-corrected U.
+                                                            const auto f_pressure=evaluate_physical_candidate_v51(
+                                                                projected.state,evaluator_v51,
+                                                                runtime.transport.k_min,
+                                                                runtime.transport.omega_min);
+                                                            const auto sst_trial=transport_on_closed_phi(
+                                                                projected.state,f_pressure.face_flux);
+                                                            const auto f_trial=evaluate_physical_candidate_v51(
+                                                                sst_trial,evaluator_v51,
+                                                                runtime.transport.k_min,
+                                                                runtime.transport.omega_min);
+                                                            const auto replay=evaluate_physical_candidate_v51(
+                                                                sst_trial,evaluator_v51,
+                                                                runtime.transport.k_min,
+                                                                runtime.transport.omega_min);
+                                                            verify_candidate_replay_v51(f_trial,replay);
+                                                            const auto mass=bfs_mass_balance_v70(nc,
+                                                                f_trial.face_flux,
+                                                                [&](std::size_t f){return mesh.ownership().owner(f);},
+                                                                [&](std::size_t f){return mesh.ownership().neighbour(f);});
+                                                            const auto gate=evaluate_comparable_merit_v65(
+                                                                before,sst_trial,f_before,f_trial,
+                                                                controls.convergence.relative_tolerance,
+                                                                controls.convergence.continuity_tolerance,
+                                                                false,false);
+                                                            std::cerr<<std::scientific<<std::setprecision(12)
+                                                                <<"BFS_SST_RC_CONSERVATIVE_V70 iteration="<<iter
+                                                                <<" retry="<<retry_controller.retries()
+                                                                <<" beta="<<coupled_outer_step_applied_v43
+                                                                <<" cycle="<<projection_cycle
+                                                                <<" fraction="<<fraction
+                                                                <<" mass_before="<<prior_mass.divergence_linf
+                                                                <<" mass_frozen_after="<<projected.divergence_after
+                                                                <<" mass_true_after_sst="<<mass.divergence_linf
+                                                                <<" mass_boundary_net="<<mass.boundary_signed
+                                                                <<" pressure_delta="<<projected.pressure_delta_linf
+                                                                <<" face_delta="<<projected.face_delta_linf
+                                                                <<" merit_ratio="<<gate.merit_ratio
+                                                                <<" worst_growth="<<gate.largest_growth
+                                                                <<" worst_block="<<gate.worst_block
+                                                                <<" joint_ok="<<(gate.joint_allowed?1:0)
+                                                                <<" monotone_ok="<<(gate.monotone_allowed?1:0)
+                                                                <<" candidate_eligible="<<(gate.accepted &&
+                                                                    mass.divergence_linf<=1e-10?1:0)
+                                                                <<" private_trial=1 committed=0 qualified=0\n";
+                                                            // This is a PRIVATE pressure-line
+                                                            // search; improvement in the true
+                                                            // continuity is required to continue.
+                                                            if(!(mass.divergence_linf<prior_mass.divergence_linf))
+                                                                continue;
+                                                            private_candidate=sst_trial;
+                                                            private_physical=f_trial;
+                                                            selected=true;
+                                                            if(mass.divergence_linf<=1e-10) {
+                                                                auto checked=projected;
+                                                                checked.state=private_candidate;
+                                                                checked.face_flux=f_trial.face_flux;
+                                                                (void)bfs_certify_projected_trial_v70(
+                                                                    before,f_before,checked,f_trial,
+                                                                    [&](std::size_t f){return mesh.ownership().owner(f);},
+                                                                    [&](std::size_t f){return mesh.ownership().neighbour(f);},
+                                                                    controls.convergence.relative_tolerance,
+                                                                    controls.convergence.continuity_tolerance,1e-10);
+                                                                std::cerr<<"BFS_SST_RC_CONSERVATIVE_V70"
+                                                                    <<" iteration="<<iter
+                                                                    <<" certified_private=1"
+                                                                    <<" native_full_reassembly_required=1"
+                                                                    <<" private_trial=1 committed=0 qualified=0\n";
+                                                                completed_private=true;
+                                                            }
+                                                            break;
+                                                        } catch(const std::exception& error) {
+                                                            std::cerr<<"BFS_SST_RC_PRESSURE_REJECT_V70 iteration="
+                                                                <<iter<<" retry="<<retry_controller.retries()
+                                                                <<" cycle="<<projection_cycle
+                                                                <<" fraction="<<fraction
+                                                                <<" reason="<<error.what()
+                                                                <<" committed=0 qualified=0\n";
+                                                        }
+                                                    }
+                                                    if(completed_private || !selected)break;
+                                                }
+                                            } catch(const std::exception& e) {
+                                                std::cerr<<"BFS_SST_RC_CONSERVATIVE_V70 iteration="
+                                                    <<iter<<" retry="<<retry_controller.retries()
+                                                    <<" closed=0 reason="<<e.what()
+                                                    <<" private_trial=1 committed=0 qualified=0\n";
+                                            }
+                                        }
+                                        // V71: move the *momentum predictor* inside the
+                                        // candidate-owned SST/pressure loop. V70 first solved
+                                        // SST and THEN projected pressure. Here every trial
+                                        // starts from the SAME original six-field candidate,
+                                        // updates momentum with that state's actual FV rAU,
+                                        // reconstructs RC, projects U/p using the UPDATED rAU,
+                                        // retransports SST using the resulting RC flux, and
+                                        // reassembles ALL six physical equations. This is a
+                                        // controlled Picard co-iteration, not a new Schur or
+                                        // Newton. No result is ever committed in this mode.
+                                        if (joint_private_picard_v71 &&
+                                            retry_controller.retries()==8) {
+                                            if(nf<=3 || mesh.ownership().owner(3)!=0 ||
+                                               mesh.ownership().neighbour(3)!=12)
+                                                throw std::runtime_error(
+                                                    "V71 BFS152 face3 topology 0->12 changed");
+                                            const auto face_owner=[&](std::size_t f){
+                                                return mesh.ownership().owner(f);};
+                                            const auto face_neighbour=[&](std::size_t f){
+                                                return mesh.ownership().neighbour(f);};
+                                            const auto v71_project=[&](
+                                                const PhysicalCandidateV51& input,
+                                                const PhysicalResidualV51& physical,
+                                                double fraction) {
+                                                if(input.cells!=nc ||
+                                                   physical.inverse_momentum_diagonal.size()!=3*nc)
+                                                    throw std::invalid_argument(
+                                                        "V71 incomplete input for pressure response");
+                                                const auto response_at_delta=[&](
+                                                    const std::vector<double>& delta_pressure) {
+                                                    if(delta_pressure.size()!=nc)
+                                                        throw std::invalid_argument("V71 delta-p shape");
+                                                    BfsPressureResponseV70 response;
+                                                    response.state=input;
+                                                    Field<double,Location::CELL> private_u(
+                                                        nc,"v71_u","m/s",3);
+                                                    Field<double,Location::CELL> previous_p(
+                                                        nc,"v71_old_p","Pa",1);
+                                                    Field<double,Location::CELL> next_p(
+                                                        nc,"v71_new_p","Pa",1);
+                                                    std::array<std::vector<double>,3> inverse;
+                                                    for(std::size_t d=0;d<3;++d) {
+                                                        inverse[d].resize(nc);
+                                                        for(std::size_t i=0;i<nc;++i) {
+                                                            inverse[d][i]=physical.
+                                                                inverse_momentum_diagonal[d*nc+i];
+                                                            private_u.component_data(d)[i]=
+                                                                input.fields[d*nc+i];
+                                                        }
+                                                    }
+                                                    for(std::size_t i=0;i<nc;++i) {
+                                                        previous_p(i)=input.fields[3*nc+i];
+                                                        next_p(i)=previous_p(i)+delta_pressure[i];
+                                                        response.state.fields[3*nc+i]=next_p(i);
+                                                    }
+                                                    const auto grad_before=gauss_gradient_with_boundary(
+                                                        previous_p,mesh,geometry,pressure_bcs,
+                                                        controls.pressure_skew_corrected_gradient);
+                                                    const auto grad_after=gauss_gradient_with_boundary(
+                                                        next_p,mesh,geometry,pressure_bcs,
+                                                        controls.pressure_skew_corrected_gradient);
+                                                    for(std::size_t d=0;d<3;++d)
+                                                        for(std::size_t i=0;i<nc;++i) {
+                                                            const auto du=-geometry.cell_volumes[i]*
+                                                                inverse[d][i]*(
+                                                                    grad_after.component_data(d)[i]-
+                                                                    grad_before.component_data(d)[i]);
+                                                            private_u.component_data(d)[i]+=du;
+                                                            response.state.fields[d*nc+i]=
+                                                                private_u.component_data(d)[i];
+                                                        }
+                                                    const auto reconstructed=make_rhie_chow_flux_from_physical_velocity(
+                                                        mesh,geometry,private_u,next_p,inverse,
+                                                        controls.density,velocity_bcs,pressure_bcs,
+                                                        controls.pressure_skew_corrected_gradient);
+                                                    response.face_flux.resize(nf);
+                                                    for(std::size_t f=0;f<nf;++f)
+                                                        response.face_flux[f]=reconstructed(f);
+                                                    return response;
+                                                };
+                                                return bfs_project_pressure_v70(
+                                                    input,physical,response_at_delta,
+                                                    face_owner,face_neighbour,
+                                                    has_fixed_pressure_boundary,
+                                                    controls.pressure_reference_cell,1e-10,fraction);
+                                            };
+                                            if (joint_fixed_point_v72) {
+                                                // Bounded continuation using exactly the
+                                                // V71 pressure/momentum/SST operators.
+                                                // All proposed states remain PRIVATE, even
+                                                // if physical mass and merit converge: no
+                                                // new native linear momentum certificate exists.
+                                                const std::vector<BfsJointChoiceV72> choices{
+                                                    {1./32.,.25}, {1./32.,.5},
+                                                    {0.,.5}, {0.,.25}, {1./32.,1.}
+                                                };
+                                                PhysicalCandidateV51 final_private;
+                                                PhysicalResidualV51 final_physical;
+                                                const auto fixed_point=bfs_joint_private_fixed_point_v72(
+                                                    before,f_before,x,r0,evaluator_v51,
+                                                    v71_project,transport_on_closed_phi,
+                                                    face_owner,face_neighbour,choices,8,
+                                                    runtime.transport.k_min,
+                                                    runtime.transport.omega_min,
+                                                    controls.convergence.relative_tolerance,
+                                                    controls.convergence.continuity_tolerance,
+                                                    1e-10,&final_private,&final_physical);
+                                                // V73: after a V72 private SST update, probe
+                                                // only the old momentum/Picard and pressure
+                                                // response factors. No new solver and NO COMMIT.
+                                                // Every candidate re-solves SST on its OWN
+                                                // reassembled Rhie-Chow flux, then checks the
+                                                // unchanged V65 merit against the committed base.
+                                                if(post_sst_direction_v73) {
+                                                    const auto omega_budget_at_v73=[&](
+                                                        const PhysicalCandidateV51& state,
+                                                        std::size_t cell) {
+                                                        v66_probe_row=cell;
+                                                        v66_probe_result.reset();
+                                                        try {
+                                                            (void)evaluate_physical_candidate_v51(
+                                                                state,evaluator_v51,
+                                                                runtime.transport.k_min,
+                                                                runtime.transport.omega_min);
+                                                            if(!v66_probe_result)
+                                                                throw std::runtime_error(
+                                                                    "V73 missing SST source audit");
+                                                            const auto budget=*v66_probe_result;
+                                                            v66_probe_row.reset();
+                                                            v66_probe_result.reset();
+                                                            return budget;
+                                                        } catch(...) {
+                                                            v66_probe_row.reset();
+                                                            v66_probe_result.reset();
+                                                            throw;
+                                                        }
+                                                    };
+                                                    // Bounded, three-zone sensitivity scan.
+                                                    // Zone A studies the V72 fractions, zone B
+                                                    // probes smaller pressure increments and
+                                                    // zone C narrows gamma after measuring the
+                                                    // native V65 guard conflict. ALL directions
+                                                    // share the same post-SST source state.
+                                                    // These are existing V71 operator calls,
+                                                    // not a new stencil or a changed solver.
+                                                    const std::vector<BfsJointChoiceV72> directions{
+                                                        {1./128.,.25}, {1./64.,.25},
+                                                        {3./64.,.25}, {1./16.,.25},
+                                                        {1./128.,.375}, {1./64.,.375},
+                                                        {3./64.,.375}, {1./16.,.375},
+                                                        {1./32.,.0625}, {1./32.,.125},
+                                                        {1./32.,.1875}, {3./64.,.0625},
+                                                        {3./64.,.125}, {3./64.,.1875},
+                                                        {1./16.,.0625}, {1./16.,.125},
+                                                        {1./128.,.0625}, {1./128.,.125},
+                                                        {1./128.,.1875}, {1./64.,.0625},
+                                                        {1./64.,.125}, {1./64.,.1875},
+                                                        {3./128.,.125}, {3./128.,.1875}
+                                                    };
+                                                    const auto audit_candidate=[&](
+                                                        const PhysicalCandidateV51& candidate,
+                                                        const PhysicalResidualV51& final,
+                                                        const BfsDirectionAttemptV73& attempt) {
+                                                        for(const std::size_t cell :
+                                                            {std::size_t{0},std::size_t{12}}) {
+                                                            const auto previous=omega_budget_at_v73(
+                                                                final_private,cell);
+                                                            const auto updated=omega_budget_at_v73(
+                                                                candidate,cell);
+                                                            const auto budget_difference=[&](
+                                                                double before,double after) {
+                                                                return after-before;
+                                                            };
+                                                            const double con=budget_difference(
+                                                                previous.convection,updated.convection);
+                                                            const double diff=budget_difference(
+                                                                previous.diffusion,updated.diffusion);
+                                                            const double production=budget_difference(
+                                                                previous.physical_production,
+                                                                updated.physical_production);
+                                                            const double destruction=budget_difference(
+                                                                previous.physical_destruction,
+                                                                updated.physical_destruction);
+                                                            const double cross=budget_difference(
+                                                                previous.physical_cross_diffusion,
+                                                                updated.physical_cross_diffusion);
+                                                            const double residual_delta=
+                                                                final.signed_raw[5*nc+cell]-
+                                                                final_physical.signed_raw[5*nc+cell];
+                                                            const double sum=con+diff+production+
+                                                                destruction+cross;
+                                                            if(std::abs(sum-residual_delta)>
+                                                                1e-8*std::max({1.,std::abs(sum),
+                                                                            std::abs(residual_delta)}))
+                                                                throw std::runtime_error(
+                                                                    "V73 SST source differences do not close");
+                                                            std::cerr<<std::scientific
+                                                                <<std::setprecision(12)
+                                                                <<"BFS_POST_SST_SOURCE_V73 iteration="<<iter
+                                                                <<" retry="<<retry_controller.retries()
+                                                                <<" gamma="<<attempt.gamma
+                                                                <<" pressure_fraction="<<attempt.pressure_fraction
+                                                                <<" cell="<<cell
+                                                                <<" convection_delta="<<con
+                                                                <<" diffusion_delta="<<diff
+                                                                <<" production_delta="<<production
+                                                                <<" destruction_delta="<<destruction
+                                                                <<" cross_delta="<<cross
+                                                                <<" sum="<<sum
+                                                                <<" omega_raw_delta="<<residual_delta
+                                                                <<" private_trial=1 committed=0 qualified=0\n";
+                                                        }
+                                                    };
+                                                    const auto directions_report=
+                                                        bfs_probe_post_sst_directions_v73(
+                                                            before,f_before,final_private,
+                                                            final_physical,evaluator_v51,
+                                                            v71_project,transport_on_closed_phi,
+                                                            face_owner,face_neighbour,
+                                                            3,0,12,directions,audit_candidate,
+                                                            runtime.transport.k_min,
+                                                            runtime.transport.omega_min,
+                                                            controls.convergence.relative_tolerance,
+                                                            controls.convergence.continuity_tolerance);
+                                                    for(const auto& d:directions_report.attempts) {
+                                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                                            <<"BFS_POST_SST_DIRECTION_V73 iteration="<<iter
+                                                            <<" retry="<<retry_controller.retries()
+                                                            <<" gamma="<<d.gamma
+                                                            <<" pressure_fraction="<<d.pressure_fraction
+                                                            <<" evaluated="<<(d.evaluated?1:0)
+                                                            <<" merit_ratio="<<d.merit_ratio
+                                                            <<" worst_growth="<<d.largest_growth
+                                                            <<" mass_before="<<d.mass_before
+                                                            <<" mass_after="<<d.mass_after
+                                                            <<" phi3_before="<<d.face_flux_before
+                                                            <<" phi3_after="<<d.face_flux_after
+                                                            <<" rAUx0_before="<<d.cells[0].raux_before
+                                                            <<" rAUx0_after="<<d.cells[0].raux_after
+                                                            <<" rAUx12_before="<<d.cells[1].raux_before
+                                                            <<" rAUx12_after="<<d.cells[1].raux_after
+                                                            <<" nut0_before="<<d.cells[0].nut_before
+                                                            <<" nut0_after="<<d.cells[0].nut_after
+                                                            <<" nut12_before="<<d.cells[1].nut_before
+                                                            <<" nut12_after="<<d.cells[1].nut_after
+                                                            <<" omega0_before="<<d.cells[0].omega_signed_before
+                                                            <<" omega0_after="<<d.cells[0].omega_signed_after
+                                                            <<" omega12_before="<<d.cells[1].omega_signed_before
+                                                            <<" omega12_after="<<d.cells[1].omega_signed_after
+                                                            <<" momentum_improved="<<(d.momentum_improved?1:0)
+                                                            <<" k_improved="<<(d.k_improved?1:0)
+                                                            <<" omega_improved="<<(d.omega_improved?1:0)
+                                                            <<" mass_improved="<<(d.mass_improved?1:0)
+                                                            <<" original_guards="<<(d.guards_ok?1:0)
+                                                            <<" all_blocks_improved="<<(d.all_relevant_blocks_improved?1:0)
+                                                            <<" mass_closed="<<(d.final_mass_closed?1:0)
+                                                            <<" six_blocks_closed="<<(d.all_six_blocks_closed?1:0)
+                                                            <<" private_trial=1 commit_authorized=0 committed=0 qualified=0"
+                                                            <<" reason="<<(d.rejection.empty()?"none":d.rejection)
+                                                            <<"\n";
+                                                    }
+                                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                                        <<"BFS_POST_SST_SUMMARY_V73 iteration="<<iter
+                                                        <<" evaluated="<<directions_report.evaluated_count
+                                                        <<" original_guards_ok="<<directions_report.guard_accepted_count
+                                                        <<" simultaneous_descent="<<directions_report.simultaneous_descent_count
+                                                        <<" initial_mass="<<directions_report.initial_mass
+                                                        <<" smallest_mass="<<directions_report.smallest_mass
+                                                        <<" native_momentum_linear_recertified=0"
+                                                        <<" native_sst_transport_recertified=0"
+                                                        <<" commit_authorized=0 committed=0 qualified=0\n";
+                                                }
+                                                // V74: one already identified descent direction,
+                                                // continued privately with full F_phys reassembly
+                                                // after each momentum -> pressure/RC -> SST cycle.
+                                                // There is NO new parameter search or commit.
+                                                if(fixed_direction_v74) {
+                                                    try {
+                                                        BfsContinuationObserverV74 observer_v75;
+                                                        if(sst_budget_v75) {
+                                                            const auto take_budget_v75=[&](
+                                                                const PhysicalCandidateV51& state,
+                                                                const PhysicalResidualV51& phys) {
+                                                                v75_capture_two_cells=true;
+                                                                v75_probe_result.reset();
+                                                                try {
+                                                                    const auto reevaluated=
+                                                                        evaluate_physical_candidate_v51(
+                                                                            state,evaluator_v51,
+                                                                            runtime.transport.k_min,
+                                                                            runtime.transport.omega_min);
+                                                                    verify_candidate_replay_v51(phys,reevaluated);
+                                                                    if(!v75_probe_result)
+                                                                        throw std::runtime_error(
+                                                                            "V75 missing k/omega in 0 and 12");
+                                                                    const auto& rows=*v75_probe_result;
+                                                                    const auto copy_row=[](
+                                                                        const SSTCellDiscreteBudget& b) {
+                                                                        return BfsSstTermsV75{
+                                                                            b.convection,b.diffusion,
+                                                                            b.physical_production,
+                                                                            b.physical_destruction,
+                                                                            b.physical_cross_diffusion,
+                                                                            b.full_residual};
+                                                                    };
+                                                                    std::array<BfsSstCellSnapshotV75,2> snapshots{};
+                                                                    for(std::size_t i=0;i<2;++i){
+                                                                        const std::size_t cell=i==0?0:12;
+                                                                        auto& snapshot=snapshots[i];
+                                                                        snapshot.cell=cell;
+                                                                        snapshot.k=state.fields[4*nc+cell];
+                                                                        snapshot.omega=state.fields[5*nc+cell];
+                                                                        snapshot.nut=phys.eddy_viscosity.at(cell);
+                                                                        snapshot.raux=phys.inverse_momentum_diagonal.at(cell);
+                                                                        snapshot.phi3=phys.face_flux.at(3);
+                                                                        snapshot.equation[0]=copy_row(rows[i].first);
+                                                                        snapshot.equation[1]=copy_row(rows[i].second);
+                                                                        snapshot.raw[0]=phys.signed_raw.at(4*nc+cell);
+                                                                        snapshot.raw[1]=phys.signed_raw.at(5*nc+cell);
+                                                                    }
+                                                                    v75_capture_two_cells=false;
+                                                                    v75_probe_result.reset();
+                                                                    return snapshots;
+                                                                } catch(...) {
+                                                                    v75_capture_two_cells=false;
+                                                                    v75_probe_result.reset();
+                                                                    throw;
+                                                                }
+                                                            };
+                                                            observer_v75=[&](std::size_t cycle,
+                                                                const PhysicalCandidateV51& x0,
+                                                                const PhysicalResidualV51& f0,
+                                                                const PhysicalCandidateV51& x1,
+                                                                const PhysicalResidualV51& f1,
+                                                                const BfsContinuationRowV74& row) {
+                                                                // V75 is read-only and compares EXACTLY
+                                                                // the states used for V74 selection.
+                                                                // Check whether the global SST maximum is
+                                                                // actually in 0/12 before claiming a local
+                                                                // source difference explains stagnation.
+                                                                for(std::size_t eq=0;eq<2;++eq) {
+                                                                    const auto argmax=[&](
+                                                                        const PhysicalResidualV51& f) {
+                                                                        std::size_t cell=0;
+                                                                        double largest=-1.;
+                                                                        for(std::size_t i=0;i<nc;++i) {
+                                                                            const double value=std::abs(
+                                                                                f.normalized.at((4+eq)*nc+i));
+                                                                            if(!std::isfinite(value))
+                                                                                throw std::runtime_error(
+                                                                                    "V75 nonfinite normalized SST row");
+                                                                            if(value>largest) {
+                                                                                largest=value;
+                                                                                cell=i;
+                                                                            }
+                                                                        }
+                                                                        return std::make_pair(cell,largest);
+                                                                    };
+                                                                    const auto old_max=argmax(f0);
+                                                                    const auto new_max=argmax(f1);
+                                                                    std::cerr<<std::scientific
+                                                                        <<std::setprecision(12)
+                                                                        <<"BFS_SST_ARGMAX_V75 iteration="<<iter
+                                                                        <<" cycle="<<cycle
+                                                                        <<" equation="<<(eq==0?"k":"omega")
+                                                                        <<" before_cell="<<old_max.first
+                                                                        <<" after_cell="<<new_max.first
+                                                                        <<" before_abs="<<old_max.second
+                                                                        <<" after_abs="<<new_max.second
+                                                                        <<" source_cells_probed=0,12"
+                                                                        <<" committed=0 qualified=0\n";
+                                                                }
+                                                                const auto a=take_budget_v75(x0,f0);
+                                                                const auto b=take_budget_v75(x1,f1);
+                                                                for(std::size_t i=0;i<2;++i) {
+                                                                    const std::size_t cell=i==0?0:12;
+                                                                    const auto delta=bfs_compare_sst_budget_v75(
+                                                                        a[i],b[i]);
+                                                                    for(std::size_t eq=0;eq<2;++eq) {
+                                                                        const auto& lhs=a[i].equation[eq];
+                                                                        const auto& rhs=b[i].equation[eq];
+                                                                        const auto& d=delta.equation[eq];
+                                                                        std::cerr<<std::scientific
+                                                                            <<std::setprecision(12)
+                                                                            <<"BFS_SST_BUDGET_V75 iteration="<<iter
+                                                                            <<" retry="<<retry_controller.retries()
+                                                                            <<" cycle="<<cycle
+                                                                            <<" cell="<<cell
+                                                                            <<" equation="<<(eq==0?"k":"omega")
+                                                                            <<" raw_before="<<a[i].raw[eq]
+                                                                            <<" raw_after="<<b[i].raw[eq]
+                                                                            <<" raw_delta="<<d.raw
+                                                                            <<" convection_before="<<lhs.convection
+                                                                            <<" convection_after="<<rhs.convection
+                                                                            <<" convection_delta="<<d.convection
+                                                                            <<" diffusion_before="<<lhs.diffusion
+                                                                            <<" diffusion_after="<<rhs.diffusion
+                                                                            <<" diffusion_delta="<<d.diffusion
+                                                                            <<" production_before="<<lhs.production
+                                                                            <<" production_after="<<rhs.production
+                                                                            <<" production_delta="<<d.production
+                                                                            <<" destruction_before="<<lhs.destruction
+                                                                            <<" destruction_after="<<rhs.destruction
+                                                                            <<" destruction_delta="<<d.destruction
+                                                                            <<" cross_before="<<lhs.cross_diffusion
+                                                                            <<" cross_after="<<rhs.cross_diffusion
+                                                                            <<" cross_delta="<<d.cross_diffusion
+                                                                            <<" terms_delta_sum="<<d.sum
+                                                                            <<" closure_error="<<d.closure_error
+                                                                            <<" largest_abs_delta="<<d.largest_absolute_contribution
+                                                                            <<" k_before="<<a[i].k
+                                                                            <<" k_after="<<b[i].k
+                                                                            <<" omega_before="<<a[i].omega
+                                                                            <<" omega_after="<<b[i].omega
+                                                                            <<" nut_before="<<a[i].nut
+                                                                            <<" nut_after="<<b[i].nut
+                                                                            <<" rAUx_before="<<a[i].raux
+                                                                            <<" rAUx_after="<<b[i].raux
+                                                                            <<" phi3_before="<<a[i].phi3
+                                                                            <<" phi3_after="<<b[i].phi3
+                                                                            <<" normalized_before="<<row.blocks_before[4+eq]
+                                                                            <<" normalized_after="<<row.blocks_after[4+eq]
+                                                                            <<" trace_selected="<<(row.selected?1:0)
+                                                                            <<" independently_closed=1"
+                                                                            <<" limiter_branches_captured=0"
+                                                                            <<" private_trial=1 committed=0 qualified=0\n";
+                                                                    }
+                                                                }
+                                                            };
+                                                        }
+                                                        // A scoped arm protects the surrounding
+                                                        // V69/V70/V73 native diagnostics even on
+                                                        // exceptions inside the V74 probe.
+                                                        const auto trace=[&]() {
+                                                            struct ScopedArm {
+                                                                bool& active;
+                                                                ScopedArm(bool& a,bool enable):active(a){active=enable;}
+                                                                ~ScopedArm(){active=false;}
+                                                            } arm(v76_inside_fixed_direction,sst_block_v76);
+                                                            return bfs_continue_single_direction_v74(
+                                                                before,f_before,final_private,final_physical,
+                                                                evaluator_v51,v71_project,transport_on_closed_phi,
+                                                                face_owner,face_neighbour,3,0,12,8,
+                                                                runtime.transport.k_min,
+                                                                runtime.transport.omega_min,
+                                                                controls.convergence.relative_tolerance,
+                                                                controls.convergence.continuity_tolerance,
+                                                                1e-10,nullptr,nullptr,observer_v75);
+                                                        }();
+                                                        for(const auto& row:trace.rows)
+                                                            std::cerr<<std::scientific<<std::setprecision(12)
+                                                                <<"BFS_FIXED_DIRECTION_V74 iteration="<<iter
+                                                                <<" retry="<<retry_controller.retries()
+                                                                <<" cycle="<<row.cycle
+                                                                <<" evaluated="<<(row.evaluated?1:0)
+                                                                <<" selected="<<(row.selected?1:0)
+                                                                <<" mass_before="<<row.mass_before
+                                                                <<" mass_after="<<row.mass_after
+                                                                <<" merit_before="<<row.merit_before
+                                                                <<" merit_after="<<row.merit_after
+                                                                <<" v65_ratio="<<row.merit_ratio_to_original
+                                                                <<" worst_growth="<<row.largest_growth
+                                                                <<" guards="<<(row.guards_ok?1:0)
+                                                                <<" mass_descent="<<(row.strict_mass_descent?1:0)
+                                                                <<" relevant_groups_nonincreasing="<<(row.relevant_groups_nonincreasing?1:0)
+                                                                <<" phi3_before="<<row.phi3_before
+                                                                <<" phi3_after="<<row.phi3_after
+                                                                <<" rAU0_before="<<row.raux0_before
+                                                                <<" rAU0_after="<<row.raux0_after
+                                                                <<" rAU12_before="<<row.raux12_before
+                                                                <<" rAU12_after="<<row.raux12_after
+                                                                <<" nut0_before="<<row.nut0_before
+                                                                <<" nut0_after="<<row.nut0_after
+                                                                <<" nut12_before="<<row.nut12_before
+                                                                <<" nut12_after="<<row.nut12_after
+                                                                <<" Ux_before="<<row.blocks_before[0]
+                                                                <<" Ux_after="<<row.blocks_after[0]
+                                                                <<" Uy_before="<<row.blocks_before[1]
+                                                                <<" Uy_after="<<row.blocks_after[1]
+                                                                <<" Uz_before="<<row.blocks_before[2]
+                                                                <<" Uz_after="<<row.blocks_after[2]
+                                                                <<" continuity_before="<<row.blocks_before[3]
+                                                                <<" continuity_after="<<row.blocks_after[3]
+                                                                <<" k_before="<<row.blocks_before[4]
+                                                                <<" k_after="<<row.blocks_after[4]
+                                                                <<" omega_before="<<row.blocks_before[5]
+                                                                <<" omega_after="<<row.blocks_after[5]
+                                                                <<" mass_closed="<<(row.mass_closed?1:0)
+                                                                <<" six_closed="<<(row.six_blocks_closed?1:0)
+                                                                <<" private_trial=1 committed=0 qualified=0"
+                                                                <<" reason="<<(row.reason.empty()?"none":row.reason)
+                                                                <<"\n";
+                                                        if(sst_budget_v75)
+                                                            std::cerr<<"BFS_SST_BUDGET_SUMMARY_V75 iteration="<<iter
+                                                                <<" cycles="<<trace.rows.size()
+                                                                <<" private_accepted="<<trace.accepted_private_cycles
+                                                                <<" status=forensic_only"
+                                                                <<" native_momentum=0 native_sst=0"
+                                                                <<" committed=0 qualified=0\n";
+                                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                                            <<"BFS_FIXED_DIRECTION_SUMMARY_V74 iteration="<<iter
+                                                            <<" cycles="<<trace.rows.size()
+                                                            <<" private_accepted="<<trace.accepted_private_cycles
+                                                            <<" mass_before="<<trace.initial_mass
+                                                            <<" mass_after="<<trace.final_mass
+                                                            <<" mass_closed="<<(trace.final_mass_closed?1:0)
+                                                            <<" native_momentum=0 native_sst=0"
+                                                            <<" committed=0 qualified=0 status="<<trace.status<<"\n";
+                                                    } catch(const std::exception& e) {
+                                                        std::cerr<<"BFS_FIXED_DIRECTION_SUMMARY_V74 iteration="<<iter
+                                                            <<" private_accepted=0 committed=0 qualified=0"
+                                                            <<" status=diagnostic_rejected reason="<<e.what()<<"\n";
+                                                    }
+                                                }
+                                                if(wall_regime_v74) {
+                                                    try {
+                                                        std::vector<BfsWallSampleV74> samples;
+                                                        for(const auto& [patch,bc]:velocity_bcs) {
+                                                            if(bc.type!=VelocityBoundaryCondition::Type::FIXED_VALUE)
+                                                                continue;
+                                                            const auto& boundary=mesh.boundary().patch(
+                                                                mesh.boundary().find(patch));
+                                                            if(boundary.type!=PatchType::WALL) continue;
+                                                            for(const auto f:boundary.face_ids) {
+                                                                if(mesh.ownership().neighbour(f)>=0)
+                                                                    throw std::runtime_error("V74 wall face is internal");
+                                                                const auto cell=mesh.ownership().owner(f);
+                                                                const auto area_vector=geometry.face_area_vectors.at(f);
+                                                                const auto area=area_vector.mag();
+                                                                if(!(area>0.))throw std::runtime_error("V74 invalid wall area");
+                                                                const auto n=area_vector*(1./area);
+                                                                const auto y=(geometry.face_centres.at(f)-
+                                                                    geometry.cell_centres.at(cell)).dot(n);
+                                                                const Vec3 jump{
+                                                                    final_private.fields[cell]-bc.value.x,
+                                                                    final_private.fields[nc+cell]-bc.value.y,
+                                                                    final_private.fields[2*nc+cell]-bc.value.z};
+                                                                const auto tangential=(jump-n*jump.dot(n)).mag();
+                                                                samples.push_back({f,cell,y,tangential,
+                                                                    runtime.transport.molecular_viscosity,
+                                                                    final_private.fields[4*nc+cell],
+                                                                    final_private.fields[5*nc+cell],
+                                                                    final_physical.eddy_viscosity.at(cell)});
+                                                            }
+                                                        }
+                                                        const auto walls=bfs_wall_regime_v74(samples);
+                                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                                            <<"BFS_WALL_REGIME_V74 iteration="<<iter
+                                                            <<" faces="<<walls.faces.size()
+                                                            <<" wall_resolved="<<walls.wall_resolved
+                                                            <<" buffer="<<walls.buffer_or_transition
+                                                            <<" log_layer="<<walls.log_layer
+                                                            <<" out_of_range="<<walls.out_of_model_range
+                                                            <<" corner_owners="<<walls.corner_owner_count
+                                                            <<" min_yplus_spalding="<<walls.min_yplus_velocity
+                                                            <<" max_yplus_spalding="<<walls.max_yplus_velocity
+                                                            <<" omega_step_gap="<<walls.max_omega_step_relative_gap
+                                                            <<" omega_blended_gap="<<walls.max_omega_blended_relative_gap
+                                                            <<" wall_nut_gap="<<walls.max_nut_wall_relative_gap
+                                                            <<" active_openfoam_triplet="
+                                                            <<(runtime.active_openfoam_wall_operator_v17?1:0)
+                                                            <<" openfoam_equivalent=0 qualified=0\n";
+                                                        for(const auto& f:walls.faces)
+                                                            if(f.owner==0 || f.owner==12)
+                                                                std::cerr<<std::scientific<<std::setprecision(12)
+                                                                    <<"BFS_WALL_FACE_V74 iteration="<<iter
+                                                                    <<" face="<<f.face
+                                                                    <<" owner="<<f.owner
+                                                                    <<" yplus_spalding="<<f.yplus_velocity
+                                                                    <<" yplus_k="<<f.yplus_k
+                                                                    <<" omega_owner="<<f.omega_owner
+                                                                    <<" omega_step="<<f.omega_step
+                                                                    <<" omega_blended="<<f.omega_blended
+                                                                    <<" omega_viscous6="<<f.viscous_omega_6
+                                                                    <<" omega_viscous60="<<f.viscous_omega_60
+                                                                    <<" nut_spalding="<<f.nut_spalding
+                                                                    <<" nut_owner="<<f.nut_owner
+                                                                    <<" qualified=0\n";
+                                                    } catch(const std::exception& e) {
+                                                        std::cerr<<"BFS_WALL_REGIME_V74 iteration="<<iter
+                                                            <<" comparable=0 qualified=0 reason="<<e.what()<<"\n";
+                                                    }
+                                                }
+                                                for(const auto& a:fixed_point.attempts) {
+                                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                                        <<"BFS_JOINT_FIXED_POINT_V72 iteration="<<iter
+                                                        <<" retry="<<retry_controller.retries()
+                                                        <<" cycle="<<a.cycle
+                                                        <<" gamma="<<a.momentum_fraction
+                                                        <<" pressure_fraction="<<a.pressure_fraction
+                                                        <<" mass_before="<<a.physical_mass_before
+                                                        <<" mass_after="<<a.physical_mass_after
+                                                        <<" omega_after="<<a.physical_omega_after
+                                                        <<" merit_ratio="<<a.merit_ratio
+                                                        <<" worst_growth="<<a.worst_growth
+                                                        <<" rAU_change="<<a.rAU_change_linf
+                                                        <<" nut_change="<<a.nut_change_linf
+                                                        <<" phi_change="<<a.face_flux_change_linf
+                                                        <<" evaluated="<<(a.evaluated?1:0)
+                                                        <<" v65_guards="<<(a.guards_ok?1:0)
+                                                        <<" mass_improved="<<(a.mass_improved?1:0)
+                                                        <<" selected="<<(a.selected?1:0)
+                                                        <<" rejected_reason="<<(a.rejection.empty()?"none":a.rejection)
+                                                        <<" private_trial=1 committed=0 qualified=0\n";
+                                                }
+                                                for(std::size_t c=0;c<fixed_point.certificates.size();++c) {
+                                                    const auto& cert=fixed_point.certificates[c];
+                                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                                        <<"BFS_JOINT_CERTIFICATE_V72 iteration="<<iter
+                                                        <<" cycle="<<(c+1)
+                                                        <<" mass="<<cert.mass_divergence_linf
+                                                        <<" boundary_net="<<cert.mass_boundary_signed
+                                                        <<" face_identity="<<cert.face_owner_neighbour_identity
+                                                        <<" continuity_face_gap="<<cert.signed_continuity_vs_face_gap
+                                                        <<" rc_fixed_point="<<cert.rhie_chow_fixed_point_gap
+                                                        <<" momentum_scaled="<<std::max({cert.scaled_linf[0],cert.scaled_linf[1],cert.scaled_linf[2]})
+                                                        <<" k_scaled="<<cert.scaled_linf[4]
+                                                        <<" omega_scaled="<<cert.scaled_linf[5]
+                                                        <<" replay="<<(cert.replay_identical?1:0)
+                                                        <<" mass_closed="<<(cert.conservation_reassembled_closed?1:0)
+                                                        <<" six_blocks_closed="<<(cert.all_six_physical_blocks_closed?1:0)
+                                                        <<" linear_momentum_reissued="<<(cert.native_momentum_linear_recertified?1:0)
+                                                        <<" linear_sst_reissued="<<(cert.native_sst_transport_recertified?1:0)
+                                                        <<" commit_authorized="<<(cert.eligible_for_production_commit?1:0)
+                                                        <<" private_trial=1 committed=0 qualified=0\n";
+                                                }
+                                                std::cerr<<std::scientific<<std::setprecision(12)
+                                                    <<"BFS_JOINT_SUMMARY_V72 iteration="<<iter
+                                                    <<" attempted_cycles="<<fixed_point.attempted_cycles
+                                                    <<" accepted_private_cycles="<<fixed_point.accepted_private_cycles
+                                                    <<" initial_mass="<<fixed_point.initial_mass
+                                                    <<" final_mass="<<fixed_point.final_mass
+                                                    <<" mass_closed="<<(fixed_point.physical_mass_closed?1:0)
+                                                    <<" all_physical_blocks_closed="<<(fixed_point.all_six_physical_blocks_closed?1:0)
+                                                    <<" status="<<fixed_point.status
+                                                    <<" commit_authorized=0 committed=0 qualified=0\n";
+                                            } else {
+                                            // Counterfactual: same old state, retry and
+                                            // normalization for ALL predictor fractions.
+                                            for(const double gamma: {0.,1./32.,1./8.}) {
+                                                for(const double fraction: {0.5,0.25}) {
+                                                    try {
+                                                        PhysicalCandidateV51 end_state;
+                                                        PhysicalResidualV51 end_physical;
+                                                        const auto row=bfs_joint_private_cycle_v71(
+                                                            before,f_before,x,r0,evaluator_v51,
+                                                            v71_project,transport_on_closed_phi,
+                                                            face_owner,face_neighbour,
+                                                            gamma,fraction,
+                                                            runtime.transport.k_min,
+                                                            runtime.transport.omega_min,
+                                                            controls.convergence.relative_tolerance,
+                                                            controls.convergence.continuity_tolerance,
+                                                            1e-10,1,&end_state,&end_physical);
+                                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                                            <<"BFS_JOINT_PICARD_V71 iteration="<<iter
+                                                            <<" retry="<<retry_controller.retries()
+                                                            <<" gamma="<<gamma
+                                                            <<" pressure_fraction="<<fraction
+                                                            <<" delta_u_linf="<<row.momentum_update_linf
+                                                            <<" mass_before="<<row.mass_before
+                                                            <<" mass_after_predictor="<<row.mass_after_predictor
+                                                            <<" mass_after_frozen_pressure="<<row.mass_after_pressure
+                                                            <<" mass_after_sst="<<row.mass_after_sst
+                                                            <<" omega_before="<<row.omega_before
+                                                            <<" omega_after="<<row.omega_after
+                                                            <<" merit_ratio="<<row.merit_ratio
+                                                            <<" worst_growth="<<row.worst_growth
+                                                            <<" worst_block="<<row.worst_block
+                                                            <<" rAU_change_linf="<<row.rAU_change_linf
+                                                            <<" nut_change_linf="<<row.turbulent_viscosity_change_linf
+                                                            <<" joint_ok="<<(row.joint_ok?1:0)
+                                                            <<" monotone_ok="<<(row.monotone_ok?1:0)
+                                                            <<" physical_mass_closed="<<(row.final_mass_closed?1:0)
+                                                            <<" original_guards_ok="<<(row.original_guards_ok?1:0)
+                                                            <<" physically_eligible="<<(row.final_mass_closed &&
+                                                                row.original_guards_ok?1:0)
+                                                            <<" private_trial=1 committed=0 qualified=0\n";
+                                                        // Report the actual face 3 and its
+                                                        // two adjacent SST source balances.
+                                                        const auto inspect_budget=[&](
+                                                            const PhysicalCandidateV51& state,
+                                                            std::size_t cell) {
+                                                            v66_probe_row=cell;
+                                                            v66_probe_result.reset();
+                                                            try {
+                                                                const auto reevaluated=
+                                                                    evaluate_physical_candidate_v51(
+                                                                        state,evaluator_v51,
+                                                                        runtime.transport.k_min,
+                                                                        runtime.transport.omega_min);
+                                                                (void)reevaluated;
+                                                                if(!v66_probe_result)
+                                                                    throw std::runtime_error(
+                                                                        "V71 missing omega budget");
+                                                                const auto b=*v66_probe_result;
+                                                                v66_probe_row.reset();
+                                                                v66_probe_result.reset();
+                                                                return b;
+                                                            } catch (...) {
+                                                                v66_probe_row.reset();
+                                                                v66_probe_result.reset();
+                                                                throw;
+                                                            }
+                                                        };
+                                                        for(const std::size_t cell : {std::size_t{0},
+                                                                                      std::size_t{12}}) {
+                                                            const auto old_budget=inspect_budget(x,cell);
+                                                            const auto final_budget=inspect_budget(end_state,cell);
+                                                            std::cerr<<std::scientific<<std::setprecision(12)
+                                                                <<"BFS_JOINT_FACE3_V71 iteration="<<iter
+                                                                <<" cell="<<cell
+                                                                <<" gamma="<<gamma
+                                                                <<" pressure_fraction="<<fraction
+                                                                <<" phi3_before="<<r0.face_flux[3]
+                                                                <<" phi3_after="<<end_physical.face_flux[3]
+                                                                <<" rAUx_before="<<r0.inverse_momentum_diagonal[cell]
+                                                                <<" rAUx_after="<<end_physical.inverse_momentum_diagonal[cell]
+                                                                <<" nut_before="<<r0.eddy_viscosity[cell]
+                                                                <<" nut_after="<<end_physical.eddy_viscosity[cell]
+                                                                <<" omega_raw_before="<<r0.signed_raw[5*nc+cell]
+                                                                <<" omega_raw_after="<<end_physical.signed_raw[5*nc+cell]
+                                                                <<" convection_delta="<<(
+                                                                    final_budget.convection-old_budget.convection)
+                                                                <<" diffusion_delta="<<(
+                                                                    final_budget.diffusion-old_budget.diffusion)
+                                                                <<" production_delta="<<(
+                                                                    final_budget.physical_production-old_budget.physical_production)
+                                                                <<" destruction_delta="<<(
+                                                                    final_budget.physical_destruction-old_budget.physical_destruction)
+                                                                <<" cross_delta="<<(
+                                                                    final_budget.physical_cross_diffusion-
+                                                                    old_budget.physical_cross_diffusion)
+                                                                <<" private_trial=1 committed=0 qualified=0\n";
+                                                        }
+                                                    } catch (const std::exception& error) {
+                                                        std::cerr<<"BFS_JOINT_PICARD_V71 iteration="<<iter
+                                                            <<" retry="<<retry_controller.retries()
+                                                            <<" gamma="<<gamma
+                                                            <<" pressure_fraction="<<fraction
+                                                            <<" rejected=1 reason="<<error.what()
+                                                            <<" private_trial=1 committed=0 qualified=0\n";
+                                                    }
+                                                }
+                                            }
+                                            } // V72 private fixed point vs original V71 probe
+                                        }
+                                    } catch (const std::exception& error) {
+                                        std::cerr<<"BFS_SST_RC_PICARD_V69 iteration="<<iter
+                                            <<" retry="<<retry_controller.retries()
+                                            <<" closed=0 reason="<<error.what()
+                                            <<" private_transport=1 committed=0 qualified=0\n";
+                                    }
+                                }
+                                if(!v70_original_nut.empty()) {
+                                    bool same=true;
+                                    for(std::size_t i=0;i<nc;++i) {
+                                        for(std::size_t d=0;d<3;++d)
+                                            same &= U.component_data(d)[i]==x.fields[d*nc+i];
+                                        same &= p(i)==x.fields[3*nc+i];
+                                        same &= runtime.state->k(i)==x.fields[4*nc+i];
+                                        same &= runtime.state->omega(i)==x.fields[5*nc+i];
+                                        same &= runtime.state->nu_t(i)==v70_original_nut[i];
+                                    }
+                                    for(std::size_t face=0;face<nf;++face)
+                                        same &= mass_flux(face)==trial_flux[face];
+                                    // Never swallow a leaked state in the private-probe catch.
+                                    // The outer retry handler restores U,p,phi,SST snapshots.
+                                    if(!same)
+                                        throw NonlinearRetryableFailure(
+                                            "V70 private pressure/SST projection leaked live state");
+                                    std::cerr<<"BFS_SST_RC_TRANSACTION_V70 iteration="<<iter
+                                        <<" retry="<<retry_controller.retries()
+                                        <<" U_p_phi_k_omega_nut_unchanged=1"
+                                        <<" full_outer_rollback_available=1"
+                                        <<" committed=0 qualified=0\n";
+                                }
+                                // V67: isolate whether independently damping k and
+                                // omega could meet the UNCHANGED V13/V14 gates.
+                                // These are deliberately COUNTERFACTUAL states:
+                                // not solved by the SST transport driver and
+                                // NEVER eligible to be committed here.
+                                if (block_probe_v67 && iter==23 &&
+                                    (retry_controller.retries()==0 ||
+                                     retry_controller.retries()==4 ||
+                                     retry_controller.retries()==8 ||
+                                     retry_controller.retries()==10)) {
+                                    constexpr std::array<BfsBlockMixV67,9> mixes{{
+                                        {0.,0.},{.25,.25},{.5,.5},{.75,.75},
+                                        {1.,0.},{1.,.25},{1.,.5},
+                                        {.5,1.},{0.,1.}}};
+                                    for (const auto mix:mixes) {
+                                        const auto observation=probe_sst_block_mix_v67(
+                                            before,x,f_before,mix,evaluator_v51,
+                                            controls.convergence.relative_tolerance,
+                                            controls.convergence.continuity_tolerance,
+                                            runtime.transport.k_min,
+                                            runtime.transport.omega_min);
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"BFS_BLOCK_COUNTERFACTUAL_V67 iteration="<<iter
+                                            <<" retry="<<retry_controller.retries()
+                                            <<" beta="<<coupled_outer_step_applied_v43
+                                            <<" k_fraction="<<mix.k_fraction
+                                            <<" omega_fraction="<<mix.omega_fraction
+                                            <<" merit_ratio="<<observation.merit_ratio
+                                            <<" largest_growth="<<observation.worst_growth
+                                            <<" worst_block="<<observation.worst_block
+                                            <<" joint_ok="<<(observation.joint_allowed?1:0)
+                                            <<" monotone_ok="<<(observation.monotone_allowed?1:0)
+                                            <<" original_guards_ok="<<(observation.would_pass_original_guards?1:0)
+                                            <<" armijo_reference="<<v67_armijo_reference_ratio(
+                                                coupled_outer_step_applied_v43)
+                                            <<" counterfactual=1 transport_solved=0"
+                                            <<" committed=0 qualified=0\n";
+                                    }
+                                }
+                                if (block_probe_v67 && iter==23 &&
+                                    retry_controller.retries()==0) {
+                                    // A distinct true 6N segment, not V47's
+                                    // carrier-only beta followed by SST solve.
+                                    // Exactly one ten-step read-only sweep.
+                                    for (std::size_t power=0;power<=10;++power) {
+                                        const double alpha=std::ldexp(1.0,-static_cast<int>(power));
+                                        const auto six=probe_full_six_line_v67(
+                                            before,x,f_before,alpha,evaluator_v51,
+                                            controls.convergence.relative_tolerance,
+                                            controls.convergence.continuity_tolerance,
+                                            runtime.transport.k_min,
+                                            runtime.transport.omega_min);
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"BFS_FULL_SIX_COUNTERFACTUAL_V67 iteration="<<iter
+                                            <<" retry=0 alpha="<<alpha
+                                            <<" merit_ratio="<<six.merit_ratio
+                                            <<" largest_growth="<<six.largest_growth
+                                            <<" worst_block="<<six.worst_block
+                                            <<" joint_ok="<<(six.joint_allowed?1:0)
+                                            <<" monotone_ok="<<(six.monotone_allowed?1:0)
+                                            <<" original_guards_ok="<<(six.accepted?1:0)
+                                            <<" counterfactual=1 carrier_sole_beta=0"
+                                            <<" committed=0 qualified=0\n";
+                                    }
+                                }
+                                // V66: no alternate merit and no changes to
+                                // rAU, carrier phi, SST or the accepted state.
+                                // Select only the expensive diagnostic window;
+                                // the existing V65 guard below is untouched.
+                                if (causal_v66 && (iter==22 || iter==23)) {
+                                    const auto audit=audit_bfs_flux_sst_v66(
+                                        before,x,f_before,r0,accepted_flux,trial_flux,
+                                        [&](std::size_t f){return mesh.ownership().owner(f);},
+                                        [&](std::size_t f){return mesh.ownership().neighbour(f);});
+                                    if (!pending_carrier_rAU_v66)
+                                        throw std::runtime_error("V66 missing production rAU");
+                                    const auto pack_rAU=[&](
+                                        const CoupledInverseMomentumDiagonalV48& r) {
+                                        std::vector<double> flat;
+                                        flat.reserve(3*nc);
+                                        for (const auto& component:r)
+                                            flat.insert(flat.end(),component.begin(),component.end());
+                                        return flat;
+                                    };
+                                    const auto trial_rau_gap=v66_coefficient_gap(
+                                        r0.inverse_momentum_diagonal,
+                                        pack_rAU(*pending_carrier_rAU_v66),nc);
+                                    V66CoefficientGap old_rau_gap;
+                                    if (committed_carrier_rAU_v66)
+                                        old_rau_gap=v66_coefficient_gap(
+                                            f_before.inverse_momentum_diagonal,
+                                            pack_rAU(*committed_carrier_rAU_v66),nc);
+                                    std::vector<double> carrier_nut_trial(nc);
+                                    for (std::size_t i=0;i<nc;++i)
+                                        carrier_nut_trial[i]=runtime.state->nu_t(i);
+                                    const auto nut_gap_trial=v66_coefficient_gap(
+                                        r0.eddy_viscosity,carrier_nut_trial,nc);
+                                    const auto nut_gap_old=v66_coefficient_gap(
+                                        f_before.eddy_viscosity,old_carrier_nut_v66,nc);
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"BFS_CARRIER_COHERENCE_V66 iteration="<<iter
+                                        <<" retry="<<retry_controller.retries()
+                                        <<" beta="<<coupled_outer_step_applied_v43
+                                        <<" old_carrier_gap="<<audit.old_carrier.relative_l1
+                                        <<" trial_carrier_gap="<<audit.trial_carrier.relative_l1
+                                        <<" old_carrier_div_gap="<<audit.old_carrier.carrier_divergence_gap_linf
+                                        <<" trial_carrier_div_gap="<<audit.trial_carrier.carrier_divergence_gap_linf
+                                        <<" worst_face="<<audit.trial_carrier.worst_face
+                                        <<" worst_div_cell="<<audit.trial_carrier.worst_cell
+                                        <<" old_rau_carrier_gap="<<old_rau_gap.relative_linf
+                                        <<" trial_rau_carrier_gap="<<trial_rau_gap.relative_linf
+                                        <<" old_rau_carrier_available="<<(committed_carrier_rAU_v66?1:0)
+                                        <<" trial_rau_carrier_cell="<<trial_rau_gap.worst_cell
+                                        <<" trial_rau_carrier_component="<<trial_rau_gap.worst_component
+                                        <<" old_nut_carrier_gap="<<nut_gap_old.relative_linf
+                                        <<" trial_nut_carrier_gap="<<nut_gap_trial.relative_linf
+                                        <<" trial_nut_carrier_cell="<<nut_gap_trial.worst_cell
+                                        <<" rau_change="<<audit.rau_relative_linf
+                                        <<" rau_cell="<<audit.rau_worst_cell
+                                        <<" rau_component="<<audit.rau_worst_component
+                                        <<" nut_change="<<audit.nut_relative_linf
+                                        <<" nut_cell="<<audit.nut_worst_cell
+                                        <<" omega_change_cell="<<audit.omega_worst_change.cell
+                                        <<" omega_trial_cell="<<audit.omega_worst_trial.cell
+                                        <<" omega_old_cell="<<audit.omega_worst_old.cell
+                                        <<" physical_qualified=0 committed=0\n";
+                                    for (const auto& row : {
+                                            audit.omega_worst_change,
+                                            audit.omega_worst_trial,
+                                            audit.omega_worst_old}) {
+                                        // Each candidate row is grounded in the
+                                        // signed, state-only FV omega residual.
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"BFS_OMEGA_HOTSPOT_V66 iteration="<<iter
+                                            <<" retry="<<retry_controller.retries()
+                                            <<" beta="<<coupled_outer_step_applied_v43
+                                            <<" cell="<<row.cell
+                                            <<" x="<<geometry.cell_centres[row.cell].x
+                                            <<" y="<<geometry.cell_centres[row.cell].y
+                                            <<" z="<<geometry.cell_centres[row.cell].z
+                                            <<" old_raw="<<row.old_signed
+                                            <<" trial_raw="<<row.trial_signed
+                                            <<" delta="<<row.delta_signed
+                                            <<" omega_old="<<row.omega_old
+                                            <<" omega_trial="<<row.omega_trial
+                                            <<" k_old="<<row.k_old
+                                            <<" k_trial="<<row.k_trial
+                                            <<" nut_old="<<row.nut_old
+                                            <<" nut_trial="<<row.nut_trial
+                                            <<" physical_qualified=0 committed=0\n";
+                                    }
+                                    if (retry_controller.retries()==0 ||
+                                        retry_controller.retries()>=8) {
+                                        const auto sample_budget=[&](
+                                            const PhysicalCandidateV51& state,
+                                            const PhysicalResidualV51& expected,
+                                            std::size_t cell) {
+                                            v66_probe_row=cell;
+                                            v66_probe_result.reset();
+                                            try {
+                                                const auto again=evaluate_physical_candidate_v51(
+                                                    state,evaluator_v51,
+                                                    runtime.transport.k_min,
+                                                    runtime.transport.omega_min);
+                                                verify_candidate_replay_v51(expected,again);
+                                                if (!v66_probe_result)
+                                                    throw std::runtime_error("V66 SST row not captured");
+                                                const auto value=*v66_probe_result;
+                                                v66_probe_row.reset();
+                                                v66_probe_result.reset();
+                                                return value;
+                                            } catch (...) {
+                                                v66_probe_row.reset();
+                                                v66_probe_result.reset();
+                                                throw;
+                                            }
+                                        };
+                                        const auto cell=audit.omega_worst_trial.cell;
+                                        const auto bo=sample_budget(before,f_before,cell);
+                                        const auto bt=sample_budget(x,r0,cell);
+                                        const auto to_parts=[](const SSTCellDiscreteBudget& b) {
+                                            V66OmegaBudgetParts p;
+                                            p.convection=b.convection;
+                                            p.diffusion=b.diffusion;
+                                            p.physical_production=b.physical_production;
+                                            p.physical_destruction=b.physical_destruction;
+                                            p.physical_cross=b.physical_cross_diffusion;
+                                            p.full_residual=b.full_residual;
+                                            p.decomposition_error=b.closure_error;
+                                            p.source_identity_error=b.nonlinear_source_identity_error;
+                                            p.wall_flux=b.wall_orthogonal_flux;
+                                            p.constraint=b.owner_constraint_row;
+                                            return p;
+                                        };
+                                        const auto delta=v66_compare_omega_budgets(
+                                            to_parts(bo),to_parts(bt));
+                                        const double oracle_gap_old=
+                                            std::abs(bo.full_residual-f_before.signed_raw[5*nc+cell]);
+                                        const double oracle_gap_trial=
+                                            std::abs(bt.full_residual-r0.signed_raw[5*nc+cell]);
+                                        const double oracle_scale=std::max({1.,
+                                            std::abs(bt.full_residual),std::abs(bo.full_residual)});
+                                        if (oracle_gap_old>1e-8*oracle_scale ||
+                                            oracle_gap_trial>1e-8*oracle_scale)
+                                            throw std::runtime_error(
+                                                "V66 omega FV budget does not match Fphys signed row");
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"BFS_OMEGA_BUDGET_V66 iteration="<<iter
+                                            <<" retry="<<retry_controller.retries()
+                                            <<" beta="<<coupled_outer_step_applied_v43
+                                            <<" cell="<<cell
+                                            <<" convection="<<delta.convection
+                                            <<" diffusion="<<delta.diffusion
+                                            <<" production="<<delta.production
+                                            <<" destruction="<<delta.destruction
+                                            <<" cross="<<delta.cross
+                                            <<" sum="<<delta.sum
+                                            <<" residual_delta="<<delta.residual
+                                            <<" closure="<<delta.closure
+                                            <<" old_row="<<bo.full_residual
+                                            <<" trial_row="<<bt.full_residual
+                                            <<" old_wall_flux="<<bo.wall_orthogonal_flux
+                                            <<" trial_wall_flux="<<bt.wall_orthogonal_flux
+                                            <<" owner_constraint="<<(delta.constraint?1:0)
+                                            <<" oracle_gap_old="<<oracle_gap_old
+                                            <<" oracle_gap_trial="<<oracle_gap_trial
+                                            <<" physical_qualified=0 committed=0\n";
+                                    }
+                                }
+                                std::cerr<<std::scientific<<std::setprecision(12)
+                                    <<"GLOBAL_SAME_OPERATOR_TRIAL_V65 iteration="<<iter
+                                    <<" retry="<<retry_controller.retries()
+                                    <<" beta="<<coupled_outer_step_applied_v43
+                                    <<" baseline="<<(evidence.baseline?1:0)
+                                    <<" old_merit="<<evidence.old_merit
+                                    <<" trial_merit="<<evidence.trial_merit
+                                    <<" ratio="<<evidence.merit_ratio
+                                    <<" largest_growth="<<evidence.largest_growth
+                                    <<" worst_block="<<evidence.worst_block
+                                    <<" joint_ok="<<(evidence.joint_allowed?1:0)
+                                    <<" monotone_ok="<<(evidence.monotone_allowed?1:0)
+                                    <<" accepted="<<(evidence.accepted?1:0)
+                                    <<" old_rc_gap="<<old_flux.reconstructed_relative_l1
+                                    <<" trial_rc_gap="<<next_flux.reconstructed_relative_l1
+                                    <<" old_div_gap="<<old_flux.continuity_linf
+                                    <<" trial_div_gap="<<next_flux.continuity_linf
+                                    <<" old_authoritative_phi_gap="<<old_flux.authoritative_relative_l1
+                                    <<" trial_authoritative_phi_gap="<<next_flux.authoritative_relative_l1
+                                    <<" same_state_operator=1 qualified=0 committed=0\n";
+                                if (iter>1 && !evidence.accepted) {
+                                    composite_search_v47.observe_rejection(
+                                        coupled_outer_step_applied_v43,
+                                        std::max(evidence.largest_growth,evidence.merit_ratio));
+                                    throw NonlinearRetryableFailure(
+                                        "V65 same-state physical merit rejected candidate");
+                                }
+                            }
                             if (pending_native_six_v50) {
                                 const auto& legacy=*pending_native_six_v50;
                                 if (legacy.normalized.size()!=r0.normalized.size())
@@ -11374,6 +13472,59 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                 <<" raw_omega="<<raw_linf[5]
                                 <<" fingerprint="<<fingerprint_native_six_v50(r0.normalized)
                                 <<" qualified=0 committed=0\n";
+                            // V64: four counterfactual combinations of the
+                            // same physical U/p and k/omega states. This is
+                            // read-only; NONE of these states is committed.
+                            // A negative flow-only or SST-only residual change
+                            // is not an independently converged frozen solve.
+                            if (opt_in_v51("CFDX_FPHYS_CAUSAL_V64") &&
+                                (iter==1 || opt_in_v51("CFDX_FPHYS_CAUSAL_V64_EVERY")) &&
+                                retry_controller.retries()==0) {
+                                if (!v52_shared_pre_solve_state)
+                                    throw std::logic_error("V64 prestep state missing");
+                                const auto audit=audit_bfs_causal_ablation_v64(
+                                    *v52_shared_pre_solve_state,x,r0,evaluator_v51,
+                                    runtime.transport.k_min,runtime.transport.omega_min);
+                                std::cerr<<std::scientific<<std::setprecision(12)
+                                    <<"BFS_CAUSAL_V64 iteration="<<iter
+                                    <<" retry="<<retry_controller.retries()
+                                    <<" cells="<<nc
+                                    <<" flow_changed="<<(audit.flow_changed?1:0)
+                                    <<" sst_changed="<<(audit.sst_changed?1:0)
+                                    <<" relative_flow_delta="<<audit.relative_flow_state_change
+                                    <<" relative_sst_delta="<<audit.relative_sst_state_change
+                                    <<" recomposition_error="<<audit.max_recomposition_error
+                                    <<" rc00="<<audit.rc_fixed_point_defect[0]
+                                    <<" rc10="<<audit.rc_fixed_point_defect[1]
+                                    <<" rc01="<<audit.rc_fixed_point_defect[2]
+                                    <<" rc11="<<audit.rc_fixed_point_defect[3]
+                                    <<" phi_flow="<<audit.rc_flux_flow_effect
+                                    <<" phi_sst="<<audit.rc_flux_sst_effect
+                                    <<" phi_interaction="<<audit.rc_flux_interaction
+                                    <<" phi_interaction_face="<<audit.rc_flux_interaction_face
+                                    <<" nut_flow="<<audit.eddy_viscosity_flow_effect
+                                    <<" nut_sst="<<audit.eddy_viscosity_sst_effect
+                                    <<" nut_interaction="<<audit.eddy_viscosity_interaction
+                                    <<" nut_interaction_cell="<<audit.eddy_viscosity_interaction_cell
+                                    <<" qualified=0 committed=0 four_corners_reassembled=1\n";
+                                for (std::size_t b=0;b<6;++b) {
+                                    const auto& row=audit.blocks[b];
+                                    std::cerr<<std::scientific<<std::setprecision(12)
+                                        <<"BFS_CAUSAL_BLOCK_V64 iteration="<<iter
+                                        <<" block="<<b
+                                        <<" raw00="<<row.raw_linf[0]
+                                        <<" raw10="<<row.raw_linf[1]
+                                        <<" raw01="<<row.raw_linf[2]
+                                        <<" raw11="<<row.raw_linf[3]
+                                        <<" flow_only_delta="<<row.flow_effect_linf
+                                        <<" sst_only_delta="<<row.sst_effect_linf
+                                        <<" interaction="<<row.interaction_linf
+                                        <<" interaction_relative="<<row.interaction_relative
+                                        <<" worst_after_cell="<<row.after_hotspot_cell
+                                        <<" worst_interaction_cell="<<row.interaction_hotspot_cell
+                                        <<" qualified=0 committed=0\n";
+                                }
+                            }
                             // V52: one opt-in private Newton-Krylov experiment on
                             // the very same candidate-owned F(X). No state is
                             // published, so V13/V14 and the default outer
@@ -11388,6 +13539,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     "CFDX_FPHYS_JFNK_V53_BLOCK");
                                 cfg.v54_frozen_jacobian=opt_in_v51(
                                     "CFDX_FPHYS_JFNK_V54_FROZEN");
+                                cfg.v61_richardson_frozen=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V61_RICHARDSON");
+                                cfg.v62_common_active_set_anchor=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V62_ANCHORED_JACOBIAN");
+                                cfg.v63_sparse_local_jacobian=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V63_SPARSE_LOCAL");
                                 cfg.v57_true_krylov_each_step=opt_in_v51(
                                     "CFDX_FPHYS_JFNK_V57_TRUTH");
                                 cfg.v57_hybrid_convective_jv=opt_in_v51(
@@ -11398,6 +13555,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     "CFDX_FPHYS_JFNK_V59_FROZEN_SOU");
                                 cfg.v60_remainder_audit=opt_in_v51(
                                     "CFDX_FPHYS_JFNK_V60_REMAINDER_AUDIT");
+                                cfg.v61_multirate_remainder_audit=opt_in_v51(
+                                    "CFDX_FPHYS_JFNK_V61_RATE_AUDIT");
                                 if(cfg.v59_frozen_sou_active_set &&
                                    controls.convection_scheme!=
                                        ConvectionScheme::SECOND_ORDER_UPWIND)
@@ -11800,12 +13959,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                         return result;
                                     };
                                 }
+                                SparseLocalPhysicalJacobianV63::Graph v63_face_graph;
+                                if(cfg.v63_sparse_local_jacobian) {
+                                    v63_face_graph.resize(nc);
+                                    for(std::size_t face=0;face<mesh.n_faces();++face) {
+                                        const auto neighbor=mesh.ownership().neighbour(face);
+                                        if(neighbor<0)continue;
+                                        const auto owner=static_cast<std::size_t>(
+                                            mesh.ownership().owner(face));
+                                        const auto other=static_cast<std::size_t>(neighbor);
+                                        if(owner>=nc || other>=nc || owner==other)
+                                            throw std::invalid_argument("V63 invalid real mesh graph");
+                                        v63_face_graph[owner].push_back(other);
+                                        v63_face_graph[other].push_back(owner);
+                                    }
+                                    for(auto& adjacency:v63_face_graph) {
+                                        std::sort(adjacency.begin(),adjacency.end());
+                                        adjacency.erase(std::unique(adjacency.begin(),
+                                            adjacency.end()),adjacency.end());
+                                    }
+                                }
                                 const auto result52=[&](){
                                     if(cfg.v57_hybrid_convective_jv)capture_stages_v57=true;
                                     try {
                                         auto result=global_physical_newton_v52(
                                             comparison_state,evaluator_v51,cfg,{},
-                                            native_action,v53_builder,convective_v57);
+                                            native_action,v53_builder,convective_v57,
+                                            v63_face_graph);
                                         capture_stages_v57=false;
                                         return result;
                                     } catch(...) {
@@ -11855,6 +14035,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                             <<" threshold="<<cfg.v57_krylov_consistency_tolerance
                                             <<" newton_committed=0 qualified=0\n";
                                     }
+                                    if(cfg.v61_multirate_remainder_audit) {
+                                        const auto& a=r.v61_multirate;
+                                        std::cerr<<std::scientific<<std::setprecision(12)
+                                            <<"FPHYS_RATES_V61 iteration="<<iter
+                                            <<" step="<<step
+                                            <<" evaluations="<<a.evaluations
+                                            <<" worst_h="<<a.maximum_physical_component[0]
+                                            <<" worst_half="<<a.maximum_physical_component[1]
+                                            <<" worst_quarter="<<a.maximum_physical_component[2]
+                                            <<" worst_block="<<a.worst_block
+                                            <<" persistent_suspected="<<(a.persistent_defect_suspected?1:0)
+                                            <<" roundoff_suspected="<<(a.roundoff_suspected?1:0)
+                                            <<" all_scales_ok="<<(r.v61_multirate_ok?1:0)
+                                            <<" Newton_committed=0 qualified=0\n";
+                                    }
                                     std::cerr<<std::scientific<<std::setprecision(12)
                                         <<"FPHYS_JFNK_V52 iteration="<<iter
                                         <<" step="<<step
@@ -11895,6 +14090,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                         <<" v54_flux_sign_flips="<<r.v54_flux_sign_flips
                                         <<" v54_flux_asymmetry="<<r.v54_flux_asymmetry
                                         <<" v54_fidelity_ok="<<(r.v54_krylov_fidelity_ok?1:0)
+                                        <<" v61_richardson="<<(cfg.v61_richardson_frozen?1:0)
+                                        <<" v61_column_gate_ok="<<(r.v61_column_gate_ok?1:0)
+                                        <<" v61_columns_extrapolated="<<r.v61_richardson_columns
+                                        <<" v61_columns_rejected="<<r.v61_rejected_columns
+                                        <<" v61_worst_column="<<r.v61_worst_column
+                                        <<" v61_sided="<<r.v61_maximum_sided
+                                        <<" v61_halving="<<r.v61_maximum_halving
+                                        <<" v62_anchor="<<(cfg.v62_common_active_set_anchor?1:0)
+                                        <<" v62_anchor_guard="<<(r.v62_anchor_within_guard?1:0)
+                                        <<" v62_anchor_shift="<<r.v62_anchor_shift
+                                        <<" v62_anchor_physical_shift="<<r.v62_anchor_physical_displacement
+
+                                        <<" v63_sparse_ready="<<(r.v63_sparse_ready?1:0)
+                                        <<" v63_sparse_trusted="<<(r.v63_sparse_trusted?1:0)
+                                        <<" v63_colors="<<r.v63_colors
+                                        <<" v63_nnz="<<r.v63_nonzeros
+                                        <<" v63_evaluations="<<r.v63_evaluations
+                                        <<" v63_rejected_columns="<<r.v63_rejected_columns
+                                        <<" v63_stencil_leak="<<r.v63_stencil_leak
+                                        <<" v63_max_sided="<<r.v63_max_sided
+                                        <<" v63_true_fidelity="<<r.v54_maximum_jv_fidelity
+                                        <<" v63_true_halving="<<r.v54_maximum_halving_discrepancy
                                         <<" v53_global_block="<<(r.v53_global_block_ready?1:0)
                                         <<" v53_probes="<<r.v53_probe_evaluations
                                         <<" v53_transport_nnz="<<r.v53_transport_nnz
@@ -11989,6 +14206,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                 }
                             }
                         } catch (const std::exception& error) {
+                            if (comparable_v65)
+                                throw NonlinearRetryableFailure(
+                                    std::string("V65 state-only physical evaluation failed: ")+error.what());
                             std::cerr<<"FPHYS_CANDIDATE_V51 iteration="<<iter
                                 <<" retry="<<retry_controller.retries()
                                 <<" closed=0 reason="<<error.what()
@@ -12281,13 +14501,153 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Compare against the LAST COMMITTED history entry only, and
             // only with the same high-order convection operator. A rejection
             // propagates to the existing full U/p/phi/SST rollback.
-            if (controls.joint_globalization_v13_experimental &&
+            // V89 final-stage physical trust, AFTER independent U/p/k/omega
+            // reassembly and Rhie-Chow continuity certification (V8). The
+            // gauge-invariant span cap is a conservative startup safeguard,
+            // not a replacement for actual convergence or physical Cp.
+            if (controls.bfs_pressure_transverse_trust_v89_experimental && !comparable_v65) {
+                long double p_min=std::numeric_limits<long double>::infinity();
+                long double p_max=-std::numeric_limits<long double>::infinity();
+                for(std::size_t ci=0;ci<mesh.n_cells();++ci) {
+                    const long double total=static_cast<long double>(p(ci))+
+                        static_cast<long double>(pressure_low_state(ci));
+                    if(!std::isfinite(total))
+                        throw NonlinearRetryableFailure("V89 nonfinite final pressure");
+                    p_min=std::min(p_min,total);
+                    p_max=std::max(p_max,total);
+                }
+                const auto check=check_bfs_pressure_transverse_post_v89(
+                    static_cast<double>(p_max-p_min),
+                    committed_pressure_baseline_v89.value_or(0.0),
+                    committed_pressure_baseline_v89.has_value(),
+                    h.global_nonlinear_v8.momentum.component_relative[1],
+                    committed_transverse_residual_v89.value_or(0.0),
+                    committed_transverse_residual_v89.has_value(),
+                    h.global_nonlinear_v8.all_finite &&
+                        h.global_nonlinear_v8.momentum.active[1],
+                    h.global_nonlinear_v8.bounded,
+                    h.global_nonlinear_v8.continuity,
+                    controls.convergence.continuity_tolerance,
+                    controls.bfs_inlet_speed_v86,controls.density,
+                    controls.bfs_pressure_cumulative_factor_v89,
+                    controls.bfs_transverse_residual_growth_v89);
+                std::cerr<<std::scientific<<std::setprecision(12)
+                         <<"BFS_PRESSURE_TRANSVERSE_POST_V89 iteration="<<iter
+                         <<" allowed="<<(check.may_commit?1:0)
+                         <<" pressure_span_over_qin="<<check.pressure_span_over_qin
+                         <<" uy_momentum_relative="<<check.transverse_momentum_relative
+                         <<" baseline_pressure_span="<<committed_pressure_baseline_v89.value_or(0.)
+                         <<" momentum_global="<<h.global_nonlinear_v8.momentum.global_relative
+                         <<" k="<<h.global_nonlinear_v8.k
+                         <<" omega="<<h.global_nonlinear_v8.omega
+                         <<" continuity="<<h.global_nonlinear_v8.continuity
+                         <<" reason="<<check.reason<<" qualified=0 committed=0\n";
+                if(!check.may_commit)
+                    throw NonlinearRetryableFailure("V89 full physical trust: "+check.reason);
+            }
+            if (controls.bfs_field_trust_v86_experimental && !comparable_v65) {
+                double max_speed=0.0,max_k=0.0;
+                for (std::size_t ci=0;ci<mesh.n_cells();++ci) {
+                    const double speed=std::hypot(U(ci,0),
+                        std::hypot(U(ci,1),U(ci,2)));
+                    max_speed=std::max(max_speed,speed);
+                    max_k=std::max(max_k,controls.sst_runtime->state->k(ci));
+                }
+                BfsFieldTrustV86 trust;
+                try { trust=evaluate_bfs_field_trust_v86(
+                    max_speed,max_k,controls.bfs_inlet_speed_v86); }
+                catch(const std::invalid_argument& error) {
+                    throw NonlinearRetryableFailure(
+                        std::string("V86 field trust invalid: ")+error.what());
+                }
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr<<"BFS_FIELD_TRUST_TRIAL_V86 iteration="<<iter
+                             <<" accepted="<<trust.accepted
+                             <<" reason="<<trust.reason
+                             <<" max_speed_over_inlet="<<trust.speed_ratio
+                             <<" k_max_over_inlet_squared="<<trust.k_fraction_of_uin_squared
+                             <<" qualified=0\n";
+                if(!trust.accepted)
+                    throw NonlinearRetryableFailure(
+                        "V86 BFS physical field trust-region rejected: "+trust.reason);
+            }
+            if (controls.bounded_outer_progress_v85_experimental && !comparable_v65) {
+                GlobalOuterTrialV85 progress;
+                try {
+                    progress=committed_progress_v85.evaluate(
+                        h.global_nonlinear_v8,controls.convergence,
+                        same_convection_operator_as_previous,
+                        // V89 ONLY: allow a bounded +3% merit excursion
+                        // after independent full FV U,p,k,omega reassembly,
+                        // pressure/Uy trust, positivity, and RC conservation.
+                        // All V85 default progress gates remain unchanged.
+                        controls.bfs_pressure_transverse_trust_v89_experimental
+                            ? 1.03 : 1.01);
+                } catch (const std::invalid_argument& error) {
+                    throw NonlinearRetryableFailure(
+                        std::string("V85 noncomparable physical state: ")+error.what());
+                }
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_PROGRESS_TRIAL_V85 iteration=" << iter
+                              << " accepted=" << progress.allowed
+                              << " baseline=" << progress.baseline
+                              << " nonmonotone=" << progress.nonmonotone
+                              << " reason=" << progress.reason
+                              << " U=" << h.global_nonlinear_v8.momentum.max_active_component_relative
+                              << " U_global=" << h.global_nonlinear_v8.momentum.global_relative
+                              << " p_continuity=" << h.global_nonlinear_v8.continuity
+                              << " k=" << h.global_nonlinear_v8.k
+                              << " omega=" << h.global_nonlinear_v8.omega
+                              << " merit=" << h.global_nonlinear_v8.merit
+                              << " k_debt=" << progress.k_debt
+                              << " omega_debt=" << progress.omega_debt
+                              << " qualified=0\n";
+                if (!progress.allowed)
+                    throw NonlinearRetryableFailure(
+                        "V85 full physical progress rejected: "+progress.reason);
+            }
+            if (controls.nonmonotone_outer_progress_v84_experimental &&
+                !comparable_v65) {
+                GlobalOuterTrialV84 progress;
+                try {
+                    progress=committed_progress_v84.evaluate(
+                        h.global_nonlinear_v8,controls.convergence,
+                        same_convection_operator_as_previous);
+                } catch (const std::invalid_argument& error) {
+                    throw NonlinearRetryableFailure(
+                        std::string("V84 noncomparable full physical state: ")+error.what());
+                }
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_PROGRESS_TRIAL_V84 iteration=" << iter
+                              << " accepted=" << progress.allowed
+                              << " baseline=" << progress.baseline
+                              << " nonmonotone=" << progress.nonmonotone
+                              << " reason=" << progress.reason
+                              << " U=" << h.global_nonlinear_v8.momentum.max_active_component_relative
+                              << " U_global=" << h.global_nonlinear_v8.momentum.global_relative
+                              << " p_continuity=" << h.global_nonlinear_v8.continuity
+                              << " k=" << h.global_nonlinear_v8.k
+                              << " omega=" << h.global_nonlinear_v8.omega
+                              << " merit=" << h.global_nonlinear_v8.merit
+                              << " k_debt=" << progress.k_debt
+                              << " omega_debt=" << progress.omega_debt
+                              << " qualified=0\n";
+                if (!progress.allowed)
+                    throw NonlinearRetryableFailure(
+                        "V84 full physical progress rejected: "+progress.reason);
+            }
+            if (!controls.nonmonotone_outer_progress_v84_experimental &&
+                !controls.bounded_outer_progress_v85_experimental &&
+                controls.joint_globalization_v13_experimental && !comparable_v65 &&
                 same_convection_operator_as_previous && !result.history.empty()) {
                 GlobalNonlinearAcceptanceV13 joint;
                 try {
                     joint = evaluate_global_nonlinear_trial_v13(
                         result.history.back().global_nonlinear_v8,
-                        h.global_nonlinear_v8, controls.convergence);
+                        h.global_nonlinear_v8, controls.convergence,
+                        1.20, 10.0,
+                        controls.sst_runtime && controls.sst_runtime->
+                            sst_provisional_merit_progress_v83_experimental);
                 } catch (const std::invalid_argument& error) {
                     throw NonlinearRetryableFailure(
                         std::string("V13 joint state not comparable: ") + error.what());
@@ -12307,9 +14667,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         joint.failed_equation);
                 }
             }
-            if (controls.monotone_global_merit_v14_experimental) {
+            if (!controls.nonmonotone_outer_progress_v84_experimental &&
+                !controls.bounded_outer_progress_v85_experimental &&
+                controls.monotone_global_merit_v14_experimental && !comparable_v65) {
                 const auto contraction=committed_global_merit_v14.evaluate(
-                    h.global_nonlinear_v8,same_convection_operator_as_previous);
+                    h.global_nonlinear_v8,same_convection_operator_as_previous,
+                    controls.sst_runtime && controls.sst_runtime->
+                        sst_provisional_merit_progress_v83_experimental);
                 if (controls.diagnostics.iteration_trace)
                     std::cerr << "GLOBAL_CONTRACTION_TRIAL_V14 iteration=" << iter
                               << " baseline=" << contraction.baseline
@@ -12335,6 +14699,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " nut_closure=" << h.global_nonlinear_v8.eddy_viscosity_closure
                           << " merit=" << h.global_nonlinear_v8.merit
                           << " accepted=" << h.global_nonlinear_v8.converged
+                          << " v83_progress_only=" << (controls.sst_runtime &&
+                              controls.sst_runtime->
+                                  sst_provisional_merit_progress_v83_experimental &&
+                              sst_step.provisional)
                           << " qualified=0\n";
         }
         if (controls.convection_continuation.enabled &&
@@ -13221,6 +15589,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 throw NonlinearRetryableFailure(
                     "V48 coupled transaction missing rAU: reject candidate");
             transaction.commit();
+            if (controls.bfs_pressure_transverse_trust_v89_experimental && !comparable_v65) {
+                // Never advance the V89 ledger on rejected proposals.
+                if (!committed_pressure_baseline_v89) {
+                    long double p_min=std::numeric_limits<long double>::infinity();
+                    long double p_max=-std::numeric_limits<long double>::infinity();
+                    for(std::size_t ci=0;ci<mesh.n_cells();++ci) {
+                        const long double v=static_cast<long double>(p(ci))+
+                            static_cast<long double>(pressure_low_state(ci));
+                        p_min=std::min(p_min,v);
+                        p_max=std::max(p_max,v);
+                    }
+                    committed_pressure_baseline_v89=static_cast<double>(p_max-p_min);
+                }
+                committed_transverse_residual_v89=
+                    h.global_nonlinear_v8.momentum.component_relative[1];
+                std::cerr<<std::scientific<<std::setprecision(12)
+                         <<"BFS_PRESSURE_TRANSVERSE_COMMITTED_V89 iteration="<<iter
+                         <<" uy_momentum_relative="<<*committed_transverse_residual_v89
+                         <<" pressure_baseline="<<*committed_pressure_baseline_v89
+                         <<" residual_full_reassembled=1 qualified=0\n";
+            }
             // Emit a second marker only for the actually accepted complete
             // U/p/phi/SST transaction. The tentative marker always carries
             // committed=0; a retry has its own pending fingerprint.
@@ -13243,6 +15632,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 committed_rAU_v48=std::move(*pending_rAU_v48);
                 committed_rAU_valid_v48=true;
             }
+            // Publish V66 forensic carrier diagonal only with the committed
+            // transaction. Rejected trials never contaminate future old-state
+            // diagnostics, and this value never enters the production solver.
+            if (causal_v66 && pending_carrier_rAU_v66)
+                committed_carrier_rAU_v66=std::move(*pending_carrier_rAU_v66);
             // Advance the V45 window ONLY after the complete U/p/phi/SST
             // transaction commits. Retries of one outer iteration must retain
             // the same trigger and vary only the safeguarded trial beta.
@@ -13286,9 +15680,49 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " faces=" << controls.sst_runtime->committed_wall_triplet_v15->wall_faces
                               << " physical_operator_modified=0 qualified=0\n";
             }
-            if (controls.monotone_global_merit_v14_experimental) {
+            if (controls.bounded_outer_progress_v85_experimental && !comparable_v65) {
+                committed_progress_v85.commit(h.global_nonlinear_v8,
+                    controls.convergence,same_convection_operator_as_previous,
+                    controls.bfs_pressure_transverse_trust_v89_experimental
+                        ? 1.03 : 1.01);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_PROGRESS_COMMITTED_V85 iteration=" << iter
+                              << " committed=" << committed_progress_v85.committed_steps()
+                              << " k_debt=" << committed_progress_v85.k_debt()
+                              << " omega_debt=" << committed_progress_v85.omega_debt()
+                              << " merit=" << h.global_nonlinear_v8.merit
+                              << " U=" << h.global_nonlinear_v8.momentum.max_active_component_relative
+                              << " U_global=" << h.global_nonlinear_v8.momentum.global_relative
+                              << " k=" << h.global_nonlinear_v8.k
+                              << " omega=" << h.global_nonlinear_v8.omega
+                              << " p_continuity=" << h.global_nonlinear_v8.continuity
+                              << " converged=" << h.global_nonlinear_v8.converged
+                              << " qualified=0\n";
+            }
+            if (controls.nonmonotone_outer_progress_v84_experimental && !comparable_v65) {
+                committed_progress_v84.commit(h.global_nonlinear_v8,
+                    controls.convergence,same_convection_operator_as_previous);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "GLOBAL_PROGRESS_COMMITTED_V84 iteration=" << iter
+                              << " committed=" << committed_progress_v84.committed_steps()
+                              << " k_debt=" << committed_progress_v84.k_debt()
+                              << " omega_debt=" << committed_progress_v84.omega_debt()
+                              << " merit=" << h.global_nonlinear_v8.merit
+                              << " U=" << h.global_nonlinear_v8.momentum.max_active_component_relative
+                              << " U_global=" << h.global_nonlinear_v8.momentum.global_relative
+                              << " k=" << h.global_nonlinear_v8.k
+                              << " omega=" << h.global_nonlinear_v8.omega
+                              << " p_continuity=" << h.global_nonlinear_v8.continuity
+                              << " converged=" << h.global_nonlinear_v8.converged
+                              << " qualified=0\n";
+            }
+            if (!controls.nonmonotone_outer_progress_v84_experimental &&
+                !controls.bounded_outer_progress_v85_experimental &&
+                controls.monotone_global_merit_v14_experimental && !comparable_v65) {
                 committed_global_merit_v14.commit(
-                    h.global_nonlinear_v8,same_convection_operator_as_previous);
+                    h.global_nonlinear_v8,same_convection_operator_as_previous,
+                    controls.sst_runtime && controls.sst_runtime->
+                        sst_provisional_merit_progress_v83_experimental);
                 if (controls.diagnostics.iteration_trace)
                     std::cerr << "GLOBAL_CONTRACTION_COMMITTED_V14 iteration=" << iter
                               << " committed=" << committed_global_merit_v14.committed_steps()
@@ -13296,6 +15730,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " merit=" << h.global_nonlinear_v8.merit
                               << " converged=" << h.global_nonlinear_v8.converged
                               << " qualified=0\n";
+            }
+            if (comparable_v65 && pending_comparable_v65) {
+                // This marker occurs after the complete transaction was accepted.
+                std::cerr<<std::scientific<<std::setprecision(12)
+                    <<"GLOBAL_SAME_OPERATOR_COMMITTED_V65 iteration="<<iter
+                    <<" merit="<<pending_comparable_v65->trial_merit
+                    <<" ratio="<<pending_comparable_v65->merit_ratio
+                    <<" baseline="<<(pending_comparable_v65->baseline?1:0)
+                    <<" physical_converged="<<(h.global_nonlinear_v8.converged?1:0)
+                    <<" qualified=0\n";
             }
             // Explicit COMMITTED evidence: GLOBAL_NONLINEAR_V8 is printed
             // while the candidate is still tentative and may subsequently
@@ -13460,7 +15904,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " history_reset=1\n";
                     continue;
                 }
-                retry_controller.reject();
+                // V89: pressure-only rejection must not shrink alpha_U too.
+                // The SIMPLE high/low pressure operator changes with the
+                // momentum diagonal; shrinking BOTH channels was observed
+                // to INCREASE the pressure correction span on BFS20 540.
+                // Keep U fixed for pressure trials, or p fixed for transverse
+                // momentum trials. In all cases the next retry re-solves the
+                // complete U/p/Rhie-Chow operator after full rollback.
+                const std::string retry_reason=error.what();
+                const bool v89_pressure_retry =
+                    controls.bfs_pressure_transverse_trust_v89_experimental &&
+                    (retry_reason.find("gauge_invariant_pressure_increment")!=std::string::npos ||
+                     retry_reason.find("cumulative_gauge_invariant_pressure_span")!=std::string::npos);
+                const bool v89_transverse_retry =
+                    controls.bfs_pressure_transverse_trust_v89_experimental &&
+                    (retry_reason.find("transverse_momentum_increment")!=std::string::npos ||
+                     retry_reason.find("transverse_momentum_residual_growth")!=std::string::npos);
+                if (v89_pressure_retry)
+                    retry_controller.reject(false,true); // damp pressure ONLY
+                else if (v89_transverse_retry)
+                    retry_controller.reject(true,false); // damp transverse-driving momentum ONLY
+                else
+                    retry_controller.reject();
+                if (v89_pressure_retry || v89_transverse_retry)
+                    std::cerr << "BFS_SELECTIVE_RETRY_V89 iteration="<<iter
+                              << " channel="<<(v89_pressure_retry?"pressure":"momentum")
+                              << " alpha_u="<<retry_controller.alpha_u(effective_alpha_u)
+                              << " alpha_p="<<retry_controller.alpha_p(effective_alpha_p)
+                              << " full_reassembly_required=1 qualified=0\n";
                 std::cerr << "CFDX nonlinear iteration " << iter
                           << " rejected; retry=" << retry_controller.retries()
                           << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
