@@ -518,7 +518,8 @@ def reconfigure_bfs_reference_case(
         if not isinstance(selection, dict) or not isinstance(
             selection.get("entries"), list
         ):
-            raise ValueError("reference input has no explicit numerical selection")
+            # Invalid persisted case metadata is a domain validation failure.
+            raise ValueError("reference input has no explicit numerical selection")  # noqa: TRY004
         entries = selection["entries"]
         retained = [
             x
