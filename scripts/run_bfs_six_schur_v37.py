@@ -245,6 +245,10 @@ def run_one(solver: Path, out: Path, schur: str,
     log_file = out / "logs" / f"bfs_{schur}.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
+    # V63: this campaign must exercise the SIX historical methods unchanged,
+    # even if an opt-in selfp experiment is enabled in the parent shell.
+    env.pop("CFDX_COUPLED_SELFP_ILU_V63", None)
+    env.pop("CFDX_FPHYS_JFNK_V63_SPARSE_LOCAL", None)
     for key in tuple(env):
         if key.startswith("CFDX_NACA_") or key.startswith("CFDX_PCD_FP_CAPTURE_"):
             env.pop(key)
