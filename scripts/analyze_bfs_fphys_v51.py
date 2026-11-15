@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Strict, read-only audit of experimental V51 candidate-state physical F(X).
 
 Checks that V51 and uninstrumented production accept exactly the same states;

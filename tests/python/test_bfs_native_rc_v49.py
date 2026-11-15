@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """No external dependencies: mutation tests of fail-closed V49 evidence."""
 import pathlib
 import sys

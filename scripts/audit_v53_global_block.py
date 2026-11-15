@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed V53 6N Schur/SST audit. Algebraic reproducibility != BFS qualification.
 
 Requires five actual V53 production runs plus the PCD failed attempt on

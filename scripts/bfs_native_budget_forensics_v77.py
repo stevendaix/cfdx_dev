@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """V77 native V75/V76 signed-budget forensics on the REAL production stderr.
 
 Fail-closed: every physical term and normalization is traced to the input log.

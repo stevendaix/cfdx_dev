@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compare native signed pressure face defects per cell before/after one step.
 
 Mesh plotting uses the average of each cell's unique vertices as a nominal

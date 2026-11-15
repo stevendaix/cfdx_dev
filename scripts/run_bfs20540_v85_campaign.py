@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run bounded V85 native BFS campaign with fail-closed evidence summary.
 
 Native progress does NOT imply convergence or a valid NASA comparison.

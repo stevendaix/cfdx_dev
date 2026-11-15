@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed BFS152 V65 evaluation of same-state V47 versus historical COUPLED.
 
 This is an execution/cause audit, NOT physical validation. A solver exit with

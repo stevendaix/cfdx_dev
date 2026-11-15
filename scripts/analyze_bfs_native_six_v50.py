@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed forensic verification of V50's *diagnostic* six-field vector.
 
 All output is physical qualification = false, even for a closed native face

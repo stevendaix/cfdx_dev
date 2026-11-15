@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Audit independent of a real CFDX V85 100-outer campaign.
 
 Evidence requirements: committed native U/p/SST transaction AND per-state field

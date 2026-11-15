@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Audit only READ-ONLY counterfactual SST mixes on BFS152 V67.
 
 NO solver convergence certification is emitted. Missing or malformed V67

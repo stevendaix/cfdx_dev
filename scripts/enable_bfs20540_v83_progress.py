@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Make an opt-in BFS20540 V83 experiment without changing mesh or physics.
 
 This does NOT enable final SST convergence or physical certification. It only

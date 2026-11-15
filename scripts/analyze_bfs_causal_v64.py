@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed parser for the four-corner BFS V64 read-only physical diagnostic.
 
 Requires all six signed RAW residual blocks and independently closed RC at all

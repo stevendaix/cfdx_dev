@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Independent, fail-closed V90 pressure/spatial audit on accepted native VTU.
 
 This read-only tool never certifies convergence.  It requires an explicit native

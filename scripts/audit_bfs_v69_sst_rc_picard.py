@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed V69 same-candidate SST/RC Picard experiment log audit.
 
 This is evidence for an *uncommitted* two-cycle SST transport, NOT proof of

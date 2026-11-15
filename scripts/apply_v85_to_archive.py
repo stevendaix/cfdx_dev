@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Safely update a VERIFIED CFDX V6/V82/V83/V84 *source ZIP* to V85.
 
 The original ZIP is never overwritten. Rebuild the output only if its entire

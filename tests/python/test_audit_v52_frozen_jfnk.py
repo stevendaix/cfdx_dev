@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Mutation tests for same-state 6N JFNK Schur audit; no CFD solve."""
 from __future__ import annotations
 import copy

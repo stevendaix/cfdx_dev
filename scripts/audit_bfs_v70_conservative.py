@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Strict V70 BFS152 native-log replay and fail-closed staging audit.
 
 This tool checks evidence, not CFD convergence. Original V69 accepted and

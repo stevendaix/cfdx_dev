@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """V73 audit: exact V72 history and fail-closed independent physical trials.
 
 Run with --baseline/--log to audit a real BFS152 campaign, or without options

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Mutation tests: no false converged CFDX V47 evidence on partial logs."""
 import sys
 from pathlib import Path

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproduce V64 read-only 2x2 momentum/SST attribution on the SAME BFS input.
 
 Runs one native C++ baseline (V51 only) and one V64 C++ diagnostic (V51+V64).

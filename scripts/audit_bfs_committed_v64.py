@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Audit actual V13 committed global rows against linear/SST statuses.
 
 No renormalization or retuning. Detect non-monotone physical momentum,

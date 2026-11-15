@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bounded, first-private-SST-cycle sensitivity runner for an existing CFDX case.
 
 No change to convergence tolerances or physical models. A truncated run is NOT

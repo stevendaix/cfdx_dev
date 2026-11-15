@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Strict same-A,b,x0 review of six *production 4N* coupled Schur attempts.
 
 The 4N Picard saddle operator is a preconditioning reference; it is NOT the

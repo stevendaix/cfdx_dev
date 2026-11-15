@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed mutation checks for the real V51 forensic evidence format."""
 import sys
 import unittest

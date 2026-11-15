@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only V81 evidence plots from actual CFDX logs, fail-closed on missing rows.
 
 Do not interpret these as converged BFS physical results or NASA validation.

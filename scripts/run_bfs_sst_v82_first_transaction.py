@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run ONE bounded, private first SST transport on a given CFDX HDF5 case.
 
 Stops immediately after the first SST_TRANSPORT_END (even if CFDX intends

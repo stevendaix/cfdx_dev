@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """BFS20 540: honest cell-data maps from native CFDX VTU files.
 
 PyVista is the preferred renderer; VTK is the explicitly labeled headless

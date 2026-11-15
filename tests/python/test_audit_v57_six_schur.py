@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Mutation tests for fail-closed V57 6N Krylov + Schur audit."""
 import sys
 import tempfile

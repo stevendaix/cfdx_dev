@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Create opt-in V89 BFS20 540 case; verify exact HDF5 mesh and physics.
 
 V89 adds ONE raw flag to an already prepared V88 case. No input overwritten.

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """V80 evidence from native pressure & full U,p,k,omega logs, strictly fail closed.
 
 A pressure certificate never stands in for an accepted or converged CFD state.

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """CFDX V85 diagnostic: physical-residual ledger + identical-scale VTU maps.
 
 Uses PyVista when installed, or explicitly reports VTK fallback. Never treats

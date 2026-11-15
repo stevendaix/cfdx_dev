@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """One read-only Newton defect correction of a captured CFDX face residual.
 
 The original V18 CSR Jacobian is used as an INEXACT inverse. The candidate

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed geometry/BC comparability of CFDX TH03 against Driver-Seegmiller.
 
 Two independent gates: matching benchmark GEOMETRY and full PHYSICAL VALIDATION.

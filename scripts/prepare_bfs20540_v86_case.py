@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Enable V86 BFS-only field trust region without changing FV equations or mesh.
 
 The parameters 2*Uin and .03*Uin^2 bound *provisional* candidates and

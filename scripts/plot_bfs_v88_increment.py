@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Render gauge-invariant and per-cell step changes from REAL committed CFDX VTUs.
 
 No vtkCellCenters: polyhedral coordinates are computed from the HDF5 mesh

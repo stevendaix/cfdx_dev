@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """CFDX BFS152 V78 diagnostic-only comparison using ACTUAL accepted VTU fields.
 
 Strict provenance: the native CFDX solver emits the VTU; these plots are NOT

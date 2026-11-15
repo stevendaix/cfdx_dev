@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed read-only BFS152 audit of sole-phi SST FV substitution.
 
 This is NOT a convergence certificate. Evidence only passes if the same-state,

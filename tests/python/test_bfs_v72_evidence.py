@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import pathlib
 import sys
 ROOT=pathlib.Path(__file__).resolve().parents[2]

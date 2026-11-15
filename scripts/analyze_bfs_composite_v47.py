@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """V47 read-only fail-closed trial/rollback evidence (never a BFS qualification)."""
 from __future__ import annotations
 import argparse

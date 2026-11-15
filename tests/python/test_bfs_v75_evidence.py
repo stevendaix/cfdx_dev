@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """V75 independent log countercheck; synthetic self-tests with --log omitted.
 
 V75 observes the existing V74 private direction, not a native linear solve.

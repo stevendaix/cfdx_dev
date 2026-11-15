@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed audit of REAL V88 pre-SST local-step decisions and V85 commits."""
 import argparse, csv, json, math, re
 from pathlib import Path

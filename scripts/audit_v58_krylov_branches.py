@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Audit fail-closed d'une campagne V58 de 6 directions Krylov sur BFS.
 
 Le diagnostic des pentes de flux utilise phi +/- h dphi a rAU fige. Ce n'est

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """V61 independent frozen 4N BFS/PCD oracle (optional SciPy; never CFD qualification).
 
 Reads the six ORIGINAL MatrixMarket A,b,x0 captures, verifies their SHA-256

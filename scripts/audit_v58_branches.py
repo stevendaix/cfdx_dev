@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed proof check for V58 face-sided differentiation.
 
 Never treats a local flux derivative as a Newton/BFS physical qualification.

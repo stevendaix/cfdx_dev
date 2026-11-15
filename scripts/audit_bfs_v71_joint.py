@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Strict non-regression / falsification audit for private V71 BFS152 trials.
 
 Read-only experiments can never certify a production convergence. The audit

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Enable the V88 local momentum step trust guard on a V87 BFS20540 HDF5.
 
 Keep *every* mesh dataset, physical input, boundary patch, and final

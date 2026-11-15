@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed native seventh-Schur replay on SIX identical native BFS matrices.
 
 The replay is algebraic on frozen 4N. It cannot claim a converged RANS/SST BFS.

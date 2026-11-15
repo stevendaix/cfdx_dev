@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Prepare (or explicitly execute) V65 BFS152 three-way comparison.
 
 Three executions share one HDF5 geometry/physics/BC/SST setup. The only

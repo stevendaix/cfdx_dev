@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed read-only BFS152 V66 evidence auditor.
 
 Consumes ONLY genuine C++ V65/V66 solver trace lines. The result is a

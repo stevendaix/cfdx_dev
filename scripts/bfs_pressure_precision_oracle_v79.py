@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Independent V79 SuperLU+double-double pressure CSR replay.
 
 No CFD solver state is committed. Output is an oracle for diagnostic full FV
