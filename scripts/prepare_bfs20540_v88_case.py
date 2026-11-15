@@ -64,11 +64,10 @@ def prepare(preimage, destination):
                     raise RuntimeError("Unexpected attribute modified: " + name)
 
             def check_dataset(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    if name not in after or not np.array_equal(
-                        obj[...], after[name][...]
-                    ):
-                        raise RuntimeError("Mesh/field dataset changed: " + name)
+                if isinstance(obj, h5py.Dataset) and (
+                    name not in after or not np.array_equal(obj[...], after[name][...])
+                ):
+                    raise RuntimeError("Mesh/field dataset changed: " + name)
 
             before.visititems(check_dataset)
     except BaseException:
