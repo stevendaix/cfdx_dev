@@ -79,7 +79,10 @@ plt.close(fig)
 
 original = args.before_csv
 correction = args.after_csv
-rows = [list(csv.DictReader(open(file, newline=""))) for file in (original, correction)]
+rows = []
+for file in (original, correction):
+    with file.open(newline="") as stream:
+        rows.append(list(csv.DictReader(stream)))
 fig, axs = plt.subplots(1, 3, figsize=(13.7, 5), sharey=True)
 for a, station in zip(axs, [4.0, 6.0, 10.0]):
     old = [r for r in rows[0] if float(r["x_over_h"]) == station]
