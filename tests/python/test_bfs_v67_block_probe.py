@@ -31,11 +31,11 @@ def fake_log():
             ratio = 0.99  # same as V65 base trial in this synthetic fixture
         growth = 1.1
         parts.append(
-            "BFS_FULL_SIX_COUNTERFACTUAL_V67 iteration=23 retry=0 "
-            "alpha=%.12e merit_ratio=%.12e largest_growth=%.12e "
-            "worst_block=5 joint_ok=1 monotone_ok=%d original_guards_ok=%d "
+            f"BFS_FULL_SIX_COUNTERFACTUAL_V67 iteration=23 retry=0 "
+            f"alpha={alpha:.12e} merit_ratio={ratio:.12e} largest_growth={growth:.12e} "
+            f"worst_block=5 joint_ok=1 monotone_ok={int(ratio <= 0.995):d} "
+            f"original_guards_ok={int(ratio <= 0.995):d} "
             "counterfactual=1 carrier_sole_beta=0 committed=0 qualified=0"
-            % (alpha, ratio, growth, ratio <= 0.995, ratio <= 0.995)
         )
     return "\n".join(parts)
 
