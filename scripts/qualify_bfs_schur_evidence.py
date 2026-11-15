@@ -36,7 +36,7 @@ def strict_load(path: Path) -> dict:
         object_pairs_hook=_strict_object,
     )
     if not isinstance(doc, dict):
-        raise ValueError("expected JSON object")
+        raise ValueError("expected JSON object")  # noqa: TRY004
     return doc
 
 
