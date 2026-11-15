@@ -135,11 +135,12 @@ def main():
     (args.out / "audit.json").write_text(
         json.dumps(result, sort_keys=True, indent=2) + "\n"
     )
-    if results["v47_v65"] == 124 or not result["complete_40_iteration_run"]:
-        if not args.allow_partial:
-            raise RuntimeError(
-                "V65 long campaign incomplete: see audit.json, never a PASS"
-            )
+    if (
+        results["v47_v65"] == 124 or not result["complete_40_iteration_run"]
+    ) and not args.allow_partial:
+        raise RuntimeError(
+            "V65 long campaign incomplete: see audit.json, never a PASS"
+        )
     print(
         "V65_COMPARISON_RECORDED steps=", result["iterations_committed"], " qualified=0"
     )
