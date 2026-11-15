@@ -24,10 +24,9 @@ class Evidence(unittest.TestCase):
         cls.parity = "FPHYS_PARITY_V51 iteration=1 max_normalized_gap=1e-14 qualified=0"
         cls.cross = [
             (
-                "FPHYS_CROSS_V51 iteration=1 column=%d Ux=1 Uy=1 Uz=0 "
+                f"FPHYS_CROSS_V51 iteration=1 column={i:d} Ux=1 Uy=1 Uz=0 "
                 "continuity=1 k=1 omega=1 qualified=0"
             )
-            % i
             for i in range(6)
         ]
         cls.observed = (
