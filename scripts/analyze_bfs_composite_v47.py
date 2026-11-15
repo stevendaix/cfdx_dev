@@ -89,7 +89,7 @@ def audit(
         retries.setdefault(i, []).append(r)
     for i, seq in retries.items():
         if seq != list(range(len(seq))):
-            raise ValueError("noncontiguous V47 trial history at outer step %d" % i)
+            raise ValueError(f"noncontiguous V47 trial history at outer step {i:d}")
     if require_deep_retry and not (
         any(max(seq) >= 4 for seq in retries.values())
         or any(t.get("search_kind") == "quadratic" for t in trials)
