@@ -58,9 +58,10 @@ def prepare(preimage: Path, destination: Path):
                     raise RuntimeError("Changed mesh/provenance attr " + attr)
 
             def check(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    if name not in b or not np.array_equal(obj[...], b[name][...]):
-                        raise RuntimeError("Altered physical data " + name)
+                if isinstance(obj, h5py.Dataset) and (
+                    name not in b or not np.array_equal(obj[...], b[name][...])
+                ):
+                    raise RuntimeError("Altered physical data " + name)
 
             a.visititems(check)
     except BaseException:
