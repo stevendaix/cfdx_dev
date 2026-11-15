@@ -31,7 +31,7 @@ def _load(path: Path) -> dict:
         if not isinstance(data.get(name), str) or not _HEX64.fullmatch(data[name]):
             raise ValueError(f"unverified {name}")
     if not isinstance(data.get("provenance"), dict):
-        raise ValueError("missing independent provenance")
+        raise ValueError("missing independent provenance")  # noqa: TRY004
     # A pair of equally truncated exports is NOT a complete wall certificate.
     # Every expected owner, face, and affected matrix row must be declared.
     scope = data.get("scope")
