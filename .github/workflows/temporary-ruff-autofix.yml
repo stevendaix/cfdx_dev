@@ -1,4 +1,5 @@
 name: Temporary Ruff autofix for PR 1193
+# Temporary helper; remove after the formatting commit.
 
 on:
   push:
