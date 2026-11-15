@@ -1682,6 +1682,90 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_convective_branch_oracle_v58 PROPERTIES
         LABELS "bfs;fv;branch;v58;fail_closed" TIMEOUT 120
         PASS_REGULAR_EXPRESSION "V58_BFS152_BRANCH_PASS")
+    # V61: opt-in, two-scale Richardson frozen 6N Jacobian. Detect actual
+    # multiple-branch kinks before attempting Arnoldi; never enable by default.
+    add_cfdx_test(test_frozen_richardson_v61
+        tests/unit/test_frozen_richardson_v61.cpp)
+    set_tests_properties(test_frozen_richardson_v61 PROPERTIES
+        LABELS "bfs;jfnk;sst;v61;fidelity;fail_closed" TIMEOUT 60)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_frozen_richardson_v61 PRIVATE -O0 -g0)
+    endif()
+    # V62: a single reproducible perturbation picks the active set for all
+    # Jacobian columns; base Fphys and every Newton acceptance veto are intact.
+    add_cfdx_test(test_common_active_set_anchor_v62
+        tests/unit/test_common_active_set_anchor_v62.cpp)
+    set_tests_properties(test_common_active_set_anchor_v62 PROPERTIES
+        LABELS "bfs;sst;jfnk;v62;active_set;fail_closed" TIMEOUT 60)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_common_active_set_anchor_v62 PRIVATE -O0 -g0)
+    endif()
+    add_cfdx_test(test_physical_remainder_rates_v61
+        tests/unit/test_physical_remainder_rates_v61.cpp)
+    set_tests_properties(test_physical_remainder_rates_v61 PROPERTIES
+        LABELS "bfs;sst;rhie_chow;v61;multirate;fail_closed" TIMEOUT 30)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_physical_remainder_rates_v61 PRIVATE -O0 -g0)
+    endif()
+    # PCD 4N exact-Schur SciPy audit is optionally registered for short CI.
+    # The real captured BFS matrices are provided separately as evidence,
+    # never read from a hidden developer path during an ordinary unit test.
+    option(CFDX_ENABLE_PCD_V61_FORENSIC_TESTS
+        "Register optional SciPy exact-saddle PCD audit tests" OFF)
+    if(CFDX_ENABLE_PCD_V61_FORENSIC_TESTS)
+        if(NOT Python3_Interpreter_FOUND)
+            message(FATAL_ERROR "V61 PCD oracle needs Python3")
+        endif()
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy"
+            RESULT_VARIABLE CFDX_V61_SCIPY_OK OUTPUT_QUIET ERROR_QUIET)
+        if(NOT CFDX_V61_SCIPY_OK EQUAL 0)
+            message(FATAL_ERROR "V61 PCD oracle requires numpy+scipy")
+        endif()
+        add_test(NAME test_pcd_v61_exact_schur_oracle
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q
+                tests.python.test_pcd_v61_exact_schur_oracle)
+        set_tests_properties(test_pcd_v61_exact_schur_oracle PROPERTIES
+            LABELS "pcd;bfs;schur;v61;forensic;fail_closed" TIMEOUT 30)
+        set_property(TEST test_pcd_v61_exact_schur_oracle PROPERTY
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endif()
+    # V62: only a fail-closed, bounded algebraic baseline for PCD. The six
+    # production Schur names are never relabelled as successful by this oracle.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_pcd_v62_selfp_reference
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q
+                tests.python.test_pcd_v62_selfp_reference)
+        set_tests_properties(test_pcd_v62_selfp_reference PROPERTIES
+            LABELS "bfs;pcd;schur;v62;forensic;fail_closed" TIMEOUT 60)
+        set_property(TEST test_pcd_v62_selfp_reference PROPERTY
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endif()
+    # V63: native seventh selfp/ILU0 Schur (separate from the six historical
+    # variants) and colored sparse six-field Fphys Jacobian. No default enable.
+    add_cfdx_test(test_native_selfp_schur_v63
+        tests/unit/test_native_selfp_schur_v63.cpp)
+    add_cfdx_test(test_sparse_local_physical_jacobian_v63
+        tests/unit/test_sparse_local_physical_jacobian_v63.cpp)
+    set_tests_properties(test_native_selfp_schur_v63
+        test_sparse_local_physical_jacobian_v63 PROPERTIES
+        LABELS "bfs;coupled;sst;v63;experimental;fail_closed" TIMEOUT 30)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_sparse_local_physical_jacobian_v63
+            PRIVATE -O0 -g0)
+    endif()
+    add_executable(cfdx_native_selfp_replay_v63 EXCLUDE_FROM_ALL
+        tools/diagnostics/cfdx_native_selfp_replay_v63.cpp)
+    target_link_libraries(cfdx_native_selfp_replay_v63 PRIVATE cfdx_core)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_native_selfp_v63_contract
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q
+                tests.python.test_native_selfp_v63_contract)
+        set_tests_properties(test_native_selfp_v63_contract PROPERTIES
+            LABELS "bfs;schur;v63;fail_closed" TIMEOUT 20)
+        set_property(TEST test_native_selfp_v63_contract PROPERTY
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endif()
     # V60: independent decomposition of physical Jv with fresh RC/rAU/SST.
     add_cfdx_test(test_physical_remainder_audit_v60
         tests/unit/test_physical_remainder_audit_v60.cpp)
@@ -2426,10 +2510,233 @@ if(CFDX_ENABLE_RADIATION_RESEARCH_V57)
     endif()
 endif()
 
-# V74 (partial lot, adapted): independent SST wall-regime audit only. The
-# fixed-direction continuation test is deferred until the V72 joint
-# fixed-point header lands on this branch (V61-V73 lots pending).
+# V64 causal audit: stand-alone bounded contract, no new Schur or Newton method.
 if(CFDX_BUILD_TESTS)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_committed_v64_evidence
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q
+                tests.python.test_bfs_committed_v64)
+        set_tests_properties(test_bfs_committed_v64_evidence PROPERTIES
+            LABELS "bfs;sst;physical;nonlinear;fail_closed;v64" TIMEOUT 20
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_causal_v64_evidence
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q
+                tests.python.test_bfs_causal_v64)
+        set_tests_properties(test_bfs_causal_v64_evidence PROPERTIES
+            LABELS "bfs;sst;causal;fail_closed;v64" TIMEOUT 20
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endif()
+    add_executable(test_bfs_causal_ablation_v64
+        tests/unit/test_bfs_causal_ablation_v64.cpp)
+    target_include_directories(test_bfs_causal_ablation_v64 PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_causal_ablation_v64 COMMAND test_bfs_causal_ablation_v64)
+    set_tests_properties(test_bfs_causal_ablation_v64 PROPERTIES
+        LABELS "bfs;sst;fphys;causal;read_only;v64" TIMEOUT 20)
+endif()
+
+# V65: same-state, same-operator physical merit on existing V47 trials.
+# This is OFF by default in production and is not a physical PASS by itself.
+if(CFDX_BUILD_TESTS)
+    # V70: same-candidate Rhie-Chow pressure response and fail-closed mass projection.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v71_evidence_falsification
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v71_evidence.py)
+        set_tests_properties(test_bfs_v71_evidence_falsification PROPERTIES
+            LABELS "bfs;sst;v71;regression;falsification")
+    endif()
+
+    # V72: repeat existing V71 operator until physical flux closure or fail closed.
+    # V73: bounded after-SST direction audit on the same F_phys and original V65 guards.
+    add_executable(test_bfs_post_sst_direction_v73
+        tests/unit/test_bfs_post_sst_direction_v73.cpp)
+    target_include_directories(test_bfs_post_sst_direction_v73 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_post_sst_direction_v73 COMMAND test_bfs_post_sst_direction_v73)
+    set_tests_properties(test_bfs_post_sst_direction_v73 PROPERTIES
+        LABELS "bfs;sst;v73;direction;fail-closed;experimental" TIMEOUT 30)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v73_evidence_falsification
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v73_evidence.py)
+        set_tests_properties(test_bfs_v73_evidence_falsification PROPERTIES
+            LABELS "bfs;sst;v73;falsification" TIMEOUT 30)
+    endif()
+
+    add_executable(test_bfs_joint_fixed_point_v72
+        tests/unit/test_bfs_joint_fixed_point_v72.cpp)
+    target_include_directories(test_bfs_joint_fixed_point_v72 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_joint_fixed_point_v72 COMMAND test_bfs_joint_fixed_point_v72)
+    set_tests_properties(test_bfs_joint_fixed_point_v72 PROPERTIES
+        LABELS "bfs;sst;v72;conservation;rollback;experimental" TIMEOUT 30)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v72_evidence_falsification
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v72_evidence.py)
+        set_tests_properties(test_bfs_v72_evidence_falsification PROPERTIES
+            LABELS "bfs;sst;v72;certificates;falsification" TIMEOUT 30)
+    endif()
+
+    add_executable(test_bfs_joint_momentum_sst_v71
+        tests/unit/test_bfs_joint_momentum_sst_v71.cpp)
+    target_include_directories(test_bfs_joint_momentum_sst_v71 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_joint_momentum_sst_v71 COMMAND test_bfs_joint_momentum_sst_v71)
+    set_tests_properties(test_bfs_joint_momentum_sst_v71 PROPERTIES LABELS "bfs;sst;v71;experimental")
+
+    add_executable(test_bfs_sst_rc_conservative_v70
+        tests/unit/test_bfs_sst_rc_conservative_v70.cpp)
+    target_include_directories(test_bfs_sst_rc_conservative_v70 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_sst_rc_conservative_v70 COMMAND test_bfs_sst_rc_conservative_v70)
+    set_tests_properties(test_bfs_sst_rc_conservative_v70 PROPERTIES
+        LABELS "bfs;sst;v70;conservation;pressure;fail_closed" TIMEOUT 30)
+    # V70: actual shared carrier/SST transaction rollback/commit tests.
+    add_executable(test_bfs_v70_full_rollback
+        tests/unit/test_bfs_v70_full_rollback.cpp)
+    target_include_directories(test_bfs_v70_full_rollback PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_v70_full_rollback COMMAND test_bfs_v70_full_rollback)
+    set_tests_properties(test_bfs_v70_full_rollback PROPERTIES
+        LABELS "bfs;sst;v70;rollback;atomic;fail_closed" TIMEOUT 30)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_v70_evidence_falsification
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q
+                tests.python.test_bfs_v70_evidence)
+        set_tests_properties(test_bfs_v70_evidence_falsification PROPERTIES
+            LABELS "bfs;sst;v70;forensics;fail_closed" TIMEOUT 20
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endif()
+    # V69: same physical-state RC/SST retransport, read-only fixed-point audit.
+    add_executable(test_bfs_sst_flux_picard_v69
+        tests/unit/test_bfs_sst_flux_picard_v69.cpp)
+    target_include_directories(test_bfs_sst_flux_picard_v69 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_sst_flux_picard_v69 COMMAND test_bfs_sst_flux_picard_v69)
+    set_tests_properties(test_bfs_sst_flux_picard_v69 PROPERTIES
+        LABELS "bfs;sst;v69;picard;causal;read_only;fail_closed" TIMEOUT 30)
+    # V68: identical-state SST FV flux substitution, fail-closed.
+    add_executable(test_bfs_sst_flux_swap_v68
+        tests/unit/test_bfs_sst_flux_swap_v68.cpp)
+    target_include_directories(test_bfs_sst_flux_swap_v68 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_sst_flux_swap_v68 COMMAND test_bfs_sst_flux_swap_v68)
+    set_tests_properties(test_bfs_sst_flux_swap_v68 PROPERTIES
+        LABELS "bfs;sst;v68;causal;read_only;fail_closed" TIMEOUT 30)
+    # V67: opt-in read-only counterfactual two-block SST damping probe.
+    add_executable(test_bfs_block_probe_v67
+        tests/unit/test_bfs_block_probe_v67.cpp)
+    target_include_directories(test_bfs_block_probe_v67 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_block_probe_v67 COMMAND test_bfs_block_probe_v67)
+    set_tests_properties(test_bfs_block_probe_v67 PROPERTIES
+        LABELS "bfs;sst;v67;counterfactual;fail_closed" TIMEOUT 20)
+    # V66 read-only causal audit of carrier phi, rAU, nut and omega FV rows.
+    # No new Schur/PCD/Newton method; keep the binary entirely opt-in.
+    add_executable(test_bfs_flux_sst_causal_v66
+        tests/unit/test_bfs_flux_sst_causal_v66.cpp)
+    target_include_directories(test_bfs_flux_sst_causal_v66 PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_flux_sst_causal_v66
+        COMMAND test_bfs_flux_sst_causal_v66)
+    set_tests_properties(test_bfs_flux_sst_causal_v66 PROPERTIES
+        LABELS "bfs;sst;v66;causal;fail_closed" TIMEOUT 20)
+    add_executable(test_comparable_physical_merit_v65
+        tests/unit/test_comparable_physical_merit_v65.cpp)
+    target_include_directories(test_comparable_physical_merit_v65 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME test_comparable_physical_merit_v65
+        COMMAND test_comparable_physical_merit_v65)
+    set_tests_properties(test_comparable_physical_merit_v65 PROPERTIES
+        LABELS "bfs;v65;v47;rhie_chow;physical;fail_closed" TIMEOUT 20)
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_sst_rc_picard_v69_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_v69_sst_rc_picard)
+    set_tests_properties(test_bfs_sst_rc_picard_v69_evidence PROPERTIES
+        LABELS "bfs;sst;v69;picard;causal;fail_closed" TIMEOUT 20
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_flux_swap_v68_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_v68_flux_swap)
+    set_tests_properties(test_bfs_flux_swap_v68_evidence PROPERTIES
+        LABELS "bfs;sst;v68;causal;fail_closed" TIMEOUT 20
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME test_bfs_block_v67_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_v67_block_probe)
+    set_tests_properties(test_bfs_block_v67_evidence PROPERTIES
+        LABELS "bfs;sst;v67;counterfactual;fail_closed" TIMEOUT 20
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_causal_v66_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_causal_v66)
+    set_tests_properties(test_bfs_causal_v66_evidence PROPERTIES
+        LABELS "bfs;sst;v66;causal;fail_closed" TIMEOUT 20
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_globalization_v65_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_globalization_v65)
+    set_tests_properties(test_bfs_globalization_v65_evidence PROPERTIES
+        LABELS "bfs;v65;v47;physical;regression;fail_closed" TIMEOUT 20
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+
+# V76 plotting comparator requires NumPy/Matplotlib and is optional in CI.
+# The standalone test checks only parsers/physics-reference provenance and does
+# not substitute for an actual CFDX/OpenFOAM field comparison.
+option(CFDX_ENABLE_BFS_V76_PLOTS_TESTS "Enable external Python plotting/forensic tests" OFF)
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND AND CFDX_ENABLE_BFS_V76_PLOTS_TESTS)
+    add_test(NAME test_bfs_comparison_plots_v76
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_comparison_plots_v76.py)
+    set_tests_properties(test_bfs_comparison_plots_v76 PROPERTIES
+        LABELS "bfs;sst;v76;reference;plots;forensics" TIMEOUT 30)
+endif()
+
+# V76: local log-positive SST 4x4 Newton / experimental regularization.
+# Standalone test only; full CFDX native integration requires the V6 source tree.
+if(CFDX_BUILD_TESTS)
+    add_executable(test_bfs_sst_implicit_block_v76
+        tests/unit/test_bfs_sst_implicit_block_v76.cpp)
+    target_include_directories(test_bfs_sst_implicit_block_v76 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_sst_implicit_block_v76
+        COMMAND test_bfs_sst_implicit_block_v76)
+    set_tests_properties(test_bfs_sst_implicit_block_v76 PROPERTIES
+        LABELS "bfs;sst;v76;newton;experimental;fail-closed" TIMEOUT 30)
+endif()
+
+# V75: common-state SST budget forensics. Opt-in only, never a physical
+# acceptance or native-linear-certification test.
+if(CFDX_BUILD_TESTS)
+    add_executable(test_bfs_sst_budget_forensics_v75
+        tests/unit/test_bfs_sst_budget_forensics_v75.cpp)
+    target_include_directories(test_bfs_sst_budget_forensics_v75 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_sst_budget_forensics_v75
+        COMMAND test_bfs_sst_budget_forensics_v75)
+    set_tests_properties(test_bfs_sst_budget_forensics_v75 PROPERTIES
+        LABELS "bfs;sst;v75;forensics;fail-closed" TIMEOUT 20)
+endif()
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_v75_evidence_falsification
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_v75_evidence.py)
+    set_tests_properties(test_bfs_v75_evidence_falsification PROPERTIES
+        LABELS "bfs;sst;v75;falsification" TIMEOUT 20)
+endif()
+
+# V74: fixed V73 direction continuation and independent SST wall-regime audit.
+if(CFDX_BUILD_TESTS)
+    add_executable(test_bfs_single_direction_continuation_v74
+        tests/unit/test_bfs_single_direction_continuation_v74.cpp)
+    target_include_directories(test_bfs_single_direction_continuation_v74 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_bfs_single_direction_continuation_v74
+        COMMAND test_bfs_single_direction_continuation_v74)
+    set_tests_properties(test_bfs_single_direction_continuation_v74 PROPERTIES
+        LABELS "bfs;sst;v74;physical;fail-closed" TIMEOUT 30)
     add_executable(test_bfs_wall_regime_v74
         tests/unit/test_bfs_wall_regime_v74.cpp)
     target_include_directories(test_bfs_wall_regime_v74 PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -2444,13 +2751,255 @@ if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
         LABELS "bfs;sst;v74;falsification" TIMEOUT 30)
 endif()
 
-
-# TH-03 geometry provenance and V78 reference-domain regression gates.
-if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
-    add_test(NAME test_th03_native_geometry_gate
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_th03_native_geometry_gate.py)
+# V77 genuine native VTU postprocessing and wall-regime evidence, diagnostic only.
+# Explicit opt-in: these Python tests require optional vtk/h5py/scipy/matplotlib.
+option(CFDX_ENABLE_BFS_V77_NATIVE_DIAGNOSTIC_TESTS
+    "Register optional native CFDX VTU/BFS wall-family postprocessing tests" OFF)
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_BFS_V77_NATIVE_DIAGNOSTIC_TESTS)
+    if(NOT Python3_Interpreter_FOUND)
+        message(FATAL_ERROR "V77 native diagnostic tests need Python3")
+    endif()
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c
+        "import vtk, h5py, scipy, numpy, matplotlib"
+        RESULT_VARIABLE CFDX_BFS_V77_PY_STATUS OUTPUT_QUIET ERROR_QUIET)
+    if(NOT CFDX_BFS_V77_PY_STATUS EQUAL 0)
+        message(FATAL_ERROR "V77 native diagnostics require vtk, h5py, scipy, numpy, matplotlib")
+    endif()
+    # V78 correct-mesh benchmark comparability gate (no V&V from BFS152).
     add_test(NAME test_bfs_geometry_comparability_v78
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_bfs_geometry_comparability_v78.py)
-    set_tests_properties(test_th03_native_geometry_gate test_bfs_geometry_comparability_v78
-        PROPERTIES LABELS "bfs;th03;geometry;v78;falsification" TIMEOUT 30)
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_geometry_comparability_v78)
+    set_tests_properties(test_bfs_geometry_comparability_v78 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v78;mesh;reference;fail-closed" TIMEOUT 25)
+    add_test(NAME test_bfs_native_diagnostic_comparison_v77
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_native_diagnostic_comparison_v77)
+    set_tests_properties(test_bfs_native_diagnostic_comparison_v77 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v77;native;comparison;fail-closed" TIMEOUT 35)
+    add_test(NAME test_bfs_wall_family_preflight_v77
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_wall_family_preflight_v77)
+    set_tests_properties(test_bfs_wall_family_preflight_v77 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v77;wall;qualification;fail-closed" TIMEOUT 35)
+endif()
+
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_BFS_V77_NATIVE_DIAGNOSTIC_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_native_budget_forensics_v77
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_native_budget_forensics_v77)
+    set_tests_properties(test_bfs_native_budget_forensics_v77 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v77;native;budget;fail-closed" TIMEOUT 35)
+endif()
+
+# V79: the external high/low pressure oracle is READ-ONLY, never a solver gate.
+if(CFDX_BUILD_TESTS)
+    add_executable(test_pressure_split_oracle_v79
+        tests/unit/test_pressure_split_oracle_v79.cpp)
+    target_include_directories(test_pressure_split_oracle_v79 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_pressure_split_oracle_v79 COMMAND test_pressure_split_oracle_v79)
+    set_tests_properties(test_pressure_split_oracle_v79 PROPERTIES
+        LABELS "bfs;v79;pressure;precision;fail-closed" TIMEOUT 20)
+endif()
+option(CFDX_ENABLE_BFS_V79_PRECISION_AUDIT
+    "Enable optional SciPy BFS pressure precision oracle tests" OFF)
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_BFS_V79_PRECISION_AUDIT)
+    if(NOT Python3_Interpreter_FOUND)
+        message(FATAL_ERROR "V79 pressure precision oracle needs Python3")
+    endif()
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy"
+        RESULT_VARIABLE CFDX_V79_SCIPY_STATUS OUTPUT_QUIET ERROR_QUIET)
+    if(NOT CFDX_V79_SCIPY_STATUS EQUAL 0)
+        message(FATAL_ERROR "V79 pressure oracle requires optional numpy/scipy")
+    endif()
+    add_test(NAME test_bfs_pressure_precision_oracle_v79
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_pressure_precision_oracle_v79)
+    set_tests_properties(test_bfs_pressure_precision_oracle_v79 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v79;pressure;precision;fail-closed" TIMEOUT 30)
+endif()
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_BFS_V79_PRECISION_AUDIT)
+    add_test(NAME test_bfs_pressure_face_defect_refine_v79
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_pressure_face_defect_refine_v79)
+    set_tests_properties(test_bfs_pressure_face_defect_refine_v79 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v79;pressure;physical-face;fail-closed" TIMEOUT 30)
+endif()
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_BFS_V79_PRECISION_AUDIT)
+    add_test(NAME test_plot_bfs_pressure_v79
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_plot_bfs_pressure_v79)
+    set_tests_properties(test_plot_bfs_pressure_v79 PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "bfs;v79;pressure;comparison;fail-closed" TIMEOUT 30)
+endif()
+
+# V80: opt-in native high/low pressure defect refinement; simple algebraic
+# certificate does not authorize a physical U,p,k,omega transaction.
+if(CFDX_BUILD_TESTS)
+    add_executable(test_pressure_native_defect_v80
+        tests/unit/test_pressure_native_defect_v80.cpp)
+    target_include_directories(test_pressure_native_defect_v80 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_pressure_native_defect_v80 COMMAND test_pressure_native_defect_v80)
+    set_tests_properties(test_pressure_native_defect_v80 PROPERTIES
+        LABELS "pressure;native;v80;conservation;fail-closed" TIMEOUT 20)
+endif()
+
+# V80 opt-in bounded-runtime diagnostic: -O1 on the production translation unit.
+# Does not change normal optimized Release or default fast-compile settings.
+option(CFDX_V80_DIAGNOSTIC_RUNTIME_O1 "Use -O1 for V80 BFS SST diagnosis, not for benchmarks" OFF)
+if(CFDX_V80_DIAGNOSTIC_RUNTIME_O1 AND
+   CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(cfdx_production_solver PRIVATE -O1 -g0)
+endif()
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_native_v80_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q tests.python.test_bfs_native_v80_evidence)
+    set_tests_properties(test_bfs_native_v80_evidence PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        LABELS "bfs;pressure;v80;physical;fail-closed" TIMEOUT 20)
+endif()
+
+# V81 optional read-only SST progress instrumentation.
+if(CFDX_BUILD_TESTS)
+    add_executable(test_sst_progress_v81 tests/unit/test_sst_progress_v81.cpp)
+    target_include_directories(test_sst_progress_v81 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME test_sst_progress_v81 COMMAND test_sst_progress_v81)
+    set_tests_properties(test_sst_progress_v81 PROPERTIES LABELS
+        "sst;v81;diagnostic;fail-closed" TIMEOUT 20)
+endif()
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_sst_v81_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q
+            tests.python.test_bfs_sst_v81_evidence)
+    set_tests_properties(test_bfs_sst_v81_evidence PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        LABELS "sst;bfs;v81;provenance;fail-closed" TIMEOUT 20)
+endif()
+
+# V82 opt-in SST spatial block trial, standalone fail-closed proof.
+if(BUILD_TESTING)
+    add_executable(test_sst_implicit_spatial_v82 tests/unit/test_sst_implicit_spatial_v82.cpp)
+    target_include_directories(test_sst_implicit_spatial_v82 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(test_sst_implicit_spatial_v82 PRIVATE cxx_std_17)
+    add_test(NAME test_sst_implicit_spatial_v82 COMMAND test_sst_implicit_spatial_v82)
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_sst_v82_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q tests.python.test_bfs_sst_v82_evidence)
+    set_tests_properties(test_bfs_sst_v82_evidence PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        LABELS "sst;bfs;v82;provenance;fail-closed" TIMEOUT 20)
+endif()
+
+# V83 bounded inexact outer-progress policy: never a final convergence certificate.
+if(BUILD_TESTING)
+    add_executable(test_sst_outer_progress_v83 tests/unit/test_sst_outer_progress_v83.cpp)
+    target_include_directories(test_sst_outer_progress_v83 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(test_sst_outer_progress_v83 PRIVATE cxx_std_17)
+    add_test(NAME test_sst_outer_progress_v83 COMMAND test_sst_outer_progress_v83)
+    set_tests_properties(test_sst_outer_progress_v83 PROPERTIES LABELS
+        "sst;v83;provisional;fail-closed" TIMEOUT 20)
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_v83_case
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q tests.python.test_bfs_v83_case)
+    set_tests_properties(test_bfs_v83_case PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        LABELS "sst;bfs;v83;provenance;fail-closed" TIMEOUT 20)
+endif()
+
+# V84 bounded nonmonotone post-SST outer progress. V8 final gates unchanged.
+if(BUILD_TESTING)
+    add_executable(test_global_outer_progress_v84 tests/unit/test_global_outer_progress_v84.cpp)
+    target_include_directories(test_global_outer_progress_v84 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(test_global_outer_progress_v84 PRIVATE cxx_std_17)
+    add_test(NAME test_global_outer_progress_v84 COMMAND test_global_outer_progress_v84)
+    set_tests_properties(test_global_outer_progress_v84 PROPERTIES LABELS
+        "sst;v84;progress;fail-closed" TIMEOUT 20)
+endif()
+
+# V85 opt-in six-state progression. No changes to V8 final qualification.
+if(BUILD_TESTING)
+    add_executable(test_global_outer_progress_v85 tests/unit/test_global_outer_progress_v85.cpp)
+    target_include_directories(test_global_outer_progress_v85 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(test_global_outer_progress_v85 PRIVATE cxx_std_17)
+    add_test(NAME test_global_outer_progress_v85 COMMAND test_global_outer_progress_v85)
+    set_tests_properties(test_global_outer_progress_v85 PROPERTIES LABELS
+        "sst;v85;progress;fail-closed" TIMEOUT 20)
+endif()
+
+# V86: independent native evidence, provenance and physical-spike audit.
+# No solver equation or final convergence threshold is modified by these tests.
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(NAME test_bfs_v86_native_evidence
+        COMMAND ${Python3_EXECUTABLE} -m unittest -q tests.python.test_bfs_v86_native_evidence)
+    set_tests_properties(test_bfs_v86_native_evidence PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        LABELS "bfs;v86;provenance;physical;fail-closed" TIMEOUT 30)
+endif()
+
+# V86 BFS-only explicit opt-in trust-region guard: does NOT certify convergence.
+if(BUILD_TESTING)
+    add_executable(test_bfs_field_trust_guard_v86 tests/unit/test_bfs_field_trust_guard_v86.cpp)
+    target_include_directories(test_bfs_field_trust_guard_v86 PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_compile_features(test_bfs_field_trust_guard_v86 PRIVATE cxx_std_17)
+    add_test(NAME test_bfs_field_trust_guard_v86 COMMAND test_bfs_field_trust_guard_v86)
+    set_tests_properties(test_bfs_field_trust_guard_v86 PROPERTIES
+        LABELS "bfs;v86;sst;trust-region;fail-closed" TIMEOUT 20)
+endif()
+
+# V87 necessary-only early velocity rejection: post-SST V86 gate remains mandatory.
+if(BUILD_TESTING)
+    add_executable(test_bfs_early_velocity_screen_v87 tests/unit/test_bfs_early_velocity_screen_v87.cpp)
+    target_include_directories(test_bfs_early_velocity_screen_v87 PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_compile_features(test_bfs_early_velocity_screen_v87 PRIVATE cxx_std_17)
+    add_test(NAME test_bfs_early_velocity_screen_v87 COMMAND test_bfs_early_velocity_screen_v87)
+    set_tests_properties(test_bfs_early_velocity_screen_v87 PROPERTIES
+        LABELS "bfs;v87;sst;early-reject;fail-closed" TIMEOUT 20)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(test_bfs_local_step_trust_v88 tests/unit/test_bfs_local_step_trust_v88.cpp)
+    target_include_directories(test_bfs_local_step_trust_v88 PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_compile_features(test_bfs_local_step_trust_v88 PRIVATE cxx_std_17)
+    add_test(NAME test_bfs_local_step_trust_v88 COMMAND test_bfs_local_step_trust_v88)
+    set_tests_properties(test_bfs_local_step_trust_v88 PROPERTIES
+        LABELS "bfs;v88;sst;local-trust;fail-closed" TIMEOUT 20)
+endif()
+
+if(BUILD_TESTING)
+    if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+        add_test(NAME test_bfs_pressure_regions_v90
+            COMMAND ${Python3_EXECUTABLE} -m unittest -q tests.python.test_bfs_pressure_regions_v90)
+        set_tests_properties(test_bfs_pressure_regions_v90 PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            LABELS "bfs;v90;physical;provenance;fail-closed" TIMEOUT 25)
+    endif()
+    add_executable(test_bfs_pseudo_provisional_v90 tests/unit/test_bfs_pseudo_provisional_v90.cpp)
+    target_include_directories(test_bfs_pseudo_provisional_v90 PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_compile_features(test_bfs_pseudo_provisional_v90 PRIVATE cxx_std_17)
+    add_test(NAME test_bfs_pseudo_provisional_v90 COMMAND test_bfs_pseudo_provisional_v90)
+    set_tests_properties(test_bfs_pseudo_provisional_v90 PROPERTIES LABELS "bfs;v90;regression")
+    add_executable(test_bfs_pressure_transverse_v89 tests/unit/test_bfs_pressure_transverse_v89.cpp)
+    target_include_directories(test_bfs_pressure_transverse_v89 PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_compile_features(test_bfs_pressure_transverse_v89 PRIVATE cxx_std_17)
+    add_test(NAME test_bfs_pressure_transverse_v89 COMMAND test_bfs_pressure_transverse_v89)
+    set_tests_properties(test_bfs_pressure_transverse_v89 PROPERTIES
+        LABELS "bfs;v89;pressure;transverse;fail-closed" TIMEOUT 20)
+endif()
+if(BUILD_TESTING)
+    add_executable(test_bfs_selective_retry_v89 tests/unit/test_bfs_selective_retry_v89.cpp)
+    target_include_directories(test_bfs_selective_retry_v89 PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_compile_features(test_bfs_selective_retry_v89 PRIVATE cxx_std_17)
+    add_test(NAME test_bfs_selective_retry_v89 COMMAND test_bfs_selective_retry_v89)
+    set_tests_properties(test_bfs_selective_retry_v89 PROPERTIES
+        LABELS "bfs;v89;pressure;transverse;retry;fail-closed" TIMEOUT 20)
 endif()
