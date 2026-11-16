@@ -40,7 +40,14 @@ DYNAMIC_VISCOSITY = 0.1  # Pa s -> nu = 0.1 m^2/s
 L2_GATE = 5e-3  # identical to the N9 matrix Poiseuille analytic gate
 MAX_ITERATIONS = 3000
 
-_PATCH_TYPE = {"upstream_open": 2, "downstream_open": 2, "bottom": 0, "top": 0, "front": 6, "back": 6}
+_PATCH_TYPE = {
+    "upstream_open": 2,
+    "downstream_open": 2,
+    "bottom": 0,
+    "top": 0,
+    "front": 6,
+    "back": 6,
+}
 _PATCH_ORDER = ("upstream_open", "downstream_open", "bottom", "top", "front", "back")
 
 _FNV_OFFSET_BASIS = 1469598103934665603
