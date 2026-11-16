@@ -2573,12 +2573,26 @@ int main(int argc, char** argv)
                 auto* sst_rt = controls.sst_runtime;
                 const double saved_density = controls.density;
                 const double saved_kinematic_viscosity = controls.kinematic_viscosity;
+                const auto saved_convergence = controls.convergence;
                 controls = bfs_converged_controls(
                     controls.coupling.alpha_u, controls.coupling.alpha_p,
-                    controls.convergence.max_iterations, controls.linear_tolerance);
+                    saved_convergence.max_iterations, controls.linear_tolerance);
                 controls.sst_runtime = sst_rt;
                 controls.density = saved_density;
                 controls.kinematic_viscosity = saved_kinematic_viscosity;
+                // The accelerator changes the solver strategy, not the
+                // caller's physical stopping criteria. Restore every
+                // convergence tolerance after constructing its defaults.
+                controls.convergence.absolute_tolerance =
+                    saved_convergence.absolute_tolerance;
+                controls.convergence.relative_tolerance =
+                    saved_convergence.relative_tolerance;
+                controls.convergence.continuity_tolerance =
+                    saved_convergence.continuity_tolerance;
+                controls.convergence.energy_tolerance =
+                    saved_convergence.energy_tolerance;
+                controls.convergence.stagnation_relative_improvement =
+                    saved_convergence.stagnation_relative_improvement;
                 std::cout << "BFS converged settings: COUPLED+NativeFieldSplit, "
                           << "alpha_u=" << controls.coupling.alpha_u
                           << " alpha_p=" << controls.coupling.alpha_p
