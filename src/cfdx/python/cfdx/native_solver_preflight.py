@@ -50,9 +50,7 @@ def check_native_production_case(case_path: Path) -> None:
         if not isinstance(setup, dict) or not isinstance(
             setup.get("boundary_conditions"), list
         ):
-            raise TypeError(
-                "case_setup_json doit declarer boundary_conditions sous forme de liste"
-            )
+            raise ValueError("case_setup_json doit declarer boundary_conditions")  # noqa: TRY004
         if not setup["boundary_conditions"]:
             raise ValueError("case_setup_json ne contient aucune condition limite")
         if "case/config" in h5:

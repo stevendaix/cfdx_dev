@@ -384,6 +384,20 @@ if QApplication is not None:
                 )
             else:
                 command = [solver, str(self._case_path)]
+            if is_native_production_solver(solver):
+                output_dir = (
+                    self.session.case.execution.output_dir
+                    or self._case_path.parent / "results"
+                )
+                iterations = self.session.case.numerics.get("max_iterations", 500)
+                command = native_production_command(
+                    solver,
+                    self._case_path,
+                    output_dir=output_dir,
+                    max_iterations=iterations,
+                )
+            else:
+                command = [solver, str(self._case_path)]
             if self._restart_dat is not None:
                 restart_option = self.session.case.execution.restart_option
                 if not restart_option:
@@ -708,6 +722,12 @@ if QApplication is not None:
                 mesh = self.mesh_browser.catalog
                 report = validate_case(self.session.case, mesh)
                 if report.ok:
+                    solver = self.session.case.execution.solver
+                    if (
+                        is_native_production_solver(solver)
+                        and self._case_path is not None
+                    ):
+                        check_native_production_case(self._case_path)
                     solver = self.session.case.execution.solver
                     if (
                         is_native_production_solver(solver)

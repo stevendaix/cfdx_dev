@@ -21,10 +21,10 @@ import pytest
 # the same physical channel as the N9 matrix Poiseuille entry:
 #
 #   * 12x16 hexahedral single-layer channel, [0,1]^3
-#   * inlet/outlet/front/back: zero-gradient velocity (front/back are EMPTY
-#     patches, so the layer is the same 2-D plane channel as the matrix)
+#   * upstream_open/downstream_open/front/back: zero-gradient velocity
+#     (both axial ends are open zero-gradient boundaries; front/back are EMPTY)
 #   * bottom/top: no-slip fixed walls, u = 0
-#   * pressure zero-gradient everywhere
+#   * pressure zero-gradient at the upstream open boundary and fixed p=0 at the downstream outlet, matching N9 open_channel_pressure_bc()
 #   * body_force = (1, 0, 0) per unit mass, rho = 1.0, mu = 0.1 -> nu = 0.1
 #   * analytic solution u(y) = G*y*(1-y)/(2*nu), same L2 <= 5e-3 gate as the
 #     N9 physical matrix.
@@ -40,8 +40,15 @@ DYNAMIC_VISCOSITY = 0.1  # Pa s -> nu = 0.1 m^2/s
 L2_GATE = 5e-3  # identical to the N9 matrix Poiseuille analytic gate
 MAX_ITERATIONS = 3000
 
-_PATCH_TYPE = {"inlet": 1, "outlet": 2, "bottom": 0, "top": 0, "front": 6, "back": 6}
-_PATCH_ORDER = ("inlet", "outlet", "bottom", "top", "front", "back")
+_PATCH_TYPE = {
+    "upstream_open": 2,
+    "downstream_open": 2,
+    "bottom": 0,
+    "top": 0,
+    "front": 6,
+    "back": 6,
+}
+_PATCH_ORDER = ("upstream_open", "downstream_open", "bottom", "top", "front", "back")
 
 _FNV_OFFSET_BASIS = 1469598103934665603
 _FNV_PRIME = 1099511628211
@@ -153,9 +160,9 @@ def _build_channel() -> dict:
         elif abs(z - 1.0) < eps:
             name = "back"
         elif abs(x) < eps:
-            name = "inlet"
+            name = "upstream_open"
         elif abs(x - 1.0) < eps:
-            name = "outlet"
+            name = "downstream_open"
         else:  # pragma: no cover - geometry is exact
             raise AssertionError("unclassified channel boundary face")
         patch_ids[name].append(fid)
@@ -209,14 +216,15 @@ def _case_setup_json() -> str:
     zero = [0.0, 0.0, 0.0]
     setup.boundary_conditions = [
         BoundarySpec(
-            patch_name="inlet",
-            type=BCType.INLET,
+            patch_name="upstream_open",
+            type=BCType.OUTLET,
             value_type=BCValueType.ZERO_GRADIENT,
         ),
         BoundarySpec(
-            patch_name="outlet",
-            type=BCType.OUTLET,
-            value_type=BCValueType.ZERO_GRADIENT,
+            patch_name="downstream_open",
+            type=BCType.PRESSURE_OUTLET,
+            value_type=BCValueType.OUTLET_PRESSURE,
+            pressure=0.0,
         ),
         BoundarySpec(
             patch_name="bottom",
@@ -362,6 +370,15 @@ def test_n9_poiseuille_body_force_production_path(tmp_path: Path) -> None:
     with h5py.File(case_path, "r") as h5:
         setup = json.loads(h5.attrs["case_setup_json"])
         assert setup["body_force"] == list(BODY_FORCE)
+        axial_boundaries = {
+            bc["patch_name"]: (bc["type"], bc["value_type"])
+            for bc in setup["boundary_conditions"]
+            if bc["patch_name"] in {"upstream_open", "downstream_open"}
+        }
+        assert axial_boundaries == {
+            "upstream_open": ("outlet", "zero_gradient"),
+            "downstream_open": ("pressure_outlet", "outlet_pressure"),
+        }
         entries = {
             (entry["family"], entry["configuration_key"])
             for entry in setup["numerics"]["selection"]["entries"]

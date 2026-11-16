@@ -6,14 +6,11 @@
 
 using cfdx::physics::PressureFaceAssemblyAccumulator;
 int main() {
-    if (std::numeric_limits<long double>::digits <=
-        std::numeric_limits<double>::digits) {
-        bool failed = false;
-        try { PressureFaceAssemblyAccumulator bad(2); }
-        catch (const std::invalid_argument&) { failed = true; }
-        assert(failed);
-        return 0;
-    }
+    // Portable on platforms where long double has only binary64 precision.
+    bool empty_failed = false;
+    try { PressureFaceAssemblyAccumulator empty(0); }
+    catch (const std::invalid_argument&) { empty_failed = true; }
+    assert(empty_failed);
     // Internal owner/neighbour coefficient contributes equally to each
     // diagonal; the off-diagonal contribution is handled by the FV caller.
     PressureFaceAssemblyAccumulator a(2);

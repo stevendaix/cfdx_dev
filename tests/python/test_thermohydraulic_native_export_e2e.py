@@ -39,6 +39,10 @@ def test_real_production_solver_thermohydraulic_export(tmp_path: Path) -> None:
     with h5py.File(case_file, "r+") as h5:
         setup = json.loads(h5.attrs["case_setup_json"])
         setup["body_force"] = [0.0, 0.0, 0.0]
+        for patch in setup["boundary_conditions"]:
+            if patch["patch_name"] == "inlet":
+                patch["value_type"] = "fixed"
+                patch["velocity_vector"] = [0.0, 0.0, 0.0]
         setup["numerics"]["under_relaxation_momentum"] = 0.2
         setup["numerics"]["under_relaxation_pressure"] = 0.1
         h5.attrs["case_setup_json"] = json.dumps(setup)

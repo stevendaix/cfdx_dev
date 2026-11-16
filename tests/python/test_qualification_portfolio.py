@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/qualification_portfolio.py"
 SPEC = importlib.util.spec_from_file_location("qualification_portfolio", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
+import sys
 
 sys.path.append(str(ROOT / "scripts"))
 portfolio = importlib.util.module_from_spec(SPEC)
@@ -91,8 +91,7 @@ class QualificationPortfolioTests(unittest.TestCase):
             portfolio.test_state("test_couette_quick", configured, {}), "DISABLED"
         )
         self.assertEqual(
-            portfolio.aggregate_status({"test_couette_quick": "DISABLED"}),
-            "DISABLED",
+            portfolio.aggregate_status({"test_couette_quick": "DISABLED"}), "DISABLED"
         )
 
     def test_skipped_fail_unregistered_and_not_run_are_not_pass(self):

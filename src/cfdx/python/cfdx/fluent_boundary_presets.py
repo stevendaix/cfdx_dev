@@ -28,19 +28,13 @@ UNSUPPORTED_CHOICE_REASONS = {
     "pressure-inlet": (
         "pression totale / relation de Bernoulli non integree au solveur incompressible"
     ),
-    "mass-flow-inlet": (
-        "conversion de debit en flux de face non integree et non qualifiee"
-    ),
+    "mass-flow-inlet": "conversion de debit en flux de face non integree et non qualifiee",
     "pressure-far-field": (
         "condition caracteristique Fluent pour l'ecoulement compressible, "
         "non equivalente au farfield incompressible CFDX"
     ),
-    "slip-wall": (
-        "operateur de non-penetration et contraintes tangentielles non raccorde"
-    ),
-    "periodic": (
-        "appariement des faces periodiques non raccorde a ce solveur de production"
-    ),
+    "slip-wall": "operateur de non-penetration et contraintes tangentielles non raccorde",
+    "periodic": "appariement des faces periodiques non raccorde a ce solveur de production",
     "interface": (
         "couplage conservatif des faces d'interface non raccorde "
         "a ce solveur de production"

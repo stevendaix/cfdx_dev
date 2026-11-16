@@ -112,22 +112,18 @@ inline void validate_sst_case_prerequisites(
             throw std::invalid_argument("SST case contains an unsupported boundary type on patch '" +
                                         boundary.patch_name + "'");
         if (boundary.type == cfdx::io::BCType::INLET) {
-            // Explicit k/omega Dirichlet data are the authoritative inlet
-            // turbulence state. Do not additionally require a positive bulk
-            // inlet speed: zero-gradient/zero-velocity inlets are valid for
-            // closed or hydrostatic SST/thermal verification cases.
+            // Explicit fixed k/omega values are authoritative. In particular,
+            // a hydrostatic or quiescent case must not need a fictitious
+            // positive inlet speed merely to derive values it already supplies.
             bool fixed_k = false;
             bool fixed_omega = false;
-            for (const auto& scalar_bc : boundary.sst_scalar_conditions) {
-                if (scalar_bc.type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
+            for (const auto& condition : boundary.sst_scalar_conditions) {
+                if (condition.type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
                     continue;
-                if (scalar_bc.field == "k") fixed_k = true;
-                if (scalar_bc.field == "omega") fixed_omega = true;
+                if (condition.field == "k") fixed_k = true;
+                if (condition.field == "omega") fixed_omega = true;
             }
-            if (fixed_k != fixed_omega)
-                throw std::invalid_argument(
-                    "SST inlet must prescribe both k and omega, or derive both from inlet turbulence data");
-            if (!fixed_k)
+            if (!fixed_k || !fixed_omega)
                 (void)derive_sst_inlet_turbulence_state(boundary, controls);
         }
     }
@@ -175,9 +171,10 @@ inline void validate_sst_scalar_boundary_contract(const cfdx::io::CaseSetup& set
         const auto omega_type = types.at("omega");
         switch (boundary.type) {
             case cfdx::io::BCType::WALL:
-                if (k_type != cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO ||
+                if ((k_type != cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO &&
+                     k_type != cfdx::io::SSTScalarBoundaryType::WALL_KQ_R) ||
                     omega_type != cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST)
-                    throw std::invalid_argument("SST wall patch requires WALL_K_ZERO and WALL_OMEGA_SST");
+                    throw std::invalid_argument("SST wall patch requires explicit WALL_K_ZERO or WALL_KQ_R and WALL_OMEGA_SST");
                 break;
             case cfdx::io::BCType::INLET:
                 if (k_type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE ||

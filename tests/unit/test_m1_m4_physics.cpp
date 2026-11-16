@@ -147,7 +147,8 @@ int main()
         std::vector<double> incoming(6,blackbody_intensity(300.0));
         std::vector<double> wall(6,0.0);
         apply_diffuse_gray_wall(dirs,incoming,{1,0,0},1.0,300.0,wall);
-        EXPECT_TRUE(wall[0] > 0.0);
+        EXPECT_NEAR(wall[0],0.0,1e-14);
+        EXPECT_TRUE(wall[1] > 0.0);
         EXPECT_NEAR(wall[2],0.0,1e-14);
 
         std::vector<ViewFactorPatch> patches{

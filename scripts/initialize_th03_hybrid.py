@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Experimental self-contained hybrid TH-03 initialisation on the TARGET mesh.
 
 Builds a physically motivated wall-damped velocity and positive k/omega,

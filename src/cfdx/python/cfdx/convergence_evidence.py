@@ -141,6 +141,96 @@ class ConvergenceEvidence:
         }
 
 
+_V8_CERTIFICATE_KEYS = {
+    "evaluated",
+    "algorithm",
+    "schur",
+    "momentum_global_relative",
+    "momentum_max_active_component_relative",
+    "momentum_component_relative",
+    "continuity",
+    "k",
+    "omega",
+    "eddy_viscosity_closure",
+    "merit",
+    "sst",
+    "sst_transport_committed",
+    "bounded",
+    "all_finite",
+    "converged",
+}
+_V8_NUMERIC_KEYS = (
+    "momentum_global_relative",
+    "momentum_max_active_component_relative",
+    "continuity",
+    "k",
+    "omega",
+    "eddy_viscosity_closure",
+    "merit",
+)
+_V8_BOOLEAN_KEYS = (
+    "evaluated",
+    "sst",
+    "sst_transport_committed",
+    "bounded",
+    "all_finite",
+    "converged",
+)
+_V8_ALGORITHMS = {"simple", "simplec", "piso", "pimple", "fractional_step", "coupled"}
+
+
+def _optional_nonnegative_finite(value: object, key: str) -> None:
+    if value is None:
+        return
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        raise EvidenceError(f"{key} must be null or a finite non-negative number")
+
+
+def _validate_global_nonlinear_v8(value: object, history_index: int) -> None:
+    """Validate the one nested certificate object emitted by the V8 writer."""
+    key = f"history[{history_index}].global_nonlinear_v8"
+    if not isinstance(value, dict):
+        raise EvidenceError(f"{key} must be an object")
+    if set(value) != _V8_CERTIFICATE_KEYS:
+        missing = sorted(_V8_CERTIFICATE_KEYS - set(value))
+        extra = sorted(set(value) - _V8_CERTIFICATE_KEYS)
+        raise EvidenceError(
+            f"{key} has invalid keys (missing={missing}, extra={extra})"
+        )
+    for name in _V8_BOOLEAN_KEYS:
+        if not isinstance(value[name], bool):
+            raise EvidenceError(f"{key}.{name} must be a boolean")
+    algorithm = value["algorithm"]
+    if not isinstance(algorithm, str) or algorithm not in _V8_ALGORITHMS:
+        raise EvidenceError(f"{key}.algorithm is unsupported")
+    schur = value["schur"]
+    if algorithm == "coupled":
+        if not isinstance(schur, str) or not schur:
+            raise EvidenceError(f"{key}.schur must name the resolved coupled method")
+    elif schur is not None:
+        raise EvidenceError(f"{key}.schur must be null for a non-coupled algorithm")
+    for name in _V8_NUMERIC_KEYS:
+        _optional_nonnegative_finite(value[name], f"{key}.{name}")
+    components = value["momentum_component_relative"]
+    if not isinstance(components, list) or len(components) != 3:
+        raise EvidenceError(f"{key}.momentum_component_relative must have 3 entries")
+    for component in components:
+        _optional_nonnegative_finite(component, f"{key}.momentum_component_relative")
+    if value["sst_transport_committed"] and not value["sst"]:
+        raise EvidenceError(f"{key}.sst_transport_committed requires sst")
+    if value["converged"] and not (
+        value["evaluated"] and value["all_finite"] and value["bounded"]
+    ):
+        raise EvidenceError(
+            f"{key}.converged requires evaluated, finite, bounded state"
+        )
+
+
 def load_run_evidence(
     output_dir: str | Path,
     *,
@@ -209,7 +299,12 @@ def load_run_evidence(
                 "history iterations are not strictly increasing or exceed run count"
             )
         for metric, value in row.items():
-            if metric == "iteration" or value is None or isinstance(value, (bool, str)):
+            if metric == "iteration":
+                continue
+            if metric == "global_nonlinear_v8":
+                _validate_global_nonlinear_v8(value, index)
+                continue
+            if value is None or isinstance(value, (bool, str)):
                 continue
             if isinstance(value, (int, float)):
                 if not math.isfinite(value):

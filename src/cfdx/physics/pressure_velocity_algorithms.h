@@ -81,6 +81,10 @@ struct CouplingControls {
     // pressure mass. The default remains the qualified legacy -Fp^-1 action.
     // No physical performance claim or automatic fallback is implied.
     bool pcd_lumped_mass_commutator_experimental = false;
+    // V39 separately selectable preconditioner-only A/B; explicitly
+    // noncommuting reverse composition -Kp^-1 Fp Mp^-1. OFF by default.
+    // Must not be combined with the original commutator flag.
+    bool pcd_reverse_lumped_mass_v39_experimental = false;
     // Diagnostic A/B only: align the nested pressure operators' gauge column
     // with the monolithic eliminated gauge column. No production default change.
     bool pcd_consistent_gauge_experimental = false;
@@ -89,6 +93,41 @@ struct CouplingControls {
     bool pcd_fp_row_equilibration_experimental = false;
     bool pcd_fp_quality_guard_experimental = false;
     bool pcd_fp_second_pass_experimental = false;
+    // Experimental Fp-only strong-component anchor. The coupled FV matrix,
+    // physical pressure gauge and nonlinear gates are unchanged.
+    bool pcd_fp_recirculation_anchor_experimental = false;
+    // Opt-in certified nonsymmetric Fp deflation. Must carry a LEFT/RIGHT
+    // basis file whose coefficient fingerprint matches the CURRENT Fp.
+    // The matrix-free solve changes ONLY the PCD action, never the coupled FV
+    // system. No automatic basis reuse when numerical coefficients change.
+    std::string pcd_fp_bisided_basis_file_experimental;
+    // V15: select a CURRENT, independently certified basis from a directory
+    // keyed by the exact Fp CSR coefficient fingerprint.  No stale fallback.
+    std::string pcd_fp_bisided_basis_directory_v15_experimental;
+    // V15: invert Fp + W Z^T on the FULL auxiliary right-hand side.  Unlike
+    // the V14 projected action, this preserves the deficient Schur directions
+    // so that the preconditioner need not map left-null vectors to zero.
+    bool pcd_fp_full_rank_action_v15_experimental = false;
+    // V16: if a converged deflated action narrowly fails the ORIGINAL
+    // projected residual certificate, refine the same operator at 10x and
+    // 100x tighter inner tolerances. No relaxed acceptance or Schur fallback.
+    bool pcd_fp_refine_projected_v16_experimental = false;
+    // Opt-in, SMALL coupled matrices only (<=4096 unknowns): retry a failed
+    // Schur/PCD outer solve with a bounded-fill monolithic ILUT.  The
+    // original saddle matrix, physical residual and tolerances are unchanged;
+    // acceptance requires the true original-system residual independently.
+    // NOT a parallel/GPU preconditioner, and never a silent fallback.
+    bool coupled_monolithic_ilut_fallback_v16_experimental = false;
+    // V42 opt-in scalable (AMG-based) BLOCKLOCAL retry after FAILED PCD.
+    // This is explicitly classified as BlockLocal recovery, not PCD success.
+    // The same original A,b,x0 and strict full-system true residual gate apply;
+    // the other five Schur choices and default PCD are untouched.
+    bool pcd_blocklocal_recovery_v42_experimental = false;
+    // Optional bounded PCD preflight (0 = the full original budget).
+    // Only valid with V42 explicit fallback; original tolerance and BLOCKLOCAL
+    // recovery budget stay unchanged. Not a fair pure-PCD benchmark.
+    std::size_t pcd_blocklocal_preflight_iterations_v42 = 0;
+
     // Preconditioner-only A/B: pressure-space Dirichlet data on actual
     // inflow faces, including mixed-in/out farfield patches. The physical
     // momentum/continuity BCs and the Schur matrix A are NOT modified.
@@ -115,6 +154,16 @@ inline void validate_coupling_controls(const CouplingControls& c)
         c.n_fractional_steps < 1 || c.coupled_max_iterations == 0 ||
         !(c.coupled_linear_tolerance > 0.0))
         throw std::invalid_argument("pressure-velocity controls: invalid relaxation/corrector count");
+    if (c.pcd_blocklocal_preflight_iterations_v42 > 0 &&
+        (!c.pcd_blocklocal_recovery_v42_experimental ||
+         c.pcd_blocklocal_preflight_iterations_v42 > c.coupled_max_iterations))
+        throw std::invalid_argument(
+            "V42 PCD preflight requires explicit recovery and a bounded iteration budget");
+    if (c.pcd_blocklocal_recovery_v42_experimental &&
+        (c.schur_model != CoupledSchurModel::PCD ||
+         c.coupled_monolithic_ilut_fallback_v16_experimental))
+        throw std::invalid_argument(
+            "V42 BlockLocal recovery requires PCD and excludes ILUT recovery");
     if (c.coupled_schwarz_experimental &&
         (c.coupled_schwarz_cells_per_subdomain == 0 ||
          c.coupled_schwarz_overlap_hops > 8 ||

@@ -93,5 +93,136 @@ int main() {
         EXPECT_TRUE(std::abs(true_split[5]-only_high[5])>1.0e-12L);
         EXPECT_TRUE(std::isfinite(true_split[5]));
     });
+    run_case("canonical_high_low_full_flux_matches_direct_fp64_on_skewed_grid", [] {
+        const auto mesh=skewed_two_cell_mesh();
+        const auto geom=build_fv_geometry(mesh);
+        const std::array<std::vector<double>,3> rAU{{{0.2,0.3},{0.4,0.5},{0.6,0.8}}};
+        ScalarBoundaryConditions bcs;
+        bcs["left"]={ScalarBoundaryType::FIXED_VALUE,3.0,0.0};
+        Field<double,Location::CELL> p(2,"p","Pa",1), H(2,"H","m/s",3);
+        p(0)=0.7;p(1)=1.9;
+        H.set(0,3.0,0.1,0.0);H.set(1,2.0,-0.5,0.0);
+        Vector low(2,0.0);
+        for (const bool projected: {false,true}) {
+            const auto actual=make_rhie_chow_mass_flux_high_low(
+                mesh,geom,H,p,low,rAU,1.2,{},bcs,projected);
+            const auto rounded=make_rhie_chow_mass_flux(
+                mesh,geom,H,p,rAU,1.2,{},bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,false,projected);
+            for (std::size_t f=0;f<mesh.n_faces();++f)
+                EXPECT_NEAR(static_cast<double>(actual[f]),rounded(f),1e-11);
+            const auto gradient=gauss_gradient_pressure_high_low(
+                mesh,geom,p,low,bcs,projected);
+            const auto reference=gauss_gradient_with_boundary(
+                p,mesh,geom,bcs,false,projected);
+            for(std::size_t c=0;c<mesh.n_cells();++c)
+                for(std::size_t d=0;d<3;++d)
+                    EXPECT_NEAR(gradient.component_data(d)[c],
+                                reference.component_data(d)[c],1e-11);
+        }
+    });
+    run_case("physical_pressure_low_is_retained_by_velocity_relaxation", [] {
+        Field<double,Location::CELL> p(2,"p","Pa",1);
+        p(0)=1.0e8;p(1)=-3.0e8;
+        Vector low(2,0.0),dhi(2,0.0),dlo(2,0.0);
+        dhi(0)=1.0e-9;dhi(1)=-2.0e-9;
+        add_pressure_high_low(p,low,dhi,dlo,1.0);
+        EXPECT_TRUE(p(0)==1.0e8);
+        EXPECT_TRUE(p(1)==-3.0e8);
+        EXPECT_TRUE(std::abs(low(0)-1.0e-9)<1e-12);
+        EXPECT_TRUE(std::abs(low(1)+2.0e-9)<1e-12);
+        // Low pressure affects the flux operator even though FP64 p did not move.
+        const auto mesh=skewed_two_cell_mesh();
+        const auto geom=build_fv_geometry(mesh);
+        Field<double,Location::CELL> H(2,"H","m/s",3);H.fill(0.0);
+        const std::array<std::vector<double>,3> rAU{{{0.2,0.3},{0.4,0.5},{0.6,0.8}}};
+        const auto base=make_rhie_chow_mass_flux_high_low(
+            mesh,geom,H,p,Vector(2,0.0),rAU,1.0,{},{});
+        const auto exact=make_rhie_chow_mass_flux_high_low(
+            mesh,geom,H,p,low,rAU,1.0,{},{});
+        EXPECT_TRUE(std::abs(exact[5]-base[5])>1e-12L);
+    });
+    run_case("true_face_residual_orientation_and_signed_conservation", [] {
+        const auto mesh=skewed_two_cell_mesh();
+        std::vector<long double> flux(mesh.n_faces(),0.0L);
+        flux[5]=3.0L;
+        Vector rhs(2,3.0);
+        const auto result=pressure_true_face_residual(mesh,flux,rhs);
+        EXPECT_NEAR(result.first(0),-3.0,1e-15);
+        EXPECT_NEAR(result.first(1),3.0,1e-15);
+        EXPECT_NEAR(result.second,1.0,1e-15);
+    });
+    run_case("true_face_refinement_rejects_wrong_preconditioner", [] {
+        Vector hi(2,0.0),lo(2,0.0);
+        const auto evaluator=[](const Vector& h,const Vector& l) {
+            Vector residual(2,0.0);
+            residual(0)=1.0-h(0)-l(0);
+            residual(1)=2.0-h(1)-l(1);
+            return std::make_pair(residual,
+                std::hypot(residual(0),residual(1))/std::sqrt(5.0));
+        };
+        const auto malicious=[](const Vector& rhs, Vector& delta) {
+            for(std::size_t i=0;i<delta.size();++i) delta(i)=-rhs(i);
+            return true;
+        };
+        const auto fail=refine_pressure_true_face_high_low(
+            hi,lo,1e-11,4,evaluator,malicious);
+        EXPECT_TRUE(!fail.converged);
+        EXPECT_TRUE(fail.accepted==0);
+        EXPECT_NEAR(hi(0),0.0,1e-15);
+        const auto good=[](const Vector& rhs,Vector& delta) {
+            for(std::size_t i=0;i<delta.size();++i) delta(i)=rhs(i);
+            return true;
+        };
+        const auto pass=refine_pressure_true_face_high_low(
+            hi,lo,1e-11,3,evaluator,good);
+        EXPECT_TRUE(pass.converged);
+        EXPECT_TRUE(pass.accepted==1);
+        EXPECT_NEAR(hi(0),1.0,1e-15);
+        EXPECT_NEAR(hi(1),2.0,1e-15);
+    });
+    run_case("split_pressure_low_contributes_to_momentum_gradient", [] {
+        const auto mesh=skewed_two_cell_mesh();
+        const auto geom=build_fv_geometry(mesh);
+        Field<double,Location::CELL> p(2,"p","Pa",1);
+        p(0)=1.0e8;p(1)=1.0e8;
+        Vector zero(2,0.0),low(2,0.0);
+        low(1)=1.0e-9;
+        const auto old_gradient=gauss_gradient_pressure_high_low(
+            mesh,geom,p,zero,{},false);
+        const auto new_gradient=gauss_gradient_pressure_high_low(
+            mesh,geom,p,low,{},false);
+        bool changed=false;
+        for (std::size_t c=0;c<mesh.n_cells();++c)
+            for (std::size_t d=0;d<3;++d)
+                if (std::abs(new_gradient.component_data(d)[c]-
+                             old_gradient.component_data(d)[c])>1.0e-12)
+                    changed=true;
+        EXPECT_TRUE(changed);
+    });
+    run_case("pressure_refinement_globalizes_overshooting_direction", [] {
+        Vector hi(1,0.0), lo(1,0.0);
+        const auto physical=[](const Vector& h,const Vector& l) {
+            Vector residual(1,1.0-h(0)-l(0));
+            return std::make_pair(residual,std::abs(residual(0)));
+        };
+        const auto oversized=[](const Vector& rhs,Vector& delta) {
+            delta(0)=2.0*rhs(0);
+            return true;
+        };
+        const auto report=refine_pressure_true_face_high_low(
+            hi,lo,1.0e-11,3,physical,oversized);
+        EXPECT_TRUE(report.converged);
+        EXPECT_TRUE(report.attempted==1 && report.accepted==1);
+        EXPECT_NEAR(hi(0)+lo(0),1.0,1.0e-15);
+    });
+    run_case("invalid_production_high_low_contract_is_rejected", [] {
+        IncompressibleSolverControls c;
+        c.pressure_high_low_production=true;
+        bool refused=false;
+        try { validate_incompressible_controls(c,2); }
+        catch (const std::invalid_argument&) { refused=true; }
+        EXPECT_TRUE(refused);
+    });
     return run_all();
 }

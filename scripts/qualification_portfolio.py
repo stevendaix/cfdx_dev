@@ -292,12 +292,12 @@ def make_portfolio(
         "schema": SCHEMA,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "provenance": {
-            "source_archive": (
-                str(source_archive) if source_archive is not None else None
-            ),
-            "source_archive_sha256": (
-                file_sha256(source_archive) if source_archive is not None else None
-            ),
+            "source_archive": str(source_archive)
+            if source_archive is not None
+            else None,
+            "source_archive_sha256": file_sha256(source_archive)
+            if source_archive is not None
+            else None,
             "declared_source_revision": source_revision,
             "physical_evidence_directory": str(evidence_dir),
             "ctest_manifest_provided": registered is not None,
