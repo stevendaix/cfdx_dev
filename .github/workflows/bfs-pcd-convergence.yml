@@ -1,6 +1,8 @@
 name: BFS PCD convergence experiment (SIMPLE vs COUPLED+PCD)
 
 on:
+  push:
+    branches: [feat/bfs-convergence-petsc-openfoam]
   pull_request:
     paths:
       - '.github/workflows/bfs-pcd-convergence.yml'
