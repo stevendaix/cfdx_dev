@@ -95,24 +95,24 @@ def test_incompatible_selections_rejected_before_h5_write(
 
 
 def _evidence(schur="pcd", pc="pcd"):
-    v8 = dict(
-        evaluated=True,
-        algorithm="coupled",
-        schur=schur,
-        momentum_global_relative=1e-12,
-        momentum_max_active_component_relative=1e-12,
-        momentum_component_relative=[1e-12, 1e-12, 0.0],
-        continuity=1e-12,
-        k=1e-12,
-        omega=1e-12,
-        eddy_viscosity_closure=1e-12,
-        merit=1e-12,
-        sst=True,
-        sst_transport_committed=True,
-        bounded=True,
-        all_finite=True,
-        converged=True,
-    )
+    v8 = {
+        "evaluated": True,
+        "algorithm": "coupled",
+        "schur": schur,
+        "momentum_global_relative": 1e-12,
+        "momentum_max_active_component_relative": 1e-12,
+        "momentum_component_relative": [1e-12, 1e-12, 0.0],
+        "continuity": 1e-12,
+        "k": 1e-12,
+        "omega": 1e-12,
+        "eddy_viscosity_closure": 1e-12,
+        "merit": 1e-12,
+        "sst": True,
+        "sst_transport_committed": True,
+        "bounded": True,
+        "all_finite": True,
+        "converged": True,
+    }
     summary = {"format": "CFDX-EXECUTION", "process_exit_code": 0, "converged": True}
     history = {
         "format": "CFDX-CONVERGENCE",
@@ -243,13 +243,13 @@ def test_case_sha_input_and_numerical_selection_are_checked(tmp_path):
     write_case(case_path, algorithm="coupled", schur="pcd", preconditioner="pcd")
     _write(tmp_path, _evidence())
     digest = sha256(case_path.read_bytes()).hexdigest()
-    kw = dict(
-        algorithm="coupled",
-        schur="pcd",
-        preconditioner="pcd",
-        case_path=case_path,
-        case_sha256=digest,
-    )
+    kw = {
+        "algorithm": "coupled",
+        "schur": "pcd",
+        "preconditioner": "pcd",
+        "case_path": case_path,
+        "case_sha256": digest,
+    }
     result = validate_bfs_evidence(tmp_path, 0, **kw)
     assert result["nonlinear_v8_proven"]
     assert "case_sha256_mesh_and_numerics_verified" in result["checks"]

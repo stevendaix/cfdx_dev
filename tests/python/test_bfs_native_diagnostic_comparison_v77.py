@@ -60,7 +60,11 @@ class NativeBfsV77Tests(unittest.TestCase):
         xyz = np.column_stack([x, y, np.zeros(len(x))])
         nu = 2e-3
         # Ux=2x+3y and Uy=-4x+5y -> Sxy=3-4=-1
-        fields = dict(u_x=2 * x + 3 * y, u_y=-4 * x + 5 * y, nu_t=np.full(len(x), nu))
+        fields = {
+            "u_x": 2 * x + 3 * y,
+            "u_y": -4 * x + 5 * y,
+            "nu_t": np.full(len(x), nu),
+        }
         shear, cond = wls_uv_proxy(xyz, fields, 10)
         self.assertTrue(np.isfinite(shear).all())
         self.assertTrue(np.isfinite(cond).all())
@@ -71,10 +75,10 @@ class NativeBfsV77Tests(unittest.TestCase):
             [[0.02, 0.002, 0], [0.02, 0.012, 0], [0.04, 0.002, 0], [0.04, 0.012, 0]],
             float,
         )
-        fields = dict(u_x=np.array([1.0, 2.0, 1.0, 2.0]))
+        fields = {"u_x": np.array([1.0, 2.0, 1.0, 2.0])}
         samples = [
-            dict(xH="3", yH="0.6", uUref="1", uv_times1000="-1"),
-            dict(xH="3", yH="0.05", uUref="1", uv_times1000="-1"),
+            {"xH": "3", "yH": "0.6", "uUref": "1", "uv_times1000": "-1"},
+            {"xH": "3", "yH": "0.05", "uUref": "1", "uv_times1000": "-1"},
         ]
         data = interpolated_profiles(
             xyz, fields, 0.01, 10, samples, np.array([1.0, 2.0, 3.0, 4.0])
@@ -89,7 +93,11 @@ class NativeBfsV77Tests(unittest.TestCase):
 
     def test_pressure_metrics_diagnostic_not_qualification(self):
         row = [
-            dict(patch="downstream_wall", x_over_h=float(x), cp_owner_proxy_shifted=0.0)
+            {
+                "patch": "downstream_wall",
+                "x_over_h": float(x),
+                "cp_owner_proxy_shifted": 0.0,
+            }
             for x in (3, 5, 7, 9)
         ]
         metrics = compare_metrics(row, [])

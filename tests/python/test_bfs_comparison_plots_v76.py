@@ -16,23 +16,23 @@ spec.loader.exec_module(module)
 
 
 def row(**kwargs):
-    values = dict(
-        iteration=23,
-        retry=8,
-        cycle=2,
-        cell=0,
-        equation="k",
-        trace_selected=0,
-        committed=0,
-        convection_delta=0.01,
-        diffusion_delta=-0.04,
-        production_delta=0.03,
-        destruction_delta=-0.02,
-        cross_delta=0.01,
-        terms_delta_sum=-0.01,
-        raw_delta=-0.01,
-        closure_error=0.0,
-    )
+    values = {
+        "iteration": 23,
+        "retry": 8,
+        "cycle": 2,
+        "cell": 0,
+        "equation": "k",
+        "trace_selected": 0,
+        "committed": 0,
+        "convection_delta": 0.01,
+        "diffusion_delta": -0.04,
+        "production_delta": 0.03,
+        "destruction_delta": -0.02,
+        "cross_delta": 0.01,
+        "terms_delta_sum": -0.01,
+        "raw_delta": -0.01,
+        "closure_error": 0.0,
+    }
     values.update(kwargs)
     return "BFS_SST_BUDGET_V75 " + " ".join(f"{k}={v}" for k, v in values.items())
 

@@ -164,21 +164,21 @@ def analyze(
                 )
             if merit > global_merit * (1 + 1e-9) + 1e-13:
                 raise ValueError("physical momentum larger than reported global merit")
-            audited[iteration] = dict(
-                merit=global_merit,
-                U=merit,
-                dominant_component=selected["component"],
-                dominant_cell=selected["cell"],
-                original_signed=selected["original_signed"],
-                compensated_signed=selected["compensated_signed"],
-                rhs_relative=selected["rhs_relative"],
-                pressure_source_integral=selected["pressure_source_integral"],
-                body_source_integral=selected["body_source_integral"],
-                rhs=selected["rhs"],
-                nu_t=selected["nu_t"],
-                k=selected["k"],
-                omega=selected["omega"],
-            )
+            audited[iteration] = {
+                "merit": global_merit,
+                "U": merit,
+                "dominant_component": selected["component"],
+                "dominant_cell": selected["cell"],
+                "original_signed": selected["original_signed"],
+                "compensated_signed": selected["compensated_signed"],
+                "rhs_relative": selected["rhs_relative"],
+                "pressure_source_integral": selected["pressure_source_integral"],
+                "body_source_integral": selected["body_source_integral"],
+                "rhs": selected["rhs"],
+                "nu_t": selected["nu_t"],
+                "k": selected["k"],
+                "omega": selected["omega"],
+            }
     if len(audited) != last or sorted(audited) != list(range(1, last + 1)):
         raise ValueError("missing contiguous committed-state row evidence")
     if pending:
@@ -186,18 +186,18 @@ def analyze(
     top = Counter(
         (x["dominant_component"], x["dominant_cell"]) for x in audited.values()
     )
-    return dict(
-        status="INCOMPLETE_UNQUALIFIED",
-        physical_converged=False,
-        iterations=last,
-        committed_rows=len(audited),
-        max_absolute_compensated_fp64_difference=maximum_roundoff,
-        hotspot_counts=[
-            dict(component=c, cell=i, states=count)
+    return {
+        "status": "INCOMPLETE_UNQUALIFIED",
+        "physical_converged": False,
+        "iterations": last,
+        "committed_rows": len(audited),
+        "max_absolute_compensated_fp64_difference": maximum_roundoff,
+        "hotspot_counts": [
+            {"component": c, "cell": i, "states": count}
             for (c, i), count in top.most_common(12)
         ],
-        samples={str(n): audited[n] for n in sample if n in audited},
-    )
+        "samples": {str(n): audited[n] for n in sample if n in audited},
+    }
 
 
 def main():

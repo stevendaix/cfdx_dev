@@ -11,12 +11,12 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import math
 from pathlib import Path
 
 from qualify_bfs_schur_evidence import validate_bfs_evidence
-import itertools
 
 EXPERIMENTAL_XR_H = 6.26
 EXPERIMENTAL_XR_UNCERTAINTY = 0.10

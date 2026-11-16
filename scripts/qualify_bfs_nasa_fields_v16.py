@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import math
 import re
 from pathlib import Path
-import itertools
 
 SOURCE = "https://tmbwg.github.io/turbmodels/Backstep_validation/"
 STATIONS = (-4.0, 1.0, 4.0, 6.0, 10.0)
@@ -47,7 +47,7 @@ def read_nasa_cf(path: Path) -> list[dict]:
         x, cf, uncertainty = values
         if uncertainty <= 0:
             raise ComparisonError("invalid NASA Cf uncertainty")
-        rows.append(dict(x_h=x, cf=cf, sigma=uncertainty))
+        rows.append({"x_h": x, "cf": cf, "sigma": uncertainty})
     if len(rows) < 10 or any(b["x_h"] <= a["x_h"] for a, b in itertools.pairwise(rows)):
         raise ComparisonError("NASA Cf file truncated or nonmonotone")
     return rows
@@ -67,7 +67,7 @@ def read_nasa_cp(path: Path) -> dict:
         if zone not in groups:
             raise ComparisonError("unknown NASA Cp wall patch")
         x, shifted, original = values
-        groups[zone].append(dict(x_h=x, cp_shifted=shifted, cp_original=original))
+        groups[zone].append({"x_h": x, "cp_shifted": shifted, "cp_original": original})
     if any(len(rows) < 5 for rows in groups.values()):
         raise ComparisonError("NASA Cp file incomplete")
     return groups
@@ -92,14 +92,14 @@ def read_nasa_profiles(path: Path) -> dict[float, list[dict]]:
             raise ComparisonError("NASA profile row without zone")
         _, y, u, v, uu, vv, uv, *_ = vals
         groups[zone].append(
-            dict(
-                y_h=y,
-                u_ref=u,
-                v_ref=v,
-                uu_ref2=uu / 1000.0,
-                vv_ref2=vv / 1000.0,
-                uv_ref2=uv / 1000.0,
-            )
+            {
+                "y_h": y,
+                "u_ref": u,
+                "v_ref": v,
+                "uu_ref2": uu / 1000.0,
+                "vv_ref2": vv / 1000.0,
+                "uv_ref2": uv / 1000.0,
+            }
         )
     if any(x not in groups or len(groups[x]) < 4 for x in STATIONS):
         raise ComparisonError("NASA profile stations absent or truncated")

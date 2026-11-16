@@ -8,11 +8,11 @@ ledger certifies a physically correct solution or agreement with NASA.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import re
 from pathlib import Path
-import itertools
 
 try:
     from qualify_bfs_global_contraction_v14 import QualificationError, certify

@@ -121,7 +121,7 @@ def parse_lines(lines):
         raise ValueError("V58 no native face audits found")
     iterations = sorted({k[0] for k in groups})
     for iteration in iterations:
-        if set(k[1] for k in groups if k[0] == iteration) != set(range(3)):
+        if {k[1] for k in groups if k[0] == iteration} != set(range(3)):
             raise ValueError("V58 missing component in physical chain")
     for key, f in groups.items():
         records = detail.get(key, [])

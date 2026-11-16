@@ -128,22 +128,22 @@ def compare(
         raise ValueError("no post-trigger physical residual")
     final = b["commits"][max(b["commits"])]
     envelope = min(b["commits"][i] for i in post) if post else None
-    return dict(
-        status="INCOMPLETE_UNQUALIFIED",
-        physical_converged=False,
-        initial_A_b_x0=a["initial"],
-        first_trigger=start,
-        baseline_commits=len(a["commits"]),
-        trial_commits=len(b["commits"]),
-        common_last=last,
-        baseline_merit_common_last=a["commits"][last],
-        trial_merit_common_last=b["commits"][last],
-        trial_final_merit=final,
-        post_trigger_min_merit=envelope,
-        window_events=len(events),
-        requested_beta=requested_beta,
-        steps=steps,
-    )
+    return {
+        "status": "INCOMPLETE_UNQUALIFIED",
+        "physical_converged": False,
+        "initial_A_b_x0": a["initial"],
+        "first_trigger": start,
+        "baseline_commits": len(a["commits"]),
+        "trial_commits": len(b["commits"]),
+        "common_last": last,
+        "baseline_merit_common_last": a["commits"][last],
+        "trial_merit_common_last": b["commits"][last],
+        "trial_final_merit": final,
+        "post_trigger_min_merit": envelope,
+        "window_events": len(events),
+        "requested_beta": requested_beta,
+        "steps": steps,
+    }
 
 
 def main() -> None:

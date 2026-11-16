@@ -84,19 +84,19 @@ def parse_private_cycle(path, *, implicit=False):
                 or d.get("physical_qualified") != "0"
             ):
                 raise ValueError("false certification from an inner candidate")
-            u = dict(
-                iteration=int(d["iteration"]),
-                selected=d["selected"],
-                accepted=int(d["accepted"]),
-                legacy_picard_fallback=int(d.get("legacy_picard_fallback", "0")),
-                evaluations=int(d["evaluations"]),
-                k_before=finite(d, "k_before"),
-                k_after=finite(d, "k_after"),
-                omega_before=finite(d, "omega_before"),
-                omega_after=finite(d, "omega_after"),
-                merit_before=finite(d, "old_merit"),
-                merit_after=finite(d, "new_merit"),
-            )
+            u = {
+                "iteration": int(d["iteration"]),
+                "selected": d["selected"],
+                "accepted": int(d["accepted"]),
+                "legacy_picard_fallback": int(d.get("legacy_picard_fallback", "0")),
+                "evaluations": int(d["evaluations"]),
+                "k_before": finite(d, "k_before"),
+                "k_after": finite(d, "k_after"),
+                "omega_before": finite(d, "omega_before"),
+                "omega_after": finite(d, "omega_after"),
+                "merit_before": finite(d, "old_merit"),
+                "merit_after": finite(d, "new_merit"),
+            }
             if (
                 (u["accepted"] and not (u["merit_after"] < u["merit_before"]))
                 or (not u["accepted"] and u["selected"] != "none")

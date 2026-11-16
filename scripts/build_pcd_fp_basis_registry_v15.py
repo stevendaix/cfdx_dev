@@ -62,13 +62,13 @@ def certify_and_encode(matrix, *, rank_rtol=1e-12, min_gap=1e3):
     for basis in (left, right):
         for col in range(nullity):
             content += np.asarray(basis[:, col], dtype="<f8").tobytes()
-    return content, dict(
-        hash=f"{fingerprint:016x}",
-        modes=nullity,
-        spectral_gap=gap,
-        left_defect=left_error,
-        right_defect=right_error,
-    )
+    return content, {
+        "hash": f"{fingerprint:016x}",
+        "modes": nullity,
+        "spectral_gap": gap,
+        "left_defect": left_error,
+        "right_defect": right_error,
+    }
 
 
 def build_registry(captures: list[Path], directory: Path, max_rows: int = 1024) -> dict:

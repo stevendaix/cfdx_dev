@@ -36,7 +36,7 @@ def _load(path: Path) -> dict:
     # Every expected owner, face, and affected matrix row must be declared.
     scope = data.get("scope")
     if not isinstance(scope, dict) or set(scope) != set(_GROUPS):
-        raise ValueError("missing explicit wall-oracle scope")  # noqa: TRY004
+        raise ValueError("missing explicit wall-oracle scope")
     for group in _GROUPS:
         ids = scope[group]
         if (

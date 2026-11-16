@@ -19,24 +19,37 @@ spec.loader.exec_module(mod)
 def pair():
     h = hashlib.sha256(b"same geometry").hexdigest()
     k = hashlib.sha256(b"same U p k omega nu_t state").hexdigest()
-    ref = dict(
-        schema="CFDX_OPENFOAM_OMEGA_V30",
-        mesh_sha256=h,
-        state_sha256=k,
-        provenance=dict(
-            engine="OpenFOAM Foundation", version="11", native_export=False
-        ),
-        scope={"cells": [357], "faces": [10], "matrix_rows": [357]},
-        cells=[dict(cell=357, omega=7.0, G=2.0, nut=0.3, corner_faces=2)],
-        faces=[
-            dict(
-                face=10, owner=357, coverage=1.0, weight=1.0, omega=7.0, G=2.0, nut=0.3
-            )
+    ref = {
+        "schema": "CFDX_OPENFOAM_OMEGA_V30",
+        "mesh_sha256": h,
+        "state_sha256": k,
+        "provenance": {
+            "engine": "OpenFOAM Foundation",
+            "version": "11",
+            "native_export": False,
+        },
+        "scope": {"cells": [357], "faces": [10], "matrix_rows": [357]},
+        "cells": [{"cell": 357, "omega": 7.0, "G": 2.0, "nut": 0.3, "corner_faces": 2}],
+        "faces": [
+            {
+                "face": 10,
+                "owner": 357,
+                "coverage": 1.0,
+                "weight": 1.0,
+                "omega": 7.0,
+                "G": 2.0,
+                "nut": 0.3,
+            }
         ],
-        matrix_rows=[
-            dict(row=357, diagonal=4.0, rhs=28.0, entries=[[357, 4.0], [363, 0.0]])
+        "matrix_rows": [
+            {
+                "row": 357,
+                "diagonal": 4.0,
+                "rhs": 28.0,
+                "entries": [[357, 4.0], [363, 0.0]],
+            }
         ],
-    )
+    }
     got = copy.deepcopy(ref)
     got["provenance"] = {"engine": "CFDX", "version": "V30"}
     return ref, got

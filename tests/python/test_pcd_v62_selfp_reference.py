@@ -71,10 +71,10 @@ class SelfpV62Tests(unittest.TestCase):
 
     def test_unbounded_cases_rejected(self):
         for kw in (
-            dict(max_cells=257),
-            dict(ilu_drop_tol=0.5),
-            dict(ilu_fill_factor=100),
-            dict(relative_target=0.1),
+            {"max_cells": 257},
+            {"ilu_drop_tol": 0.5},
+            {"ilu_fill_factor": 100},
+            {"relative_target": 0.1},
         ):
             with self.assertRaises(ValueError):
                 analyze(self.p, **kw)

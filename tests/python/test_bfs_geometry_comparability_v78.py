@@ -15,9 +15,13 @@ from bfs_geometry_comparability_v78 import (
 
 class TestBfsReferenceGateV78(unittest.TestCase):
     def setUp(self):
-        self.ds = dict(
-            h_m=0.0127, h_upstream=8.0, h_downstream=9.0, x_min_h=-130.0, x_max_h=50.0
-        )
+        self.ds = {
+            "h_m": 0.0127,
+            "h_upstream": 8.0,
+            "h_downstream": 9.0,
+            "x_min_h": -130.0,
+            "x_max_h": 50.0,
+        }
 
     def test_openfoam_six_block_geometry_only(self):
         v = gate_reference_geometry(self.ds)

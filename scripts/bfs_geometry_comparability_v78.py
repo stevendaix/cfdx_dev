@@ -217,7 +217,7 @@ def plot_geometry(cases, out):
     for ax, (name, key, reference) in zip(axes, entries):
         labels = [f"CFDX {c['n_cells']}" for c in cases] + ["TH03 V4 / OpenFOAM"]
         vals = [c[key] or np.nan for c in cases] + [reference]
-        bars = ax.bar(labels, vals, color=[*colors[: len(cases)], "#777777"])
+        ax.bar(labels, vals, color=[*colors[: len(cases)], "#777777"])
         ax.set_yscale("log")
         ax.set(title=name)
         ax.tick_params(axis="x", rotation=25)

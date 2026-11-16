@@ -155,14 +155,14 @@ def verify(log, historical_pilot=True):
         ):
             if d[k] != e[k]:
                 raise ValueError("k and omega do not share the same state")
-    for cycle in set(key[1] for key in groups):
+    for cycle in {key[1] for key in groups}:
         cells = {key[2] for key in groups if key[1] == cycle}
         if cells != {0, 12}:
             raise ValueError("V75 must cover both sensitive cells")
     if historical_pilot:
-        if set(key[0] for key in groups) != {23}:
+        if {key[0] for key in groups} != {23}:
             raise ValueError("V74 pilot iteration 23 missing")
-        if set(key[1] for key in groups) != {1, 2}:
+        if {key[1] for key in groups} != {1, 2}:
             raise ValueError("V74 pilot needs both cycles")
         for key, eqs in groups.items():
             chosen = eqs["k"]["trace_selected"]

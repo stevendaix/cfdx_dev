@@ -58,7 +58,9 @@ def run_one(solver: Path, case: Path, dest: Path, deadline: float, v65: bool):
         k: v
         for k, v in os.environ.items()
         if not (
-            k.startswith(("CFDX_FPHYS_", "CFDX_POST_SST_", "CFDX_BFS_", "CFDX_COUPLED_SELFP_"))
+            k.startswith(
+                ("CFDX_FPHYS_", "CFDX_POST_SST_", "CFDX_BFS_", "CFDX_COUPLED_SELFP_")
+            )
         )
     }
     if v65:
@@ -138,9 +140,7 @@ def main():
     if (
         results["v47_v65"] == 124 or not result["complete_40_iteration_run"]
     ) and not args.allow_partial:
-        raise RuntimeError(
-            "V65 long campaign incomplete: see audit.json, never a PASS"
-        )
+        raise RuntimeError("V65 long campaign incomplete: see audit.json, never a PASS")
     print(
         "V65_COMPARISON_RECORDED steps=", result["iterations_committed"], " qualified=0"
     )

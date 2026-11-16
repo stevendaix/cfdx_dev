@@ -19,19 +19,19 @@ SPEC.loader.exec_module(mod)
 
 
 def row(method, capture, residual=1e-9):
-    return dict(
-        method=method,
-        capture=str(capture),
-        rows=3,
-        nnz=7,
-        setup_ok=True,
-        first_status=0,
-        first_true_relative_rhs=residual,
-        best_true_relative_rhs=residual,
-        second_attempted=False,
-        second_improved=False,
-        second_status=0,
-    )
+    return {
+        "method": method,
+        "capture": str(capture),
+        "rows": 3,
+        "nnz": 7,
+        "setup_ok": True,
+        "first_status": 0,
+        "first_true_relative_rhs": residual,
+        "best_true_relative_rhs": residual,
+        "second_attempted": False,
+        "second_improved": False,
+        "second_status": 0,
+    }
 
 
 def test_missing_captures_rejected(tmp_path):

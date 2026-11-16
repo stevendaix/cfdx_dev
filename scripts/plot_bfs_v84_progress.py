@@ -19,11 +19,12 @@ import matplotlib
 import numpy as np
 
 matplotlib.use("Agg")
+import itertools
+
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from PIL import Image
-import itertools
 
 V83_SCRIPT = Path(__file__).resolve().parent / "plot_bfs_v83_pyvista.py"
 spec = importlib.util.spec_from_file_location("cfdx_v83_vtk_pyvista", V83_SCRIPT)
@@ -99,7 +100,7 @@ def make_figures(log, cases, h5, out, backend="auto"):
         else:
             backend = "pyvista"
     if backend == "pyvista":
-        import pyvista
+        pass
     from vtk.util.numpy_support import numpy_to_vtk
 
     states = []

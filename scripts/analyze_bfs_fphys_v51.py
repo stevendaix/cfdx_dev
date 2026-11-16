@@ -89,15 +89,15 @@ def audit(observed, baseline, min_commits=3, require_cross=False):
                 raise ValueError("V51 invalid directional derivative")
         if rec.get("qualified") != "0":
             raise ValueError("false V51 directional qualification")
-    return dict(
-        status="DIAGNOSTIC_ONLY_NOT_PHYSICALLY_QUALIFIED",
-        qualified=False,
-        committed=len(obs_commits),
-        attempted_candidates=len(samples),
-        parity_samples=len(parity),
-        cross_columns=len(cross),
-        max_rhie_chow_defect=max(number(s, "flux_defect") for s in samples),
-    )
+    return {
+        "status": "DIAGNOSTIC_ONLY_NOT_PHYSICALLY_QUALIFIED",
+        "qualified": False,
+        "committed": len(obs_commits),
+        "attempted_candidates": len(samples),
+        "parity_samples": len(parity),
+        "cross_columns": len(cross),
+        "max_rhie_chow_defect": max(number(s, "flux_defect") for s in samples),
+    }
 
 
 def main():

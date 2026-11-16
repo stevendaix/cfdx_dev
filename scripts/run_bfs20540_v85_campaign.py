@@ -7,13 +7,13 @@ The operator's maximum outer iteration count is also capped in the case H5.
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import os
 import re
 import subprocess
 import time
 from pathlib import Path
-import itertools
 
 
 def sha(path):

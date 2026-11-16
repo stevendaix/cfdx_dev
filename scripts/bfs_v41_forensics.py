@@ -102,7 +102,7 @@ def main() -> None:
     )
     p.add_argument("--output", type=pathlib.Path, required=True)
     a = p.parse_args()
-    if len(set(x[0] for x in a.log)) != len(a.log):
+    if len({x[0] for x in a.log}) != len(a.log):
         p.error("duplicate run label")
     result = audit({name: pathlib.Path(path) for name, path in a.log})
     a.output.parent.mkdir(parents=True, exist_ok=True)

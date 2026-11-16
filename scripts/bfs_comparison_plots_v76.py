@@ -16,8 +16,9 @@ import matplotlib
 import numpy as np
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import itertools
+
+import matplotlib.pyplot as plt
 
 # Public TMR numerical rows; source URLs in V76 report.
 CF_EXP = np.array(
@@ -627,9 +628,11 @@ def parse_budgets(log):
             or abs(reported_closure - (signed_sum - raw)) > eps
         ):
             raise ValueError("V75 budget certificate inconsistent")
-        if "raw_before" in d and "raw_after" in d and abs(
-            (float(d["raw_after"]) - float(d["raw_before"])) - raw
-        ) > eps:
+        if (
+            "raw_before" in d
+            and "raw_after" in d
+            and abs((float(d["raw_after"]) - float(d["raw_before"])) - raw) > eps
+        ):
             raise ValueError("V75 reassembled residual delta inconsistent")
         entries.append(
             (

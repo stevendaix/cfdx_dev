@@ -79,21 +79,21 @@ def get_mesh_and_case(path):
         )
         u_ref = float(inlet["velocity_magnitude"])
         require(rho > 0 and mu > 0 and u_ref > 0, "invalid fluid normalization")
-        return dict(
-            config=cfg,
-            points=coords,
-            faceoffset=faceoffset,
-            vertices=verts,
-            owners=owners,
-            patch=patch,
-            ncell=ncell,
-            height=h,
-            cell_faces=cell_faces,
-            cell_offsets=cell_offsets,
-            rho=rho,
-            mu=mu,
-            u_ref=u_ref,
-        )
+        return {
+            "config": cfg,
+            "points": coords,
+            "faceoffset": faceoffset,
+            "vertices": verts,
+            "owners": owners,
+            "patch": patch,
+            "ncell": ncell,
+            "height": h,
+            "cell_faces": cell_faces,
+            "cell_offsets": cell_offsets,
+            "rho": rho,
+            "mu": mu,
+            "u_ref": u_ref,
+        }
 
 
 def audited_cell_centers(grid, mesh):
@@ -193,18 +193,18 @@ def wall_faces(mesh, xyz, fields, iteration):
             # rho cancels in Cf = mu du/dn / (0.5 rho Uref^2).
             cf_proxy = (mesh["mu"] * float(fields["u_x"][owner]) / d) / q
             row.append(
-                dict(
-                    patch=patch,
-                    face=fid,
-                    owner=owner,
-                    x_over_h=cx,
-                    y=float(fc[1]),
-                    u_x_owner=float(fields["u_x"][owner]),
-                    p_owner=float(fields["p"][owner]),
-                    d_normal=d,
-                    cf_one_point_viscous_proxy=cf_proxy,
-                    iteration=iteration,
-                )
+                {
+                    "patch": patch,
+                    "face": fid,
+                    "owner": owner,
+                    "x_over_h": cx,
+                    "y": float(fc[1]),
+                    "u_x_owner": float(fields["u_x"][owner]),
+                    "p_owner": float(fields["p"][owner]),
+                    "d_normal": d,
+                    "cf_one_point_viscous_proxy": cf_proxy,
+                    "iteration": iteration,
+                }
             )
     downstream = sorted(
         (a for a in row if a["patch"] == "downstream_wall"), key=lambda a: a["x_over_h"]
@@ -268,14 +268,14 @@ def interpolated_profiles(xyz, fields, h, u_ref, samples, uv_proxy):
         est_u = float(u_interp(np.array([[x, y]]))[0])
         est_uv = float(uv_interp(np.array([[x, y]]))[0])
         rows.append(
-            dict(
-                x_over_h=x,
-                y_over_h=y,
-                exp_u_u_ref=u,
-                cfdx_u_interp=est_u if math.isfinite(est_u) else None,
-                exp_uv_times1000=uv,
-                cfdx_uv_wls_proxy=est_uv if math.isfinite(est_uv) else None,
-            )
+            {
+                "x_over_h": x,
+                "y_over_h": y,
+                "exp_u_u_ref": u,
+                "cfdx_u_interp": est_u if math.isfinite(est_u) else None,
+                "exp_uv_times1000": uv,
+                "cfdx_uv_wls_proxy": est_uv if math.isfinite(est_uv) else None,
+            }
         )
     return rows
 

@@ -1,10 +1,10 @@
 """Fail-closed V87 pre-SST and post-SST audit. Not a convergence certificate."""
 
 import argparse
+import itertools
 import json
 import re
 from pathlib import Path
-import itertools
 
 
 def parse_line(line):

@@ -110,7 +110,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     groups = {
         name: [v for p, f, v in samples if p == name]
-        for name in sorted(set(p for p, _, _ in samples))
+        for name in sorted({p for p, _, _ in samples})
     }
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.6))
     names = ["y+<=1", "1<y+<30", "30<=y+<=300", "y+>300"]
