@@ -77,6 +77,38 @@ inline void validate_native_flow_field_overrides(const cfdx::io::BoundarySpec& b
     }
 }
 
+// A mesh patch taxonomy is descriptive and can be UNKNOWN for generic
+// imported patches. When the case carries an explicit physical BC, promote
+// only UNKNOWN mesh patch types to the corresponding topological category.
+// Existing non-UNKNOWN classifications are never overwritten; contradictions
+// remain fail-closed in validate_production_incompressible_boundary().
+inline void resolve_production_mesh_patch_types(
+    cfdx::core::Mesh& mesh, const cfdx::io::CaseSetup& setup)
+{
+    using cfdx::core::PatchType;
+    using cfdx::io::BCType;
+
+    for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
+        auto& patch = mesh.boundary().patch(i);
+        if (patch.type != PatchType::UNKNOWN) continue;
+        const auto* bc = setup.find_boundary(patch.name);
+        if (bc == nullptr) continue;
+        switch (bc->type) {
+        case BCType::WALL: patch.type = PatchType::WALL; break;
+        case BCType::INLET: patch.type = PatchType::INLET; break;
+        case BCType::OUTLET:
+        case BCType::PRESSURE_OUTLET: patch.type = PatchType::OUTLET; break;
+        case BCType::SYMMETRY: patch.type = PatchType::SYMMETRY; break;
+        case BCType::EMPTY: patch.type = PatchType::EMPTY; break;
+        case BCType::PERIODIC:
+        case BCType::INTERFACE:
+        case BCType::INTERNAL:
+        case BCType::UNKNOWN:
+        default: break;
+        }
+    }
+}
+
 inline void validate_production_incompressible_boundary(
     const cfdx::io::BoundarySpec& bc, cfdx::core::PatchType mesh_patch_type)
 {
@@ -125,9 +157,12 @@ inline void validate_production_incompressible_boundary(
             bc.source_type_name == "mass-flow-inlet" ||
             bc.source_type_name == "pressure-far-field")
             reject("imported inlet uses a physical operator not implemented by the incompressible production adapter");
-        if (bc.value_type != BCValueType::FIXED)
-            reject("velocity inlet requires FIXED velocity; pressure/debit inlet needs a dedicated operator");
-        return;
+        if (bc.value_type == BCValueType::FIXED) return;
+        // A zero-gradient inlet is valid only when no velocity is prescribed.
+        // This supports quiescent/open-inlet production cases without
+        // pretending that a pressure/debit inlet has a velocity operator.
+        if (bc.value_type == BCValueType::ZERO_GRADIENT && zero_velocity) return;
+        reject("inlet requires FIXED velocity or ZERO_GRADIENT with no prescribed velocity; pressure/debit inlet needs a dedicated operator");
     case BCType::PRESSURE_OUTLET:
         if (mesh_patch_type != PatchType::OUTLET)
             reject("PRESSURE_OUTLET requires an OUTLET mesh patch");
