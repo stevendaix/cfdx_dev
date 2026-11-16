@@ -475,7 +475,9 @@ def make_case_setup(
         raise ValueError("SST transport tolerance must be finite and positive")
     if not isinstance(sst_max_k_floor_events, int) or sst_max_k_floor_events < 0:
         raise ValueError("SST max k-floor events must be a non-negative integer")
-    if not (math.isfinite(sst_simple_relaxation) and 0.0 < sst_simple_relaxation <= 1.0):
+    if not (
+        math.isfinite(sst_simple_relaxation) and 0.0 < sst_simple_relaxation <= 1.0
+    ):
         raise ValueError("SST simple relaxation must be in (0, 1]")
     if v19_full_pressure_flux_step and not (
         v18_sparse_flux_pressure_jacobian or v18_full_flux_pressure_oracle
@@ -613,12 +615,8 @@ def make_case_setup(
     setup.numerics.raw_settings["sst_transport_tolerance"] = str(
         sst_transport_tolerance
     )
-    setup.numerics.raw_settings["sst_max_k_floor_events"] = str(
-        sst_max_k_floor_events
-    )
-    setup.numerics.raw_settings["sst_simple_relaxation"] = str(
-        sst_simple_relaxation
-    )
+    setup.numerics.raw_settings["sst_max_k_floor_events"] = str(sst_max_k_floor_events)
+    setup.numerics.raw_settings["sst_simple_relaxation"] = str(sst_simple_relaxation)
     setup.numerics.raw_settings["sst_scale_aware_convergence"] = str(
         bool(sst_relative_gate)
     ).lower()
