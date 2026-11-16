@@ -325,12 +325,9 @@ def main(argv=None):
     args.out_dir.mkdir(parents=True, exist_ok=True)
     backend = args.backend
     if backend == "auto":
-        try:
-            import pyvista
-        except ImportError:
-            backend = "vtk"
-        else:
-            backend = "pyvista"
+        import importlib.util
+
+        backend = "pyvista" if importlib.util.find_spec("pyvista") else "vtk"
     if backend == "pyvista":
         import importlib.util
 
