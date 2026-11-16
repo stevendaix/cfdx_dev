@@ -377,7 +377,7 @@ inline ScalarEquation assemble_thermal_conduction(
     }
 
     ScalarEquation eq{
-        cfdx::core::SparseMatrix(nc, nc), cfdx::core::Vector(nc, 0.0), {}, 0.0};
+        cfdx::core::SparseMatrix(nc, nc), cfdx::core::Vector(nc, 0.0), {}, false, 0.0};
     eq.diagonal.assign(nc, 0.0);
     for (std::size_t c = 0; c < nc; ++c) {
         rhs[c] += zones.cell_power[c] * geometry.cell_volumes[c];
