@@ -24,7 +24,7 @@ import pytest
 #   * upstream_open/downstream_open/front/back: zero-gradient velocity
 #     (both axial ends are open zero-gradient boundaries; front/back are EMPTY)
 #   * bottom/top: no-slip fixed walls, u = 0
-#   * pressure zero-gradient everywhere
+#   * pressure zero-gradient at the upstream open boundary and fixed p=0 at the downstream outlet, matching N9 open_channel_pressure_bc()
 #   * body_force = (1, 0, 0) per unit mass, rho = 1.0, mu = 0.1 -> nu = 0.1
 #   * analytic solution u(y) = G*y*(1-y)/(2*nu), same L2 <= 5e-3 gate as the
 #     N9 physical matrix.
@@ -215,8 +215,9 @@ def _case_setup_json() -> str:
         ),
         BoundarySpec(
             patch_name="downstream_open",
-            type=BCType.OUTLET,
-            value_type=BCValueType.ZERO_GRADIENT,
+            type=BCType.PRESSURE_OUTLET,
+            value_type=BCValueType.OUTLET_PRESSURE,
+            pressure=0.0,
         ),
         BoundarySpec(
             patch_name="bottom",
@@ -369,7 +370,7 @@ def test_n9_poiseuille_body_force_production_path(tmp_path: Path) -> None:
         }
         assert axial_boundaries == {
             "upstream_open": ("outlet", "zero_gradient"),
-            "downstream_open": ("outlet", "zero_gradient"),
+            "downstream_open": ("pressure_outlet", "outlet_pressure"),
         }
         entries = {
             (entry["family"], entry["configuration_key"])
