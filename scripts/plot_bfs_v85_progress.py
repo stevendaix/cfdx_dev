@@ -99,7 +99,10 @@ def make_figures(log, cases, h5, out, backend="auto"):
         else:
             backend = "pyvista"
     if backend == "pyvista":
-        import pyvista
+        import importlib.util
+
+        if importlib.util.find_spec("pyvista") is None:
+            raise ImportError("the pyvista backend requires pyvista")
     from vtk.util.numpy_support import numpy_to_vtk
 
     states = []
