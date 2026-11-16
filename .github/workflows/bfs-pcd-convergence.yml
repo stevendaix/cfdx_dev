@@ -35,10 +35,19 @@ jobs:
       - name: Checkout exact PR revision
         uses: actions/checkout@v7
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
       - name: Install build and Python dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev python3-numpy python3-h5py
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev
+          python -m pip install --upgrade pip
+          python -m pip install -e . numpy
 
       - name: Configure production solver
         run: |
