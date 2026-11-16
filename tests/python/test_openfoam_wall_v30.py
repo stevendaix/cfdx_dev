@@ -143,6 +143,7 @@ def test_claim_of_native_openfoam_without_run_log_is_insufficient():
         can.write_text(json.dumps(b))
         run = subprocess.run(
             [sys.executable, str(SCRIPT), str(ref), str(can)],
+            check=False,
             text=True,
             capture_output=True,
         )
