@@ -53,7 +53,7 @@ def _load(path: Path) -> dict:
         seen = set()
         for entry in entries:
             if not isinstance(entry, dict) or not isinstance(entry.get(id_name), int):
-                raise ValueError(f"malformed {group} identifier")
+                raise TypeError(f"malformed {group} identifier")
             key = entry[id_name]
             if key in seen or key < 0:
                 raise ValueError(f"duplicated/negative {group} identifier")
