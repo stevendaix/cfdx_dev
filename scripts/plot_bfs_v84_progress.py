@@ -93,14 +93,9 @@ def make_figures(log, cases, h5, out, backend="auto"):
     if not vtu_files:
         raise RuntimeError("No VTU matches a native COMMITTED record")
     if backend == "auto":
-        try:
-            import pyvista
-        except ImportError:
-            backend = "vtk"
-        else:
-            backend = "pyvista"
-    if backend == "pyvista":
-        pass
+        import importlib.util
+
+        backend = "pyvista" if importlib.util.find_spec("pyvista") else "vtk"
     from vtk.util.numpy_support import numpy_to_vtk
 
     states = []
