@@ -332,12 +332,12 @@ def main(argv=None):
         else:
             backend = "pyvista"
     if backend == "pyvista":
-        try:
-            import pyvista
-        except ImportError as exc:
+        import importlib.util
+
+        if importlib.util.find_spec("pyvista") is None:
             raise SystemExit(
                 "PyVista absent: pip install pyvista ; ou utiliser --backend vtk"
-            ) from exc
+            )
     mesh, arr = load_vtu(args.vtu, args.height, args.inlet_speed)
     if mesh.GetNumberOfCells() != 20540:
         raise SystemExit(
