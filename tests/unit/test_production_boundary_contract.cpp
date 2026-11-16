@@ -72,6 +72,22 @@ int main() {
         bc.source_type_name="mass-flow-inlet";
         EXPECT_THROW(validate_production_incompressible_boundary(bc,PatchType::INLET),std::invalid_argument);
     });
+    run_case("fully_developed_body_force_channel_uses_open_axial_boundaries", [] {
+        BoundarySpec upstream;
+        upstream.patch_name="upstream_open";
+        upstream.type=BCType::OUTLET;
+        upstream.value_type=BCValueType::ZERO_GRADIENT;
+        validate_production_incompressible_boundary(upstream,PatchType::OUTLET);
+        BoundarySpec downstream;
+        downstream.patch_name="downstream_open";
+        downstream.type=BCType::OUTLET;
+        downstream.value_type=BCValueType::ZERO_GRADIENT;
+        validate_production_incompressible_boundary(downstream,PatchType::OUTLET);
+        upstream.type=BCType::INLET;
+        EXPECT_THROW(validate_production_incompressible_boundary(upstream,PatchType::INLET),std::invalid_argument);
+        upstream.type=BCType::OUTLET;
+        EXPECT_THROW(validate_production_incompressible_boundary(upstream,PatchType::INLET),std::invalid_argument);
+    });
     run_case("empty_and_outflow_are_explicit", [] {
         BoundarySpec bc;
         bc.patch_name="front";

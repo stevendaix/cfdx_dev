@@ -75,7 +75,7 @@ def test_n9_coupled_schur_uses_case_selection_and_production_resolution(
                 str(output_dir),
                 "--iterations",
                 "1",
-                "--validate-numerics-only",
+                "--preflight-numerics",
             ],
             capture_output=True,
             text=True,
@@ -85,8 +85,8 @@ def test_n9_coupled_schur_uses_case_selection_and_production_resolution(
         diagnostics = completed.stdout + completed.stderr
 
         # This is a method-resolution contract, not a flow or physical
-        # qualification. The dedicated preflight validates production registry
-        # dispatch without pretending SU2 farfield semantics are implemented.
+        # qualification. The dedicated numerical preflight validates production method resolution
+        # without entering the flow solver or reinterpreting SU2 farfield physics.
         assert completed.returncode == 0, diagnostics[-12000:]
         assert "Resolved numerical selections:" in diagnostics
         assert "scheme[pressure_velocity]=pressure_velocity.coupled" in diagnostics
