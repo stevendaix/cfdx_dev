@@ -443,6 +443,7 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
                 case SSTScalarBoundaryType::FIXED_VALUE: scalar_obj.object["type"] = "fixed_value"; break;
                 case SSTScalarBoundaryType::ZERO_GRADIENT: scalar_obj.object["type"] = "zero_gradient"; break;
                 case SSTScalarBoundaryType::WALL_K_ZERO: scalar_obj.object["type"] = "wall_k_zero"; break;
+                case SSTScalarBoundaryType::WALL_KQ_R: scalar_obj.object["type"] = "wall_kq_r"; break;
                 case SSTScalarBoundaryType::WALL_OMEGA_SST: scalar_obj.object["type"] = "wall_omega_sst"; break;
                 default: scalar_obj.object["type"] = "unknown"; break;
             }
@@ -715,6 +716,7 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
                     if (type == "fixed_value") scalar_bc.type = SSTScalarBoundaryType::FIXED_VALUE;
                     else if (type == "zero_gradient") scalar_bc.type = SSTScalarBoundaryType::ZERO_GRADIENT;
                     else if (type == "wall_k_zero") scalar_bc.type = SSTScalarBoundaryType::WALL_K_ZERO;
+                    else if (type == "wall_kq_r") scalar_bc.type = SSTScalarBoundaryType::WALL_KQ_R;
                     else if (type == "wall_omega_sst") scalar_bc.type = SSTScalarBoundaryType::WALL_OMEGA_SST;
                     else scalar_bc.type = SSTScalarBoundaryType::UNKNOWN;
                     scalar_bc.value = json_get_number(scalar_v, "value");

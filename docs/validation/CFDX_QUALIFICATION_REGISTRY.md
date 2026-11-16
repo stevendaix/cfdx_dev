@@ -1,0 +1,145 @@
+# QUALIFICATION_REGISTRY — Tableau de suivi exigences → preuves
+
+> **Tableau de bord du Plan Directeur de Qualification et d'Audit (constitution technique, 2026-10-12).**
+> Ce document est **synthétique et non autoritaire** (gouvernance §16.2–§16.3) : les sources de vérité machine-readable restent `docs/validation/CFDX_QUALIFICATION_REGISTRY.json’ (statut des cas) et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json’ (traçabilité exigences #461). Toute promotion doit modifier le registre JSON **et** ce tableau dans la même PR (gouvernance §16.7).
+
+Légende — Implémenté / Test / Oracle / SHA : ✓ = prouvé, ~ = partiel, ✗ = absent. Un SHA validé n'est compté que s'il désigne un commit **mergé** sur lequel la campagne a réellement été exécutée.
+
+## Phase 1 — Noyau incompressible (verrouillage avant toute multiphysique)
+
+| Exigence | Fiche méthode | Implémenté | Test exécutable | Oracle quantitatif | SHA validé | Gap principal |
+|---|---|---|---|---|---|---|
+| N9 Couplage P-V (campagne physique complète : Couette, Poiseuille, Ghia Re=100, skewed ; 6 modèles Schur ; vrais résidus ; chemin `.cfdx.h5’ complet) | [04](docs/audits/04-couplage-pression-vitesse.md), [03](docs/audits/03-interpolation-rhie-chow.md) | ~ | ✓ (négatifs N9.7 #851 ; **pilote de campagne scripts/n9_physical_campaign.py** + workflow n9-campaign, label validation-total ; **campagnes exécutées VERTES sur les HEAD exacts `9c545b7d` puis `a2ccba2d`** — runs `n9-campaign #7` / 38281124845 (28 min 45 s) puis `#8` / 38295285582 (41 min 43 s, 2026-10-12), artifacts `n9-campaign-855-49390a4e` et `n9-campaign-855-fc933545`) | ~ (systèmes synthétiques ; Ghia exécuté sur le HEAD exact via `test_ghia_cavity` dans la campagne verte) | ✓ `a2ccba2d` — mergé sur `master` via `f3e53e45` (2026-10-12) ; campagnes #7/#8 exécutées sur ses merge refs exacts | Pilote de campagne N9 fourni (9 tests requis + équivalence MPI requise quand le build l’expose + pytest body-force opt-in ; rapport JSON exact-HEAD, gates inchangés) : **campagne exécutée VERTE sur HEAD exact** (rapports `n9_physical_campaign.json` dans les artifacts des runs #7/#8 (rétention 30 jours, digest #8 : sha256:f452708c…)) ; équivalence COUPLED/ségrégé à documenter — **#601 FERMÉ (2026-10-12) : campagne verte sur HEAD exact mergé + JSON fail-closed dans l’artifact (revue humaine possible via téléchargement)** |
+| N8 Schur/AMG/PCD (politique d’acceptation quantitative + MPI) | [05](docs/audits/05-schur-preconditionnement.md) | ✓ (6 modèles) | ✓ (subset Schur 19/19 au head exact `458df988` — `test_n9_common_schur_qualification` #175 Passed — et CI standing 9/9 au head `96de4e13` de #856) | ✓ (oracle exact-Schur indépendant ; vrais résidus FP64 recalculés ; enveloppe d’action-error mesurée sur population CFD représentative — campagne NACA 12 sections agrégées) | ✓ `6e94bcd3` (squash #856, 2026-10-12) | **ACCEPTÉ — #481 FERMÉ (2026-10-12)** : décision d’acceptation DoD 1–9 sur #481 (commentaire 6130630120). Limites qualifiées : AMG/SA/Coupled Block Schur/PCD/MGR **serial-only**, aucun claim MPI/GPU ; enveloppe = evidence (pas de seuil universel, pas de promotion automatique de sélection) |
+| N11 Conservation/bornitude (frontières + MPI + télémetrie clipping) | [01](docs/audits/01-diffusion-laplacien.md) | ~ | ✓ (Poisson MPI #814) | ~ | ✓ (Poisson) | Bilans QDM/énergie production ; signes/orientations ; bornitude par variable avant clipping — **#480 reste ouvert** |
+| N10 Maillages difficiles (non ortho, skew, aspect ratio) | [01](docs/audits/01-diffusion-laplacien.md), [06](docs/audits/06-gradients-reconstruction.md) | ~ | ✓ (Poisson polyédrique #852) | ✓ (Kuhn ; L2 pondérée + vrai résidu ≤ 1e-8) | ✓ (Kuhn) | Familles skew/non-ortho/high-aspect non couvertes — **#639 FERMÉ (2026-10-12)** : sous-cas N10.15–N10.18 mergés (dernier N10.18/#852) ; suivi des familles restantes à ouvrir |
+| M0 `.case_hash’/`.geometry_hash’ dans le schéma HDF5 | [08](docs/audits/08-codes-de-reference.md) | ~ (écrits : Python SHA-256 dans case_io.py, C++ FNV-1a dans case_hdf5_io.cpp, rejet fail-closed à la lecture) | ~ (unitaires ; round-trip end-to-end manquant) | ✗ | ✗ | Évidence round-trip/end-to-end + cohérence des deux systèmes de hash (SHA-256 Python vs FNV-1a C++) à documenter : le lecteur C++ accepte à ce jour les fichiers Python sans hashes FNV — décision à prendre |
+
+## Phase 2 — Dette et PR en attente (audits du 2026-10-12)
+
+| PR | Constat d'audit | Décision exigée |
+|---|---|---|
+| #828 (probes CSV) | ✓ Durcit les gardes (rejet itérations dupliquées, métadonnées partielles, monotonie stricte) ; tolérances intactes (1e-12/1e-8) ; tests de régression ajoutés. Scope honnête (pas de qualification solveur revendiquée). | **Fusionner si CI vert** sur le HEAD exact — *statut 2026-10-12 : CI rouge au head `ca2fa45e` (« Fast regression and validation tests » ✗) → pas de merge, PR laissée ouverte* |
+| #571 (MMS transient) | ⚠️ Change T=0.05→0.02 « pour réduire le runtime CI » — en tension directe avec la règle §5 de `docs/development-and-validation-rules.md’ (« ne pas réduire l'horizon physique uniquement pour économiser du temps CI »). Aucune tolérance changée. | **Ne pas fusionner en l'état** : exiger la démonstration que seuls les subtests d'ordre spatial sont affectés et que les mêmes gates passent à T=0.05 ET T=0.02 dans un run documenté ; sinon fermer — *traité : **#571 FERMÉ sans fusion** (2026-10-12, verdict conforme, commentaires 6131902197/6132048276)* |
+| #511 (gradient N2) | ✓ Renforce réellement les gates (ordre ≥ 1.8, vrais ratios 6/4 et 8/6, rejet de stencil déficient, diagnostics) ; ⚠️ branche en retard sur master ; seuillage pivot vs estimateur de rang SVD/QR assumé différé. | **Rebaser sur master, re-auditer contre la fiche 06, relancer la campagne exact-HEAD** — *traité : **#511 FERMÉ (2026-10-12), supersédée par #863** (rebase sémantique après #855 ; CI rouge au head `608e9848`, diagnostic différé, merge humain)* |
+
+## Phase 3 — Multiphysique (aucune entrée promue avant verrouillage Phase 1)
+
+| Domaine | Fiche méthode | Benchmark exigé | Statut |
+|---|---|---|---|
+| Turbulence RANS + lois de paroi | [09](docs/audits/09-turbulence-rans.md) | canal turbulent, couche limite plate (`TUR-CHANNEL’, `TUR-FLATPLATE’) | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #861) ; audit du code contre la fiche requis avant toute promotion |
+| Thermique/CHT multi-régions | [10](docs/audits/10-thermique-cht.md) | bilans d'énergie à l'interface fluide–solide | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #861) ; audit du code contre la fiche requis avant toute promotion |
+| Conduction solide multi-matériaux — T1 (zones thermiques, puissance volumique, résistances de contact) | [13](docs/audits/13-conduction-solide-multimateriaux.md) | mur composite exact vs réseau de résistances ; identité de flux cumulé au plan médian (amont adiabatique) à la précision machine ; fermeture énergétique normalisée par le flux brut ; série de raffinement 8/16/32 avec ordre observé borné | **READY (2026-10-13, PR #887)** — noyau `thermal_zones.h` + app de production `cfdx_thermal_solver` + `test_thermal_zones_vv` en CI ; cas registre `T1-SOLID-COND` **non PASS** : campagne d'exécution réelle sur HEAD exact mergé à la charge du propriétaire (gouvernance #118) |
+| Énergie fluide en écoulement gelé — T2 (couplage fluide→énergie gelé, puissance volumique, parois chauffées, flux imposé) | [14](docs/audits/14-energie-fluide-production.md) | oracle discret exact (Thomas) sur le flux massique autoritaire du solveur convergé ; fermeture énergétique indépendante **bloquante** en trois normalisations (global et local par l'échelle brute, et par cellule par l'échelle brute propre à chaque cellule ; < 1e-12) ; principe du maximum ; flux aux frontières audités par reconstruction indépendante | **READY (2026-10-13, PR #888)** — noyau `production_energy_stage.h` branché dans le solveur de production + `test_production_energy_stage_vv` en CI ; correctif post-fusion (ancre de jauge du porteur en cellule de sortie — cause racine de la CI rouge du 3a35ef5e — et durcissements du contrat d'étage : heat_flux sur WALL uniquement, contradiction Dirichlet+flux rejetée, dynamic_viscosity exigée, gate locale par cellule, routage solid_conduction/compressible, contrat géométrie complet) ; cas registre `T2-FLUID-ENERGY` **non PASS** : campagne d'exécution réelle sur HEAD exact mergé à la charge du propriétaire (gouvernance #118) |
+| Rayonnement couplé | [11](docs/audits/11-rayonnement.md) | cavité chauffée, bilans S2S/P1/Rosseland | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #861) ; audit du code contre la fiche requis avant toute promotion |
+| GPU/OOC | [12](docs/audits/12-parallelisme-gpu-ooc.md) | équivalence CPU/MPI/GPU 1e-12, OOC au-delà de la VRAM sans fallback | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #861) ; audit du code contre la fiche requis avant toute promotion |
+
+## Phase 4 — Avancé (VOF/PLIC, maillage dynamique, FSI, GUI) — BLOCKED (Phase 3)
+
+| Domaine | Benchmark exigé | Référence bibliographique |
+|---|---|---|
+| VOF PLIC multidimensionnel + tension superficielle | conservation stricte de la fraction volumique, batteries d'interface | Rider & Kothe 1998, DOI 10.1006/jcph.1998.5906 ; Basilisk/Popinet 2003, DOI 10.1016/S0021-9991(03)00298-5 |
+| Maillage dynamique | transfert conservatif des champs, topologie | — |
+| FSI partitionné (Aitken) | benchmarks FSI couplés | Küttler & Wall 2008, DOI 10.1007/s00466-008-0255-5 |
+| GUI/CLI/API | cycle de vie utilisateur complet | — |
+
+## Phase 5 — Certification
+
+- [ ] Comparaison ligne à ligne `spec.md’ ↔ ce registre.
+- [ ] Campagne de reproductibilité cross-platform (Linux CPU, Linux GPU, WSL2).
+- [ ] Rapport final, fermeture #34, tag `v1.0.0’ (ou `v0.9.0-beta’).
+
+---
+*Mis à jour : 2026-10-12 — création (Phase 0 du Plan Directeur) ; révision Phases 1–3 : pilote de campagne N9 (scripts/n9_physical_campaign.py + workflow n9-campaign), fiches méthode 09–12, état M0 documenté (PR empilée sur governance/constitution-technique) ; campagne N9 exécutée VERTE sur le HEAD exact `9c545b7d` (run 38281124845, 2026-10-12) ; fusion #855 (merge commit `f3e53e45`, 19 h 57Z) : SHA validé N9 = `a2ccba2d` (mergé), campagne #8 VERTE (38295285582, 41 min 43 s) sur le merge ref `fc933545` (digest artifact sha256:f452708c…), #601 et #858 fermés ; **synchronisation N8 (§16.7, 2026-10-12)** : décision d’acceptation DoD 1–9 ACCEPTÉ sur #481 (commentaire 6130630120), issue fermée ; SHA validé N8 = `6e94bcd3` (squash #856, CI standing 9/9 au head exact `96de4e13`) ; traceabilité #461 mise à jour (pressure null-space → verified, sweep anisotrope AMG → verified, note PCD rafraîchie). Prochaine revue : à chaque fusion sur le noyau. **Corrections factuelles (2026-10-12, 21 h 10Z)** : statuts de fermeture alignés sur l'état réel — #639 fermé (sous-cas N10.15–N10.18 mergés), #511 fermée (supersédée par #863), #571 fermée sans fusion ; statut CI #828 documenté (rouge au head `ca2fa45e`, pas de merge). Aucune promotion, aucun changement de tolérance, de test ou de politique.**
+
+*2026-10-13 — PR #887 (T1 #880 / #885 étage 1) : création de la fiche méthode 13 (conduction solide multi-matériaux : zones, puissance volumique, résistances de contact) ; entrée registre `T1-SOLID-COND` (READY) ; driver `cfdx_thermal_solver` + `test_thermal_zones_vv` (labels qualification;validation;phase13). Aucune promotion : READY ≠ PASS (gouvernance §16.2–16.7, #118).*
+
+*2026-10-13 — PR #888 (T2 #885 étage 2 / #880) : création de la fiche méthode 14 (énergie fluide en écoulement gelé : couplage unidirectionnel fluide→énergie sur le flux massique autoritaire, puissance volumique, parois chauffées, flux imposé) ; entrée registre `T2-FLUID-ENERGY` (READY) ; étage T2 dans le solveur de production + `test_production_energy_stage_vv` (labels qualification;validation;phase13). Aucune promotion : READY ≠ PASS (gouvernance §16.2–16.7, #118).*
+
+*2026-10-13 — correctif post-audit PR #888 : porteur de qualification initialisé au repos (l'initialisation au point fixe gelait le résidu relatif des gates du moniteur → STAGNATED, #663) ; l'audit de conservation indépendant devient un critère d'acceptation **bloquant** (gates global + local normalisées par l'échelle brute — débit frontière total + source, plancher 1 W — tolérance 1e-12, finitude totale exigée) ; parsing numérique strict («500abc» rejeté), températures kelvin > 0 exigées (déclarées et initiales), contrat géométrie au point d'entrée du noyau, sérialisation JSON échappée avec valeurs non finies → null, VTU écrit atomiquement, validation du modèle d'énergie déplacée avant la résolution fluide, `compressible` désormais réellement accepté par le code (contrat fiche 14 §5). Registre JSON, fiche 14 et ce tableau mis à jour dans le même commit (§16.7). Statut inchangé : READY ≠ PASS (gouvernance #118).*
+
+*2026-10-13 — correctif post-fusion PR #888 (branche de fix) : la CI restait rouge sur `test_production_energy_stage_vv` (Release + DebugSanitizers) malgré l'initialisation au repos ; cause racine identifiée — l'ancre de jauge de pression du porteur élimine la ligne de continuité de la cellule de référence, et posée sur la cellule d'entrée d'un cas à débit imposé elle rend le bilan de masse global incorrigible (CG pression en échec récurrent ~509 itérations, résidu ~1e-4) ; l'ancre est désormais la cellule de sortie (convergence géométrique depuis le repos, ~90 itérations, aucune tolérance modifiée). Durcissements P1/P2 : heat_flux réservé aux patches WALL, contradiction Dirichlet+heat_flux rejetée, dynamic_viscosity exigée (matériau fluide complet ; rejet des déclarations partielles dans l'app), gate locale de conservation normalisée par l'échelle propre à chaque cellule (bloquante), routage explicite solid_conduction/compressible rejetés par cfdx_production_solver, contrat géométrie complété (finitude centres/vecteurs de surface, indices de patch valides), artéfacts étendus aux nouvelles gates. Statut inchangé : READY ≠ PASS — la campagne T2 sur un HEAD exact mergé reste requise (gouvernance #118).*
+
+## BFS Driver–Seegmiller — V13 (2026-11-09)
+
+**Non qualifié physiquement.** Les captures Fp du BFS réduit (712 cellules)
+montrent des noyaux numériques bilatéraux (2 modes, puis 1 avec Dirichlet
+expérimental) et un RHS incompatible à `6.27946816675e-2` en norme relative.
+Le résidu Fp original ne peut être certifié par la seule projection. Le garde
+non linéaire U,p,k,omega,nu_t reste expérimental / opt-in. Un premier état
+BFS Block-local a été commis sans converger : U `5.275372423e-1`, continuité
+`1.760025754e-3`. L'audit de paroi `omega,nut,G` est indépendant mais ne
+remplace aucune fonction de paroi OpenFOAM. Les campagnes complètes des six
+Schur, les trois maillages de référence et les mesures `x_r/h,Cf` restent à
+exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md`.
+
+### État BFS V14 — 2026-11-09
+
+Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.
+
+## BFS Driver–Seegmiller — V13 (2026-11-09)
+
+**Non qualifié physiquement.** Les captures Fp du BFS réduit (712 cellules)
+montrent des noyaux numériques bilatéraux (2 modes, puis 1 avec Dirichlet
+expérimental) et un RHS incompatible à `6.27946816675e-2` en norme relative.
+Le résidu Fp original ne peut être certifié par la seule projection. Le garde
+non linéaire U,p,k,omega,nu_t reste expérimental / opt-in. Un premier état
+BFS Block-local a été commis sans converger : U `5.275372423e-1`, continuité
+`1.760025754e-3`. L'audit de paroi `omega,nut,G` est indépendant mais ne
+remplace aucune fonction de paroi OpenFOAM. Les campagnes complètes des six
+Schur, les trois maillages de référence et les mesures `x_r/h,Cf` restent à
+exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md`.
+
+### État BFS V14 — 2026-11-09
+
+Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.
+
+## BFS Driver–Seegmiller — V13 (2026-11-09)
+
+**Non qualifié physiquement.** Les captures Fp du BFS réduit (712 cellules)
+montrent des noyaux numériques bilatéraux (2 modes, puis 1 avec Dirichlet
+expérimental) et un RHS incompatible à `6.27946816675e-2` en norme relative.
+Le résidu Fp original ne peut être certifié par la seule projection. Le garde
+non linéaire U,p,k,omega,nu_t reste expérimental / opt-in. Un premier état
+BFS Block-local a été commis sans converger : U `5.275372423e-1`, continuité
+`1.760025754e-3`. L'audit de paroi `omega,nut,G` est indépendant mais ne
+remplace aucune fonction de paroi OpenFOAM. Les campagnes complètes des six
+Schur, les trois maillages de référence et les mesures `x_r/h,Cf` restent à
+exécuter. Voir `docs/audits/53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md`.
+
+### État BFS V14 — 2026-11-09
+
+Le préconditionneur PCD bilatéralement déflaté ferme son opérateur auxiliaire sur 632 actions BFS, avec résidu vrai Fp original conservé ; **COUPLED, SST global et Driver–Seegmiller NON qualifiés**. Voir `docs/audits/54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md`. Le garde de contraction physique est opt-in ; une seule itération BFS a été commise (minimum 3 exigées). Le stop SST FP64 refuse une répétition d'état non convergé sans modifier le seuil. Les fonctions de paroi triplet omega/nu_t/G restent non connectées au transport/momentum. Aucune tolérance assouplie ni promotion du registre JSON de qualification.
+
+## BFS V15 — PCD full-rank/registre exact et triplet SST (2026-11-09)
+
+- PCD bilatéral : mode expérimental de rang plein sur l'opérateur **auxiliaire** `Fp+WZ^T` ; le résidu original `Fp` reste enregistré. Tests C++ de rang et de choix des bases par empreinte numérique réussis.
+- Bases lors des mises à jour Fp : registre vérifié par empreinte CSR et défaut de noyaux ; aucune base réutilisée silencieusement sur une matrice modifiée. Générateur SVD limité à 1024 lignes (pas scalable sur BFS complet).
+- FGMRES COUPLED : **NON CONVERGÉ** sur BFS réduit au rejeu ; aucune revendication de convergence des six Schur.
+- Résidu global `U,p,k,omega,nu_t` : trois états acceptés **NON DÉMONTRÉS** ; séquences rejetées exclues.
+- Triplet de paroi : préparation atomique et publication transactionnelle après commit, mais **PAS raccordé** aux opérateurs FV momentum/SST ; équivalence OpenFOAM non démontrée.
+- Driver–Seegmiller : **NON QUALIFIÉ**, sans nouvelle mesure de `xr/h`, `Cf` ou contraintes de Reynolds.
+- Seuils numériques et physiques inchangés ; aucun push GitHub.
+- Détails : `docs/audits/55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md`.

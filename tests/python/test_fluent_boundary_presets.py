@@ -38,8 +38,10 @@ def test_pressure_outlet_preserves_gauge_pressure():
 
 
 def test_walls_symmetry_empty_outflow():
-    wall = make_simple_boundary("wall", "no-slip-wall")
-    assert wall.value_type == BCValueType.WALL_NO_SLIP
+    assert (
+        make_simple_boundary("wall", "no-slip-wall").value_type
+        == BCValueType.WALL_NO_SLIP
+    )
     moving = make_simple_boundary("wall", "moving-wall", velocity=(2, 0, 0))
     assert moving.value_type == BCValueType.FIXED
     assert moving.velocity_vector == [2, 0, 0]
@@ -48,8 +50,9 @@ def test_walls_symmetry_empty_outflow():
     assert heated.wall_temperature == 320
     assert make_simple_boundary("sym", "symmetry").type == BCType.SYMMETRY
     assert make_simple_boundary("front", "empty").type == BCType.EMPTY
-    outflow = make_simple_boundary("out", "outflow")
-    assert outflow.value_type == BCValueType.ZERO_GRADIENT
+    assert (
+        make_simple_boundary("out", "outflow").value_type == BCValueType.ZERO_GRADIENT
+    )
 
 
 @pytest.mark.parametrize("kind", sorted(UNSUPPORTED_CHOICE_REASONS))
@@ -60,14 +63,7 @@ def test_unimplemented_fluent_types_are_rejected(kind):
 
 @pytest.mark.parametrize(
     "data",
-    [
-        (),
-        (1,),
-        (1, 2),
-        (1, 2, float("inf")),
-        (1, 2, float("nan")),
-        (True, 0, 0),
-    ],
+    [(), (1,), (1, 2), (1, 2, float("inf")), (1, 2, float("nan")), (True, 0, 0)],
 )
 def test_inlet_rejects_malformed_velocity(data):
     with pytest.raises(ValueError, match="vitesse"):

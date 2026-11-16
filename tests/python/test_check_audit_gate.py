@@ -117,6 +117,71 @@ class ValidateFichesContractTests(unittest.TestCase):
             write_fiche(Path(tmp), name="07-benchmarks-references.md", text=text)
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
+    def test_v9_bfs_campaign_report_is_exempt_from_method_fiche_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_fiche(
+                Path(tmp),
+                name="50-bfs-multi-schur-qualification-v9.md",
+                text="# V9 BFS campaign report\\n\\n## 1. Scope\\n",
+            )
+            self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
+    def test_v10_bfs_diagnostics_report_is_exempt_from_method_fiche_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_fiche(
+                Path(tmp),
+                name="51-bfs-six-schur-production-diagnostics-v10.md",
+                text="# V10 BFS diagnostics report\\n\\n## 1. Scope\\n",
+            )
+            self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
+    def test_v11_v13_v14_bfs_campaign_reports_are_exempt_from_method_fiche_template(
+        self,
+    ):
+        report_names = (
+            "52-bfs-v11-pression-pcd-sst.md",
+            "53-bfs-v13-noyaux-fp-bilateraux-etat-global-sst-paroi.md",
+            "54-bfs-v14-deflation-pcd-merite-physique-et-verrou-sst.md",
+        )
+        for name in report_names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                write_fiche(
+                    Path(tmp), name=name, text="# BFS campaign evidence report\n"
+                )
+                self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
+    def test_legacy_bfs_campaign_reports_are_exempt_from_method_fiche_template(
+        self,
+    ):
+        report_names = (
+            "42-pcd-fp-bfs-coupled-matrix-2026-11-08.md",
+            "43-amg-pcd-fp-et-bfs-openfoam-v4-2026-11-08.md",
+            "49-pcd-fp-bfs-v4-boundaries-2026-11-08.md",
+            "55-bfs-sst-equilibrated-refinement-v19.md",
+            "55-bfs-v15-pcd-rang-plein-et-certificat-paroi.md",
+            "56-bfs-sst-owner-synchronization-v21.md",
+            "57-bfs-sst-jfnk-v22.md",
+            "58-bfs-sst-block-preconditioning-v23.md",
+            "59-bfs-sst-spatial-block-v24.md",
+            "60-bfs-sst-physical-log-globalization-v25.md",
+            "61-bfs-sst-smooth-globalization-v26.md",
+            "61-sst-coupled-ptc-and-openfoam-oracle-v30.md",
+            "62-bfs-sst-cauchy-subspace-v27.md",
+            "63-bfs-sst-adaptive-trust-v28.md",
+            "64-bfs-sst-branch-jacobian-v34.md",
+            "CFDX_BFS_V17_SST_WALL_AND_VALIDATION.md",
+            "CFDX_BFS_V18_OMEGA_OWNER_AND_CONVERGENCE.md",
+            "CFDX_V35_MERGE_AUDIT.md",
+            "CFDX_V38_PCD_EXACT_SCHUR.md",
+            "CFDX_V39_PCD_ORIENTATION_AND_BFS.md",
+        )
+        for name in report_names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                write_fiche(
+                    Path(tmp), name=name, text="# Historical campaign report\\n"
+                )
+                self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
+
     def test_fiche_without_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             text = valid_fiche_text().replace(DOI_LINE + "\n", "")

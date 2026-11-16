@@ -401,6 +401,107 @@ void run_cases()
         std::filesystem::remove(dat);
     });
 
+    run_case("dat6_roundtrip_low_pressure_and_authoritative_flux", [] {
+        const Mesh mesh=make_cube(1.0);
+        const auto file=temp_dat("dat6_split");
+        auto U=seeded_u(0.25), p=seeded_p(1000000.0);
+        Field<double,Location::CELL> low(1,"p_low","Pa",1);
+        low(0)=1.0e-11;
+        Field<double,Location::FACE> flux(mesh.n_faces(),"mdot","kg/s",1);
+        for(std::size_t face=0; face<mesh.n_faces(); ++face)
+            flux(face)=static_cast<double>(face+1)/10.0;
+        DatRestartFields write;
+        write.pressure_low=&low;
+        write.face_mass_flux=&flux;
+        write_dat_restart_fields(file.string(),mesh,U,p,write,5,0.0);
+        std::ifstream in(file);
+        std::string header;
+        std::getline(in,header);
+        EXPECT_TRUE(header=="CFDX-DAT 6");
+        in.close();
+        auto recovered_u=seeded_u(0.0), recovered_p=seeded_p(0.0);
+        Field<double,Location::CELL> recovered_low(1,"p_low","Pa",1);
+        Field<double,Location::FACE> recovered_flux(mesh.n_faces(),"mdot","kg/s",1);
+        DatRestartFields read;
+        read.pressure_low=&recovered_low;
+        read.face_mass_flux=&recovered_flux;
+        const auto meta=read_dat_restart_fields(file.string(),mesh,recovered_u,recovered_p,read);
+        EXPECT_TRUE(meta.iteration==5);
+        EXPECT_NEAR(recovered_p(0),1000000.0,0.0);
+        EXPECT_NEAR(recovered_low(0),1.0e-11,0.0);
+        for(std::size_t face=0; face<mesh.n_faces(); ++face)
+            EXPECT_NEAR(recovered_flux(face),flux(face),0.0);
+        std::filesystem::remove(file);
+    });
+
+    run_case("dat6_rejects_missing_low_and_preserves_all_fields", [] {
+        const Mesh mesh=make_cube(1.0);
+        const auto file=temp_dat("dat6_missing");
+        Field<double,Location::FACE> face(mesh.n_faces(),"mdot","kg/s",1);
+        face.fill(1.0);
+        DatRestartFields write;
+        write.face_mass_flux=&face;
+        write_dat_restart_fields(file.string(),mesh,seeded_u(1.0),seeded_p(123.0),write);
+        auto U=seeded_u(9.0), p=seeded_p(8.0);
+        Field<double,Location::CELL> low(1,"p_low","Pa",1);
+        low(0)=7.0;
+        DatRestartFields read;
+        read.pressure_low=&low;
+        read.face_mass_flux=&face;
+        EXPECT_THROW_WITH(read_dat_restart_fields(file.string(),mesh,U,p,read),
+            std::runtime_error,"requested pressure low");
+        EXPECT_NEAR(U(0,0),9.0,0.0);
+        EXPECT_NEAR(p(0),8.0,0.0);
+        EXPECT_NEAR(low(0),7.0,0.0);
+        std::filesystem::remove(file);
+    });
+
+    run_case("dat6_detects_tampered_cell_order_and_is_atomic", [] {
+        const Mesh mesh=make_cube(1.0);
+        const auto file=temp_dat("dat6_topology");
+        Field<double,Location::CELL> low(1,"p_low","Pa",1);
+        low(0)=1.0e-11;
+        Field<double,Location::FACE> face(mesh.n_faces(),"mdot","kg/s",1);
+        face.fill(0.2);
+        DatRestartFields write;
+        write.pressure_low=&low;
+        write.face_mass_flux=&face;
+        write_dat_restart_fields(file.string(),mesh,seeded_u(1.0),seeded_p(123.0),write);
+        std::ifstream input(file);
+        std::ostringstream buffer;
+        buffer<<input.rdbuf();
+        input.close();
+        std::string data=buffer.str();
+        const auto start=data.find("topology ");
+        EXPECT_TRUE(start!=std::string::npos);
+        const auto end=data.find('\n',start);
+        data.replace(start,end-start,"topology 0");
+        std::ofstream output(file);
+        output<<data;
+        output.close();
+        auto U=seeded_u(9.0), p=seeded_p(8.0);
+        low(0)=7.0;
+        DatRestartFields read=write;
+        EXPECT_THROW_WITH(read_dat_restart_fields(file.string(),mesh,U,p,read),
+            std::runtime_error,"ordering mismatch");
+        EXPECT_NEAR(U(0,0),9.0,0.0);
+        EXPECT_NEAR(p(0),8.0,0.0);
+        EXPECT_NEAR(low(0),7.0,0.0);
+        std::filesystem::remove(file);
+    });
+
+    run_case("dat6_rejects_invalid_write_contract", [] {
+        const Mesh mesh=make_cube(1.0);
+        const auto file=temp_dat("dat6_invalid_contract");
+        Field<double,Location::CELL> low(1,"p_low","Pa",1);
+        low(0)=1.0e-11;
+        DatRestartFields write;
+        write.pressure_low=&low;
+        EXPECT_THROW_WITH(write_dat_restart_fields(file.string(),mesh,seeded_u(1.0),
+            seeded_p(123.0),write),std::invalid_argument,"requires authoritative face mass flux");
+        EXPECT_TRUE(!std::filesystem::exists(file));
+    });
+
     run_case("dat_restart_identity_rejects_non_finite_geometry", [] {
         Mesh broken = make_cube(1.0);
         broken.points().set(0, std::nan(""), 0.0, 0.0);

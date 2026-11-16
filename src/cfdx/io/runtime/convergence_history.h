@@ -41,6 +41,85 @@ inline void convergence_json_number(std::ostream& out, double value)
     out << value;
 }
 
+// The V8 certificate may be disabled or not evaluated after a rejected step.
+// JSON null is evidence of an absent number, never a numerical zero.
+inline void convergence_json_optional_number(std::ostream& out, double value)
+{
+    if (std::isfinite(value)) convergence_json_number(out, value);
+    else out << "null";
+}
+
+inline const char* convergence_algorithm_name(
+    cfdx::physics::PressureVelocityAlgorithm algorithm)
+{
+    using cfdx::physics::PressureVelocityAlgorithm;
+    switch (algorithm) {
+        case PressureVelocityAlgorithm::SIMPLE: return "simple";
+        case PressureVelocityAlgorithm::SIMPLEC: return "simplec";
+        case PressureVelocityAlgorithm::PISO: return "piso";
+        case PressureVelocityAlgorithm::PIMPLE: return "pimple";
+        case PressureVelocityAlgorithm::FRACTIONAL_STEP: return "fractional_step";
+        case PressureVelocityAlgorithm::COUPLED: return "coupled";
+    }
+    return "unknown";
+}
+
+inline void convergence_json_linear_plan(
+    std::ostream& out, const cfdx::core::LinearSolverPlan& plan, bool resolved)
+{
+    out << "{\"resolved\": " << (resolved ? "true" : "false");
+    if (resolved) {
+        out << ", \"krylov\": ";
+        convergence_json_string(out, cfdx::core::to_string(plan.krylov));
+        out << ", \"preconditioner\": ";
+        convergence_json_string(out, cfdx::core::to_string(plan.preconditioner));
+        out << ", \"null_space\": ";
+        convergence_json_string(out, cfdx::core::to_string(plan.null_space));
+        out << ", \"automatic_krylov\": "
+            << (plan.automatic_krylov ? "true" : "false");
+        out << ", \"automatic_preconditioner\": "
+            << (plan.automatic_preconditioner ? "true" : "false");
+        out << ", \"reason\": ";
+        convergence_json_string(out, plan.reason);
+    }
+    out << '}';
+}
+
+inline void convergence_json_v8(
+    std::ostream& out, const cfdx::physics::GlobalNonlinearResidualV8& v)
+{
+    const bool evaluated = std::isfinite(v.continuity) || v.sst;
+    out << "{\"evaluated\": " << (evaluated ? "true" : "false")
+        << ", \"algorithm\": ";
+    convergence_json_string(out, convergence_algorithm_name(v.algorithm));
+    out << ", \"schur\": ";
+    if (v.algorithm == cfdx::physics::PressureVelocityAlgorithm::COUPLED)
+        convergence_json_string(out, cfdx::physics::to_string(v.schur));
+    else out << "null";
+    out << ", \"momentum_global_relative\": ";
+    convergence_json_optional_number(out, v.momentum.global_relative);
+    out << ", \"momentum_max_active_component_relative\": ";
+    convergence_json_optional_number(out, v.momentum.max_active_component_relative);
+    out << ", \"momentum_component_relative\": [";
+    for (std::size_t i=0; i<3; ++i) {
+        if (i) out << ',';
+        convergence_json_optional_number(out, v.momentum.component_relative[i]);
+    }
+    out << "], \"continuity\": ";
+    convergence_json_optional_number(out, v.continuity);
+    out << ", \"k\": "; convergence_json_optional_number(out, v.k);
+    out << ", \"omega\": "; convergence_json_optional_number(out, v.omega);
+    out << ", \"eddy_viscosity_closure\": ";
+    convergence_json_optional_number(out, v.eddy_viscosity_closure);
+    out << ", \"merit\": "; convergence_json_optional_number(out, v.merit);
+    out << ", \"sst\": " << (v.sst ? "true" : "false")
+        << ", \"sst_transport_committed\": "
+        << (v.sst_transport_committed ? "true" : "false")
+        << ", \"bounded\": " << (v.bounded ? "true" : "false")
+        << ", \"all_finite\": " << (v.all_finite ? "true" : "false")
+        << ", \"converged\": " << (v.converged ? "true" : "false") << '}';
+}
+
 inline void convergence_json_array3(
     std::ostream& out, const std::array<double, 3>& values)
 {
@@ -94,12 +173,31 @@ inline void write_convergence_history(
         out << "  \"convergence_reason\": ";
         convergence_json_string(out, result.convergence_reason);
         out << ",\n";
+        out << "  \"linear_plan\": {\n";
+        out << "    \"schur_resolved\": "
+            << (result.coupled_schur_model_resolved ? "true" : "false") << ",\n";
+        out << "    \"requested_schur\": ";
+        convergence_json_string(out, cfdx::physics::to_string(result.requested_coupled_schur_model));
+        out << ",\n    \"resolved_schur\": ";
+        if (result.coupled_schur_model_resolved)
+            convergence_json_string(out, cfdx::physics::to_string(result.resolved_coupled_schur_model));
+        else out << "null";
+        out << ",\n    \"pressure\": ";
+        convergence_json_linear_plan(out, result.pressure_linear_plan,
+                                      result.pressure_linear_plan_resolved);
+        out << ",\n    \"coupled\": ";
+        convergence_json_linear_plan(out, result.coupled_linear_plan,
+                                      result.coupled_linear_plan_resolved);
+        out << "\n  },\n";
         out << "  \"history\": [\n";
 
         for (std::size_t i = 0; i < result.history.size(); ++i) {
             const auto& h = result.history[i];
             out << "    {\n";
             out << "      \"iteration\": " << h.iteration << ",\n";
+            out << "      \"global_nonlinear_v8\": ";
+            convergence_json_v8(out, h.global_nonlinear_v8);
+            out << ",\n";
             out << "      \"high_order_fraction\": "; convergence_json_number(out, h.high_order_fraction); out << ",\n";
             out << "      \"full_order_eligible\": " << (h.full_order_eligible ? "true" : "false") << ",\n";
             out << "      \"momentum_residual\": "; convergence_json_number(out, h.momentum_residual); out << ",\n";

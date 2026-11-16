@@ -73,7 +73,23 @@ def run_case(
         "run.log",
     ):
         (output / name).unlink(missing_ok=True)
+    # Never accept stale artifacts from a previous run in the same directory.
+    # These are output-only names: input restarts are explicitly separate.
+    for name in (
+        "checkpoint.manifest",
+        "force.csv",
+        "history.csv",
+        "profiles.csv",
+        "raw_wall_faces.csv",
+        "run_summary.json",
+        "run.log",
+    ):
+        (output / name).unlink(missing_ok=True)
     env = os.environ.copy()
+    # Freeze the GCI solver choice for BOTH final schemes; a user shell must
+    # not change the numerical method by exporting CFDX_NACA_ALGORITHM.
+    env["CFDX_NACA_ALGORITHM"] = "SIMPLE"
+    env.pop("CFDX_NACA_COUPLED_SCHUR", None)
     # Freeze the GCI solver choice for BOTH final schemes; a user shell must
     # not change the numerical method by exporting CFDX_NACA_ALGORITHM.
     env["CFDX_NACA_ALGORITHM"] = "SIMPLE"

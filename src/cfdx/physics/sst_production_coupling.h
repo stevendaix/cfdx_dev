@@ -249,7 +249,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
     const ScalarBoundaryFaceValues* omega_face_values = nullptr,
-    bool allow_bounded_provisional = false)
+    bool allow_bounded_provisional = false,
+    const SSTWallRefreshV17* wall_refresh = nullptr)
 {
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
@@ -287,7 +288,7 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
         step.transport = solve_sst_transport_dynamic_blending(
             mesh, geometry, mass_flux, k, omega, strain_rate, wall_distance,
             controls, k_bcs, omega_bcs, max_iterations, tolerance,
-            omega_face_values);
+            omega_face_values, wall_refresh);
         // A segregated outer fixed point may progress with a BOUNDED, finite
         // intermediate predictor even when its inner SST residual is not yet
         // converged. This does not certify that predictor: the external
@@ -552,7 +553,8 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
     const ScalarBoundaryFaceValues* omega_face_values = nullptr,
-    bool allow_bounded_provisional = false)
+    bool allow_bounded_provisional = false,
+    const SSTWallRefreshV17* wall_refresh = nullptr)
 {
     if (velocity.size() != mesh.n_cells() || velocity.dimension() != 3 ||
         pressure.size() != mesh.n_cells() || pressure.dimension() != 1 ||
@@ -574,7 +576,7 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
             mesh, geometry, mass_flux, state.k, state.omega, state.strain_rate,
             state.wall_distance, controls, state.nu_t, k_bcs, omega_bcs,
             max_iterations, tolerance, omega_face_values,
-            allow_bounded_provisional);
+            allow_bounded_provisional, wall_refresh);
         if (!result.committed) {
             transaction.rollback();
             result.reason =
@@ -621,6 +623,13 @@ inline SSTRuntimeBoundaryContract make_sst_runtime_boundary_contract(
                         ScalarBoundaryType::FIXED_VALUE, condition.value, 0.0});
                     break;
                 case cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT:
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::WALL_KQ_R:
+                    if (condition.field != "k")
+                        throw std::invalid_argument(
+                            "WALL_KQ_R is only valid for the SST k field");
                     target.emplace(patch.patch_name, ScalarBoundaryCondition{
                         ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0});
                     break;

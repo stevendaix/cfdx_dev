@@ -425,6 +425,7 @@ def make_case_setup(
     sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
+    openfoam_kqr_wall_v16: bool = False,
     *,
     sst_provisional: bool = False,
     sst_picard_damping: float = 1.0,
@@ -433,6 +434,10 @@ def make_case_setup(
     sst_nonlinear_line_search: bool = False,
     sst_linear_relaxation: float = 0.7,
     sst_molecular_wall_diffusion: bool = False,
+    v17_active_wall_operator: bool = False,
+    v18_omega_owner_cells: bool = False,
+    v19_sst_equilibrated_defect: bool = False,
+    v19_omega_corner_equal_faces: bool = False,
     v17_pressure_line_search: bool = False,
     v17_flux_audit: bool = False,
     v17_pseudo_momentum: bool = False,
@@ -484,6 +489,14 @@ def make_case_setup(
         math.isfinite(sst_linear_relaxation) and 0.0 < sst_linear_relaxation <= 1.0
     ):
         raise ValueError("SST scalar linear relaxation must be finite and in (0,1]")
+    if v19_omega_corner_equal_faces and not v18_omega_owner_cells:
+        raise ValueError("V19 corner equal-faces requires V18 owner omega constraints")
+    if v18_omega_owner_cells and not v17_active_wall_operator:
+        raise ValueError("V18 omega owner cells require V17 active wall operator")
+    if v17_active_wall_operator and not (
+        openfoam_kqr_wall_v16 and sst_molecular_wall_diffusion
+    ):
+        raise ValueError("Active wall operator needs kqR and molecular wall diffusion")
     if sst_nonlinear_line_search and sst_picard_damping != 1.0:
         raise ValueError(
             "SST nonlinear line search and fixed Picard damping are exclusive"
@@ -519,7 +532,11 @@ def make_case_setup(
             (SSTScalarBoundaryType.FIXED_VALUE, SSTScalarBoundaryType.FIXED_VALUE)
             if name == "inlet"
             else (
-                SSTScalarBoundaryType.WALL_K_ZERO,
+                (
+                    SSTScalarBoundaryType.WALL_KQ_R
+                    if openfoam_kqr_wall_v16
+                    else SSTScalarBoundaryType.WALL_K_ZERO
+                ),
                 SSTScalarBoundaryType.WALL_OMEGA_SST,
             )
             if kind == "wall"
@@ -611,6 +628,18 @@ def make_case_setup(
     setup.numerics.raw_settings["sst_molecular_wall_diffusion"] = str(
         bool(sst_molecular_wall_diffusion)
     ).lower()
+    setup.numerics.raw_settings["v17_openfoam_wall_operator_experimental"] = (
+        "enabled" if v17_active_wall_operator else "disabled"
+    )
+    setup.numerics.raw_settings["v18_omega_wall_owner_constraints_experimental"] = (
+        "enabled" if v18_omega_owner_cells else "disabled"
+    )
+    setup.numerics.raw_settings[
+        "v19_sst_equilibrated_defect_correction_experimental"
+    ] = "enabled" if v19_sst_equilibrated_defect else "disabled"
+    setup.numerics.raw_settings["v19_omega_corner_equal_faces_experimental"] = (
+        "enabled" if v19_omega_corner_equal_faces else "disabled"
+    )
     setup.numerics.raw_settings["v17_pressure_line_search"] = str(
         bool(v17_pressure_line_search)
     ).lower()
@@ -739,6 +768,7 @@ def write_case(
     sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
+    openfoam_kqr_wall_v16: bool = False,
     sst_provisional: bool = False,
     sst_picard_damping: float = 1.0,
     sst_relative_gate: bool = False,
@@ -746,6 +776,10 @@ def write_case(
     sst_nonlinear_line_search: bool = False,
     sst_linear_relaxation: float = 0.7,
     sst_molecular_wall_diffusion: bool = False,
+    v17_active_wall_operator: bool = False,
+    v18_omega_owner_cells: bool = False,
+    v19_sst_equilibrated_defect: bool = False,
+    v19_omega_corner_equal_faces: bool = False,
     v17_pressure_line_search: bool = False,
     v17_flux_audit: bool = False,
     v17_pseudo_momentum: bool = False,
@@ -779,6 +813,7 @@ def write_case(
         sst_omega_first,
         sst_wall_factor,
         sst_inner_iterations,
+        openfoam_kqr_wall_v16=openfoam_kqr_wall_v16,
         sst_provisional=sst_provisional,
         sst_picard_damping=sst_picard_damping,
         sst_relative_gate=sst_relative_gate,
@@ -786,6 +821,10 @@ def write_case(
         sst_nonlinear_line_search=sst_nonlinear_line_search,
         sst_linear_relaxation=sst_linear_relaxation,
         sst_molecular_wall_diffusion=sst_molecular_wall_diffusion,
+        v17_active_wall_operator=v17_active_wall_operator,
+        v18_omega_owner_cells=v18_omega_owner_cells,
+        v19_sst_equilibrated_defect=v19_sst_equilibrated_defect,
+        v19_omega_corner_equal_faces=v19_omega_corner_equal_faces,
         v17_pressure_line_search=v17_pressure_line_search,
         v17_flux_audit=v17_flux_audit,
         v17_pseudo_momentum=v17_pseudo_momentum,
@@ -810,7 +849,8 @@ def write_case(
     setup.source_metadata["mesh_description"] = mesh_source
     setup.source_metadata["physics_gaps"] = (
         "RANS-SST experimental; wall model not equivalent to OpenFOAM; "
-        "first-order convection; not grid-converged; no verified Cf/Cp/profiles"
+        f"momentum convection={convection_scheme}; not grid-converged; "
+        "no verified Cf/Cp/profiles"
     )
     topology_hash, geometry_hash, mesh_hash = _integrity_hashes(mesh)
     metadata, face_ids, face_offsets = _boundary_patch_metadata(mesh)
@@ -882,7 +922,7 @@ def write_case(
         "warnings": [
             "TH-03 experimental registry Re_h=37500 differs from OpenFOAM nominal Re_h=36000",
             "experimental SST opt-in",
-            "CFDX first-order upwind",
+            f"CFDX momentum convection={convection_scheme} (not yet physically qualified)",
             "wall treatment not equivalent to OpenFOAM tutorial",
             "OpenFOAM omega inlet is derived from published nut/nu, not verified from raw file",
             "initial profile and grid convergence not verified",
@@ -1000,10 +1040,27 @@ def main() -> int:
         help="Experimental extended-precision local SST residual gate; original FP64 also logged.",
     )
     parser.add_argument(
+        "--openfoam-kqr-wall-v16",
+        action="store_true",
+        help="kqRWallFunction: k zeroGradient, NOT k=0; other OpenFOAM wall laws still separate",
+    )
+    parser.add_argument(
         "--sst-molecular-wall-diffusion",
         action="store_true",
         help="Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.",
     )
+    parser.add_argument(
+        "--v17-active-wall-operator",
+        action="store_true",
+        help="Experimental coupled wall nut/G/omega FV operator (requires kqR and molecular diffusion).",
+    )
+    parser.add_argument(
+        "--v18-omega-owner-cells",
+        action="store_true",
+        help="Experimental weighted owner-cell omega rows; requires --v17-active-wall-operator.",
+    )
+    parser.add_argument("--v19-sst-equilibrated-defect", action="store_true")
+    parser.add_argument("--v19-omega-corner-equal-faces", action="store_true")
     parser.add_argument(
         "--sst-nonlinear-line-search",
         action="store_true",
@@ -1085,6 +1142,7 @@ def main() -> int:
             sst_omega_first=args.sst_omega_first,
             sst_wall_factor=args.sst_wall_factor,
             sst_inner_iterations=args.sst_inner_iterations,
+            openfoam_kqr_wall_v16=args.openfoam_kqr_wall_v16,
             sst_provisional=args.sst_provisional,
             sst_picard_damping=args.sst_picard_damping,
             sst_relative_gate=args.sst_relative_gate,
@@ -1092,6 +1150,10 @@ def main() -> int:
             sst_nonlinear_line_search=args.sst_nonlinear_line_search,
             sst_linear_relaxation=args.sst_linear_relaxation,
             sst_molecular_wall_diffusion=args.sst_molecular_wall_diffusion,
+            v17_active_wall_operator=args.v17_active_wall_operator,
+            v18_omega_owner_cells=args.v18_omega_owner_cells,
+            v19_sst_equilibrated_defect=args.v19_sst_equilibrated_defect,
+            v19_omega_corner_equal_faces=args.v19_omega_corner_equal_faces,
             v17_pressure_line_search=args.v17_pressure_line_search,
             v17_flux_audit=args.v17_flux_audit,
             v17_pseudo_momentum=args.v17_pseudo_momentum,

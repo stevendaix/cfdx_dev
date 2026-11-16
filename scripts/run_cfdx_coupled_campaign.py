@@ -23,6 +23,23 @@ from pathlib import Path
 
 SCHUR_MODELS = ("pcd", "block_local", "lsc", "bfbt", "simple", "simplec")
 N9_MODELS = SCHUR_MODELS
+# (pressure-velocity algorithm, Schur approximation, outer preconditioner)
+# The six default COUPLED variants are first; auxiliary PC variants follow.
+# All runs use the same debug geometry, IC/BC and SST experiment settings.
+BFS_VARIANTS = {
+    "simple": ("simple", None, None),
+    "simplec": ("simplec", None, None),
+    "pcd_auto": ("coupled", "pcd", "auto"),
+    "block_local_amg": ("coupled", "block_local", "coupled_block_schur"),
+    "lsc_amg": ("coupled", "lsc", "coupled_block_schur"),
+    "bfbt_amg": ("coupled", "bfbt", "coupled_block_schur"),
+    "simple_schur_amg": ("coupled", "simple", "coupled_block_schur"),
+    "simplec_schur_amg": ("coupled", "simplec", "coupled_block_schur"),
+    "pcd_pcd": ("coupled", "pcd", "pcd"),
+    "pcd_amg": ("coupled", "pcd", "coupled_block_schur"),
+    "block_local_mgr": ("coupled", "block_local", "mgr"),
+    "block_local_braess": ("coupled", "block_local", "braess_sarazin"),
+}
 CTESTS = {
     "bfs": ("test_bfs_quick",),
     "sst_thermal": (
@@ -72,7 +89,11 @@ def execute(
         "binary_sha256": sha256(executable) if present else None,
         "mesh_sha256": sha256(Path(cmd[2]))
         if len(cmd) >= 3 and cmd[1] == "--single" and Path(cmd[2]).is_file()
-        else None,
+        else (
+            sha256(Path(cmd[cmd.index("--mesh") + 1]))
+            if "--mesh" in cmd and Path(cmd[cmd.index("--mesh") + 1]).is_file()
+            else None
+        ),
         "env": {
             key: value for key, value in sorted(env.items()) if key.startswith("CFDX_")
         },
@@ -108,6 +129,38 @@ def execute(
             result["execution"] = "FAILED_TO_START"
             result["reason"] = str(exc)
     result["wall_seconds"] = time.monotonic() - start
+    if tag.startswith("bfs_") and tag.removeprefix("bfs_") in BFS_VARIANTS:
+        from diagnose_bfs_failure_v10 import classify_log
+
+        content = (
+            logfile.read_text(encoding="utf-8", errors="replace")
+            if logfile.exists()
+            else ""
+        )
+        result["first_blocker_v10"] = classify_log(
+            content, execution=result["execution"], exit_code=result["exit_code"]
+        )
+        result["log_sha256"] = sha256(logfile) if logfile.exists() else None
+        variant = tag.removeprefix("bfs_")
+        algorithm, schur, preconditioner = BFS_VARIANTS[variant]
+        from qualify_bfs_schur_evidence import validate_bfs_evidence
+
+        output_flag = cmd.index("--output-dir") + 1 if "--output-dir" in cmd else -1
+        run_dir = Path(cmd[output_flag]) if output_flag > 0 else out / "missing_run_dir"
+        result["bfs_v8_gate"] = validate_bfs_evidence(
+            run_dir,
+            result["exit_code"],
+            algorithm=algorithm,
+            schur=schur,
+            preconditioner=preconditioner,
+            case_sha256=result["mesh_sha256"],
+            case_path=Path(cmd[cmd.index("--mesh") + 1]) if "--mesh" in cmd else None,
+        )
+        if (
+            result["execution"] == "EXIT_ZERO"
+            and not result["bfs_v8_gate"]["nonlinear_v8_proven"]
+        ):
+            result["execution"] = "EXIT_ZERO_BUT_BFS_V8_EVIDENCE_INVALID"
     # Independently parse only current execution output. A historical log and
     # EXIT_ZERO with missing stages must not become qualification evidence.
     if tag.startswith("n9_") and result["exit_code"] is not None:
@@ -206,6 +259,68 @@ def build_commands(args: argparse.Namespace):
                 ],
                 env,
             )
+    if args.only in ("bfs", "all"):
+        from generate_th03_bfs_case import reconfigure_bfs_reference_case, write_case
+
+        reference = None
+        for variant in getattr(args, "bfs_variants", list(BFS_VARIANTS)):
+            algorithm, schur, preconditioner = BFS_VARIANTS[variant]
+            tag = f"bfs_{variant}"
+            case_file = args.out.resolve() / "bfs_cases" / f"{tag}.cfdx.h5"
+            reference_case = getattr(args, "bfs_reference_case", None)
+            if reference_case:
+                generated = reconfigure_bfs_reference_case(
+                    Path(reference_case),
+                    case_file,
+                    algorithm=algorithm,
+                    schur=schur,
+                    preconditioner=preconditioner,
+                    iterations=args.iterations,
+                )
+            else:
+                generated = write_case(
+                    case_file,
+                    n_up=getattr(args, "bfs_upstream", 4),
+                    n_down=getattr(args, "bfs_downstream", 16),
+                    ny=getattr(args, "bfs_ny", 10),
+                    step_cells=getattr(args, "bfs_step_cells", 2),
+                    wall_stretch=getattr(args, "bfs_wall_stretch", 0.0),
+                    algorithm=algorithm,
+                    schur=schur,
+                    preconditioner=preconditioner,
+                    iterations=args.iterations,
+                )
+            fingerprint = (generated["topology_hash"], generated["geometry_hash"])
+            if reference is None:
+                reference = fingerprint
+            elif fingerprint != reference:
+                raise ValueError(
+                    "BFS cases do not share identical mesh topology and geometry"
+                )
+            run_dir = args.out.resolve() / "bfs_runs" / tag
+            if run_dir.exists():
+                # Never allow a prior successful run to satisfy this run's gate.
+                shutil.rmtree(run_dir)
+            env = os.environ.copy()
+            for key in list(env):
+                if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
+                    env.pop(key)
+            env["CFDX_BFS_STAGE_TRACE"] = "1"
+            yield (
+                tag,
+                [
+                    str(build / "cfdx_production_solver"),
+                    "--mesh",
+                    str(case_file),
+                    "--output-dir",
+                    str(run_dir),
+                    "--iterations",
+                    str(args.iterations),
+                    "--experimental-sst",
+                    "--benchmark-export",
+                ],
+                env,
+            )
     for group in ("bfs", "sst_thermal"):
         if args.only not in (group, "all"):
             continue
@@ -229,7 +344,7 @@ def build_commands(args: argparse.Namespace):
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--build", type=Path, required=True)
-    p.add_argument("--meshes", type=Path, required=True)
+    p.add_argument("--meshes", type=Path, default=Path("build/validation_meshes"))
     p.add_argument("--out", type=Path, required=True)
     p.add_argument(
         "--only", choices=("naca", "n9", "bfs", "sst_thermal", "all"), default="all"
@@ -242,6 +357,23 @@ def main(argv: list[str] | None = None) -> int:
         "--levels", type=int, choices=(64, 128, 256), nargs="+", default=[64, 128, 256]
     )
     p.add_argument("--iterations", type=int, default=1500)
+    p.add_argument(
+        "--bfs-reference-case",
+        type=Path,
+        help="existing HDF5 BFS case with real inlet SST and bounded order-2 convection; preserve mesh and BCs",
+    )
+    p.add_argument(
+        "--bfs-variants",
+        choices=tuple(BFS_VARIANTS),
+        nargs="+",
+        default=list(BFS_VARIANTS),
+        help="BFS debug campaign: six Schur plus SIMPLE/SIMPLEC and alternative block PCs",
+    )
+    p.add_argument("--bfs-upstream", type=int, default=4)
+    p.add_argument("--bfs-downstream", type=int, default=16)
+    p.add_argument("--bfs-ny", type=int, default=10)
+    p.add_argument("--bfs-step-cells", type=int, default=2)
+    p.add_argument("--bfs-wall-stretch", type=float, default=0.0)
     p.add_argument(
         "--source-archive", type=Path, help="optional immutable source ZIP; hash only"
     )
@@ -267,6 +399,8 @@ def main(argv: list[str] | None = None) -> int:
         or (args.wall_timeout is not None and args.wall_timeout <= 0)
     ):
         p.error("invalid numerical budget or runtime limit")
+    if len(set(args.bfs_variants)) != len(args.bfs_variants):
+        p.error("duplicate BFS variant would reuse evidence folder")
     args.out.mkdir(parents=True, exist_ok=True)
     records = []
     for tag, cmd, env in build_commands(args):
@@ -294,7 +428,14 @@ def main(argv: list[str] | None = None) -> int:
             + "\n"
         )
         print(f"CFDX_CAMPAIGN_DONE: {tag} {result['execution']}", flush=True)
-    return 0 if records and all(r["execution"] == "EXIT_ZERO" for r in records) else 2
+    software_ok = bool(records) and all(r["execution"] == "EXIT_ZERO" for r in records)
+    bfs_ok = all(
+        r.get("bfs_v8_gate", {}).get("nonlinear_v8_proven", False)
+        for r in records
+        if r["case"].removeprefix("bfs_") in BFS_VARIANTS
+        and r["case"].startswith("bfs_")
+    )
+    return 0 if software_ok and bfs_ok else 2
 
 
 if __name__ == "__main__":

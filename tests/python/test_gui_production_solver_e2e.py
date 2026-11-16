@@ -94,7 +94,10 @@ def test_workbench_production_solver_and_3d_result_e2e(tmp_path: Path) -> None:
         assert window.session.iteration > 0
         controller = window.application.controller
         assert controller is not None
-        assert controller.convergence_evidence is not None
+        assert controller.convergence_evidence is not None, (
+            controller.convergence_evidence_error
+            or f"no evidence; output files: {sorted(p.name for p in results_dir.glob('*'))}"
+        )
         assert controller.convergence_evidence_error is None
         assert controller.convergence_verdict is (
             window.session.state is SimulationState.CONVERGED
