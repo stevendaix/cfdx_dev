@@ -2559,10 +2559,9 @@ int main(int argc, char** argv)
                 result.converged = false;
         } else {
             // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
-            // --bfs-converged enables a recommended configuration for separated
-            // flow: COUPLED algorithm with Full Schur field split, adaptive
-            // relaxation, post-SST momentum reassembly and V8 certificate.
-            // --bfs-fieldsplit selects the PETSc PCFIELDSPLIT preconditioner.
+            // --bfs-converged enables COUPLED with PCD, adaptive relaxation,
+            // post-SST momentum reassembly and the V8 certificate.
+            // --bfs-fieldsplit replaces PCD with NativeFieldSplit / Full Schur.
             // --bfs-pimple selects OpenFOAM-style PIMPLE with multiple pressure
             // correctors per outer iteration.
             if (options.bfs_converged) {
@@ -2593,7 +2592,7 @@ int main(int argc, char** argv)
                     saved_convergence.energy_tolerance;
                 controls.convergence.stagnation_relative_improvement =
                     saved_convergence.stagnation_relative_improvement;
-                std::cout << "BFS converged settings: COUPLED+NativeFieldSplit, "
+                std::cout << "BFS converged settings: COUPLED+PCD, "
                           << "alpha_u=" << controls.coupling.alpha_u
                           << " alpha_p=" << controls.coupling.alpha_p
                           << " post-SST-momentum=1 V8-certificate=1\n";
