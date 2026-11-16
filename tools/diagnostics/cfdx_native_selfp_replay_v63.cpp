@@ -1,4 +1,3 @@
-@@ -0,0 +1,90 @@
 // Reproduce the seventh Schur option on captured REAL coupled 4N MatrixMarket.
 // Read-only original A,b,x0; compute the TRUE residual on the SAME A.
 #include "cfdx/core/linalg/native_selfp_schur_v63.h"

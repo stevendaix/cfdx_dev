@@ -289,6 +289,20 @@ def _converted_case_with_velocity(
     case_h5 = converted / "case.cfdx.h5"
     with h5py.File(case_h5, "r+") as h5:
         h5.attrs["case_setup_json"] = json.dumps(setup, separators=(",", ":"))
+        # OpenFOAM's generic patch mesh type is imported as UNKNOWN. This
+        # production-solver fixture explicitly supplies CFDX's physical patch
+        # roles in case_setup, so keep the persisted mesh contract aligned.
+        metadata = str(h5.attrs["boundary_patches"])
+        typed_metadata = []
+        for entry in metadata.split(";"):
+            fields = entry.split(":")
+            if len(fields) == 4:
+                if fields[0] == "inlet":
+                    fields[3] = "1"
+                elif fields[0] == "outlet":
+                    fields[3] = "2"
+            typed_metadata.append(":".join(fields))
+        h5.attrs["boundary_patches"] = ";".join(typed_metadata)
     return case_h5
 
 

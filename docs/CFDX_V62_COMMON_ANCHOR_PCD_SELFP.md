@@ -1,4 +1,3 @@
-@@ -0,0 +1,102 @@
 # CFDX V62 — Jacobien généralisé ancré, PCD/Schur et BFS152
 
 **Date : 13 novembre 2026.** Base : CFDX V61 reconstituée à partir du ZIP BFS V6 de référence. Il s'agit d'un lot **de diagnostic et de recherche**, et NON d'une qualification industrielle. Les sources radiatives HO–LO/DOM V57 fusionnées en V60 sont conservées, mais n'ont pas été modifiées dans ce lot.

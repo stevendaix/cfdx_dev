@@ -1,4 +1,3 @@
-@@ -0,0 +1,85 @@
 # CFDX V69 — boucle de transport SST avec flux Rhie–Chow réévalué (expérience uniquement)
 
 ## Hypothèse falsifiable

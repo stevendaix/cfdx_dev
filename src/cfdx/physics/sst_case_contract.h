@@ -112,9 +112,19 @@ inline void validate_sst_case_prerequisites(
             throw std::invalid_argument("SST case contains an unsupported boundary type on patch '" +
                                         boundary.patch_name + "'");
         if (boundary.type == cfdx::io::BCType::INLET) {
-            // Reuse the exact same validation and derivation used by the solver
-            // when it constructs inlet scalar values.
-            (void)derive_sst_inlet_turbulence_state(boundary, controls);
+            // Explicit fixed k/omega values are authoritative. In particular,
+            // a hydrostatic or quiescent case must not need a fictitious
+            // positive inlet speed merely to derive values it already supplies.
+            bool fixed_k = false;
+            bool fixed_omega = false;
+            for (const auto& condition : boundary.sst_scalar_conditions) {
+                if (condition.type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
+                    continue;
+                if (condition.field == "k") fixed_k = true;
+                if (condition.field == "omega") fixed_omega = true;
+            }
+            if (!fixed_k || !fixed_omega)
+                (void)derive_sst_inlet_turbulence_state(boundary, controls);
         }
     }
 }

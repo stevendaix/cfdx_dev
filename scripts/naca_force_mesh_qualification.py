@@ -222,8 +222,6 @@ def verify_physical_history(
         "final_certificate_mass_residual": mass,
         "final_independent_face_momentum_relative": face_residuals,
         "convection_scheme": last["convection_scheme"],
-        "experimental_reconstruction": last["convection_scheme"] == "MUSCL_CELL_LIMITED",
-        "convection_scheme": last["convection_scheme"],
         "experimental_reconstruction": (
             last["convection_scheme"] == "MUSCL_CELL_LIMITED"
         ),

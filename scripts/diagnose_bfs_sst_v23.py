@@ -1,4 +1,5 @@
 """Compare V22 / V23 SST Krylov candidates, never certify BFS or NASA physics."""
+
 from __future__ import annotations
 
 import argparse
@@ -25,8 +26,10 @@ def first_retry_samples(text: str) -> dict:
             gates.append(dict(PAIRS.findall(line)))
     if not steps or not diag or not gates:
         raise ValueError("missing independent physical SST diagnostics")
+
     def sample10(rows: list[dict]) -> dict:
         return next((r for r in rows if r.get("iteration") == "10"), {})
+
     s, d, g = sample10(steps), sample10(diag), sample10(gates)
     if not (s and d and g):
         raise ValueError("no complete physical SST iteration 10")
@@ -36,15 +39,17 @@ def first_retry_samples(text: str) -> dict:
     ):
         raise ValueError("uncertified block Newton direction marked selected")
     if s.get("selected") == "jfnk" and (
-        s.get("proposed") != "1"
-        or float(s.get("linear_true_relative", "inf")) > 0.25
+        s.get("proposed") != "1" or float(s.get("linear_true_relative", "inf")) > 0.25
     ):
         raise ValueError("uncertified Jacobi Newton direction marked selected")
-    fields = ("k_returned_nonlinear_raw", "omega_returned_nonlinear_raw",
-              "k_local_relative", "omega_local_relative")
+    fields = (
+        "k_returned_nonlinear_raw",
+        "omega_returned_nonlinear_raw",
+        "k_local_relative",
+        "omega_local_relative",
+    )
     metrics = {k: float(d[k]) for k in fields}
-    metrics["merit"] = max(metrics["k_local_relative"],
-                           metrics["omega_local_relative"])
+    metrics["merit"] = max(metrics["k_local_relative"], metrics["omega_local_relative"])
     if any(not math.isfinite(v) or v < 0 for v in metrics.values()):
         raise ValueError("invalid physical residual sample")
     return {
@@ -52,8 +57,10 @@ def first_retry_samples(text: str) -> dict:
         "block_probe": s.get("block_probe", "0") == "1",
         "block_proposed": s.get("block_proposed", "0") == "1",
         "block_linear_true_relative": (
-            float(s["block_linear_true_relative"]) if s.get("block_probe") == "1"
-            and math.isfinite(float(s.get("block_linear_true_relative", "nan"))) else None
+            float(s["block_linear_true_relative"])
+            if s.get("block_probe") == "1"
+            and math.isfinite(float(s.get("block_linear_true_relative", "nan")))
+            else None
         ),
         "coupled_blocks": int(s.get("coupled_blocks", "0")),
         "jacobi_linear_true_relative": float(s["linear_true_relative"]),
@@ -89,8 +96,10 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        report = compare(args.baseline.read_text(encoding="utf-8", errors="replace"),
-                         args.candidate.read_text(encoding="utf-8", errors="replace"))
+        report = compare(
+            args.baseline.read_text(encoding="utf-8", errors="replace"),
+            args.candidate.read_text(encoding="utf-8", errors="replace"),
+        )
     except (OSError, KeyError, ValueError) as exc:
         parser.error(str(exc))
     doc = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n"

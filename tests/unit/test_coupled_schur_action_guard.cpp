@@ -97,5 +97,5 @@ int main() {
             reported, valid, 2));
     });
     std::cout << "Schur catastrophic action guard PASS\n";
-    return 0;
+    return run_all();
 }

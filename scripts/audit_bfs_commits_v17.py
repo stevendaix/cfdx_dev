@@ -4,26 +4,37 @@ A V13 committed record is useful diagnostic evidence, but *does not* certify
 same-operator contraction: only the V14 ledger carries that contract. Neither
 ledger certifies a physically correct solution or agreement with NASA.
 """
+
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import re
 from pathlib import Path
 
 try:
-    from qualify_bfs_global_contraction_v14 import certify, QualificationError
+    from qualify_bfs_global_contraction_v14 import QualificationError, certify
 except ImportError:
-    from scripts.qualify_bfs_global_contraction_v14 import certify, QualificationError
+    from scripts.qualify_bfs_global_contraction_v14 import QualificationError, certify
 
 SCHEMA = "CFDX-BFS-COMMITTED-STATES/v17"
 
 
 def _parse(line: str) -> dict:
     values = dict(re.findall(r"(\w+)=([^\s]+)", line))
-    mandatory = ("iteration", "U", "p_continuity", "k", "omega", "nut_closure",
-                 "merit", "converged", "qualified")
+    mandatory = (
+        "iteration",
+        "U",
+        "p_continuity",
+        "k",
+        "omega",
+        "nut_closure",
+        "merit",
+        "converged",
+        "qualified",
+    )
     if any(key not in values for key in mandatory):
         raise ValueError("incomplete accepted-state certificate")
     try:
@@ -33,27 +44,39 @@ def _parse(line: str) -> dict:
         qualified = int(values["qualified"])
     except (ValueError, OverflowError) as exc:
         raise ValueError("malformed accepted-state certificate") from exc
-    if iteration <= 0 or converged not in (0, 1) or qualified != 0 or any(
-        v < 0 or not math.isfinite(v) for v in residuals.values()
+    if (
+        iteration <= 0
+        or converged not in (0, 1)
+        or qualified != 0
+        or any(v < 0 or not math.isfinite(v) for v in residuals.values())
     ):
         raise ValueError("nonfinite, negative or unsupported qualified state")
     return dict(iteration=iteration, **residuals, converged=bool(converged))
 
 
 def audit(text: str) -> dict:
-    states = [_parse(line) for line in text.splitlines()
-              if line.startswith("GLOBAL_NONLINEAR_COMMITTED_V13 ")]
-    if any(next_state["iteration"] <= state["iteration"]
-           for state, next_state in zip(states, states[1:])):
+    states = [
+        _parse(line)
+        for line in text.splitlines()
+        if line.startswith("GLOBAL_NONLINEAR_COMMITTED_V13 ")
+    ]
+    if any(
+        next_state["iteration"] <= state["iteration"]
+        for state, next_state in itertools.pairwise(states)
+    ):
         raise ValueError("out-of-order or duplicate committed iterations")
-    record = {"schema": SCHEMA, "committed_states": len(states),
-              "last_committed": states[-1] if states else None,
-              "three_states_observed": len(states) >= 3,
-              "strict_same_operator_contraction": False,
-              "fully_converged": False,
-              "physical_qualified": False,
-              "reference_comparison_permitted": False,
-              "status": "NOT_QUALIFIED", "states": states}
+    record = {
+        "schema": SCHEMA,
+        "committed_states": len(states),
+        "last_committed": states[-1] if states else None,
+        "three_states_observed": len(states) >= 3,
+        "strict_same_operator_contraction": False,
+        "fully_converged": False,
+        "physical_qualified": False,
+        "reference_comparison_permitted": False,
+        "status": "NOT_QUALIFIED",
+        "states": states,
+    }
     try:
         v14 = certify(text, minimum_commits=3)
     except QualificationError as exc:
@@ -61,7 +84,9 @@ def audit(text: str) -> dict:
     else:
         # An opt-in V14 ledger, not simply decreasing V13 merits, is necessary
         # to demonstrate three accepted contractions with one operator.
-        record["strict_same_operator_contraction"] = bool(v14["strict_contraction_proved"])
+        record["strict_same_operator_contraction"] = bool(
+            v14["strict_contraction_proved"]
+        )
         record["fully_converged"] = bool(v14["physical_converged"])
         record["contraction_certificate"] = v14
         # Even a numerically converged V14 ledger does NOT certify physical
@@ -86,14 +111,24 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = audit(args.log.read_text(encoding="utf-8", errors="replace"))
-        code = 0 if result["strict_same_operator_contraction"] and result["fully_converged"] else 3
+        code = (
+            0
+            if result["strict_same_operator_contraction"] and result["fully_converged"]
+            else 3
+        )
     except (OSError, ValueError) as exc:
-        result = {"schema": SCHEMA, "status": "INVALID_EVIDENCE",
-                  "first_blocker": str(exc), "physical_qualified": False,
-                  "reference_comparison_permitted": False}
+        result = {
+            "schema": SCHEMA,
+            "status": "INVALID_EVIDENCE",
+            "first_blocker": str(exc),
+            "physical_qualified": False,
+            "reference_comparison_permitted": False,
+        }
         code = 3
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+    )
     return code
 
 

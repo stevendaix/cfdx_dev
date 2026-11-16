@@ -541,8 +541,11 @@ def make_case_setup(
             (SSTScalarBoundaryType.FIXED_VALUE, SSTScalarBoundaryType.FIXED_VALUE)
             if name == "inlet"
             else (
-                (SSTScalarBoundaryType.WALL_KQ_R
-                 if openfoam_kqr_wall_v16 else SSTScalarBoundaryType.WALL_K_ZERO),
+                (
+                    SSTScalarBoundaryType.WALL_KQ_R
+                    if openfoam_kqr_wall_v16
+                    else SSTScalarBoundaryType.WALL_K_ZERO
+                ),
                 SSTScalarBoundaryType.WALL_OMEGA_SST,
             )
             if kind == "wall"
@@ -645,9 +648,9 @@ def make_case_setup(
     setup.numerics.raw_settings["v18_omega_wall_owner_constraints_experimental"] = (
         "enabled" if v18_omega_owner_cells else "disabled"
     )
-    setup.numerics.raw_settings["v19_sst_equilibrated_defect_correction_experimental"] = (
-        "enabled" if v19_sst_equilibrated_defect else "disabled"
-    )
+    setup.numerics.raw_settings[
+        "v19_sst_equilibrated_defect_correction_experimental"
+    ] = "enabled" if v19_sst_equilibrated_defect else "disabled"
     setup.numerics.raw_settings["v19_omega_corner_equal_faces_experimental"] = (
         "enabled" if v19_omega_corner_equal_faces else "disabled"
     )
@@ -1075,7 +1078,8 @@ def main() -> int:
         help="Experimental extended-precision local SST residual gate; original FP64 also logged.",
     )
     parser.add_argument(
-        "--openfoam-kqr-wall-v16", action="store_true",
+        "--openfoam-kqr-wall-v16",
+        action="store_true",
         help="kqRWallFunction: k zeroGradient, NOT k=0; other OpenFOAM wall laws still separate",
     )
     parser.add_argument(
@@ -1084,11 +1088,13 @@ def main() -> int:
         help="Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.",
     )
     parser.add_argument(
-        "--v17-active-wall-operator", action="store_true",
+        "--v17-active-wall-operator",
+        action="store_true",
         help="Experimental coupled wall nut/G/omega FV operator (requires kqR and molecular diffusion).",
     )
     parser.add_argument(
-        "--v18-omega-owner-cells", action="store_true",
+        "--v18-omega-owner-cells",
+        action="store_true",
         help="Experimental weighted owner-cell omega rows; requires --v17-active-wall-operator.",
     )
     parser.add_argument("--v19-sst-equilibrated-defect", action="store_true")

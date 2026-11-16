@@ -1,4 +1,3 @@
-@@ -0,0 +1,120 @@
 # CFDX V66 — BFS152, flux porteur, rAU, viscosité et cellule SST omega
 
 **Date :** 13 novembre 2026. **Base cumulative :** ZIP BFS V6 exact fourni par l'utilisateur, évolutions V57–V65 conservées. **Statut :** audit causal C++ *en lecture seule*, uniquement si `CFDX_FPHYS_V66_OMEGA_FLUX=1` et si le mérite V65 est déjà activé. Aucune variante Schur, AMG ou Newton n'a été ajoutée ; les critères et modèles physiques sont inchangés.

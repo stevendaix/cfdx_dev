@@ -1,4 +1,3 @@
-@@ -0,0 +1,67 @@
 # CFDX V68 - SST at identical state with two mass fluxes
 
 Scope: an opt-in, strictly read-only forensic ablation of V65 iteration 23.

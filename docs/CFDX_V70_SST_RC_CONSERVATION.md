@@ -1,4 +1,3 @@
-@@ -0,0 +1,78 @@
 # CFDX V70 - Conservation du flux COUPLED/SST sur BFS152
 
 ## Portee et regle de certification

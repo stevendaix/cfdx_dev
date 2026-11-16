@@ -1,4 +1,3 @@
-@@ -0,0 +1,165 @@
 # CFDX V61 — verrou P0 : Jacobien physique, PCD, momentum–SST (13 novembre 2026)
 
 ## Périmètre de la livraison

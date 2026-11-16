@@ -1,5 +1,7 @@
 """Fail-closed first-attempt V26 log-Jv/L2 audit, never a BFS certification."""
+
 from __future__ import annotations
+
 import argparse
 import json
 import math
@@ -14,11 +16,15 @@ def kv(line: str) -> dict[str, str]:
 def first_attempt(log: str) -> dict:
     first = re.split(r"CFDX nonlinear iteration 1 rejected|retry=1", log, maxsplit=1)[0]
     rows = [kv(row) for row in first.splitlines() if "SST_JFNK_V22 iteration=" in row]
-    candidates = [row for row in rows if row.get("v26_active") == "1" and
-                  row.get("v26_jvp_available") == "1"]
+    candidates = [
+        row
+        for row in rows
+        if row.get("v26_active") == "1" and row.get("v26_jvp_available") == "1"
+    ]
     if not candidates:
         raise ValueError("no V26 multiscale audit on first physical attempt")
     row = candidates[-1]
+
     def number(key: str) -> float:
         try:
             val = float(row[key])
@@ -27,7 +33,8 @@ def first_attempt(log: str) -> dict:
         if not math.isfinite(val):
             raise ValueError(f"nonfinite V26 key: {key}")
         return val
-    steps = [number(f"v26_jvp_h{i}") for i in (1,2,3)]
+
+    steps = [number(f"v26_jvp_h{i}") for i in (1, 2, 3)]
     if not (steps[0] > steps[1] > steps[2] > 0):
         raise ValueError("non-decreasing difference scale")
     mismatch = number("v26_jvp_max_disagreement")
@@ -41,15 +48,25 @@ def first_attempt(log: str) -> dict:
         raise ValueError("invalid nonlinear merit")
     smooth = row.get("v26_l2_accepted") == "1"
     selected = row.get("selected")
-    if selected not in {"picard", "jfnk", "jfnk_block", "jfnk_spatial",
-                        "jfnk_spatial_log_v25", "jfnk_smooth_v26", "none"}:
+    if selected not in {
+        "picard",
+        "jfnk",
+        "jfnk_block",
+        "jfnk_spatial",
+        "jfnk_spatial_log_v25",
+        "jfnk_smooth_v26",
+        "none",
+    }:
         raise ValueError("unknown selected solver branch")
     if smooth:
         alpha = number("v26_alpha")
         l2 = number("v26_l2_selected")
         physical = number("v26_linf_selected")
-        if not (0 < alpha <= 1 and l2 < baseline_l2*(1-1e-9*alpha) and
-                physical < baseline_linf*(1-1e-9*alpha)):
+        if not (
+            0 < alpha <= 1
+            and l2 < baseline_l2 * (1 - 1e-9 * alpha)
+            and physical < baseline_linf * (1 - 1e-9 * alpha)
+        ):
             raise ValueError("V26 would promote L2-only or non-descent step")
     elif selected == "jfnk_smooth_v26":
         raise ValueError("selected unavailable smooth candidate")
