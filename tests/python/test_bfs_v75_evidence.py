@@ -97,8 +97,8 @@ def verify(log, historical_pilot=True):
             raise ValueError("duplicate V75 equation row")
         groups[key][d["equation"]] = d
 
-        def get(k):
-            return float(d[k])
+        def get(k, row=d):
+            return float(row[k])
 
         pieces = []
         for k in PIECES:
