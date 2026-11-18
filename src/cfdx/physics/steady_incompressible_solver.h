@@ -10975,35 +10975,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 };
             }
             // Bootstrap/certification strategy:
-            // - First iterations (bootstrap): always use provisional transport
-            //   with normal inner budget. Intermediate SST non-convergence is
-            //   not required; the goal is to reach a stable physical state.
-            // - Later iterations: when carrier metrics (previous iteration)
-            //   are approaching convergence, attempt a certification step
-            //   (non-provisional, limited extra inner iterations) so the final
-            //   gate can require a fully converged, non-provisional SST state.
-            // Final convergence is declared only when ALL gates pass together.
+            // - First 20 iterations (bootstrap): provisional transport with
+            //   normal inner budget only. Intermediate SST convergence is not
+            //   required; establish a stable physical state first.
+            // - After bootstrap: attempt a certification step every iteration
+            //   (non-provisional, limited extra inner iterations, max +10 above
+            //   normal budget). If transport converges, the step is qualified
+            //   for final gates. If not, restore and fall back to a provisional
+            //   progress step so the outer iteration can still advance.
+            // Final "Converged" is declared only when ALL gates pass together
+            // (carrier + non-provisional converged SST + nu_t/change criteria).
             bool try_certification = false;
             std::size_t cert_inner = controls.sst_runtime->max_transport_iterations;
             double cert_tol = controls.sst_runtime->transport_tolerance;
-            if (controls.sst_runtime->allow_bounded_provisional_transport && !result.history.empty()) {
+            if (controls.sst_runtime->allow_bounded_provisional_transport) {
                 const std::size_t bootstrap_iters = 20;
-                const bool past_bootstrap = iter > bootstrap_iters;
-                const auto& prev = result.history.back();
-                const double cert_threshold = 100.0 * controls.convergence.relative_tolerance;
-                // Use global relative residuals and change metrics from the
-                // previous iteration. Do not gate on per-component max here
-                // (a component with structurally small RHS scale can remain
-                // relatively large while the flow is physically converging).
-                const bool carrier_approaching =
-                    prev.momentum_equation_residual_rhs_relative <= cert_threshold &&
-                    prev.continuity_normalized <= cert_threshold &&
-                    prev.velocity_change_inf <= 0.1 &&
-                    prev.pressure_change_inf <= 0.1;
-                if (past_bootstrap && carrier_approaching) {
+                if (iter > bootstrap_iters) {
                     try_certification = true;
-                    // Limited extra inner iterations for certification (max +10
-                    // above normal budget) to converge SST at end-of-run.
                     const std::size_t extra = 10;
                     cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
                         ? controls.sst_runtime->certification_max_transport_iterations
