@@ -280,6 +280,7 @@ def make_setup(
     preconditioner: str | None = None,
     iterations: int = 250,
     inlet_profile_csv: str | None = None,
+    wall_resolved: bool = False,
 ) -> str:
     validate_solver_selection(algorithm, schur, preconditioner)
     if iterations < 1 or iterations > 100000:
@@ -313,7 +314,7 @@ def make_setup(
     bc = []
     for name in names:
         if name == "inlet":
-            ip = None
+            ip = InletProfileSpec()
             if inlet_profile_csv is not None:
                 ip = InletProfileSpec(
                     enabled=True,
@@ -396,6 +397,8 @@ def make_setup(
     setup.numerics.raw_settings["sst_transport_max_iterations"] = "600"
     setup.numerics.raw_settings["v8_global_nonlinear_residual"] = "true"
     setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
+    if wall_resolved:
+        setup.numerics.raw_settings["mesh_wall_resolved"] = "true"
     selections = [
         NumericalSelection(
             family="gradient", configuration_key="numerics.gradient.gauss"
@@ -445,8 +448,20 @@ def write_case(
     preconditioner: str | None = None,
     iterations: int = 250,
     inlet_profile: bool = False,
+    wall_resolved: bool = False,
 ) -> dict:
     validate_solver_selection(algorithm, schur, preconditioner)
+    if wall_resolved:
+        # Wall-resolved configuration: strong tanh clustering toward y=0, y=h,
+        # and y=8h, with enough streamwise resolution to develop the upstream
+        # boundary layer and resolve the recirculation bubble. Targets y+ ~ 1
+        # at the wall so k-omega SST can integrate to the wall without wall
+        # functions (the dominant lever for matching x_r/h = 6.26).
+        n_up = max(n_up, 80)
+        n_down = max(n_down, 240)
+        ny = max(ny, 96)
+        step_cells = max(step_cells, min(ny // 3, 32))
+        wall_stretch = max(wall_stretch, 3.5)
     if not (
         np.isfinite(reynolds)
         and reynolds > 0
@@ -490,6 +505,7 @@ def write_case(
                 preconditioner=preconditioner,
                 iterations=iterations,
                 inlet_profile_csv=inlet_profile_csv,
+                wall_resolved=wall_resolved,
             ),
         }.items():
             h5.attrs[key] = value
@@ -657,6 +673,11 @@ def main():
         action="store_true",
         help="use a 1/7 power-law inlet boundary-layer profile (CSV) instead of a uniform inlet",
     )
+    parser.add_argument(
+        "--wall-resolved",
+        action="store_true",
+        help="wall-resolved mesh: strong tanh clustering toward walls (y+ ~ 1), more cells in y and streamwise",
+    )
     args = parser.parse_args()
     if not str(args.output).endswith(".cfdx.h5"):
         parser.error(
@@ -676,6 +697,7 @@ def main():
                 preconditioner=args.preconditioner,
                 iterations=args.iterations,
                 inlet_profile=args.inlet_profile,
+                wall_resolved=args.wall_resolved,
             ),
             indent=2,
         )
