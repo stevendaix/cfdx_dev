@@ -363,7 +363,13 @@ struct SSTProductionRuntime {
     // Physical WALL_OMEGA_SST obligations from the case contract. This is
     // distinct from the list of walls used to compute nearest wall distance.
     std::vector<std::string> wall_omega_sst_patches;
-    std::size_t max_transport_iterations = 100;
+    std::size_t max_transport_iterations = 30;
+    // Small SST inner budget used during the outer bootstrap (first
+    // bootstrap_iters iterations). Prevents the solver from burning thousands
+    // of wall-resolved k/omega inner iterations before the carrier velocity
+    // field has stabilized. After bootstrap, the full max_transport_iterations
+    // (or certification budget) is used.
+    std::size_t bootstrap_transport_iterations = 10;
     double transport_tolerance = 1e-8;
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
@@ -11019,18 +11025,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             bool try_certification = false;
             std::size_t cert_inner = controls.sst_runtime->max_transport_iterations;
             double cert_tol = controls.sst_runtime->transport_tolerance;
-            if (controls.sst_runtime->allow_bounded_provisional_transport) {
-                const std::size_t bootstrap_iters = 20;
-                if (iter > bootstrap_iters) {
-                    try_certification = true;
-                    const std::size_t extra = 10;
-                    cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
-                        ? controls.sst_runtime->certification_max_transport_iterations
-                        : controls.sst_runtime->max_transport_iterations + extra;
-                    cert_tol = controls.sst_runtime->certification_transport_tolerance > 0.0
-                        ? controls.sst_runtime->certification_transport_tolerance
-                        : controls.sst_runtime->transport_tolerance;
-                }
+            const std::size_t bootstrap_iters = 20;
+            if (iter <= bootstrap_iters) {
+                // Bootstrap phase: use a small inner budget so the outer
+                // iteration can advance without being blocked by stiff
+                // wall-resolved k/omega transport. SST convergence is not
+                // required here; establish a stable physical state first.
+                cert_inner = controls.sst_runtime->bootstrap_transport_iterations;
+                cert_tol = controls.sst_runtime->transport_tolerance;
+                sst_step = advance_sst_production_iterate_transactionally(
+                    mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                    controls.sst_runtime->transport, fixed_velocity_values,
+                    controls.sst_runtime->wall_patch_names,
+                    controls.sst_runtime->k_boundary_conditions,
+                    controls.sst_runtime->omega_boundary_conditions,
+                    cert_inner, cert_tol,
+                    &controls.sst_runtime->omega_face_values,
+                    controls.sst_runtime->allow_bounded_provisional_transport,
+                    need_wall_operator ? &wall_refresh_v17 : nullptr);
+            } else if (controls.sst_runtime->allow_bounded_provisional_transport) {
+                try_certification = true;
+                const std::size_t extra = 10;
+                cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
+                    ? controls.sst_runtime->certification_max_transport_iterations
+                    : controls.sst_runtime->max_transport_iterations + extra;
+                cert_tol = controls.sst_runtime->certification_transport_tolerance > 0.0
+                    ? controls.sst_runtime->certification_transport_tolerance
+                    : controls.sst_runtime->transport_tolerance;
             }
             if (try_certification) {
                 // Save state for rollback if certification fails
