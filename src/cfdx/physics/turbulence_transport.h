@@ -180,6 +180,15 @@ struct TurbulenceTransportControls {
     // through the transport path. CLAMP_ZERO preserves the historical
     // behaviour exactly; REJECT is the fail-closed qualification mode.
     NegativeNuTildePolicy negative_nu_tilde_policy = NegativeNuTildePolicy::CLAMP_ZERO;
+    // Opt-in adaptive linear relaxation for the segregated k/omega Picard
+    // fixed-point. Relaxes when the update norm grows (divergence risk),
+    // tightens when it contracts (convergence). Same physical fixed-point,
+    // different path.
+    bool sst_adaptive_relaxation = false;
+    double sst_relaxation_min = 0.3;
+    double sst_relaxation_max = 0.9;
+    double sst_relaxation_reduce_factor = 0.7;
+    double sst_relaxation_increase_factor = 1.05;
 };
 
 struct TurbulenceBoundDiagnostics {
@@ -407,10 +416,20 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        (c.sst_jfnk_v22_experimental &&
            (c.sst_anderson_m2_v20 || c.sst_nonlinear_line_search ||
             c.sst_picard_damping != 1.0)) ||
-       c.k_min<=0.0 ||
-       c.epsilon_min<=0.0 || c.omega_min<=0.0)
-        throw std::invalid_argument("invalid turbulence controls");
-    const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
+         c.k_min<=0.0 ||
+         c.epsilon_min<=0.0 || c.omega_min<=0.0)
+         throw std::invalid_argument("invalid turbulence controls");
+     if (c.sst_adaptive_relaxation &&
+         (!std::isfinite(c.sst_relaxation_min) ||
+          !std::isfinite(c.sst_relaxation_max) ||
+          !std::isfinite(c.sst_relaxation_reduce_factor) ||
+          !std::isfinite(c.sst_relaxation_increase_factor) ||
+          !(c.sst_relaxation_min > 0.0 && c.sst_relaxation_min < 1.0) ||
+          !(c.sst_relaxation_max > c.sst_relaxation_min && c.sst_relaxation_max <= 1.0) ||
+          !(c.sst_relaxation_reduce_factor > 0.0 && c.sst_relaxation_reduce_factor < 1.0) ||
+          !(c.sst_relaxation_increase_factor > 1.0)))
+         throw std::invalid_argument("invalid turbulence controls");
+     const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
         c.gamma1,c.gamma2,c.a1,c.rng_C_mu,c.rng_C1,c.rng_C2,c.rng_sigma_k,
         c.rng_sigma_epsilon,c.rng_eta0,c.rng_beta,c.realizable_A0,
         c.realizable_C2,c.realizable_sigma_k,c.realizable_sigma_epsilon,

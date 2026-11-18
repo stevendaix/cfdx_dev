@@ -813,6 +813,11 @@ inline TurbulenceTransportResult solve_sst_transport(
         validate_transport_boundary_face_values(mesh, geometry, *omega_face_values, true);
 
     TurbulenceTransportResult result;
+    // Adaptive linear relaxation for the segregated k/omega Picard loop.
+    double current_relaxation = controls.sst_linear_relaxation;
+    double prev_dk = std::numeric_limits<double>::quiet_NaN();
+    double prev_dw = std::numeric_limits<double>::quiet_NaN();
+    std::size_t relax_reductions = 0, relax_increases = 0;
     for(std::size_t iter=1;iter<=max_iterations;++iter) {
         // Keep the cross-diffusion source and outer blending on the same
         // gradient scheme. Previously opt-in WLS only affected F1/F2 in the
@@ -843,12 +848,12 @@ inline TurbulenceTransportResult solve_sst_transport(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
             nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k,
             nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr,
-            1.0,controls.sst_linear_relaxation);
+            1.0,current_relaxation);
         auto eqw=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
             omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
             nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr,
-            1.0,controls.sst_linear_relaxation);
+            1.0,current_relaxation);
         if (controls.sst_weighted_wall_matrix_v29_experimental)
             sst_apply_omega_owner_constraints_v29(eqw,wall_production);
         else
@@ -865,9 +870,9 @@ inline TurbulenceTransportResult solve_sst_transport(
         const double omega_linear_target = controls.sst_scale_aware_convergence
             ? tolerance * omega_scale : tolerance;
         const ScalarSolveControls k_sc{
-            2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
+            2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),current_relaxation};
         const ScalarSolveControls omega_sc{
-            2000,sst_linear_tolerance_for_solution_defect(eqw,omega_linear_target),controls.sst_linear_relaxation};
+            2000,sst_linear_tolerance_for_solution_defect(eqw,omega_linear_target),current_relaxation};
         cfdx::core::Vector k_solution(n, 0.0);
         cfdx::core::Vector omega_solution(n, 0.0);
         for (std::size_t i = 0; i < n; ++i) {
@@ -903,9 +908,9 @@ inline TurbulenceTransportResult solve_sst_transport(
                 mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
                 nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
                 nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr,
-                1.0,controls.sst_linear_relaxation);
+                1.0,current_relaxation);
             const ScalarSolveControls updated_k_sc{
-                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
+                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),current_relaxation};
             rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
         } else {
             rk=solve_scalar_equation(eqk,k_solution,k_sc);
@@ -958,6 +963,31 @@ inline TurbulenceTransportResult solve_sst_transport(
             k_solution(i)=k(i);
             omega_solution(i)=omega(i);
         }
+
+        // Adaptive linear relaxation: reduce when update norm grows
+        // (divergence risk), tighten when it contracts (convergence).
+        if (controls.sst_adaptive_relaxation) {
+            const double update_norm = std::max(dk, dw);
+            if (std::isfinite(prev_dk) && std::isfinite(prev_dw)) {
+                const double prev_update_norm = std::max(prev_dk, prev_dw);
+                if (prev_update_norm > 0.0) {
+                    const double ratio = update_norm / prev_update_norm;
+                    if (ratio > 1.10 && current_relaxation > controls.sst_relaxation_min) {
+                        current_relaxation = std::max(
+                            current_relaxation * controls.sst_relaxation_reduce_factor,
+                            controls.sst_relaxation_min);
+                        ++relax_reductions;
+                    } else if (ratio < 0.90 && current_relaxation < controls.sst_relaxation_max) {
+                        current_relaxation = std::min(
+                            current_relaxation * controls.sst_relaxation_increase_factor,
+                            controls.sst_relaxation_max);
+                        ++relax_increases;
+                    }
+                }
+            }
+            prev_dk = dk;
+            prev_dw = dw;
+        }
         result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
         result.second_residual=scalar_equation_residual_inf(eqw,omega_solution);
         result.iterations=iter;
@@ -988,6 +1018,9 @@ inline TurbulenceTransportResult solve_sst_transport(
             break;
         }
     }
+    result.relax_reductions = relax_reductions;
+    result.relax_increases = relax_increases;
+    result.final_relaxation = current_relaxation;
     return result;
 }
 
