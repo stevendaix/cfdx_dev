@@ -88,6 +88,14 @@ class MaterialSpec(BaseModel):
     extra_properties: dict[str, str] = Field(default_factory=dict)
 
 
+class InletProfileSpec(BaseModel):
+    enabled: bool = False
+    axis: int = 1  # 0=x, 1=y, 2=z spatial coordinate used as table abscissa
+    profile_file: str = ""  # CSV path: coord,value (header optional), takes precedence over inline tables
+    coords: list[float] = Field(default_factory=list)
+    values: list[float] = Field(default_factory=list)
+
+
 class BoundarySpec(BaseModel):
     patch_name: str = ""
     type: BCType = BCType.UNKNOWN
@@ -105,6 +113,7 @@ class BoundarySpec(BaseModel):
     source_zone_name: str = ""
     source_type_name: str = ""
     raw_params: dict[str, str] = Field(default_factory=dict)
+    inlet_profile: InletProfileSpec = Field(default_factory=InletProfileSpec)
 
     @property
     def has_raw_unmapped(self) -> bool:

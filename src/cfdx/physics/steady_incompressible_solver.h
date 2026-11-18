@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/core/field/field.h"
+#include "cfdx/core/boundary/value_provider.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/native_selfp_schur_v63.h"
@@ -130,9 +131,15 @@
 namespace cfdx::physics {
 
 struct VelocityBoundaryCondition {
-    enum class Type { FIXED_VALUE, ZERO_GRADIENT };
+    enum class Type { FIXED_VALUE, ZERO_GRADIENT, PROFILE };
     Type type = Type::ZERO_GRADIENT;
     cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+    // Optional per-component spatial profile (e.g. inlet boundary-layer u(y)).
+    // When set, the provider for a component overrides value[d] for that component
+    // on each boundary face, evaluated at the face centroid via ValueContext.
+    std::shared_ptr<const cfdx::core::ValueProvider> ux_provider;
+    std::shared_ptr<const cfdx::core::ValueProvider> uy_provider;
+    std::shared_ptr<const cfdx::core::ValueProvider> uz_provider;
 };
 
 using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
@@ -1833,7 +1840,19 @@ inline VelocityFaceConditions resolve_inlet_outlet_velocity_faces(
         const auto inflow = inflow_values.find(patch.name);
         const bool mixed_inflow = inflow != inflow_values.end() && f < 0.0;
         const bool fixed = mixed_inflow || bc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE;
-        const Vec3 value = mixed_inflow ? inflow->second : bc->second.value;
+        Vec3 value;
+        if (bc->second.type == VelocityBoundaryCondition::Type::PROFILE && !mixed_inflow) {
+            ValueContext ctx{0.0,
+                             geometry.face_centres[face].x,
+                             geometry.face_centres[face].y,
+                             geometry.face_centres[face].z,
+                             face};
+            value.x = bc->second.ux_provider ? bc->second.ux_provider->evaluate(ctx) : 0.0;
+            value.y = bc->second.uy_provider ? bc->second.uy_provider->evaluate(ctx) : 0.0;
+            value.z = bc->second.uz_provider ? bc->second.uz_provider->evaluate(ctx) : 0.0;
+        } else {
+            value = mixed_inflow ? inflow->second : bc->second.value;
+        }
         const std::array<double, 3> components{value.x, value.y, value.z};
         for (std::size_t d=0;d<3;++d) {
             resolved[d].specified[face] = 1;
@@ -1892,8 +1911,20 @@ make_mass_flux(
             if(p<mesh.boundary().n_patches()) {
                 const auto& name=mesh.boundary().patch(p).name;
                 const auto it=bcs.find(name);
-                if(it!=bcs.end() && it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
-                    Uf=it->second.value;
+                if(it!=bcs.end()) {
+                    if(it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        Uf=it->second.value;
+                    else if(it->second.type==VelocityBoundaryCondition::Type::PROFILE) {
+                        ValueContext ctx{0.0,
+                                         geometry.face_centres[f].x,
+                                         geometry.face_centres[f].y,
+                                         geometry.face_centres[f].z,
+                                         f};
+                        Uf.x = it->second.ux_provider ? it->second.ux_provider->evaluate(ctx) : 0.0;
+                        Uf.y = it->second.uy_provider ? it->second.uy_provider->evaluate(ctx) : 0.0;
+                        Uf.z = it->second.uz_provider ? it->second.uz_provider->evaluate(ctx) : 0.0;
+                    }
+                }
             }
         }
         if (own.neighbour(f) < 0 && face_velocity_conditions)

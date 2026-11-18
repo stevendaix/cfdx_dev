@@ -798,6 +798,42 @@ Options parse(int argc, char** argv)
 }
 }
 
+// ---------------------------------------------------------------------------
+// Read a two-column CSV (coord,value) for an inlet spatial profile.
+// First line is treated as a header if it does not parse as two doubles.
+// Returns a TableOverSpaceValueProvider over axis (default y).
+// ---------------------------------------------------------------------------
+static std::shared_ptr<const cfdx::core::ValueProvider>
+read_inlet_profile(const std::string& path, int axis) {
+    std::ifstream in(path);
+    if (!in.is_open())
+        throw std::invalid_argument("inlet profile: cannot open CSV '" + path + "'");
+    std::vector<double> coords, values;
+    std::string line;
+    bool header = true;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        std::istringstream iss(line);
+        double a = 0.0, b = 0.0;
+        std::string ta, tb;
+        if (!(std::getline(iss, ta, ',') && std::getline(iss, tb, ','))) continue;
+        try {
+            a = std::stod(ta);
+            b = std::stod(tb);
+            header = false;
+        } catch (...) {
+            if (header) { header = false; continue; }  // skip header line
+            continue;
+        }
+        coords.push_back(a);
+        values.push_back(b);
+    }
+    if (coords.size() < 2)
+        throw std::invalid_argument("inlet profile: CSV '" + path + "' needs at least two rows");
+    return std::make_shared<const cfdx::core::TableOverSpaceValueProvider>(
+        std::move(coords), std::move(values), axis);
+}
+
 int main(int argc, char** argv)
 {
     std::signal(SIGINT, handle_stop_signal);
@@ -1062,21 +1098,35 @@ int main(int argc, char** argv)
             } else if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
-                cfdx::core::Vec3 value{0.0, 0.0, 0.0};
-                if (!bc->velocity_vector.empty()) {
-                    if (bc->velocity_vector.size() != 3)
-                        throw std::invalid_argument(
-                            "production solver: velocity_vector must have 3 components for patch '" +
-                            patch.name + "'");
-                    value = cfdx::core::Vec3{
-                        bc->velocity_vector[0],
-                        bc->velocity_vector[1],
-                        bc->velocity_vector[2]};
-                } else if (bc->velocity_magnitude != 0.0) {
-                    value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                // Non-uniform inlet profile (e.g. Driver-Seegmiller BL u(y) from CSV)
+                if (bc->inlet_profile.has_value() && bc->inlet_profile->enabled &&
+                    !bc->inlet_profile->profile_file.empty()) {
+                    auto ux_provider = read_inlet_profile(bc->inlet_profile->profile_file,
+                                                          bc->inlet_profile->axis);
+                    auto zero_provider = std::make_shared<const cfdx::core::ConstantValueProvider>(0.0);
+                    VelocityBoundaryCondition prof_bc;
+                    prof_bc.type = VelocityBoundaryCondition::Type::PROFILE;
+                    prof_bc.ux_provider = std::move(ux_provider);
+                    prof_bc.uy_provider = zero_provider;
+                    prof_bc.uz_provider = zero_provider;
+                    ubc[patch.name] = prof_bc;
+                } else {
+                    cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+                    if (!bc->velocity_vector.empty()) {
+                        if (bc->velocity_vector.size() != 3)
+                            throw std::invalid_argument(
+                                "production solver: velocity_vector must have 3 components for patch '" +
+                                patch.name + "'");
+                        value = cfdx::core::Vec3{
+                            bc->velocity_vector[0],
+                            bc->velocity_vector[1],
+                            bc->velocity_vector[2]};
+                    } else if (bc->velocity_magnitude != 0.0) {
+                        value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                    }
+                    ubc[patch.name] = {
+                        VelocityBoundaryCondition::Type::FIXED_VALUE, value};
                 }
-                ubc[patch.name] = {
-                    VelocityBoundaryCondition::Type::FIXED_VALUE, value};
             } else if (bc->value_type == BCValueType::ZERO_GRADIENT ||
                        bc->value_type == BCValueType::WALL_SLIP ||
                        bc->type == BCType::OUTLET ||
