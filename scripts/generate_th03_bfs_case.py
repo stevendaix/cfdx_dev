@@ -394,10 +394,11 @@ def make_setup(
         scalar_fields={"k": k, "omega": omega},
     )
     setup.numerics.max_iterations = iterations
-    setup.numerics.raw_settings["sst_transport_max_iterations"] = "30"
+    setup.numerics.raw_settings["sst_transport_max_iterations"] = "10"
     setup.numerics.raw_settings["v8_global_nonlinear_residual"] = "true"
     setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
     setup.numerics.raw_settings["sst_outer_provisional"] = "enabled"
+    setup.numerics.raw_settings["skip_transactional_save"] = "disabled"
     if wall_resolved:
         setup.numerics.raw_settings["mesh_wall_resolved"] = "true"
     selections = [

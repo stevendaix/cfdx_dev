@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/boundary/value_provider.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
@@ -363,7 +365,7 @@ struct SSTProductionRuntime {
     // Physical WALL_OMEGA_SST obligations from the case contract. This is
     // distinct from the list of walls used to compute nearest wall distance.
     std::vector<std::string> wall_omega_sst_patches;
-    std::size_t max_transport_iterations = 30;
+    std::size_t max_transport_iterations = 10;
     // Small SST inner budget used during the outer bootstrap (first
     // bootstrap_iters iterations). Prevents the solver from burning thousands
     // of wall-resolved k/omega inner iterations before the carrier velocity
@@ -374,6 +376,10 @@ struct SSTProductionRuntime {
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
     bool allow_bounded_provisional_transport = false;
+    // When true, skip the SST certification state backup/restore to measure
+    // pure compute time. Unsafe for production (no rollback on failure), but
+    // useful for benchmarking.
+    bool skip_transactional_save = false;
     // V83 opt-in: evaluate and commit finite, unclipped but NONCONVERGED
     // SST outer PROGRESS through the true V8/V13/V14 FV residuals. It never
     // changes V8 converged or the final SST 1e-8 gate. No COUPLED support.
@@ -6805,6 +6811,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             convection_residuals_share_operator(
                 controls.convection_continuation, iter);
         bool stop_after_iteration = false;
+        // Timing instrumentation (CFDX_TIMING=1)
+        const bool timing_enabled = std::getenv("CFDX_TIMING") != nullptr;
+        std::chrono::steady_clock::time_point t_iter_start, t_iter_end;
+        std::chrono::steady_clock::time_point t_mom_start, t_mom_end;
+        std::chrono::steady_clock::time_point t_pres_start, t_pres_end;
+        std::chrono::steady_clock::time_point t_sst_start, t_sst_end;
+        std::chrono::steady_clock::time_point t_audit_start, t_audit_end;
+        double t_mom_total = 0, t_pres_total = 0, t_sst_total = 0, t_audit_total = 0;
         auto nonlinear_retry_controls = controls.nonlinear_retry;
         if (controls.bfs_local_step_trust_v88_experimental) {
             // The V87 retry floors (0.1 U / 0.05 p) were hit after one
@@ -6834,6 +6848,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // a rejected prediction must not seed the next nonlinear proposal.
         bool picard_fallback_after_multisecant = false;
         while (!iteration_completed) {
+            t_iter_start = std::chrono::steady_clock::now();
             // A retry must restore not only physical fields but also any
             // convergence/history state tentatively updated before the outer
             // transaction commits.
@@ -7426,6 +7441,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=COUPLED_LINEAR_BEGIN\n";
+            if (timing_enabled) t_mom_start = std::chrono::steady_clock::now();
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
@@ -7442,6 +7458,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 U, p, &result.coupled_linear_plan,
                 (v51_requested && opt_in_v51("CFDX_FPHYS_JFNK_V52"))
                     ? &v52_native_preconditioner : nullptr);
+            if (timing_enabled) { t_mom_end = std::chrono::steady_clock::now(); t_mom_total += std::chrono::duration_cast<std::chrono::microseconds>(t_mom_end - t_mom_start).count(); }
             result.coupled_linear_plan_resolved = true;
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
@@ -9795,6 +9812,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Expected zero up to round-off; a nonzero value flags a stale or
         // mutated flux, or an omitted/duplicated SIMPLEC response term.
         {
+            if (timing_enabled) t_audit_start = std::chrono::steady_clock::now();
             auto rederived_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, HbyA, v19_flux_pressure_state,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
@@ -9821,6 +9839,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     rhie_chow_identity_audit_linf,
                     std::abs(mass_flux(f) - rederived_flux(f)));
             rhie_chow_identity_evaluated = true;
+            if (timing_enabled) { t_audit_end = std::chrono::steady_clock::now(); t_audit_total += std::chrono::duration_cast<std::chrono::microseconds>(t_audit_end - t_audit_start).count(); }
         }
         if (controls.momentum_same_state_face_callback) {
             // Capture the EXACT live predictor and pressure states before
@@ -9843,6 +9862,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 RhieChowVelocityContract::HBYA_PREDICTOR,
                 controls.pressure_skew_corrected_gradient,
                 controls.pressure_projected_face_interpolation);
+            if (timing_enabled) { t_audit_end = std::chrono::steady_clock::now(); t_audit_total += std::chrono::duration_cast<std::chrono::microseconds>(t_audit_end - t_audit_start).count(); }
             // Independent internal-face pressure Schur action at the same
             // flux-pressure state and rAU/rAtU. Boundaries are not compared
             // to the internal-face formula (they have different BC terms).
@@ -10294,6 +10314,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto reconstructed_flux = make_mass_flux(
             mesh, geometry, U, controls.density, velocity_bcs,
             {}, controls.pressure_projected_face_interpolation);
+        if (timing_enabled) { t_audit_end = std::chrono::steady_clock::now(); t_audit_total += std::chrono::duration_cast<std::chrono::microseconds>(t_audit_end - t_audit_start).count(); }
         double reconstructed_linf = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             double div_reconstructed = 0.0;
@@ -11053,43 +11074,58 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ? controls.sst_runtime->certification_transport_tolerance
                     : controls.sst_runtime->transport_tolerance;
             }
+            if (timing_enabled) t_sst_start = std::chrono::steady_clock::now();
             if (try_certification) {
-                // Save state for rollback if certification fails
-                auto cert_state_backup = *controls.sst_runtime->state;
-                sst_step = advance_sst_production_iterate_transactionally(
-                    mesh, U, p, mass_flux, *controls.sst_runtime->state,
-                    controls.sst_runtime->transport, fixed_velocity_values,
-                    controls.sst_runtime->wall_patch_names,
-                    controls.sst_runtime->k_boundary_conditions,
-                    controls.sst_runtime->omega_boundary_conditions,
-                    cert_inner, cert_tol,
-                    &controls.sst_runtime->omega_face_values,
-                    false, // no provisional for certification
-                    need_wall_operator ? &wall_refresh_v17 : nullptr);
-                if (sst_step.committed && sst_step.transport.converged && !sst_step.provisional) {
-                    if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
-                        std::cerr << "SST_CERTIFICATION iteration=" << iter
-                                  << " converged=1 inner=" << sst_step.transport.iterations
-                                  << " k_res=" << sst_step.transport.k_residual
-                                  << " omega_res=" << sst_step.transport.second_residual << "\n";
-                } else {
-                    // Certification failed, restore and do normal provisional step
-                    *controls.sst_runtime->state = cert_state_backup;
-                    if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
-                        std::cerr << "SST_CERTIFICATION iteration=" << iter
-                                  << " converged=0 fallback=provisional\n";
-                    sst_step = {};
+                if (controls.sst_runtime->skip_transactional_save) {
+                    // No backup/restore: measure pure compute time.
                     sst_step = advance_sst_production_iterate_transactionally(
                         mesh, U, p, mass_flux, *controls.sst_runtime->state,
                         controls.sst_runtime->transport, fixed_velocity_values,
                         controls.sst_runtime->wall_patch_names,
                         controls.sst_runtime->k_boundary_conditions,
                         controls.sst_runtime->omega_boundary_conditions,
-                        controls.sst_runtime->max_transport_iterations,
-                        controls.sst_runtime->transport_tolerance,
+                        cert_inner, cert_tol,
                         &controls.sst_runtime->omega_face_values,
-                        controls.sst_runtime->allow_bounded_provisional_transport,
+                        false, // no provisional for certification
                         need_wall_operator ? &wall_refresh_v17 : nullptr);
+                } else {
+                    // Save state for rollback if certification fails.
+                    auto cert_state_backup = *controls.sst_runtime->state;
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        cert_inner, cert_tol,
+                        &controls.sst_runtime->omega_face_values,
+                        false, // no provisional for certification
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                    if (!sst_step.committed) {
+                        // Certification failed, restore and do normal provisional step
+                        *controls.sst_runtime->state = cert_state_backup;
+                        if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
+                            std::cerr << "SST_CERTIFICATION iteration=" << iter
+                                      << " converged=0 fallback=provisional\n";
+                        sst_step = {};
+                        sst_step = advance_sst_production_iterate_transactionally(
+                            mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                            controls.sst_runtime->transport, fixed_velocity_values,
+                            controls.sst_runtime->wall_patch_names,
+                            controls.sst_runtime->k_boundary_conditions,
+                            controls.sst_runtime->omega_boundary_conditions,
+                            controls.sst_runtime->max_transport_iterations,
+                            controls.sst_runtime->transport_tolerance,
+                            &controls.sst_runtime->omega_face_values,
+                            controls.sst_runtime->allow_bounded_provisional_transport,
+                            need_wall_operator ? &wall_refresh_v17 : nullptr);
+                    } else if (sst_step.committed && sst_step.transport.converged && !sst_step.provisional) {
+                        if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
+                            std::cerr << "SST_CERTIFICATION iteration=" << iter
+                                      << " converged=1 inner=" << sst_step.transport.iterations
+                                      << " k_res=" << sst_step.transport.k_residual
+                                      << " omega_res=" << sst_step.transport.second_residual << "\n";
+                    }
                 }
             } else {
                 sst_step = advance_sst_production_iterate_transactionally(
@@ -11104,6 +11140,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     controls.sst_runtime->allow_bounded_provisional_transport,
                     need_wall_operator ? &wall_refresh_v17 : nullptr);
             }
+            if (timing_enabled) { t_sst_end = std::chrono::steady_clock::now(); t_sst_total += std::chrono::duration_cast<std::chrono::microseconds>(t_sst_end - t_sst_start).count(); }
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=SST_TRANSPORT_END committed=" << sst_step.committed
@@ -15992,6 +16029,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 sst_step.committed && !sst_step.provisional &&
                 sst_step.transport.converged)
                 controls.sst_runtime->coupled_ptc_v30.outer_commit();
+            t_iter_end = std::chrono::steady_clock::now();
+            if (timing_enabled) {
+                auto t_iter_us = std::chrono::duration_cast<std::chrono::microseconds>(t_iter_end - t_iter_start).count();
+                std::cerr << "TIMING iter=" << iter
+                          << " total_us=" << t_iter_us
+                          << " mom_us=" << t_mom_total
+                          << " pres_us=" << t_pres_total
+                          << " sst_us=" << t_sst_total
+                          << " audit_us=" << t_audit_total
+                          << "\n";
+            }
             iteration_completed = true;
             } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();

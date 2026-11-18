@@ -2174,6 +2174,18 @@ int main(int argc, char** argv)
                                  "physical U/p/flux/SST merit required; final SST gate UNCHANGED\n";
                 }
             }
+            const auto skip_save = case_setup.numerics.raw_settings.find(
+                "skip_transactional_save");
+            if (skip_save != case_setup.numerics.raw_settings.end()) {
+                if (skip_save->second == "enabled")
+                    experimental_sst_runtime.skip_transactional_save = true;
+                else if (skip_save->second != "disabled")
+                    throw std::invalid_argument(
+                        "skip_transactional_save must be enabled or disabled");
+                std::cout << "SST transactional save/restore: "
+                          << skip_save->second
+                          << " (benchmarking only, rollback disabled)\n";
+            }
             const auto v84_window = case_setup.numerics.raw_settings.find(
                 "v84_bounded_nonmonotone_outer_progress");
             if (v84_window != case_setup.numerics.raw_settings.end()) {
