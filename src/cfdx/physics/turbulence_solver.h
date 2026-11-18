@@ -36,6 +36,15 @@ struct TurbulenceTransportResult {
     double last_k_linear_after = std::numeric_limits<double>::quiet_NaN();
     double last_second_linear_before = std::numeric_limits<double>::quiet_NaN();
     double last_second_linear_after = std::numeric_limits<double>::quiet_NaN();
+    // Adaptive relaxation diagnostics (only meaningful when
+    // sst_adaptive_relaxation is enabled).
+    std::size_t relax_reductions=0;
+    std::size_t relax_increases=0;
+    double final_relaxation=0.0;
+    // Coupled 2x2 k/omega correction diagnostics (only meaningful when
+    // sst_coupled_2x2_komega is enabled).
+    std::size_t coupled_2x2_applied=0;
+    double coupled_2x2_max_delta=0.0;
 };
 
 inline void record_turbulence_bounds(

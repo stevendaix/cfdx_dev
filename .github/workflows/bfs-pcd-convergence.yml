@@ -1,0 +1,108 @@
+name: BFS PCD convergence experiment (SIMPLE vs COUPLED+PCD)
+
+on:
+  push:
+    branches: [feat/bfs-convergence-petsc-openfoam]
+  pull_request:
+    paths:
+      - '.github/workflows/bfs-pcd-convergence.yml'
+      - 'scripts/run_cfdx_coupled_campaign.py'
+      - 'scripts/generate_th03_bfs_case.py'
+      - 'src/cfdx/**'
+      - 'apps/production_solver/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bfs-pcd-convergence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bfs-pcd-ab:
+    name: Same-mesh BFS/SST A-B — SIMPLE vs COUPLED+PCD
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      BUILD_DIR: build-bfs-pcd
+      RESULTS_DIR: build-bfs-pcd/results
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install build and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev
+          python -m pip install --upgrade pip
+          python -m pip install -e . numpy
+
+      - name: Configure production solver
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=OFF \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=ON \
+            -DCFDX_ENABLE_MPI=OFF
+
+      - name: Build production solver
+        run: cmake --build "$BUILD_DIR" --target cfdx_production_solver --parallel 2
+
+      - name: Run controlled BFS/SST A-B campaign
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/run_cfdx_coupled_campaign.py \
+            --build "$BUILD_DIR" \
+            --out "$RESULTS_DIR" \
+            --only bfs \
+            --bfs-variants simple pcd_auto \
+            --bfs-upstream 4 \
+            --bfs-downstream 16 \
+            --bfs-ny 10 \
+            --bfs-step-cells 2 \
+            --iterations 1500 \
+            --wall-timeout 2700 \
+            2>&1 | tee "$BUILD_DIR/bfs-pcd-ab.log"
+
+      - name: Write run summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("${{ env.RESULTS_DIR }}/coupled_matrix_campaign.json")
+          if p.exists():
+              data = json.loads(p.read_text())
+              for run in data.get("cases", []):
+                  print(run.get("case"), run.get("execution"), run.get("wall_seconds"))
+                  print("  BFS evidence:", run.get("bfs_v8_gate", {}).get("nonlinear_v8_proven"))
+                  print("  reason:", run.get("bfs_v8_gate", {}).get("reason"))
+          else:
+              print("No campaign summary was produced.")
+          PY
+
+      - name: Upload complete numerical evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bfs-pcd-ab-${{ github.sha }}
+          path: |
+            ${{ env.BUILD_DIR }}/bfs-pcd-ab.log
+            ${{ env.RESULTS_DIR }}/
+            ${{ env.BUILD_DIR }}/Testing/
+          if-no-files-found: warn
+          retention-days: 30

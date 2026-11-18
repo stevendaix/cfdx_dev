@@ -813,6 +813,13 @@ inline TurbulenceTransportResult solve_sst_transport(
         validate_transport_boundary_face_values(mesh, geometry, *omega_face_values, true);
 
     TurbulenceTransportResult result;
+    result.coupled_2x2_applied = 0;
+    result.coupled_2x2_max_delta = 0.0;
+    // Adaptive linear relaxation for the segregated k/omega Picard loop.
+    double current_relaxation = controls.sst_linear_relaxation;
+    double prev_dk = std::numeric_limits<double>::quiet_NaN();
+    double prev_dw = std::numeric_limits<double>::quiet_NaN();
+    std::size_t relax_reductions = 0, relax_increases = 0;
     for(std::size_t iter=1;iter<=max_iterations;++iter) {
         // Keep the cross-diffusion source and outer blending on the same
         // gradient scheme. Previously opt-in WLS only affected F1/F2 in the
@@ -842,11 +849,13 @@ inline TurbulenceTransportResult solve_sst_transport(
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
             nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k,
-            nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr,
+            1.0,current_relaxation);
         auto eqw=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
             omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
-            nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr,
+            1.0,current_relaxation);
         if (controls.sst_weighted_wall_matrix_v29_experimental)
             sst_apply_omega_owner_constraints_v29(eqw,wall_production);
         else
@@ -863,9 +872,9 @@ inline TurbulenceTransportResult solve_sst_transport(
         const double omega_linear_target = controls.sst_scale_aware_convergence
             ? tolerance * omega_scale : tolerance;
         const ScalarSolveControls k_sc{
-            2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
+            2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),current_relaxation};
         const ScalarSolveControls omega_sc{
-            2000,sst_linear_tolerance_for_solution_defect(eqw,omega_linear_target),controls.sst_linear_relaxation};
+            2000,sst_linear_tolerance_for_solution_defect(eqw,omega_linear_target),current_relaxation};
         cfdx::core::Vector k_solution(n, 0.0);
         cfdx::core::Vector omega_solution(n, 0.0);
         for (std::size_t i = 0; i < n; ++i) {
@@ -900,9 +909,10 @@ inline TurbulenceTransportResult solve_sst_transport(
             eqk=assemble_scalar_equation(
                 mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
                 nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
-                nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr);
+                nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr,
+                1.0,current_relaxation);
             const ScalarSolveControls updated_k_sc{
-                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
+                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),current_relaxation};
             rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
         } else {
             rk=solve_scalar_equation(eqk,k_solution,k_sc);
@@ -946,6 +956,73 @@ inline TurbulenceTransportResult solve_sst_transport(
         }
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
 
+        // Coupled 2x2 k/omega correction using local Newton step on log variables.
+        // Only applied after the linear k/omega solves have converged and the
+        // Picard iteration has stabilised (iter >= 3), so the local Jacobian
+        // is evaluated near the local fixed point and does not destabilise
+        // early iterations where residuals are still large.
+        if (controls.sst_coupled_2x2_komega &&
+            iter >= 3 &&
+            rk.status == cfdx::core::SolverStatus::CONVERGED &&
+            rw.status == cfdx::core::SolverStatus::CONVERGED) {
+            const double eps = 1e-4;
+            const double max_log_delta = 2.0; // clamp exp argument to avoid overflow
+            double max_delta = 0.0;
+            std::size_t applied = 0;
+            for (std::size_t i = 0; i < n; ++i) {
+                const double ki = k(i), wi = omega(i);
+                if (!(ki > 0.) || !(wi > 0.)) continue;
+                const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
+
+                // Residuals at current state
+                const auto q0 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Fk = q0.sk - q0.spk * ki;
+                const double Fw = q0.sw - q0.spw * wi;
+
+                // Skip cells that are already converged (small residual)
+                if (std::abs(Fk) < 1e-10 && std::abs(Fw) < 1e-10) continue;
+
+                // Perturb log k
+                const double ki_p = ki * (1.0 + eps);
+                const auto qk = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Fk_p = qk.sk - qk.spk * ki_p;
+                const double dFk_dlogk = (Fk_p - Fk) / eps;
+
+                // Perturb log omega
+                const double wi_p = wi * (1.0 + eps);
+                const auto qw = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Fw_p = qw.sw - qw.spw * wi_p;
+                const double dFw_dlogw = (Fw_p - Fw) / eps;
+
+                // Diagonal 2x2: ignore cross terms for robustness.
+                // J = [dFk/dlogk, 0; 0, dFw/dlogw]
+                const double a = dFk_dlogk;
+                const double d_ = dFw_dlogw;
+
+                if (!std::isfinite(a) || !std::isfinite(d_) ||
+                    std::abs(a) < 1e-12 || std::abs(d_) < 1e-12) continue;
+
+                const double delta_k = -Fk / a;
+                const double delta_w = -Fw / d_;
+
+                if (!std::isfinite(delta_k) || !std::isfinite(delta_w)) continue;
+
+                const double clamped_dk = std::clamp(
+                    controls.sst_coupled_2x2_damping * delta_k, -max_log_delta, max_log_delta);
+                const double clamped_dw = std::clamp(
+                    controls.sst_coupled_2x2_damping * delta_w, -max_log_delta, max_log_delta);
+
+                max_delta = std::max(max_delta, std::max(std::abs(clamped_dk), std::abs(clamped_dw)));
+                k(i) = ki * std::exp(clamped_dk);
+                omega(i) = wi * std::exp(clamped_dw);
+                if (!(k(i) > controls.k_min)) k(i) = controls.k_min;
+                if (!(omega(i) > controls.omega_min)) omega(i) = controls.omega_min;
+                ++applied;
+            }
+            result.coupled_2x2_applied = applied;
+            result.coupled_2x2_max_delta = max_delta;
+        }
+
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i) {
             dk=std::max(dk,std::abs(k(i)-oldk(i)));
@@ -954,6 +1031,31 @@ inline TurbulenceTransportResult solve_sst_transport(
             // both linear relaxation and turbulence positivity enforcement.
             k_solution(i)=k(i);
             omega_solution(i)=omega(i);
+        }
+
+        // Adaptive linear relaxation: reduce when update norm grows
+        // (divergence risk), tighten when it contracts (convergence).
+        if (controls.sst_adaptive_relaxation) {
+            const double update_norm = std::max(dk, dw);
+            if (std::isfinite(prev_dk) && std::isfinite(prev_dw)) {
+                const double prev_update_norm = std::max(prev_dk, prev_dw);
+                if (prev_update_norm > 0.0) {
+                    const double ratio = update_norm / prev_update_norm;
+                    if (ratio > 1.10 && current_relaxation > controls.sst_relaxation_min) {
+                        current_relaxation = std::max(
+                            current_relaxation * controls.sst_relaxation_reduce_factor,
+                            controls.sst_relaxation_min);
+                        ++relax_reductions;
+                    } else if (ratio < 0.90 && current_relaxation < controls.sst_relaxation_max) {
+                        current_relaxation = std::min(
+                            current_relaxation * controls.sst_relaxation_increase_factor,
+                            controls.sst_relaxation_max);
+                        ++relax_increases;
+                    }
+                }
+            }
+            prev_dk = dk;
+            prev_dw = dw;
         }
         result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
         result.second_residual=scalar_equation_residual_inf(eqw,omega_solution);
@@ -985,6 +1087,9 @@ inline TurbulenceTransportResult solve_sst_transport(
             break;
         }
     }
+    result.relax_reductions = relax_reductions;
+    result.relax_increases = relax_increases;
+    result.final_relaxation = current_relaxation;
     return result;
 }
 
@@ -1056,11 +1161,13 @@ inline std::pair<ScalarEquation,ScalarEquation> sst_reassembled_equations_v22(
     auto eqk=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
         nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
-        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr,
+        1.0,controls.sst_linear_relaxation);
     auto eqw=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
         omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega,
-        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr,
+        1.0,controls.sst_linear_relaxation);
     if (controls.sst_weighted_wall_matrix_v29_experimental)
         sst_apply_omega_owner_constraints_v29(eqw,wall_production);
     else

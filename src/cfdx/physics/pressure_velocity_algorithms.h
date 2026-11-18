@@ -144,6 +144,11 @@ struct CouplingControls {
     std::size_t coupled_schwarz_overlap_hops = 1;
     std::size_t coupled_schwarz_max_local_unknowns = 64;
     bool coupled_schwarz_weighted = false;
+    // Opt-in monolithic 6N Jacobian-Free Newton-Krylov solve for the
+    // U+p+k+omega system. When enabled, the solver attempts JFNK before each
+    // SIMPLE sweep and falls back to SIMPLE if JFNK does not converge.
+    // Completely off by default; existing behaviour is unchanged.
+    bool coupled_jfnk_experimental = false;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)

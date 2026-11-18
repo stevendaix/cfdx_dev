@@ -435,6 +435,22 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
         bc_obj.object["pressure"] = mini_json::value(bc.pressure);
         bc_obj.object["turbulence_intensity"] = mini_json::value(bc.turbulence_intensity);
         bc_obj.object["turbulence_length_scale"] = mini_json::value(bc.turbulence_length_scale);
+
+        // Inlet profile (non-uniform u(y) etc.)
+        if (bc.inlet_profile.has_value()) {
+            const auto& ip = *bc.inlet_profile;
+            mini_json::value ip_obj(mini_json::value_type::object);
+            ip_obj.object["enabled"] = mini_json::value(ip.enabled);
+            ip_obj.object["axis"] = mini_json::value(static_cast<double>(ip.axis));
+            ip_obj.object["profile_file"] = mini_json::value(ip.profile_file);
+            mini_json::array_t coords_arr;
+            for (double v : ip.coords) coords_arr.emplace_back(mini_json::value(v));
+            ip_obj.object["coords"] = std::move(coords_arr);
+            mini_json::array_t values_arr;
+            for (double v : ip.values) values_arr.emplace_back(mini_json::value(v));
+            ip_obj.object["values"] = std::move(values_arr);
+            bc_obj.object["inlet_profile"] = std::move(ip_obj);
+        }
         mini_json::array_t sst_scalar_arr;
         for (const auto& scalar_bc : bc.sst_scalar_conditions) {
             mini_json::value scalar_obj(mini_json::value_type::object);
@@ -762,6 +778,25 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             bc.back_pressure = json_get_number(bc_v, "back_pressure");
             bc.source_zone_name = json_get_string(bc_v, "source_zone_name");
             bc.source_type_name = json_get_string(bc_v, "source_type_name");
+
+            const mini_json::value* ip_v = mini_json::find(bc_v, "inlet_profile");
+            if (ip_v && ip_v->is_object()) {
+                BoundarySpec::InletProfileSpec ip;
+                ip.enabled = json_get_number(*ip_v, "enabled") != 0.0;
+                ip.axis = static_cast<int>(json_get_number(*ip_v, "axis"));
+                ip.profile_file = json_get_string(*ip_v, "profile_file");
+                const mini_json::value* coords = mini_json::find(*ip_v, "coords");
+                if (coords && coords->is_array()) {
+                    for (const auto& c : coords->array)
+                        if (c.is_number()) ip.coords.push_back(c.number);
+                }
+                const mini_json::value* vals = mini_json::find(*ip_v, "values");
+                if (vals && vals->is_array()) {
+                    for (const auto& v : vals->array)
+                        if (v.is_number()) ip.values.push_back(v.number);
+                }
+                bc.inlet_profile = std::move(ip);
+            }
 
             const mini_json::value* rp = mini_json::find(bc_v, "raw_params");
             if (rp && rp->is_object()) {

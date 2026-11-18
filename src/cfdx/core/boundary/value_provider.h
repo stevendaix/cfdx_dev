@@ -101,6 +101,43 @@ private:
     Dimension dimension_;
 };
 
+// Table over a spatial coordinate (e.g. wall-normal y for an inlet BL profile).
+// evaluate() reads context.x/context.y/context.z selected by axis (0=x,1=y,2=z).
+class TableOverSpaceValueProvider final : public ValueProvider {
+public:
+    TableOverSpaceValueProvider(std::vector<double> abscissa, std::vector<double> values,
+                                int axis = 1, Dimension dimension = DIMENSIONLESS)
+        : x_(std::move(abscissa)), y_(std::move(values)), axis_(axis), dimension_(dimension) {
+        if (x_.empty() || x_.size() != y_.size())
+            throw std::invalid_argument("TableOverSpaceValueProvider requires equally-sized non-empty data");
+        for (std::size_t i = 1; i < x_.size(); ++i)
+            if (!(x_[i] > x_[i - 1]))
+                throw std::invalid_argument("TableOverSpaceValueProvider abscissa must be strictly increasing");
+        if (axis_ < 0 || axis_ > 2)
+            throw std::invalid_argument("TableOverSpaceValueProvider axis must be 0 (x), 1 (y) or 2 (z)");
+    }
+
+    double evaluate(const ValueContext& context) const override {
+        const double s = (axis_ == 0) ? context.x : (axis_ == 1 ? context.y : context.z);
+        if (s <= x_.front()) return y_.front();
+        if (s >= x_.back()) return y_.back();
+        for (std::size_t i = 1; i < x_.size(); ++i) {
+            if (s <= x_[i]) {
+                const double t = (s - x_[i - 1]) / (x_[i] - x_[i - 1]);
+                return y_[i - 1] + t * (y_[i] - y_[i - 1]);
+            }
+        }
+        return y_.back();
+    }
+
+    Dimension dimension() const noexcept override { return dimension_; }
+private:
+    std::vector<double> x_;
+    std::vector<double> y_;
+    int axis_;
+    Dimension dimension_;
+};
+
 // Configuration-side provider description. It is intentionally value-based so it
 // can be lowered to a backend-specific representation before numerical kernels.
 struct ConstantProviderSpec {

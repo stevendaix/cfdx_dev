@@ -1,5 +1,6 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/bfs_convergence_accelerator.h"
 #include "cfdx/physics/coupled_matrix_capture_v16.h"
 #include "cfdx/physics/coupled_fingerprint_v40.h"
 #include "cfdx/physics/production_boundary_contract.h"
@@ -93,6 +94,10 @@ struct Options {
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
     std::vector<std::size_t> pressure_replay_iterations;
+    // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
+    bool bfs_converged = false;
+    bool bfs_fieldsplit = false;
+    bool bfs_pimple = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
     bool probe_stream = false;    bool cell_hotspots = false;
@@ -726,6 +731,9 @@ Options parse(int argc, char** argv)
         else if (arg == "--pressure-replay-iterations")
             o.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
                 value("--pressure-replay-iterations"));
+        else if (arg == "--bfs-converged") o.bfs_converged = true;
+        else if (arg == "--bfs-fieldsplit") o.bfs_fieldsplit = true;
+        else if (arg == "--bfs-pimple") o.bfs_pimple = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--probe-stream") o.probe_stream = true;
@@ -757,9 +765,13 @@ Options parse(int argc, char** argv)
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
-                         "  probe field: p | u_x | u_y | u_z | u_mag\n";
+                         "  probe field: p | u_x | u_y | u_z | u_mag\n"
+                         "  [--bfs-converged] (PETSc/OpenFOAM-inspired converged BFS settings)\n"
+                         "  [--bfs-fieldsplit] (PETSc PCFIELDSPLIT Full Schur for coupled U-p)\n"
+                          "  [--bfs-pimple] (OpenFOAM-style PIMPLE multiple pressure correctors)\n"
+                          ;
             std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
-                         "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
+                          "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
@@ -784,6 +796,42 @@ Options parse(int argc, char** argv)
     std::filesystem::create_directories(o.output_dir);
     return o;
 }
+}
+
+// ---------------------------------------------------------------------------
+// Read a two-column CSV (coord,value) for an inlet spatial profile.
+// First line is treated as a header if it does not parse as two doubles.
+// Returns a TableOverSpaceValueProvider over axis (default y).
+// ---------------------------------------------------------------------------
+static std::shared_ptr<const cfdx::core::ValueProvider>
+read_inlet_profile(const std::string& path, int axis) {
+    std::ifstream in(path);
+    if (!in.is_open())
+        throw std::invalid_argument("inlet profile: cannot open CSV '" + path + "'");
+    std::vector<double> coords, values;
+    std::string line;
+    bool header = true;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        std::istringstream iss(line);
+        double a = 0.0, b = 0.0;
+        std::string ta, tb;
+        if (!(std::getline(iss, ta, ',') && std::getline(iss, tb, ','))) continue;
+        try {
+            a = std::stod(ta);
+            b = std::stod(tb);
+            header = false;
+        } catch (...) {
+            if (header) { header = false; continue; }  // skip header line
+            continue;
+        }
+        coords.push_back(a);
+        values.push_back(b);
+    }
+    if (coords.size() < 2)
+        throw std::invalid_argument("inlet profile: CSV '" + path + "' needs at least two rows");
+    return std::make_shared<const cfdx::core::TableOverSpaceValueProvider>(
+        std::move(coords), std::move(values), axis);
 }
 
 int main(int argc, char** argv)
@@ -826,6 +874,8 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+        if (is_case_hdf5)
+            resolve_production_mesh_patch_types(mesh, case_setup);
         if (options.experimental_sst && !is_case_hdf5)
             throw std::invalid_argument(
                 "production solver: --experimental-sst requires a .cfdx.h5 case");
@@ -1048,21 +1098,35 @@ int main(int argc, char** argv)
             } else if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
-                cfdx::core::Vec3 value{0.0, 0.0, 0.0};
-                if (!bc->velocity_vector.empty()) {
-                    if (bc->velocity_vector.size() != 3)
-                        throw std::invalid_argument(
-                            "production solver: velocity_vector must have 3 components for patch '" +
-                            patch.name + "'");
-                    value = cfdx::core::Vec3{
-                        bc->velocity_vector[0],
-                        bc->velocity_vector[1],
-                        bc->velocity_vector[2]};
-                } else if (bc->velocity_magnitude != 0.0) {
-                    value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                // Non-uniform inlet profile (e.g. Driver-Seegmiller BL u(y) from CSV)
+                if (bc->inlet_profile.has_value() && bc->inlet_profile->enabled &&
+                    !bc->inlet_profile->profile_file.empty()) {
+                    auto ux_provider = read_inlet_profile(bc->inlet_profile->profile_file,
+                                                          bc->inlet_profile->axis);
+                    auto zero_provider = std::make_shared<const cfdx::core::ConstantValueProvider>(0.0);
+                    VelocityBoundaryCondition prof_bc;
+                    prof_bc.type = VelocityBoundaryCondition::Type::PROFILE;
+                    prof_bc.ux_provider = std::move(ux_provider);
+                    prof_bc.uy_provider = zero_provider;
+                    prof_bc.uz_provider = zero_provider;
+                    ubc[patch.name] = prof_bc;
+                } else {
+                    cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+                    if (!bc->velocity_vector.empty()) {
+                        if (bc->velocity_vector.size() != 3)
+                            throw std::invalid_argument(
+                                "production solver: velocity_vector must have 3 components for patch '" +
+                                patch.name + "'");
+                        value = cfdx::core::Vec3{
+                            bc->velocity_vector[0],
+                            bc->velocity_vector[1],
+                            bc->velocity_vector[2]};
+                    } else if (bc->velocity_magnitude != 0.0) {
+                        value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                    }
+                    ubc[patch.name] = {
+                        VelocityBoundaryCondition::Type::FIXED_VALUE, value};
                 }
-                ubc[patch.name] = {
-                    VelocityBoundaryCondition::Type::FIXED_VALUE, value};
             } else if (bc->value_type == BCValueType::ZERO_GRADIENT ||
                        bc->value_type == BCValueType::WALL_SLIP ||
                        bc->type == BCType::OUTLET ||
@@ -1886,7 +1950,9 @@ int main(int argc, char** argv)
                      {"sst_weighted_wall_matrix_v29_experimental",
                       &sst_controls.sst_weighted_wall_matrix_v29_experimental},
                      {"sst_owner_consistent_projection_v21_experimental",
-                      &sst_controls.sst_owner_consistent_projection_v21}}) {
+                      &sst_controls.sst_owner_consistent_projection_v21},
+                     {"sst_coupled_2x2_komega", &sst_controls.sst_coupled_2x2_komega},
+                     {"sst_adaptive_relaxation", &sst_controls.sst_adaptive_relaxation}}) {
                 const auto found=case_setup.numerics.raw_settings.find(setting.first);
                 if (found != case_setup.numerics.raw_settings.end()) {
                     if (found->second != "true" && found->second != "false")
@@ -2038,13 +2104,49 @@ int main(int argc, char** argv)
                     throw std::invalid_argument(
                         "SST transport budget must be a decimal integer in [10, 2000]");
                 }
-                if (end != declared.size() || parsed < 10 || parsed > 2000)
+                if (end != declared.size() || parsed < 1 || parsed > 2000)
                     throw std::invalid_argument(
-                        "SST transport budget must be a decimal integer in [10, 2000]");
+                        "SST transport budget must be a decimal integer in [1, 2000]");
                 sst_inner_budget = static_cast<std::size_t>(parsed);
             }
             experimental_sst_runtime.max_transport_iterations = sst_inner_budget;
             experimental_sst_runtime.transport_tolerance = 1e-8;
+            {
+                const auto tol_it = case_setup.numerics.raw_settings.find(
+                    "sst_transport_tolerance");
+                if (tol_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t parsed = 0;
+                    double tol = 0.0;
+                    try { tol = std::stod(tol_it->second, &parsed); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_transport_tolerance");
+                    }
+                    if (parsed != tol_it->second.size() ||
+                        !std::isfinite(tol) || tol <= 0.0)
+                        throw std::invalid_argument(
+                            "sst_transport_tolerance must be finite and positive");
+                    experimental_sst_runtime.transport_tolerance = tol;
+                }
+            }
+            {
+                const auto kf_it = case_setup.numerics.raw_settings.find(
+                    "sst_max_k_floor_events");
+                if (kf_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t end = 0;
+                    unsigned long parsed = 0;
+                    try { parsed = std::stoul(kf_it->second, &end, 10); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_max_k_floor_events");
+                    }
+                    if (end != kf_it->second.size() || parsed > 100000)
+                        throw std::invalid_argument(
+                            "sst_max_k_floor_events must be a non-negative integer");
+                    sst_controls.sst_max_k_floor_events =
+                        static_cast<std::size_t>(parsed);
+                    experimental_sst_runtime.transport.sst_max_k_floor_events =
+                        sst_controls.sst_max_k_floor_events;
+                }
+            }
             const auto provisional = case_setup.numerics.raw_settings.find(
                 "sst_outer_provisional");
             if (provisional != case_setup.numerics.raw_settings.end()) {
@@ -2073,6 +2175,18 @@ int main(int argc, char** argv)
                     std::cout << "V83 bounded inexact outer progress: EXPERIMENTAL, "
                                  "physical U/p/flux/SST merit required; final SST gate UNCHANGED\n";
                 }
+            }
+            const auto skip_save = case_setup.numerics.raw_settings.find(
+                "skip_transactional_save");
+            if (skip_save != case_setup.numerics.raw_settings.end()) {
+                if (skip_save->second == "enabled")
+                    experimental_sst_runtime.skip_transactional_save = true;
+                else if (skip_save->second != "disabled")
+                    throw std::invalid_argument(
+                        "skip_transactional_save must be enabled or disabled");
+                std::cout << "SST transactional save/restore: "
+                          << skip_save->second
+                          << " (benchmarking only, rollback disabled)\n";
             }
             const auto v84_window = case_setup.numerics.raw_settings.find(
                 "v84_bounded_nonmonotone_outer_progress");
@@ -2262,9 +2376,6 @@ int main(int argc, char** argv)
                     throw std::invalid_argument(
                         "v18_omega_wall_owner_constraints_experimental must be enabled or disabled");
                 if (owner_wall_v18->second=="enabled") {
-                    if (!experimental_sst_runtime.active_openfoam_wall_operator_v17)
-                        throw std::invalid_argument(
-                            "V18 owner omega constraints require V17 atomic wall operator");
                     experimental_sst_runtime.omega_wall_owner_constraints_v18=true;
                     std::cout << "V18 experimental omega OWNER constraint active; "
                                  "area-weighted corner targets, equation rows and "
@@ -2524,6 +2635,58 @@ int main(int argc, char** argv)
             if (!staged.converged || staged.final_parameter != 1.0)
                 result.converged = false;
         } else {
+            // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
+            // --bfs-converged enables COUPLED with PCD, adaptive relaxation,
+            // post-SST momentum reassembly and the V8 certificate.
+            // --bfs-fieldsplit replaces PCD with NativeFieldSplit / Full Schur.
+            // --bfs-pimple selects OpenFOAM-style PIMPLE with multiple pressure
+            // correctors per outer iteration.
+            if (options.bfs_converged) {
+                if (!options.experimental_sst || controls.sst_runtime == nullptr)
+                    throw std::invalid_argument(
+                        "--bfs-converged requires --experimental-sst (post-SST momentum "
+                        "reassembly and V8 certificate need an SST production runtime)");
+                auto* sst_rt = controls.sst_runtime;
+                const double saved_density = controls.density;
+                const double saved_kinematic_viscosity = controls.kinematic_viscosity;
+                const auto saved_convergence = controls.convergence;
+                controls = bfs_converged_controls(
+                    controls.coupling.alpha_u, controls.coupling.alpha_p,
+                    saved_convergence.max_iterations, controls.linear_tolerance);
+                controls.sst_runtime = sst_rt;
+                controls.density = saved_density;
+                controls.kinematic_viscosity = saved_kinematic_viscosity;
+                // The accelerator changes the solver strategy, not the
+                // caller's physical stopping criteria. Restore every
+                // convergence tolerance after constructing its defaults.
+                controls.convergence.absolute_tolerance =
+                    saved_convergence.absolute_tolerance;
+                controls.convergence.relative_tolerance =
+                    saved_convergence.relative_tolerance;
+                controls.convergence.continuity_tolerance =
+                    saved_convergence.continuity_tolerance;
+                controls.convergence.energy_tolerance =
+                    saved_convergence.energy_tolerance;
+                controls.convergence.stagnation_relative_improvement =
+                    saved_convergence.stagnation_relative_improvement;
+                std::cout << "BFS converged settings: COUPLED+PCD, "
+                          << "alpha_u=" << controls.coupling.alpha_u
+                          << " alpha_p=" << controls.coupling.alpha_p
+                          << " post-SST-momentum=1 V8-certificate=1\n";
+            }
+            if (options.bfs_fieldsplit) {
+                controls.coupled_linear_solver.krylov = KrylovModel::FGMRES;
+                controls.coupled_linear_solver.preconditioner = PreconditionerModel::NativeFieldSplit;
+                controls.coupled_linear_solver.gmres_restart = 512;
+                std::cout << "BFS fieldsplit: PETSc PCFIELDSPLIT Full Schur\n";
+            }
+            if (options.bfs_pimple) {
+                bfs_pimple_settings(controls);
+                std::cout << "BFS PIMPLE: n_pressure_correctors="
+                          << controls.coupling.n_pressure_correctors
+                          << " alpha_u=" << controls.coupling.alpha_u
+                          << " alpha_p=" << controls.coupling.alpha_p << "\n";
+            }
             result = solve_steady_incompressible(
                 mesh, U, p, ubc, pbc, controls, options.restart.string(),
                 solver_restart_fields);

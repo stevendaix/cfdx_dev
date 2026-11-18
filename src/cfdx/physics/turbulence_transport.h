@@ -65,7 +65,9 @@ struct TurbulenceTransportControls {
     // Opt-in block Gauss-Seidel coupling: omega is solved before k, and the
     // k equation is reassembled with the updated omega (F1/F2 remain frozen
     // for the current inner iteration, as in the existing Picard scheme).
-    bool sst_sequential_omega_first = false;
+    // Default true: Gauss-Seidel omega-first ordering matches OpenFOAM
+    // kOmegaSST::correct() which solves omega before k.
+    bool sst_sequential_omega_first = true;
     // Explicit wall-value policy; this is NOT a complete OpenFOAM wall function.
     // 6: original face Dirichlet approximation; 60: Menter first-cell
     // spacing estimate applied as a face Dirichlet (requires qualification).
@@ -128,6 +130,29 @@ struct TurbulenceTransportControls {
     SSTV30ContinuationState* sst_continuation_state_v30 = nullptr;
     // V29: separately gated OpenFOAM-style owner matrix manipulation.
     bool sst_weighted_wall_matrix_v29_experimental = false;
+    // Maximum number of k-floor (positivity bound) activations tolerated in a
+    // single SST transport before the bounded-provisional gate rejects the
+    // iterate. Default 0 preserves the strict "no clipping" contract. A small
+    // positive bound permits physically-correct k->0 in separated/recirculation
+    // regions (OpenFOAM-style bounded k) without failing the outer SIMPLE step.
+    std::size_t sst_max_k_floor_events = 0;
+    // OpenFOAM-style SIMPLE outer under-relaxation for k and omega. After the
+    // SST transport returns a new (k, omega), the caller blends:
+    //   k_new = k_old + alpha * (k_sst - k_old)
+    //   omega_new = omega_old + alpha * (omega_sst - omega_old)
+    // and recomputes nu_t from the relaxed fields. This is the standard
+    // segregated-cavitation stabilization: it lets inner=1 (one linear solve
+    // per outer SIMPLE step) converge without the SST nonlinear residual
+    // exploding. Default 1.0 preserves the historical no-relaxation path.
+    double sst_simple_relaxation = 1.0;
+    // Opt-in (OpenFOAM/PETSc-inspired): treat the turbulence production terms
+    // point-implicitly (linearized on the diagonal) instead of fully explicit
+    // sources. The production P_k ~ k and P_omega ~ omega^2 are moved to the
+    // diagonal via their local derivatives, which strengthens the M-matrix
+    // diagonal and accelerates the segregated Picard fixed-point (the dominant
+    // cost in separated/recirculation flows). Default false preserves the
+    // historical explicit-production path; the final FV gates are unchanged.
+    bool sst_implicit_production_experimental = false;
     // Existing scalar solve blends candidate and old state with 0.7.
     // Expose the same parameter (default preserved) for a controlled
     // 0.7 / 0.9 / 1.0 contract study; 1.0 performs no post-solve damping.
@@ -155,6 +180,23 @@ struct TurbulenceTransportControls {
     // through the transport path. CLAMP_ZERO preserves the historical
     // behaviour exactly; REJECT is the fail-closed qualification mode.
     NegativeNuTildePolicy negative_nu_tilde_policy = NegativeNuTildePolicy::CLAMP_ZERO;
+    // Opt-in adaptive linear relaxation for the segregated k/omega Picard
+    // fixed-point. Relaxes when the update norm grows (divergence risk),
+    // tightens when it contracts (convergence). Same physical fixed-point,
+    // different path.
+    bool sst_adaptive_relaxation = false;
+    double sst_relaxation_min = 0.3;
+    double sst_relaxation_max = 0.9;
+    double sst_relaxation_reduce_factor = 0.7;
+    double sst_relaxation_increase_factor = 1.05;
+    // Opt-in coupled 2x2 k/omega correction using SSTBlockPreconditionerV23.
+    // After each segregated Picard iteration, applies a local Newton-like
+    // correction to (log k, log omega) using the block preconditioner, which
+    // accounts for the strong local coupling between k and omega production
+    // terms. Accelerates convergence on stiff/wall-resolved meshes without
+    // changing the physical fixed-point.
+    bool sst_coupled_2x2_komega = false;
+    double sst_coupled_2x2_damping = 0.1;
 };
 
 struct TurbulenceBoundDiagnostics {
@@ -343,6 +385,8 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !std::isfinite(c.sst_wall_omega_factor) ||
        !std::isfinite(c.sst_linear_relaxation) ||
        !(c.sst_linear_relaxation > 0.0 && c.sst_linear_relaxation <= 1.0) ||
+       !std::isfinite(c.sst_simple_relaxation) ||
+       !(c.sst_simple_relaxation > 0.0 && c.sst_simple_relaxation <= 1.0) ||
        (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||
@@ -380,10 +424,20 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        (c.sst_jfnk_v22_experimental &&
            (c.sst_anderson_m2_v20 || c.sst_nonlinear_line_search ||
             c.sst_picard_damping != 1.0)) ||
-       c.k_min<=0.0 ||
-       c.epsilon_min<=0.0 || c.omega_min<=0.0)
-        throw std::invalid_argument("invalid turbulence controls");
-    const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
+         c.k_min<=0.0 ||
+         c.epsilon_min<=0.0 || c.omega_min<=0.0)
+         throw std::invalid_argument("invalid turbulence controls");
+     if (c.sst_adaptive_relaxation &&
+         (!std::isfinite(c.sst_relaxation_min) ||
+          !std::isfinite(c.sst_relaxation_max) ||
+          !std::isfinite(c.sst_relaxation_reduce_factor) ||
+          !std::isfinite(c.sst_relaxation_increase_factor) ||
+          !(c.sst_relaxation_min > 0.0 && c.sst_relaxation_min < 1.0) ||
+          !(c.sst_relaxation_max > c.sst_relaxation_min && c.sst_relaxation_max <= 1.0) ||
+          !(c.sst_relaxation_reduce_factor > 0.0 && c.sst_relaxation_reduce_factor < 1.0) ||
+          !(c.sst_relaxation_increase_factor > 1.0)))
+         throw std::invalid_argument("invalid turbulence controls");
+     const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
         c.gamma1,c.gamma2,c.a1,c.rng_C_mu,c.rng_C1,c.rng_C2,c.rng_sigma_k,
         c.rng_sigma_epsilon,c.rng_eta0,c.rng_beta,c.realizable_A0,
         c.realizable_C2,c.realizable_sigma_k,c.realizable_sigma_epsilon,

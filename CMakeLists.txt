@@ -264,6 +264,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/finite_volume_transport.h
     src/cfdx/physics/boundary_constraint_fvm.h
     src/cfdx/physics/steady_incompressible_solver.h
+    src/cfdx/physics/bfs_convergence_accelerator.h
     src/cfdx/physics/dual_time_driver.h
     src/cfdx/physics/dual_time_adaptive.h
     src/cfdx/physics/dual_time_field_driver.h

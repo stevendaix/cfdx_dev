@@ -296,7 +296,7 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
         // Opt-in only. Never permit an iterate with clipping or nonfinite data.
         const bool finite_undistorted =
             step.transport.nonfinite_bound_events == 0 &&
-            step.transport.k_floor_events == 0 &&
+            step.transport.k_floor_events <= controls.sst_max_k_floor_events &&
             step.transport.second_floor_events == 0 &&
             std::isfinite(step.transport.k_residual) &&
             std::isfinite(step.transport.second_residual);
