@@ -813,6 +813,8 @@ inline TurbulenceTransportResult solve_sst_transport(
         validate_transport_boundary_face_values(mesh, geometry, *omega_face_values, true);
 
     TurbulenceTransportResult result;
+    result.coupled_2x2_applied = 0;
+    result.coupled_2x2_max_delta = 0.0;
     // Adaptive linear relaxation for the segregated k/omega Picard loop.
     double current_relaxation = controls.sst_linear_relaxation;
     double prev_dk = std::numeric_limits<double>::quiet_NaN();
@@ -953,6 +955,73 @@ inline TurbulenceTransportResult solve_sst_transport(
             omega(i) = omega_solution(i);
         }
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
+
+        // Coupled 2x2 k/omega correction using local Newton step on log variables.
+        // Only applied after the linear k/omega solves have converged and the
+        // Picard iteration has stabilised (iter >= 3), so the local Jacobian
+        // is evaluated near the local fixed point and does not destabilise
+        // early iterations where residuals are still large.
+        if (controls.sst_coupled_2x2_komega &&
+            iter >= 3 &&
+            rk.status == cfdx::core::SolverStatus::CONVERGED &&
+            rw.status == cfdx::core::SolverStatus::CONVERGED) {
+            const double eps = 1e-4;
+            const double max_log_delta = 2.0; // clamp exp argument to avoid overflow
+            double max_delta = 0.0;
+            std::size_t applied = 0;
+            for (std::size_t i = 0; i < n; ++i) {
+                const double ki = k(i), wi = omega(i);
+                if (!(ki > 0.) || !(wi > 0.)) continue;
+                const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
+
+                // Residuals at current state
+                const auto q0 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Fk = q0.sk - q0.spk * ki;
+                const double Fw = q0.sw - q0.spw * wi;
+
+                // Skip cells that are already converged (small residual)
+                if (std::abs(Fk) < 1e-10 && std::abs(Fw) < 1e-10) continue;
+
+                // Perturb log k
+                const double ki_p = ki * (1.0 + eps);
+                const auto qk = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Fk_p = qk.sk - qk.spk * ki_p;
+                const double dFk_dlogk = (Fk_p - Fk) / eps;
+
+                // Perturb log omega
+                const double wi_p = wi * (1.0 + eps);
+                const auto qw = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Fw_p = qw.sw - qw.spw * wi_p;
+                const double dFw_dlogw = (Fw_p - Fw) / eps;
+
+                // Diagonal 2x2: ignore cross terms for robustness.
+                // J = [dFk/dlogk, 0; 0, dFw/dlogw]
+                const double a = dFk_dlogk;
+                const double d_ = dFw_dlogw;
+
+                if (!std::isfinite(a) || !std::isfinite(d_) ||
+                    std::abs(a) < 1e-12 || std::abs(d_) < 1e-12) continue;
+
+                const double delta_k = -Fk / a;
+                const double delta_w = -Fw / d_;
+
+                if (!std::isfinite(delta_k) || !std::isfinite(delta_w)) continue;
+
+                const double clamped_dk = std::clamp(
+                    controls.sst_coupled_2x2_damping * delta_k, -max_log_delta, max_log_delta);
+                const double clamped_dw = std::clamp(
+                    controls.sst_coupled_2x2_damping * delta_w, -max_log_delta, max_log_delta);
+
+                max_delta = std::max(max_delta, std::max(std::abs(clamped_dk), std::abs(clamped_dw)));
+                k(i) = ki * std::exp(clamped_dk);
+                omega(i) = wi * std::exp(clamped_dw);
+                if (!(k(i) > controls.k_min)) k(i) = controls.k_min;
+                if (!(omega(i) > controls.omega_min)) omega(i) = controls.omega_min;
+                ++applied;
+            }
+            result.coupled_2x2_applied = applied;
+            result.coupled_2x2_max_delta = max_delta;
+        }
 
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i) {

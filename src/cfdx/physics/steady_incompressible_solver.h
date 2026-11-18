@@ -11036,11 +11036,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // - First 20 iterations (bootstrap): provisional transport with
             //   normal inner budget only. Intermediate SST convergence is not
             //   required; establish a stable physical state first.
-            // - After bootstrap: attempt a certification step every iteration
-            //   (non-provisional, limited extra inner iterations, max +10 above
-            //   normal budget). If transport converges, the step is qualified
-            //   for final gates. If not, restore and fall back to a provisional
-            //   progress step so the outer iteration can still advance.
+            // - After bootstrap: attempt a certification step ONLY when the
+            //   carrier is approaching convergence (momentum/continuity/change
+            //   metrics all below thresholds). This prevents wasting SST
+            //   non-provisional inner iterations on every outer iteration
+            //   when the carrier is still far from converged.
             // Final "Converged" is declared only when ALL gates pass together
             // (carrier + non-provisional converged SST + nu_t/change criteria).
             bool try_certification = false;
@@ -11064,15 +11064,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     &controls.sst_runtime->omega_face_values,
                     controls.sst_runtime->allow_bounded_provisional_transport,
                     need_wall_operator ? &wall_refresh_v17 : nullptr);
-            } else if (controls.sst_runtime->allow_bounded_provisional_transport) {
-                try_certification = true;
-                const std::size_t extra = 10;
-                cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
-                    ? controls.sst_runtime->certification_max_transport_iterations
-                    : controls.sst_runtime->max_transport_iterations + extra;
-                cert_tol = controls.sst_runtime->certification_transport_tolerance > 0.0
-                    ? controls.sst_runtime->certification_transport_tolerance
-                    : controls.sst_runtime->transport_tolerance;
+            } else if (controls.sst_runtime->allow_bounded_provisional_transport &&
+                       !result.history.empty()) {
+                const auto& prev = result.history.back();
+                const double cert_threshold = 100.0 * controls.convergence.relative_tolerance;
+                const bool carrier_approaching =
+                    prev.momentum_equation_residual_rhs_relative <= cert_threshold &&
+                    prev.continuity_normalized <= cert_threshold &&
+                    prev.velocity_change_inf <= 0.1 &&
+                    prev.pressure_change_inf <= 0.1;
+                if (carrier_approaching) {
+                    try_certification = true;
+                    const std::size_t extra = 10;
+                    cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
+                        ? controls.sst_runtime->certification_max_transport_iterations
+                        : controls.sst_runtime->max_transport_iterations + extra;
+                    cert_tol = controls.sst_runtime->certification_transport_tolerance > 0.0
+                        ? controls.sst_runtime->certification_transport_tolerance
+                        : controls.sst_runtime->transport_tolerance;
+                }
             }
             if (timing_enabled) t_sst_start = std::chrono::steady_clock::now();
             if (try_certification) {

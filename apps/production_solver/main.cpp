@@ -1950,7 +1950,9 @@ int main(int argc, char** argv)
                      {"sst_weighted_wall_matrix_v29_experimental",
                       &sst_controls.sst_weighted_wall_matrix_v29_experimental},
                      {"sst_owner_consistent_projection_v21_experimental",
-                      &sst_controls.sst_owner_consistent_projection_v21}}) {
+                      &sst_controls.sst_owner_consistent_projection_v21},
+                     {"sst_coupled_2x2_komega", &sst_controls.sst_coupled_2x2_komega},
+                     {"sst_adaptive_relaxation", &sst_controls.sst_adaptive_relaxation}}) {
                 const auto found=case_setup.numerics.raw_settings.find(setting.first);
                 if (found != case_setup.numerics.raw_settings.end()) {
                     if (found->second != "true" && found->second != "false")

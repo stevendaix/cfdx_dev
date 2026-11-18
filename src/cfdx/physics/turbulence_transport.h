@@ -189,6 +189,14 @@ struct TurbulenceTransportControls {
     double sst_relaxation_max = 0.9;
     double sst_relaxation_reduce_factor = 0.7;
     double sst_relaxation_increase_factor = 1.05;
+    // Opt-in coupled 2x2 k/omega correction using SSTBlockPreconditionerV23.
+    // After each segregated Picard iteration, applies a local Newton-like
+    // correction to (log k, log omega) using the block preconditioner, which
+    // accounts for the strong local coupling between k and omega production
+    // terms. Accelerates convergence on stiff/wall-resolved meshes without
+    // changing the physical fixed-point.
+    bool sst_coupled_2x2_komega = false;
+    double sst_coupled_2x2_damping = 0.1;
 };
 
 struct TurbulenceBoundDiagnostics {
