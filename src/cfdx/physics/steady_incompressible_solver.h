@@ -365,6 +365,12 @@ struct SSTProductionRuntime {
     // SST outer PROGRESS through the true V8/V13/V14 FV residuals. It never
     // changes V8 converged or the final SST 1e-8 gate. No COUPLED support.
     bool sst_provisional_merit_progress_v83_experimental = false;
+    // When provisional transport is allowed and carrier residuals indicate
+    // near-convergence, attempt a certification step with stricter transport
+    // settings to obtain a non-provisional, transport-converged SST state
+    // required by the final convergence gate. 0 means auto (2x inner budget).
+    std::size_t certification_max_transport_iterations = 0;
+    double certification_transport_tolerance = 0.0;
     // V15 staged reference. Refuses incomplete per-face/cell values, promoted
     // only on a fully accepted carrier+SST outer transaction. NO physical
     // wall-function substitution; all three production operators must still
@@ -10968,18 +10974,96 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     production=std::move(wall.production);
                 };
             }
-            sst_step = advance_sst_production_iterate_transactionally(
-                mesh, U, p, mass_flux, *controls.sst_runtime->state,
-                controls.sst_runtime->transport, fixed_velocity_values,
-                controls.sst_runtime->wall_patch_names,
-                controls.sst_runtime->k_boundary_conditions,
-                controls.sst_runtime->omega_boundary_conditions,
-                controls.sst_runtime->max_transport_iterations,
-                controls.sst_runtime->transport_tolerance,
-                &controls.sst_runtime->omega_face_values,
-                controls.sst_runtime->allow_bounded_provisional_transport,
-                need_wall_operator
-                    ? &wall_refresh_v17 : nullptr);
+            // Bootstrap/certification strategy:
+            // - First iterations (bootstrap): always use provisional transport
+            //   with normal inner budget. Intermediate SST non-convergence is
+            //   not required; the goal is to reach a stable physical state.
+            // - Later iterations: when carrier metrics (previous iteration)
+            //   are approaching convergence, attempt a certification step
+            //   (non-provisional, limited extra inner iterations) so the final
+            //   gate can require a fully converged, non-provisional SST state.
+            // Final convergence is declared only when ALL gates pass together.
+            bool try_certification = false;
+            std::size_t cert_inner = controls.sst_runtime->max_transport_iterations;
+            double cert_tol = controls.sst_runtime->transport_tolerance;
+            if (controls.sst_runtime->allow_bounded_provisional_transport && !result.history.empty()) {
+                const std::size_t bootstrap_iters = 20;
+                const bool past_bootstrap = iter > bootstrap_iters;
+                const auto& prev = result.history.back();
+                const double cert_threshold = 100.0 * controls.convergence.relative_tolerance;
+                // Use global relative residuals and change metrics from the
+                // previous iteration. Do not gate on per-component max here
+                // (a component with structurally small RHS scale can remain
+                // relatively large while the flow is physically converging).
+                const bool carrier_approaching =
+                    prev.momentum_equation_residual_rhs_relative <= cert_threshold &&
+                    prev.continuity_normalized <= cert_threshold &&
+                    prev.velocity_change_inf <= 0.1 &&
+                    prev.pressure_change_inf <= 0.1;
+                if (past_bootstrap && carrier_approaching) {
+                    try_certification = true;
+                    // Limited extra inner iterations for certification (max +10
+                    // above normal budget) to converge SST at end-of-run.
+                    const std::size_t extra = 10;
+                    cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
+                        ? controls.sst_runtime->certification_max_transport_iterations
+                        : controls.sst_runtime->max_transport_iterations + extra;
+                    cert_tol = controls.sst_runtime->certification_transport_tolerance > 0.0
+                        ? controls.sst_runtime->certification_transport_tolerance
+                        : controls.sst_runtime->transport_tolerance;
+                }
+            }
+            if (try_certification) {
+                // Save state for rollback if certification fails
+                auto cert_state_backup = *controls.sst_runtime->state;
+                sst_step = advance_sst_production_iterate_transactionally(
+                    mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                    controls.sst_runtime->transport, fixed_velocity_values,
+                    controls.sst_runtime->wall_patch_names,
+                    controls.sst_runtime->k_boundary_conditions,
+                    controls.sst_runtime->omega_boundary_conditions,
+                    cert_inner, cert_tol,
+                    &controls.sst_runtime->omega_face_values,
+                    false, // no provisional for certification
+                    need_wall_operator ? &wall_refresh_v17 : nullptr);
+                if (sst_step.committed && sst_step.transport.converged && !sst_step.provisional) {
+                    if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
+                        std::cerr << "SST_CERTIFICATION iteration=" << iter
+                                  << " converged=1 inner=" << sst_step.transport.iterations
+                                  << " k_res=" << sst_step.transport.k_residual
+                                  << " omega_res=" << sst_step.transport.second_residual << "\n";
+                } else {
+                    // Certification failed, restore and do normal provisional step
+                    *controls.sst_runtime->state = cert_state_backup;
+                    if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
+                        std::cerr << "SST_CERTIFICATION iteration=" << iter
+                                  << " converged=0 fallback=provisional\n";
+                    sst_step = {};
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        controls.sst_runtime->max_transport_iterations,
+                        controls.sst_runtime->transport_tolerance,
+                        &controls.sst_runtime->omega_face_values,
+                        controls.sst_runtime->allow_bounded_provisional_transport,
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                }
+            } else {
+                sst_step = advance_sst_production_iterate_transactionally(
+                    mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                    controls.sst_runtime->transport, fixed_velocity_values,
+                    controls.sst_runtime->wall_patch_names,
+                    controls.sst_runtime->k_boundary_conditions,
+                    controls.sst_runtime->omega_boundary_conditions,
+                    controls.sst_runtime->max_transport_iterations,
+                    controls.sst_runtime->transport_tolerance,
+                    &controls.sst_runtime->omega_face_values,
+                    controls.sst_runtime->allow_bounded_provisional_transport,
+                    need_wall_operator ? &wall_refresh_v17 : nullptr);
+            }
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=SST_TRANSPORT_END committed=" << sst_step.committed

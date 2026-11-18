@@ -422,7 +422,7 @@ def make_case_setup(
     inlet_omega: float = OMEGA_IN,
     initial_omega: float = OMEGA_INITIAL,
     sst_newton_sink: bool = False,
-    sst_omega_first: bool = False,
+    sst_omega_first: bool = True,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
     sst_transport_tolerance: float = 1.0e-8,
@@ -779,7 +779,7 @@ def write_case(
     inlet_omega: float = OMEGA_IN,
     initial_omega: float = OMEGA_INITIAL,
     sst_newton_sink: bool = False,
-    sst_omega_first: bool = False,
+    sst_omega_first: bool = True,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
     sst_transport_tolerance: float = 1.0e-8,
@@ -1040,8 +1040,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--sst-omega-first",
-        action="store_true",
-        help="Experimental omega-first k/omega Picard coupling (default off).",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Omega-first k/omega Picard coupling (Gauss-Seidel, default on).",
     )
     parser.add_argument(
         "--sst-wall-factor",
