@@ -44,3 +44,37 @@ The artifact contains the exact commit and runner identity, CMake configuration,
 ## Removal
 
 This workflow is temporary. After the diagnostic campaign has been reviewed and the required evidence has been transferred into a permanent audit report, remove the temporary workflow or replace it with a smaller permanent regression.
+
+## Driver–Seegmiller experimental reference audit
+
+The diagnostic workflow now retrieves the three *raw* NASA Turbulence Modeling Resource files, records their SHA-256 hashes, and runs the existing independent parser/contract tests:
+
+- `cf.exp.dat`: lower-wall skin-friction coefficient and its tabulated experimental uncertainty;
+- `cp.expnew.dat`: top- and bottom-wall pressure coefficients, preserving both original and uniformly shifted pressure origins;
+- `profiles.exp.dat`: mean velocity and Reynolds-stress profiles, including the stations (x/H=-4,1,4,6,10).
+
+Reference definition: NASA TMR 2DBFS, Driver & Seegmiller (1985), DOI 10.2514/3.8890. The reference Reynolds number is approximately (Re_H=36,000), based on step height; the upstream momentum-thickness Reynolds number is 5,000. The measured reattachment position is (x_r/H=6.26\pm0.10). The reference velocity (U_{ref}) is taken near the channel centre at (x/H=-4), not assumed equal to a nominal inlet velocity. NASA also notes that the plotted (C_p) data are shifted to make (C_p\simeq0) near (x/H=40), while the downloadable file retains both origins.
+
+The comparison contract is deliberately multi-observable:
+
+1. (x_r/H): obtain from the first downstream zero crossing of a qualified streamwise wall-shear distribution; compare the signed error with the experimental interval.
+2. (C_f(x/H)): compare at the experimental abscissae using the supplied pointwise experimental uncertainty; report maximum and RMS normalized errors.
+3. (C_p(x/H)): compare both top and bottom walls and explicitly select the original or shifted NASA pressure reference. A pressure-origin mismatch is a failed comparison, not a tunable offset.
+4. (U/U_{ref}), (V/U_{ref}), and (-\overline{u'v'}/U_{ref}^2): compare profiles at (x/H=1,4,6,10) using interpolation in (y/H). The parser also reads the normal Reynolds stresses; these must not be silently omitted from a future complete qualification.
+5. Grid convergence: keep separate from experimental agreement. Require at least three systematically refined, geometrically similar grids and report observed order/GCI for key quantities; a single mesh cannot establish discretization uncertainty.
+
+The workflow currently performs a **reference-data integrity and parser-contract audit**, not a fabricated CFD-to-experiment comparison. The 192-cell CI case has a synthetic inlet profile and is a solver diagnostic only. Its SIMPLE result is not globally converged (momentum residual remains (O(10^{-2})), eddy-viscosity closure changes materially); its COUPLED/PCD result fails the first coupled linear solve. Therefore no (C_f), (C_p), velocity-profile or Reynolds-stress agreement is claimed for those runs. The fail-closed tool `qualify_bfs_nasa_fields_v16.py` emits `NO_CONVERGED_CFDX_RESULT_SUPPLIED` until a genuine prediction dataset is provided.
+
+### Experimental setup mismatch to resolve before physical comparison
+
+Do not identify the OpenFOAM tutorial's nominal (U=44.2\,m/s), (H=0.0127\,m) and (Re_H\simeq36,000) as a complete reproduction of the NASA validation boundary conditions. NASA TMR describes a naturally developing turbulent inlet boundary layer, approximately (1.5H) thick, with momentum-thickness Reynolds number 5,000 and back pressure adjusted to (M\simeq0.128). The inlet development length is deliberately selected to recover the measured upstream profile and skin friction. The current compact CI generator's 1/7-power-law profile and 5% turbulence intensity are not the measured Driver–Seegmiller inlet data; they must remain labelled surrogate/debug inputs, not validation inputs.
+
+### Corrected CI contract
+
+The focused build now explicitly builds `test_bfs_qualification` as well as the production solver and TVD regression executable. This addresses the review finding that CTest's `test_bfs_quick` wrapper launches a separate executable which was not built by the original workflow. The workflow also runs the independent NASA reference-parser tests and archives the raw experimental files, checksums, parser output and exit status.
+
+References:
+- NASA TMR 2DBFS: https://tmbwg.github.io/turbmodels/backstep_val.html
+- Driver & Seegmiller (1985), AIAA Journal 23(2), 163–171, DOI: https://doi.org/10.2514/3.8890
+- NASA NTRS record: https://ntrs.nasa.gov/search.jsp?R=19850039701
+- OpenFOAM tutorial case: https://doc.openfoam.com/2606/examples/verification-validation/turbulent/backward-facing-step/
