@@ -399,7 +399,7 @@ def make_setup(
     setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
     setup.numerics.raw_settings["sst_outer_provisional"] = "enabled"
     setup.numerics.raw_settings["skip_transactional_save"] = "disabled"
-    setup.numerics.raw_settings["sst_adaptive_relaxation"] = "enabled"
+    setup.numerics.raw_settings["sst_adaptive_relaxation"] = "true"
     if wall_resolved:
         setup.numerics.raw_settings["mesh_wall_resolved"] = "true"
     selections = [
