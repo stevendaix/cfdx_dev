@@ -114,3 +114,6 @@ Le mode PIMPLE est donc le meilleur candidat de progression sur ce petit test, m
 Aucune des variantes ne fournit un état global convergé : le post-traitement fail-closed doit donc s'arrêter avant le calcul des quantités d'intérêt. Il serait incorrect de comparer les résidus de ces runs à l'expérience comme s'il s'agissait d'une solution RANS établie, et incorrect de déduire (x_r/H), (C_f) ou (C_p) à partir d'un état rejeté ou incomplet.
 
 Le point de recollement expérimental (6.26\pm0.10) est un critère de validation de la solution, pas une condition numérique à imposer au solveur. La campagne doit d'abord produire un état U-p-k-omega certifié, puis des contraintes pariétales et profils cohérents, puis seulement effectuer les comparaisons multi-observables et l'étude de maillage.
+
+
+The repository audit gate now classifies this file explicitly as a campaign evidence dossier (rather than a numerical-method fiche). Its exemption from the seven-section method-fiche template is covered by a regression test; the dossier still carries the experimental DOI and explicit diagnostic/qualification status.
