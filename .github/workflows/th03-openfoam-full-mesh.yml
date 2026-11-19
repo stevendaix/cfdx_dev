@@ -80,20 +80,53 @@ jobs:
                                 "mesh_source":str(f.attrs.get("mesh_source",""))},indent=2))
           PY
 
-      - name: Run full-mesh SST calculation
+      - name: Run full-mesh pressure-velocity and Schur model matrix
         continue-on-error: true
+        shell: bash
         run: |
           set +e
-          timeout 5400 "$BUILD/cfdx_production_solver" \
-            --mesh "$OUT/th03-openfoam-full.cfdx.h5" \
-            --output-dir "$OUT/full-sst" \
-            --iterations 300 \
-            --experimental-sst \
-            --benchmark-export \
-            2>&1 | tee "$OUT/full-sst.log"
+          python3 scripts/run_cfdx_coupled_campaign.py \\
+            --build "$BUILD" \\
+            --out "$OUT/model-matrix" \\
+            --only bfs \\
+            --bfs-reference-case "$OUT/th03-openfoam-full.cfdx.h5" \\
+            --bfs-variants simple simplec pcd_auto block_local_amg lsc_amg bfbt_amg simple_schur_amg simplec_schur_amg pcd_pcd pcd_amg block_local_mgr block_local_braess \\
+            --iterations 1500 \\
+            --wall-timeout 360 \\
+            2>&1 | tee "$OUT/model-matrix.log"
           status=${PIPESTATUS[0]}
-          echo "$status" > "$OUT/full-sst.exit-code"
+          echo "$status" > "$OUT/model-matrix.exit-code"
           exit 0
+
+      - name: Run full-mesh FieldSplit and PIMPLE modes
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT/direct-modes"
+          python3 - <<'PY'
+          from pathlib import Path
+          from scripts.generate_th03_bfs_case import reconfigure_bfs_reference_case
+          source = Path("$OUT/th03-openfoam-full.cfdx.h5")
+          root = Path("$OUT/direct-modes")
+          for name in ("fieldsplit", "pimple"):
+              reconfigure_bfs_reference_case(
+                  source, root / f"{name}.cfdx.h5",
+                  algorithm="coupled", schur="pcd", preconditioner="auto",
+                  iterations=1500,
+              )
+          PY
+          for mode in fieldsplit pimple; do
+            set +e
+            timeout 360 "$BUILD/cfdx_production_solver" \\
+              --mesh "$OUT/direct-modes/$mode.cfdx.h5" \\
+              --output-dir "$OUT/direct-modes/$mode" \\
+              --iterations 1500 --experimental-sst --benchmark-export \\
+              "--bfs-$mode" 2>&1 | tee "$OUT/direct-modes/$mode.log"
+            status=${PIPESTATUS[0]}
+            echo "$status" > "$OUT/direct-modes/$mode.exit-code"
+            set -e
+          done
 
       - name: Capture physical observables and convergence verdict
         if: always()
