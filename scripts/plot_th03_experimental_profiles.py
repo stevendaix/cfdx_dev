@@ -18,7 +18,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-try:\n    from scripts.qualify_bfs_nasa_fields_v16 import read_nasa_profiles\nexcept ImportError:\n    from qualify_bfs_nasa_fields_v16 import read_nasa_profiles
+try:
+    from scripts.qualify_bfs_nasa_fields_v16 import read_nasa_profiles
+except ImportError:
+    from qualify_bfs_nasa_fields_v16 import read_nasa_profiles
 
 STATIONS = (1.0, 4.0, 6.0, 10.0)
 REQUIRED = {"x_m", "y_m", "u_x_m_s", "u_y_m_s"}
