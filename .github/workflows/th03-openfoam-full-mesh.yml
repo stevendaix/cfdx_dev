@@ -64,7 +64,8 @@ jobs:
         run: |
           python scripts/generate_th03_openfoam_blockmesh.py \
             --resolution full \
-            --max-iterations 300 \
+            --convection-scheme second_order_upwind \
+            --max-iterations 1500 \
             --output "$OUT/th03-openfoam-full.cfdx.h5" \
             2>&1 | tee "$OUT/mesh-generation.log"
           python scripts/audit_th03_openfoam_mesh.py \
@@ -161,7 +162,7 @@ jobs:
                       except Exception as exc: run[name]["parse_error"] = str(exc)
               report["runs"].append(run)
           (root / "physical-observables-index.json").write_text(
-              json.dumps(report, indent=2) + "\\n")
+              json.dumps(report, indent=2) + "\n")
           print(json.dumps(report, indent=2))
           PY
 
