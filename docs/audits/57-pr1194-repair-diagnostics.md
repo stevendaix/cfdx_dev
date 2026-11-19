@@ -78,3 +78,39 @@ References:
 - Driver & Seegmiller (1985), AIAA Journal 23(2), 163–171, DOI: https://doi.org/10.2514/3.8890
 - NASA NTRS record: https://ntrs.nasa.gov/search.jsp?R=19850039701
 - OpenFOAM tutorial case: https://doc.openfoam.com/2606/examples/verification-validation/turbulent/backward-facing-step/
+
+## Analyse des résultats CI initiaux (commit 7380f1e)
+
+La première campagne complète a bien compilé le solveur Release et le test TVD, mais elle a révélé une erreur de construction du smoke test : `test_bfs_quick` lance `test_bfs_qualification`, qui n'avait pas été demandé dans la liste des cibles à construire. CTest a donc rapporté `Not Run` (exécutable absent), et non un défaut du solveur. La liste des cibles du workflow a été corrigée pour construire explicitement cet exécutable.
+
+Résultats de la matrice numérique sur le maillage debug commun (192 cellules, 1500 itérations maximum) :
+
+| Variante | Temps observé | Observation finale | Statut |
+|---|---:|---|---|
+| SIMPLE | 30,09 s | résidu momentum global 2,23 %, composante active max 6,33 %, continuité 8,53e-4 | non convergé |
+| SIMPLEC | 2,72 s | divergence numérique vers l'itération 119, champs et résidus de l'ordre de 1e19 | rejeté |
+| COUPLED/PCD-auto | 4,38 s | FGMRES 2000 itérations, résidu relatif vrai 6,27e-3 | solveur linéaire non convergé |
+| COUPLED/BlockLocal-AMG | 48,98 s | momentum global 2,28 %, continuité 3,88e-4 | non convergé |
+| COUPLED/LSC-AMG | 149,77 s | momentum global 5,26 %, continuité 4,81e-4 | non convergé |
+| COUPLED/BFBT-AMG | 189,06 s | momentum global 4,40 %, continuité 3,61e-4 | non convergé |
+
+Ces chiffres ne classent pas universellement les algorithmes : ils décrivent uniquement ce maillage, cette initialisation uniforme, ces contrôles et cette exécution. En particulier, les temps des variantes couplées incluent des résolutions internes différentes et ne doivent pas être interprétés sans nombre d'itérations externes, coût par action de préconditionneur et preuve de convergence.
+
+Le mode FieldSplit Full Schur échoue au premier système couplé : FGMRES 445 itérations, résidu relatif vrai 3,31e-3. Le mode COUPLED/PCD échoue après 2000 itérations avec 6,27e-3. Ces deux résultats localisent un défaut de résolution linéaire initial, avant toute comparaison expérimentale.
+
+Le mode PIMPLE progresse nettement plus loin. À 1500 itérations :
+- momentum global relatif : 8,13e-4 ;
+- pire composante momentum active : 6,64e-3 ;
+- continuité normalisée : 1,54e-5 ;
+- résidu global k : 4,63e-6 ;
+- résidu global omega : 8,08e-7 ;
+- transport SST : candidat non certifié / `converged=false` ;
+- gate global U-p-k-omega : `converged=false`.
+
+Le mode PIMPLE est donc le meilleur candidat de progression sur ce petit test, mais il n'a pas convergé. Le faible résidu de continuité et les faibles résidus linéaires de pression ne compensent ni le défaut momentum par composante ni le défaut de fermeture SST.
+
+### Conséquence physique
+
+Aucune des variantes ne fournit un état global convergé : le post-traitement fail-closed doit donc s'arrêter avant le calcul des quantités d'intérêt. Il serait incorrect de comparer les résidus de ces runs à l'expérience comme s'il s'agissait d'une solution RANS établie, et incorrect de déduire (x_r/H), (C_f) ou (C_p) à partir d'un état rejeté ou incomplet.
+
+Le point de recollement expérimental (6.26\pm0.10) est un critère de validation de la solution, pas une condition numérique à imposer au solveur. La campagne doit d'abord produire un état U-p-k-omega certifié, puis des contraintes pariétales et profils cohérents, puis seulement effectuer les comparaisons multi-observables et l'étude de maillage.
