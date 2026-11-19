@@ -68,7 +68,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libhdf5-dev
           python -m pip install --upgrade pip
-          python -m pip install -e . numpy
+          python -m pip install -e . numpy matplotlib
 
       - name: Configure Release with tests and HDF5
         run: |
@@ -197,6 +197,38 @@ jobs:
               cat "$f"
             done
           } > "$RESULTS_DIR/direct-modes/exit-codes.txt"
+
+      - name: Plot CFDX mean-velocity profiles against Driver-Seegmiller
+        if: always()
+        continue-on-error: true
+        run: |
+          REF="$RESULTS_DIR/driver-seegmiller-reference"
+          OUT="$RESULTS_DIR/experimental-profile-plots"
+          mkdir -p "$OUT"
+          ARGS=()
+          for name in bfs_converged fieldsplit pimple; do
+            dir="$RESULTS_DIR/direct-modes/$name"
+            if [ -f "$dir/convergence.json" ] && [ -f "$dir/benchmark_observables/cell_fields.csv" ]; then
+              ARGS+=(--run "$name" "$dir")
+            fi
+          done
+          for name in simple simplec pcd_auto block_local_amg lsc_amg bfbt_amg; do
+            dir="$RESULTS_DIR/schur-campaign/bfs_runs/bfs_$name"
+            if [ -f "$dir/convergence.json" ] && [ -f "$dir/benchmark_observables/cell_fields.csv" ]; then
+              ARGS+=(--run "$name" "$dir")
+            fi
+          done
+          if [ "${#ARGS[@]}" -gt 0 ] && [ -f "$REF/profiles.exp.dat" ]; then
+            python scripts/plot_th03_experimental_profiles.py \
+              --reference-dir "$REF" --output-dir "$OUT" \
+              --height 0.0127 --include-unconverged "${ARGS[@]}" \
+              2>&1 | tee "$OUT/plotting.log"
+            echo "${PIPESTATUS[0]}" > "$OUT/plotting.exit-code"
+          else
+            echo "No compatible solver exports or NASA profile file; plots not generated." \
+              | tee "$OUT/plotting.log"
+            echo 2 > "$OUT/plotting.exit-code"
+          fi
 
       - name: Collect machine-readable diagnostic index
         if: always()
