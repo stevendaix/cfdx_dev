@@ -90,14 +90,19 @@ def make_plots(reference_dir: Path, runs: list[tuple[str, Path]], output: Path,
                include_unconverged: bool) -> dict:
     reference = read_nasa_profiles(reference_dir / "profiles.exp.dat")
     output.mkdir(parents=True, exist_ok=True)
-    loaded = [load_run(path, label, include_unconverged=include_unconverged) for label, path in runs]
+    loaded = [
+        load_run(path, label, include_unconverged=include_unconverged)
+        for label, path in runs
+    ]
     if not loaded:
         raise ProfilePlotError("no CFDX runs supplied")
 
     # Uref is evaluated at the upstream reference station and channel centre.
     urefs = {}
     for run in loaded:
-        plane, _ = nearest_plane(run["data"], step_x - 4.0 * height, plane_tolerance_h * height)
+        plane, _ = nearest_plane(
+            run["data"], step_x - 4.0 * height, plane_tolerance_h * height
+        )
         uref = float(np.interp(4.0 * height, plane[:, 1], plane[:, 2]))
         if not math.isfinite(uref) or uref <= 0:
             raise ProfilePlotError(f"{run['label']}: invalid upstream centreline Uref")
@@ -122,8 +127,12 @@ def make_plots(reference_dir: Path, runs: list[tuple[str, Path]], output: Path,
         fig, axes = plt.subplots(1, 2, figsize=(11, 6), constrained_layout=True)
         ref = reference[station]
         y_ref = np.asarray([row["y_h"] for row in ref])
-        axes[0].plot([row["u_ref"] for row in ref], y_ref, "ko", ms=3, label="Driver–Seegmiller")
-        axes[1].plot([row["v_ref"] for row in ref], y_ref, "ko", ms=3, label="Driver–Seegmiller")
+        axes[0].plot(
+            [row["u_ref"] for row in ref], y_ref, "ko", ms=3, label="Driver–Seegmiller"
+        )
+        axes[1].plot(
+            [row["v_ref"] for row in ref], y_ref, "ko", ms=3, label="Driver–Seegmiller"
+        )
         station_runs = []
         for run in loaded:
             plane, x_actual = nearest_plane(
@@ -134,17 +143,27 @@ def make_plots(reference_dir: Path, runs: list[tuple[str, Path]], output: Path,
             v = plane[:, 3] / urefs[run["label"]]
             axes[0].plot(u, y_h, "-", lw=1.4, label=run["label"])
             axes[1].plot(v, y_h, "-", lw=1.4, label=run["label"])
-            station_runs.append({
-                "label": run["label"],
-                "converged": run["converged"],
-                "x_over_h_requested": station,
-                "x_over_h_sampled": (x_actual - step_x) / height,
-                "x_offset_over_h": abs((x_actual - step_x) / height - station),
-                "u_ref_m_s": urefs[run["label"]],
-                "n_cells_in_plane": int(len(plane)),
-            })
-        axes[0].set(xlabel="U / Uref", ylabel="y / H", title=f"Mean streamwise velocity, x/H={station:g}")
-        axes[1].set(xlabel="V / Uref", ylabel="y / H", title=f"Mean transverse velocity, x/H={station:g}")
+            station_runs.append(
+                {
+                    "label": run["label"],
+                    "converged": run["converged"],
+                    "x_over_h_requested": station,
+                    "x_over_h_sampled": (x_actual - step_x) / height,
+                    "x_offset_over_h": abs((x_actual - step_x) / height - station),
+                    "u_ref_m_s": urefs[run["label"]],
+                    "n_cells_in_plane": int(len(plane)),
+                }
+            )
+        axes[0].set(
+            xlabel="U / Uref",
+            ylabel="y / H",
+            title=f"Mean streamwise velocity, x/H={station:g}",
+        )
+        axes[1].set(
+            xlabel="V / Uref",
+            ylabel="y / H",
+            title=f"Mean transverse velocity, x/H={station:g}",
+        )
         for axis in axes:
             axis.grid(True, alpha=0.3)
             axis.legend(fontsize=7)
@@ -163,19 +182,30 @@ def make_plots(reference_dir: Path, runs: list[tuple[str, Path]], output: Path,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference-dir", type=Path, required=True)
-    parser.add_argument("--run", action="append", nargs=2, metavar=("LABEL", "OUTPUT_DIR"), required=True)
+    parser.add_argument(
+        "--run",
+        action="append",
+        nargs=2,
+        metavar=("LABEL", "OUTPUT_DIR"),
+        required=True,
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--height", type=float, default=0.0127)
     parser.add_argument("--step-x", type=float, default=0.0)
     parser.add_argument("--plane-tolerance-h", type=float, default=1.3)
     parser.add_argument("--include-unconverged", action="store_true")
     args = parser.parse_args()
-    if not all(math.isfinite(x) and x > 0 for x in (args.height, args.plane_tolerance_h)):
+    if not all(
+        math.isfinite(x) and x > 0 for x in (args.height, args.plane_tolerance_h)
+    ):
         parser.error("height and plane tolerance must be positive and finite")
     try:
         report = make_plots(
-            args.reference_dir, [(label, Path(path)) for label, path in args.run],
-            args.output_dir, height=args.height, step_x=args.step_x,
+            args.reference_dir,
+            [(label, Path(path)) for label, path in args.run],
+            args.output_dir,
+            height=args.height,
+            step_x=args.step_x,
             plane_tolerance_h=args.plane_tolerance_h,
             include_unconverged=args.include_unconverged,
         )
