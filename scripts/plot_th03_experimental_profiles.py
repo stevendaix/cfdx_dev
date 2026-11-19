@@ -18,7 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scripts.qualify_bfs_nasa_fields_v16 import read_nasa_profiles
+try:\n    from scripts.qualify_bfs_nasa_fields_v16 import read_nasa_profiles\nexcept ImportError:\n    from qualify_bfs_nasa_fields_v16 import read_nasa_profiles
 
 STATIONS = (1.0, 4.0, 6.0, 10.0)
 REQUIRED = {"x_m", "y_m", "u_x_m_s", "u_y_m_s"}
@@ -164,7 +164,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--height", type=float, default=0.0127)
     parser.add_argument("--step-x", type=float, default=0.0)
-    parser.add_argument("--plane-tolerance-h", type=float, default=0.55)
+    parser.add_argument("--plane-tolerance-h", type=float, default=1.3)
     parser.add_argument("--include-unconverged", action="store_true")
     args = parser.parse_args()
     if not all(math.isfinite(x) and x > 0 for x in (args.height, args.plane_tolerance_h)):
