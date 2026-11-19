@@ -103,7 +103,7 @@ jobs:
         run: |
           set +e
           python -m pip install pytest
-          python -m pytest -q tests/python/test_qualify_bfs_nasa_fields_v16.py \\
+          python -m pytest -q tests/python/test_qualify_bfs_nasa_fields_v16.py \
             2>&1 | tee "$RESULTS_DIR/nasa-reference-tests.log"
           status=${PIPESTATUS[0]}
           echo "$status" > "$RESULTS_DIR/nasa-reference-tests.exit-code"
@@ -115,31 +115,31 @@ jobs:
           set +e
           REF="$RESULTS_DIR/driver-seegmiller-reference"
           mkdir -p "$REF"
-          curl --fail --location --retry 3 \\
-            https://tmbwg.github.io/turbmodels/Backstep_validation/cf.exp.dat \\
+          curl --fail --location --retry 3 \
+            https://tmbwg.github.io/turbmodels/Backstep_validation/cf.exp.dat \
             --output "$REF/cf.exp.dat"
           cf_status=$?
-          curl --fail --location --retry 3 \\
-            https://tmbwg.github.io/turbmodels/Backstep_validation/cp.expnew.dat \\
+          curl --fail --location --retry 3 \
+            https://tmbwg.github.io/turbmodels/Backstep_validation/cp.expnew.dat \
             --output "$REF/cp.expnew.dat"
           cp_status=$?
-          curl --fail --location --retry 3 \\
-            https://tmbwg.github.io/turbmodels/Backstep_validation/profiles.exp.dat \\
+          curl --fail --location --retry 3 \
+            https://tmbwg.github.io/turbmodels/Backstep_validation/profiles.exp.dat \
             --output "$REF/profiles.exp.dat"
           profiles_status=$?
-          printf 'cf=%s\\ncp=%s\\nprofiles=%s\\n' "$cf_status" "$cp_status" "$profiles_status" \\
+          printf 'cf=%s\ncp=%s\nprofiles=%s\n' "$cf_status" "$cp_status" "$profiles_status" \
             | tee "$REF/download-status.txt"
           if [ "$cf_status" -eq 0 ] && [ "$cp_status" -eq 0 ] && [ "$profiles_status" -eq 0 ]; then
             sha256sum "$REF"/*.dat | tee "$REF/SHA256SUMS"
             set +e
-            python scripts/qualify_bfs_nasa_fields_v16.py \\
-              --nasa-dir "$REF" --output "$REF/reference-audit.json" \\
+            python scripts/qualify_bfs_nasa_fields_v16.py \
+              --nasa-dir "$REF" --output "$REF/reference-audit.json" \
               > "$REF/reference-audit.log" 2>&1
             audit_status=$?
             echo "$audit_status" > "$REF/reference-audit.exit-code"
             exit 0
           fi
-          echo "NASA reference data download incomplete; no comparison performed." \\
+          echo "NASA reference data download incomplete; no comparison performed." \
             | tee "$REF/reference-audit.log"
           exit 0
 
