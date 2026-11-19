@@ -105,10 +105,13 @@ jobs:
           set -euo pipefail
           mkdir -p "$OUT/direct-modes"
           python3 - <<'PY'
+          import os
+          import sys
           from pathlib import Path
-          from scripts.generate_th03_bfs_case import reconfigure_bfs_reference_case
-          source = Path("$OUT/th03-openfoam-full.cfdx.h5")
-          root = Path("$OUT/direct-modes")
+          sys.path.insert(0, "scripts")
+          from generate_th03_bfs_case import reconfigure_bfs_reference_case
+          source = Path(os.environ["OUT"]) / "th03-openfoam-full.cfdx.h5"
+          root = Path(os.environ["OUT"]) / "direct-modes"
           for name in ("fieldsplit", "pimple"):
               reconfigure_bfs_reference_case(
                   source, root / f"{name}.cfdx.h5",
@@ -128,29 +131,38 @@ jobs:
             set -e
           done
 
-      - name: Capture physical observables and convergence verdict
+      - name: Capture model matrix and physical observables
         if: always()
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
-          root=Path(os.environ["OUT"])
-          run=root/"full-sst"
-          report={"classification":"OPENFOAM_FULL_MESH_DIAGNOSTIC_NOT_QUALIFIED",
-                  "mesh_cells":20540,"mesh_faces":82493,
-                  "reference_xr_over_h":6.26,"reference_uncertainty":0.10,
-                  "run_exit_code":(root/"full-sst.exit-code").read_text().strip()
-                    if (root/"full-sst.exit-code").exists() else None}
-          for name in ("convergence.json","benchmark_observables/summary.json",
-                       "benchmark_observables/wall_shear.csv",
-                       "benchmark_observables/cell_fields.csv"):
-              p=run/name
-              report[name]={"exists":p.exists(),"size":p.stat().st_size if p.exists() else 0}
-              if p.exists() and p.suffix==".json":
-                  try: report[name]["data"]=json.loads(p.read_text())
-                  except Exception as e: report[name]["parse_error"]=str(e)
-          (root/"physical-observables-index.json").write_text(json.dumps(report,indent=2)+"\n")
-          print(json.dumps(report,indent=2))
+          root = Path(os.environ["OUT"])
+          report = {
+              "classification": "OPENFOAM_FULL_MESH_MULTI_MODEL_DIAGNOSTIC_NOT_QUALIFIED",
+              "mesh": str(root / "th03-openfoam-full.cfdx.h5"),
+              "model_matrix_exit_code": (root / "model-matrix.exit-code").read_text().strip()
+                  if (root / "model-matrix.exit-code").exists() else None,
+              "runs": [],
+          }
+          for p in sorted(root.rglob("execution.json")):
+              if "direct-modes" not in str(p) and "bfs_runs" not in str(p):
+                  continue
+              run = {"directory": str(p.parent.relative_to(root))}
+              for name in ("execution.json", "convergence.json",
+                           "benchmark_observables/summary.json",
+                           "benchmark_observables/wall_shear.csv",
+                           "benchmark_observables/cell_fields.csv"):
+                  q = p.parent / name
+                  run[name] = {"exists": q.exists(),
+                               "size": q.stat().st_size if q.exists() else 0}
+                  if q.exists() and q.suffix == ".json":
+                      try: run[name]["data"] = json.loads(q.read_text())
+                      except Exception as exc: run[name]["parse_error"] = str(exc)
+              report["runs"].append(run)
+          (root / "physical-observables-index.json").write_text(
+              json.dumps(report, indent=2) + "\\n")
+          print(json.dumps(report, indent=2))
           PY
 
       - name: Upload full-mesh evidence
