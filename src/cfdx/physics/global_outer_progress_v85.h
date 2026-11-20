@@ -22,6 +22,14 @@ struct GlobalOuterTrialV85 {
     double merit_ratio=0., momentum_ratio=0., k_ratio=0., omega_ratio=0.;
 };
 
+// V85 is algorithm-independent when SST is fully committed. The only
+// algorithm-specific restriction belongs to the optional V83 provisional-SST
+// transport: that transaction is currently qualified for SIMPLE only.
+inline bool global_outer_progress_v85_algorithm_compatible(
+    PressureVelocityAlgorithm algorithm, bool provisional_sst) noexcept {
+    return !provisional_sst || algorithm == PressureVelocityAlgorithm::SIMPLE;
+}
+
 class GlobalOuterProgressLedgerV85 {
 public:
     static constexpr std::size_t window=6;
@@ -36,7 +44,6 @@ public:
             GlobalOuterTrialV85 r;r.reason=reason;return r;
         };
         if (!s.all_finite || !s.sst || !s.bounded ||
-            s.algorithm!=PressureVelocityAlgorithm::SIMPLE ||
             (s.converged && !s.sst_transport_committed) ||
             !finite_nonnegative(s.merit) || !finite_nonnegative(s.continuity) ||
             !finite_nonnegative(s.k) || !finite_nonnegative(s.omega) ||

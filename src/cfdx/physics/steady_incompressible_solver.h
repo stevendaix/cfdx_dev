@@ -1204,17 +1204,20 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument("V84 and V85 policies cannot both be enabled");
     if (c.bounded_outer_progress_v85_experimental &&
         (!c.sst_runtime ||
-         !c.sst_runtime->sst_provisional_merit_progress_v83_experimental ||
+         !global_outer_progress_v85_algorithm_compatible(
+             c.algorithm,
+             c.sst_runtime->sst_provisional_merit_progress_v83_experimental) ||
+         (c.sst_runtime->allow_bounded_provisional_transport &&
+          !c.sst_runtime->sst_provisional_merit_progress_v83_experimental) ||
          !c.require_post_sst_momentum_reassembly ||
          !c.require_global_nonlinear_certificate_v8 ||
          !c.joint_globalization_v13_experimental ||
          !c.monotone_global_merit_v14_experimental ||
-         c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
          c.transient.enabled || c.outer_ptc_v31_experimental ||
          (c.pseudo_momentum.enabled && !c.bfs_pseudo_provisional_v90_experimental)))
         throw std::invalid_argument(
-            "V85 bounded outer progress requires V83 steady SIMPLE with "
-            "independent V7/V8 residuals and V13/V14 guard configuration");
+            "V85 requires steady SST, independent V7/V8 residuals and V13/V14 guards; "
+            "provisional V83 SST remains SIMPLE-only");
     if (c.nonmonotone_outer_progress_v84_experimental &&
         (!c.sst_runtime ||
          !c.sst_runtime->sst_provisional_merit_progress_v83_experimental ||
