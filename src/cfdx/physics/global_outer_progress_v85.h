@@ -36,7 +36,6 @@ public:
             GlobalOuterTrialV85 r;r.reason=reason;return r;
         };
         if (!s.all_finite || !s.sst || !s.bounded ||
-            s.algorithm!=PressureVelocityAlgorithm::SIMPLE ||
             (s.converged && !s.sst_transport_committed) ||
             !finite_nonnegative(s.merit) || !finite_nonnegative(s.continuity) ||
             !finite_nonnegative(s.k) || !finite_nonnegative(s.omega) ||
