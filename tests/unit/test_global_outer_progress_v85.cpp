@@ -8,9 +8,10 @@ using namespace cfdx::physics;
 static void require(bool cond,const std::string& msg){if(!cond)throw std::runtime_error(msg);}
 template<class F>static void must_throw(F fn,const char* msg){bool ok=false;try{fn();}catch(const std::invalid_argument&){ok=true;}require(ok,msg);}
 static GlobalNonlinearResidualV8 state(double worst,double glob,double k,double omega,
-                                      double cont=1e-16){
+                                      double cont=1e-16,
+                                      PressureVelocityAlgorithm algorithm=PressureVelocityAlgorithm::SIMPLE){
     GlobalNonlinearResidualV8 s;
-    s.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    s.algorithm=algorithm;
     s.sst=true;s.sst_transport_committed=false;s.bounded=true;
     s.all_finite=true;s.converged=false;
     s.momentum.global_relative=glob;
@@ -59,8 +60,21 @@ int main(){try{
     require(!ledger.evaluate(bad,gates).allowed,"momentum blowup rejected");
     bad=three;bad.converged=true;
     must_throw([&]{(void)ledger.evaluate(bad,gates);},"false converged flag rejected");
-    bad=three;bad.algorithm=PressureVelocityAlgorithm::COUPLED;
-    must_throw([&]{(void)ledger.evaluate(bad,gates);},"COUPLED cannot use this option");
+    // Each algorithm/Schur configuration owns an independent ledger. COUPLED
+    // is eligible under the same physical safeguards; histories may not mix.
+    GlobalOuterProgressLedgerV85 coupledLedger;
+    auto coupledOne=state(.9951482239106,.580463,.281451,.003770,1e-16,
+                          PressureVelocityAlgorithm::COUPLED);
+    auto coupledTwo=state(.9950336766582,.446394,.862147,.010256,1e-16,
+                          PressureVelocityAlgorithm::COUPLED);
+    require(coupledLedger.evaluate(coupledOne,gates).allowed,
+            "COUPLED gets its own provisional baseline");
+    coupledLedger.commit(coupledOne,gates);
+    require(coupledLedger.evaluate(coupledTwo,gates).allowed,
+            "COUPLED progression uses the same physical guards");
+    auto mixed=three;
+    must_throw([&]{(void)coupledLedger.evaluate(mixed,gates);},
+               "algorithm change inside one ledger rejected");
     must_throw([&]{(void)ledger.evaluate(three,gates,false);},"changed physical operator rejected");
     auto noProgress=state(.99512,.5804,.282,.00377);
     GlobalOuterProgressLedgerV85 fresh;fresh.commit(one,gates);
