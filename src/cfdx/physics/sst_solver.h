@@ -2861,12 +2861,12 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             controls.sst_nonlinear_line_search ||
             controls.sst_anderson_m2_v20 ||
             controls.sst_jfnk_v22_experimental ||
-            controls.sst_implicit_spatial_rescue_v82_experimental ||
-            !v33_trace_cells.empty();
-        // Diagnostic environment variables may request the expensive
-        // reassembly, but must never turn a read-only trace into a new
-        // convergence gate or change the solver's accepted trajectory.
+            controls.sst_implicit_spatial_rescue_v82_experimental;
+        // Diagnostic environment variables and V33 row probes may request
+        // the expensive reassembly, but must never turn a read-only trace into
+        // a new convergence gate or change the solver's accepted trajectory.
         const bool diagnostic_returned =
+            !v33_trace_cells.empty() ||
             std::getenv("CFDX_SST_DIAGNOSTICS") != nullptr ||
             std::getenv("CFDX_SST_PROGRESS_V81") != nullptr;
         const bool must_audit_returned =
