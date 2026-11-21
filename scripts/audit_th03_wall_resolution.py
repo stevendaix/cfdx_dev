@@ -143,7 +143,9 @@ def audit(
         "case_id": "TH-03",
         "status": "PREFLIGHT_PASS" if maximum <= max_y_plus else "BLOCKED",
         "physical_qualification": "NOT_QUALIFIED",
-        "wall_method": next(iter(methods)) if len(methods) == 1 else "mixed_diagnostic_methods",
+        "wall_method": next(iter(methods))
+        if len(methods) == 1
+        else "mixed_diagnostic_methods",
         "wall_methods": sorted(methods),
         "n_faces": len(entries),
         "min_y_plus_estimate": minimum,
