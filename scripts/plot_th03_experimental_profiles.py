@@ -14,6 +14,7 @@ import math
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,11 +36,15 @@ def read_cells(path: Path) -> np.ndarray:
     with path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
         if not reader.fieldnames or not REQUIRED.issubset(reader.fieldnames):
-            raise ProfilePlotError(f"{path}: missing columns {sorted(REQUIRED - set(reader.fieldnames or []))}")
+            raise ProfilePlotError(
+                f"{path}: missing columns {sorted(REQUIRED - set(reader.fieldnames or []))}"
+            )
         rows = []
         for row in reader:
             try:
-                values = [float(row[key]) for key in ("x_m", "y_m", "u_x_m_s", "u_y_m_s")]
+                values = [
+                    float(row[key]) for key in ("x_m", "y_m", "u_x_m_s", "u_y_m_s")
+                ]
             except (TypeError, ValueError) as exc:
                 raise ProfilePlotError(f"{path}: non-numeric cell field") from exc
             if not all(math.isfinite(value) for value in values):
@@ -51,7 +56,9 @@ def read_cells(path: Path) -> np.ndarray:
     return data
 
 
-def nearest_plane(data: np.ndarray, x_target: float, tolerance: float) -> tuple[np.ndarray, float]:
+def nearest_plane(
+    data: np.ndarray, x_target: float, tolerance: float
+) -> tuple[np.ndarray, float]:
     x_values = np.unique(data[:, 0])
     x_selected = float(x_values[np.argmin(np.abs(x_values - x_target))])
     offset = abs(x_selected - x_target)
@@ -59,17 +66,25 @@ def nearest_plane(data: np.ndarray, x_target: float, tolerance: float) -> tuple[
         raise ProfilePlotError(
             f"no cell-centre plane near x/H={x_target:g}; nearest offset={offset:g} m"
         )
-    plane = data[np.isclose(data[:, 0], x_selected, rtol=0.0, atol=1e-12 * max(1.0, abs(x_selected)))]
+    plane = data[
+        np.isclose(
+            data[:, 0], x_selected, rtol=0.0, atol=1e-12 * max(1.0, abs(x_selected))
+        )
+    ]
     order = np.argsort(plane[:, 1])
     plane = plane[order]
     if len(plane) < 4 or np.any(np.diff(plane[:, 1]) <= 0):
-        raise ProfilePlotError(f"insufficient or duplicate y samples at x={x_selected:g}")
+        raise ProfilePlotError(
+            f"insufficient or duplicate y samples at x={x_selected:g}"
+        )
     return plane, x_selected
 
 
 def interp_profile(plane: np.ndarray, y: np.ndarray, component: int) -> np.ndarray:
     if y.min() < plane[:, 1].min() or y.max() > plane[:, 1].max():
-        raise ProfilePlotError("experimental y/H range lies outside CFDX sampled profile")
+        raise ProfilePlotError(
+            "experimental y/H range lies outside CFDX sampled profile"
+        )
     return np.interp(y, plane[:, 1], plane[:, component])
 
 
@@ -77,17 +92,28 @@ def load_run(run_dir: Path, label: str, *, include_unconverged: bool) -> dict:
     convergence_path = run_dir / "convergence.json"
     cells_path = run_dir / "benchmark_observables" / "cell_fields.csv"
     if not convergence_path.is_file() or not cells_path.is_file():
-        raise ProfilePlotError(f"{label}: missing convergence.json or benchmark_observables/cell_fields.csv")
+        raise ProfilePlotError(
+            f"{label}: missing convergence.json or benchmark_observables/cell_fields.csv"
+        )
     convergence = json.loads(convergence_path.read_text(encoding="utf-8"))
     converged = convergence.get("converged") is True
     if not converged and not include_unconverged:
-        raise ProfilePlotError(f"{label}: run is not converged; use --include-unconverged for diagnostic-only plots")
+        raise ProfilePlotError(
+            f"{label}: run is not converged; use --include-unconverged for diagnostic-only plots"
+        )
     return {"label": label, "converged": converged, "data": read_cells(cells_path)}
 
 
-def make_plots(reference_dir: Path, runs: list[tuple[str, Path]], output: Path,
-               *, height: float, step_x: float, plane_tolerance_h: float,
-               include_unconverged: bool) -> dict:
+def make_plots(
+    reference_dir: Path,
+    runs: list[tuple[str, Path]],
+    output: Path,
+    *,
+    height: float,
+    step_x: float,
+    plane_tolerance_h: float,
+    include_unconverged: bool,
+) -> dict:
     reference = read_nasa_profiles(reference_dir / "profiles.exp.dat")
     output.mkdir(parents=True, exist_ok=True)
     loaded = [
@@ -151,7 +177,7 @@ def make_plots(reference_dir: Path, runs: list[tuple[str, Path]], output: Path,
                     "x_over_h_sampled": (x_actual - step_x) / height,
                     "x_offset_over_h": abs((x_actual - step_x) / height - station),
                     "u_ref_m_s": urefs[run["label"]],
-                    "n_cells_in_plane": int(len(plane)),
+                    "n_cells_in_plane": len(plane),
                 }
             )
         axes[0].set(
