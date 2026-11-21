@@ -82,6 +82,12 @@ def physical_input_identity(path: Path) -> dict:
         if schur not in SCHUR_MODELS or selected.get("schur") != f"schur.{schur}":
             raise ValueError("BFS six-Schur case does not select an explicit Schur")
         physical_setup = copy.deepcopy(setup)
+        # This is a preconditioner-action choice, not physical input. The
+        # commutator form is enabled only for the PCD Schur variant; retain
+        # the rest of raw_settings in the signed physical-input identity.
+        physical_setup["numerics"].get("raw_settings", {}).pop(
+            "pcd_lumped_mass_commutator_experimental", None
+        )
         physical_setup["numerics"]["selection"]["entries"] = [
             x for x in entries if x["family"] != "schur"
         ]
