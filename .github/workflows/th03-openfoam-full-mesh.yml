@@ -156,6 +156,42 @@ jobs:
             set -e
           done
 
+      - name: A/B pressure-equation equilibration on identical full mesh
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT/pressure-scaling"
+          python3 - <<'PY'
+          import h5py, json, os, shutil
+          from pathlib import Path
+          root = Path(os.environ["OUT"])
+          source = root / "th03-openfoam-full.cfdx.h5"
+          target_root = root / "pressure-scaling"
+          for mode in ("row_column", "symmetric_diagonal"):
+              target = target_root / f"simple_{mode}.cfdx.h5"
+              shutil.copyfile(source, target)
+              with h5py.File(target, "r+") as case:
+                  setup = json.loads(case.attrs["case_setup_json"])
+                  raw = setup["numerics"].setdefault("raw_settings", {})
+                  raw["pressure_linear_scaling"] = mode
+                  # V26 refinement is deliberately excluded from this A/B:
+                  # it is not supported together with explicit scaling.
+                  raw.pop("pressure_iterative_refinement_steps", None)
+                  case.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
+          PY
+          for mode in row_column symmetric_diagonal; do
+            set +e
+            timeout 180 "$BUILD/cfdx_production_solver" \
+              --mesh "$OUT/pressure-scaling/simple_${mode}.cfdx.h5" \
+              --output-dir "$OUT/pressure-scaling/${mode}" \
+              --iterations 1 --experimental-sst --benchmark-export \
+              2>&1 | tee "$OUT/pressure-scaling/${mode}.log"
+            status=${PIPESTATUS[0]}
+            echo "$status" > "$OUT/pressure-scaling/${mode}.exit-code"
+            set -e
+          done
+
       - name: Capture model matrix and physical observables
         if: always()
         run: |
@@ -174,7 +210,7 @@ jobs:
               "runs": [],
           }
           for p in sorted(root.rglob("execution.json")):
-              if "direct-modes" not in str(p) and "bfs_runs" not in str(p):
+              if not any(part in str(p) for part in ("direct-modes", "bfs_runs", "pressure-scaling")):
                   continue
               run = {"directory": str(p.parent.relative_to(root))}
               for name in ("execution.json", "convergence.json",
