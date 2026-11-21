@@ -75,6 +75,7 @@ jobs:
             --convection-scheme second_order_upwind \
             --max-iterations 1500 \
             --joint-globalization \
+            --pressure-refinement-steps 2 \
             --output "$OUT/th03-openfoam-full.cfdx.h5" \
             2>&1 | tee "$OUT/mesh-generation.log"
           python scripts/audit_th03_openfoam_mesh.py \
