@@ -4929,9 +4929,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 "N8 LSC/BFBt pressure AMG setup failed");
         }
 
+        const bool lsc_bfbt_inner_trace = [] {
+            const char* value = std::getenv("CFDX_BFS_SCHUR_INNER_TRACE");
+            return value != nullptr && std::string(value) == "1";
+        }();
         auto solve_pressure = [pressure_operator,
                                pressure_preconditioner,
-                               max_iterations, tolerance](
+                               max_iterations, tolerance,
+                               lsc_bfbt_inner_trace,
+                               schur_model,
+                               trace_calls = std::size_t{0}](
             const Vector& rhs, Vector& x) mutable {
             const int restart = static_cast<int>(std::min<std::size_t>(
                 64, pressure_operator.n_rows()));
@@ -4939,8 +4946,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 pressure_operator, rhs, x, restart,
                 max_iterations, tolerance,
                 pressure_preconditioner.get());
-            return nested_schur_pressure_solve_usable(
+            const bool accepted = nested_schur_pressure_solve_usable(
                 result, x, pressure_operator.n_rows());
+            if (lsc_bfbt_inner_trace &&
+                (trace_calls < 8 || trace_calls % 100 == 0)) {
+                std::cerr << "COUPLED_NESTED_LSC_BFBT"
+                          << " model=" << to_string(schur_model)
+                          << " call=" << trace_calls
+                          << " status=" << static_cast<int>(result.status)
+                          << " iterations=" << result.iterations
+                          << " residual=" << result.residual
+                          << " relative=" << result.residual_relative
+                          << " accepted=" << (accepted ? 1 : 0) << "\\n";
+            }
+            ++trace_calls;
+            return accepted;
         };
 
         auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
