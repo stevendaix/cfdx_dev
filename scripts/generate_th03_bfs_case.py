@@ -635,8 +635,16 @@ def reconfigure_bfs_reference_case(
             # BFS Schur matrix so nonlinear retries shorten the actual field
             # update, not just the segregated relaxation controls.
             raw_settings["coupled_outer_step_v43_experimental"] = "0.5"
+            if schur == "pcd":
+                # Exercise the classical lumped-mass commutator PCD action
+                # -Mp^-1 Fp Kp^-1 instead of the legacy single Fp^-1 action.
+                # Both retain the same outer true-residual and physical gates.
+                raw_settings["pcd_lumped_mass_commutator_experimental"] = "true"
+            else:
+                raw_settings.pop("pcd_lumped_mass_commutator_experimental", None)
         else:
             raw_settings.pop("coupled_outer_step_v43_experimental", None)
+            raw_settings.pop("pcd_lumped_mass_commutator_experimental", None)
         topology, geometry = (
             str(source.attrs["topology_hash"]),
             str(source.attrs["geometry_hash"]),
