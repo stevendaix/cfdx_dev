@@ -7,7 +7,11 @@
 #include <array>
 #include "common/test_harness.h"
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -131,6 +135,72 @@ int main()
         EXPECT_NEAR(r.k_residual,expected.k_raw_inf,1e-12);
         EXPECT_NEAR(r.second_residual,expected.omega_raw_inf,1e-12);
         EXPECT_TRUE(std::isfinite(r.k_residual) && std::isfinite(r.second_residual));
+    });
+    run_case("sst_diagnostic_environment_is_read_only_for_acceptance", [] {
+        using namespace cfdx::core;
+        class ScopedEnvironmentVariable {
+        public:
+            ScopedEnvironmentVariable(const char* name, const char* value)
+                : name_(name) {
+                if (const char* previous = std::getenv(name_.c_str()))
+                    previous_ = previous;
+#if defined(_WIN32)
+                _putenv_s(name_.c_str(), value ? value : "");
+#else
+                if (value) setenv(name_.c_str(), value, 1);
+                else unsetenv(name_.c_str());
+#endif
+            }
+            ~ScopedEnvironmentVariable() {
+#if defined(_WIN32)
+                _putenv_s(name_.c_str(), previous_ ? previous_->c_str() : "");
+#else
+                if (previous_) setenv(name_.c_str(), previous_->c_str(), 1);
+                else unsetenv(name_.c_str());
+#endif
+            }
+        private:
+            std::string name_;
+            std::optional<std::string> previous_;
+        };
+        const auto run = [](bool diagnostics) {
+            ScopedEnvironmentVariable diagnostic(
+                "CFDX_SST_DIAGNOSTICS", diagnostics ? "1" : nullptr);
+            ScopedEnvironmentVariable progress(
+                "CFDX_SST_PROGRESS_V81", diagnostics ? "1" : nullptr);
+            const auto mesh = make_sst_transaction_unit_cube();
+            const auto geometry = build_fv_geometry(mesh);
+            Field<double,Location::FACE> flux(mesh.n_faces(),"flux","kg/s",1);
+            flux.fill(0.0);
+            Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1),
+                omega(mesh.n_cells(),"omega","1/s",1),
+                strain(mesh.n_cells(),"strain","1/s",1),
+                wall(mesh.n_cells(),"wall_distance","m",1);
+            k.fill(0.4); omega.fill(8.0); strain.fill(2.0); wall.fill(0.1);
+            TurbulenceTransportControls controls;
+            controls.model = TurbulenceModel::SST;
+            ScalarBoundaryConditions k_bcs, omega_bcs;
+            for (const char* patch : {"x0", "x1", "walls"}) {
+                k_bcs[patch] = {ScalarBoundaryType::FIXED_VALUE, 0.01, 0.0};
+                omega_bcs[patch] = {ScalarBoundaryType::FIXED_VALUE, 2.0, 0.0};
+            }
+            const auto result = solve_sst_transport_dynamic_blending(
+                mesh,geometry,flux,k,omega,strain,wall,controls,
+                k_bcs,omega_bcs,1,1e-14);
+            return std::tuple{
+                result.converged, result.iterations, result.k_floor_events,
+                result.second_floor_events, result.nonfinite_bound_events,
+                k(0), omega(0)};
+        };
+        const auto baseline = run(false);
+        const auto traced = run(true);
+        EXPECT_TRUE(std::get<0>(baseline) == std::get<0>(traced));
+        EXPECT_TRUE(std::get<1>(baseline) == std::get<1>(traced));
+        EXPECT_TRUE(std::get<2>(baseline) == std::get<2>(traced));
+        EXPECT_TRUE(std::get<3>(baseline) == std::get<3>(traced));
+        EXPECT_TRUE(std::get<4>(baseline) == std::get<4>(traced));
+        EXPECT_NEAR(std::get<5>(baseline),std::get<5>(traced),0.0);
+        EXPECT_NEAR(std::get<6>(baseline),std::get<6>(traced),0.0);
     });
     run_case("v15_extended_residual_detects_fp64_cancellation_on_same_matrix", [] {
         using namespace cfdx::core;
