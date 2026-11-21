@@ -38,6 +38,7 @@ jobs:
       CFDX_SST_PROGRESS_V81: '1'
       CFDX_BFS_PCD_INNER_TRACE: '1'
       CFDX_KRYLOV_DIAGNOSTICS: '1'
+      CFDX_SIMPLEC_DIAGONAL_TRACE: '1'
     steps:
       - name: Checkout exact diagnostic PR revision
         uses: actions/checkout@v7
