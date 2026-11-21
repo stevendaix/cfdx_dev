@@ -64,6 +64,7 @@ def audit(
     if not cells:
         raise WallResolutionError("missing cells")
     entries = []
+    methods: set[str] = set()
     covered_patches: set[str] = set()
     with face_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
@@ -81,8 +82,16 @@ def audit(
         for row in reader:
             if row["patch"] not in wall_patches:
                 continue
-            if row["wall_shear_method"] != "first_order_one_sided_diagnostic":
-                raise WallResolutionError("unqualified wall shear method")
+            method = row["wall_shear_method"]
+            # Both methods are explicitly diagnostic (not Cf qualification).
+            # The effective-viscosity export supersedes the older molecular-only
+            # estimate for SST, but neither method is a production wall-stress oracle.
+            if method not in (
+                "first_order_one_sided_diagnostic",
+                "first_order_one_sided_effective_viscosity",
+            ):
+                raise WallResolutionError(f"unsupported wall shear diagnostic method: {method}")
+            methods.add(method)
             try:
                 owner = int(row["owner"])
                 tau = [
@@ -132,7 +141,7 @@ def audit(
         "case_id": "TH-03",
         "status": "PREFLIGHT_PASS" if maximum <= max_y_plus else "BLOCKED",
         "physical_qualification": "NOT_QUALIFIED",
-        "wall_method": "first_order_one_sided_diagnostic",
+        "wall_method": sorted(methods),
         "n_faces": len(entries),
         "min_y_plus_estimate": minimum,
         "max_y_plus_estimate": maximum,
