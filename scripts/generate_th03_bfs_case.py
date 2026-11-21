@@ -400,10 +400,8 @@ def make_setup(
     setup.numerics.raw_settings["sst_outer_provisional"] = "enabled"
     setup.numerics.raw_settings["skip_transactional_save"] = "disabled"
     setup.numerics.raw_settings["sst_adaptive_relaxation"] = "true"
-    # Exercise the existing full-state globalization on every pressure-velocity
-    # algorithm; final V8 residual and conservation tolerances remain unchanged.
-    setup.numerics.raw_settings["v13_joint_globalization"] = "true"
-    setup.numerics.raw_settings["v14_monotone_global_merit"] = "true"
+    # This 192-cell diagnostic deliberately uses provisional SST transport;
+    # V13/V14 full-state globalization is exercised only by the full-mesh case.
     if wall_resolved:
         setup.numerics.raw_settings["mesh_wall_resolved"] = "true"
     selections = [
