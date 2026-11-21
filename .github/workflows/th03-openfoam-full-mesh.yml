@@ -168,19 +168,28 @@ jobs:
           root = Path(os.environ["OUT"])
           source = root / "th03-openfoam-full.cfdx.h5"
           target_root = root / "pressure-scaling"
-          for mode in ("row_column", "symmetric_diagonal"):
+          variants = {
+              "row_column": {"pressure_linear_scaling": "row_column"},
+              "symmetric_diagonal": {"pressure_linear_scaling": "symmetric_diagonal"},
+              "anisotropic_line_amg": {
+                  "pressure_linear_scaling": "none",
+                  "pressure_preconditioner": "anisotropic_line_amg",
+                  "pressure_krylov": "fgmres",
+              },
+          }
+          for mode, settings in variants.items():
               target = target_root / f"simple_{mode}.cfdx.h5"
               shutil.copyfile(source, target)
               with h5py.File(target, "r+") as case:
                   setup = json.loads(case.attrs["case_setup_json"])
                   raw = setup["numerics"].setdefault("raw_settings", {})
-                  raw["pressure_linear_scaling"] = mode
+                  raw.update(settings)
                   # V26 refinement is deliberately excluded from this A/B:
                   # it is not supported together with explicit scaling.
                   raw.pop("pressure_iterative_refinement_steps", None)
                   case.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
           PY
-          for mode in row_column symmetric_diagonal; do
+          for mode in row_column symmetric_diagonal anisotropic_line_amg; do
             set +e
             timeout 180 "$BUILD/cfdx_production_solver" \
               --mesh "$OUT/pressure-scaling/simple_${mode}.cfdx.h5" \
