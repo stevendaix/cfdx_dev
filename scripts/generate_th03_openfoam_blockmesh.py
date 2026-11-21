@@ -1049,8 +1049,8 @@ def main() -> int:
     parser.add_argument(
         "--sst-omega-first",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Omega-first k/omega Picard coupling (Gauss-Seidel, default on).",
+        default=False,
+        help="Opt-in omega-first k/omega Picard coupling (Gauss-Seidel; default off).",
     )
     parser.add_argument(
         "--sst-wall-factor",
