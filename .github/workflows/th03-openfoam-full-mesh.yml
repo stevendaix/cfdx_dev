@@ -163,6 +163,9 @@ jobs:
           import json, os
           from pathlib import Path
           root = Path(os.environ["OUT"])
+          # The always() capture step also runs after cancellation or an early
+          # setup failure, when the build step may never have created OUT.
+          root.mkdir(parents=True, exist_ok=True)
           report = {
               "classification": "OPENFOAM_FULL_MESH_MULTI_MODEL_DIAGNOSTIC_NOT_QUALIFIED",
               "mesh": str(root / "th03-openfoam-full.cfdx.h5"),
