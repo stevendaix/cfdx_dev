@@ -30,6 +30,12 @@ jobs:
       OUT: build-th03-openfoam-full/results
       OMP_NUM_THREADS: '2'
       OPENBLAS_NUM_THREADS: '1'
+      # Read-only diagnostics: expose the SST nonlinear gates and nested PCD
+      # solves without changing any equation, tolerance, or solver selection.
+      CFDX_SST_DIAGNOSTICS: '1'
+      CFDX_SST_PROGRESS_V81: '1'
+      CFDX_BFS_PCD_INNER_TRACE: '1'
+      CFDX_PCD_FP_AMG_TRACE: '1'
     steps:
       - uses: actions/checkout@v7
         with:
