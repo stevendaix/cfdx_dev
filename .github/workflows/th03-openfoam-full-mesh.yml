@@ -67,7 +67,7 @@ jobs:
             -DCFDX_BUILD_PYTHON=OFF \
             -DCFDX_USE_HDF5_SERIAL=ON \
             -DCFDX_ENABLE_MPI=OFF 2>&1 | tee "$OUT/configure.log"
-          cmake --build "$BUILD" --target cfdx_production_solver --parallel 2 \
+          cmake --build "$BUILD" --target cfdx_production_solver test_bfs_qualification --parallel 2 \
             2>&1 | tee "$OUT/build.log"
 
       - name: Generate OpenFOAM six-block full mesh and audit it
@@ -126,11 +126,23 @@ jobs:
           source = Path(os.environ["OUT"]) / "th03-openfoam-full.cfdx.h5"
           root = Path(os.environ["OUT"]) / "direct-modes"
           for name in ("fieldsplit", "pimple"):
+              target = root / f"{name}.cfdx.h5"
               reconfigure_bfs_reference_case(
-                  source, root / f"{name}.cfdx.h5",
+                  source, target,
                   algorithm="coupled", schur="pcd", preconditioner="auto",
                   iterations=1500,
               )
+              if name == "pimple":
+                  # PIMPLE is a segregated pressure-correction path, not a
+                  # COUPLED+PCD Schur solve. Do not inherit the experimental
+                  # commutator action or COUPLED-only Picard damping.
+                  import h5py, json
+                  with h5py.File(target, "r+") as case:
+                      setup = json.loads(case.attrs["case_setup_json"])
+                      raw = setup["numerics"].setdefault("raw_settings", {})
+                      raw.pop("pcd_lumped_mass_commutator_experimental", None)
+                      raw.pop("coupled_outer_step_v43_experimental", None)
+                      case.attrs["case_setup_json"] = json.dumps(setup)
           PY
           for mode in fieldsplit pimple; do
             set +e
