@@ -303,12 +303,12 @@ def build_commands(args: argparse.Namespace):
                 relaxation = BFS_VARIANT_RELAXATION[variant]
                 with h5py.File(case_file, "r+") as case:
                     setup = json.loads(case.attrs["case_setup_json"])
-                    setup["numerics"]["under_relaxation_momentum"] = (
-                        relaxation["momentum"]
-                    )
-                    setup["numerics"]["under_relaxation_pressure"] = (
-                        relaxation["pressure"]
-                    )
+                    setup["numerics"]["under_relaxation_momentum"] = relaxation[
+                        "momentum"
+                    ]
+                    setup["numerics"]["under_relaxation_pressure"] = relaxation[
+                        "pressure"
+                    ]
                     case.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
                 generated["under_relaxation"] = relaxation
             fingerprint = (generated["topology_hash"], generated["geometry_hash"])
