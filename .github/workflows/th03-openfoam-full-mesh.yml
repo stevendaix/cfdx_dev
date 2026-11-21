@@ -36,6 +36,7 @@ jobs:
       CFDX_SST_PROGRESS_V81: '1'
       CFDX_BFS_PCD_INNER_TRACE: '1'
       CFDX_PCD_FP_AMG_TRACE: '1'
+      CFDX_KRYLOV_DIAGNOSTICS: '1'
     steps:
       - uses: actions/checkout@v7
         with:
