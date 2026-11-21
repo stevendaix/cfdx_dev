@@ -33,6 +33,11 @@ jobs:
       OMP_NUM_THREADS: '2'
       OPENBLAS_NUM_THREADS: '1'
       CFDX_BFS_STAGE_TRACE: '1'
+      # Capture actual Krylov stagnation/breakdown and SST gate evidence.
+      CFDX_SST_DIAGNOSTICS: '1'
+      CFDX_SST_PROGRESS_V81: '1'
+      CFDX_BFS_PCD_INNER_TRACE: '1'
+      CFDX_KRYLOV_DIAGNOSTICS: '1'
     steps:
       - name: Checkout exact diagnostic PR revision
         uses: actions/checkout@v7
