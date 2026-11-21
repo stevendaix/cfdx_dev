@@ -629,6 +629,14 @@ def reconfigure_bfs_reference_case(
         raw_settings = numerics.setdefault("raw_settings", {})
         raw_settings["v8_global_nonlinear_residual"] = "true"
         raw_settings["v7_post_sst_momentum_gate"] = "true"
+        if algorithm == "coupled":
+            # COUPLED updates the monolithic U,p candidate at full strength by
+            # default. Apply the existing V43 Picard step globalization to the
+            # BFS Schur matrix so nonlinear retries shorten the actual field
+            # update, not just the segregated relaxation controls.
+            raw_settings["coupled_outer_step_v43_experimental"] = "0.5"
+        else:
+            raw_settings.pop("coupled_outer_step_v43_experimental", None)
         topology, geometry = (
             str(source.attrs["topology_hash"]),
             str(source.attrs["geometry_hash"]),
