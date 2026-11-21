@@ -73,7 +73,7 @@ int main() {
         EXPECT_TRUE(cells.find("0,0.5,0.5,0.5,1,2,0,0,10,10,,,")!=std::string::npos);
         // Face 2 is y=0 with wall-normal distance 0.5 m.
         EXPECT_TRUE(faces.find("2,0,-1,\"wall\"")!=std::string::npos);
-        EXPECT_TRUE(faces.find(",0.5,4,0,0,first_order_one_sided_diagnostic,1,")!=std::string::npos);
+        EXPECT_TRUE(faces.find(",0.5,4,0,0,first_order_one_sided_effective_viscosity,1,")!=std::string::npos);
         EXPECT_TRUE(faces.find("wall_y_plus_estimate,owner_nu_t_over_nu")!=std::string::npos);
         EXPECT_TRUE(file_text(dir/"mass_conservation.json").find(
             "\"physical_qualification\": \"NOT_QUALIFIED\"") !=std::string::npos);
@@ -104,7 +104,7 @@ int main() {
         u.set(0,2,0,0);
         write_thermohydraulic_observables(dir,mesh,u,p,mdot,walls,2,0.001,&sst);
         const auto wall_faces=file_text(dir/"face_fluxes.csv");
-        EXPECT_TRUE(wall_faces.find("first_order_one_sided_diagnostic,")!=std::string::npos);
+        EXPECT_TRUE(wall_faces.find("first_order_one_sided_effective_viscosity,")!=std::string::npos);
         EXPECT_TRUE(wall_faces.find(",10\n")!=std::string::npos);
         std::filesystem::remove_all(dir);
     });
