@@ -90,7 +90,9 @@ def audit(
                 "first_order_one_sided_diagnostic",
                 "first_order_one_sided_effective_viscosity",
             ):
-                raise WallResolutionError(f"unsupported wall shear diagnostic method: {method}")
+                raise WallResolutionError(
+                    f"unsupported wall shear diagnostic method: {method}"
+                )
             methods.add(method)
             try:
                 owner = int(row["owner"])
@@ -141,7 +143,8 @@ def audit(
         "case_id": "TH-03",
         "status": "PREFLIGHT_PASS" if maximum <= max_y_plus else "BLOCKED",
         "physical_qualification": "NOT_QUALIFIED",
-        "wall_method": sorted(methods),
+        "wall_method": next(iter(methods)) if len(methods) == 1 else "mixed_diagnostic_methods",
+        "wall_methods": sorted(methods),
         "n_faces": len(entries),
         "min_y_plus_estimate": minimum,
         "max_y_plus_estimate": maximum,
