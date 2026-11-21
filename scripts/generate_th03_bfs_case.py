@@ -399,7 +399,9 @@ def make_setup(
     setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
     setup.numerics.raw_settings["sst_outer_provisional"] = "enabled"
     setup.numerics.raw_settings["skip_transactional_save"] = "disabled"
-    setup.numerics.raw_settings["sst_adaptive_relaxation"] = "enabled"
+    setup.numerics.raw_settings["sst_adaptive_relaxation"] = "true"
+    # This 192-cell diagnostic deliberately uses provisional SST transport;
+    # V13/V14 full-state globalization is exercised only by the full-mesh case.
     if wall_resolved:
         setup.numerics.raw_settings["mesh_wall_resolved"] = "true"
     selections = [
@@ -625,6 +627,22 @@ def reconfigure_bfs_reference_case(
         raw_settings = numerics.setdefault("raw_settings", {})
         raw_settings["v8_global_nonlinear_residual"] = "true"
         raw_settings["v7_post_sst_momentum_gate"] = "true"
+        if algorithm == "coupled":
+            # COUPLED updates the monolithic U,p candidate at full strength by
+            # default. Apply the existing V43 Picard step globalization to the
+            # BFS Schur matrix so nonlinear retries shorten the actual field
+            # update, not just the segregated relaxation controls.
+            raw_settings["coupled_outer_step_v43_experimental"] = "0.5"
+            if schur == "pcd":
+                # Exercise the classical lumped-mass commutator PCD action
+                # -Mp^-1 Fp Kp^-1 instead of the legacy single Fp^-1 action.
+                # Both retain the same outer true-residual and physical gates.
+                raw_settings["pcd_lumped_mass_commutator_experimental"] = "true"
+            else:
+                raw_settings.pop("pcd_lumped_mass_commutator_experimental", None)
+        else:
+            raw_settings.pop("coupled_outer_step_v43_experimental", None)
+            raw_settings.pop("pcd_lumped_mass_commutator_experimental", None)
         topology, geometry = (
             str(source.attrs["topology_hash"]),
             str(source.attrs["geometry_hash"]),

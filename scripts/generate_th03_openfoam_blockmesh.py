@@ -422,7 +422,7 @@ def make_case_setup(
     inlet_omega: float = OMEGA_IN,
     initial_omega: float = OMEGA_INITIAL,
     sst_newton_sink: bool = False,
-    sst_omega_first: bool = True,
+    sst_omega_first: bool = False,
     sst_wall_factor: int = 6,
     sst_inner_iterations: int = 800,
     sst_transport_tolerance: float = 1.0e-8,
@@ -453,6 +453,7 @@ def make_case_setup(
     v21_adaptive_relaxation: bool = False,
     convection_scheme: str = "upwind",
     pressure_refinement_steps: int = 0,
+    joint_globalization: bool = False,
 ) -> CaseSetup:
     convection_keys = {
         "upwind": "numerics.convection.upwind",
@@ -502,6 +503,8 @@ def make_case_setup(
         raise ValueError("SST scalar linear relaxation must be finite and in (0,1]")
     if v19_omega_corner_equal_faces and not v18_omega_owner_cells:
         raise ValueError("V19 corner equal-faces requires V18 owner omega constraints")
+    if v18_omega_owner_cells and not v17_active_wall_operator:
+        raise ValueError("V18 omega owner constraints require V17 active wall operator")
     if v17_active_wall_operator and not (
         openfoam_kqr_wall_v16 and sst_molecular_wall_diffusion
     ):
@@ -672,6 +675,9 @@ def make_case_setup(
     setup.numerics.raw_settings["v21_adaptive_relaxation"] = str(
         bool(v21_adaptive_relaxation)
     ).lower()
+    if joint_globalization:
+        setup.numerics.raw_settings["v13_joint_globalization"] = "true"
+        setup.numerics.raw_settings["v14_monotone_global_merit"] = "true"
     setup.numerics.raw_settings["v17_pseudo_momentum"] = str(
         bool(v17_pseudo_momentum)
     ).lower()
@@ -809,6 +815,7 @@ def write_case(
     v21_adaptive_relaxation: bool = False,
     convection_scheme: str = "upwind",
     pressure_refinement_steps: int = 0,
+    joint_globalization: bool = False,
 ) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
@@ -857,6 +864,7 @@ def write_case(
         v21_adaptive_relaxation=v21_adaptive_relaxation,
         convection_scheme=convection_scheme,
         pressure_refinement_steps=pressure_refinement_steps,
+        joint_globalization=joint_globalization,
     )
     setup.source.case_path = mesh_source
     setup.source_metadata["physical_qualification"] = "NOT_QUALIFIED"
@@ -1041,8 +1049,8 @@ def main() -> int:
     parser.add_argument(
         "--sst-omega-first",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Omega-first k/omega Picard coupling (Gauss-Seidel, default on).",
+        default=False,
+        help="Opt-in omega-first k/omega Picard coupling (Gauss-Seidel; default off).",
     )
     parser.add_argument(
         "--sst-wall-factor",
@@ -1150,6 +1158,11 @@ def main() -> int:
         help="Independent initial SST omega field in 1/s; need not equal inlet.",
     )
     parser.add_argument(
+        "--joint-globalization",
+        action="store_true",
+        help="Enable V13/V14 full-state nonlinear retry globalization; physical tolerances unchanged.",
+    )
+    parser.add_argument(
         "--pressure-linear-scaling",
         choices=("none", "row_column", "symmetric_diagonal"),
         default="none",
@@ -1208,6 +1221,7 @@ def main() -> int:
             v21_adaptive_relaxation=args.v21_adaptive_relaxation,
             convection_scheme=args.convection_scheme,
             pressure_refinement_steps=args.pressure_refinement_steps,
+            joint_globalization=args.joint_globalization,
         )
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f"TH-03 mesh generation/import failed: {exc}\n")

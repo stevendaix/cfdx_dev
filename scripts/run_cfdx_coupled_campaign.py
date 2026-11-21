@@ -28,6 +28,7 @@ N9_MODELS = SCHUR_MODELS
 # All runs use the same debug geometry, IC/BC and SST experiment settings.
 BFS_VARIANTS = {
     "simple": ("simple", None, None),
+    "simple_damped": ("simple", None, None),
     "simplec": ("simplec", None, None),
     "pcd_auto": ("coupled", "pcd", "auto"),
     "block_local_amg": ("coupled", "block_local", "coupled_block_schur"),
@@ -39,6 +40,11 @@ BFS_VARIANTS = {
     "pcd_amg": ("coupled", "pcd", "coupled_block_schur"),
     "block_local_mgr": ("coupled", "block_local", "mgr"),
     "block_local_braess": ("coupled", "block_local", "braess_sarazin"),
+}
+# Controlled nonlinear-relaxation A/B. Same mesh, BCs, SST model and
+# tolerances as bfs_simple; only SIMPLE's U/p under-relaxation changes.
+BFS_VARIANT_RELAXATION = {
+    "simple_damped": {"momentum": 0.25, "pressure": 0.1},
 }
 CTESTS = {
     "bfs": ("test_bfs_quick",),
@@ -143,6 +149,7 @@ def execute(
         result["log_sha256"] = sha256(logfile) if logfile.exists() else None
         variant = tag.removeprefix("bfs_")
         algorithm, schur, preconditioner = BFS_VARIANTS[variant]
+        result["under_relaxation"] = BFS_VARIANT_RELAXATION.get(variant)
         from qualify_bfs_schur_evidence import validate_bfs_evidence
 
         output_flag = cmd.index("--output-dir") + 1 if "--output-dir" in cmd else -1
@@ -290,6 +297,20 @@ def build_commands(args: argparse.Namespace):
                     preconditioner=preconditioner,
                     iterations=args.iterations,
                 )
+            if variant in BFS_VARIANT_RELAXATION:
+                import h5py
+
+                relaxation = BFS_VARIANT_RELAXATION[variant]
+                with h5py.File(case_file, "r+") as case:
+                    setup = json.loads(case.attrs["case_setup_json"])
+                    setup["numerics"]["under_relaxation_momentum"] = relaxation[
+                        "momentum"
+                    ]
+                    setup["numerics"]["under_relaxation_pressure"] = relaxation[
+                        "pressure"
+                    ]
+                    case.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
+                generated["under_relaxation"] = relaxation
             fingerprint = (generated["topology_hash"], generated["geometry_hash"])
             if reference is None:
                 reference = fingerprint

@@ -132,7 +132,7 @@ int main()
         EXPECT_TRUE(result.k_floor_events==3 && result.second_floor_events==3);
         std::cout << "    bounded-state residuals: k=" << result.k_residual
                   << " omega=" << result.second_residual << " converged=" << result.converged << '\n';
-        ScalarEquation finite_equation{SparseMatrix(1,1),Vector(1,2.0),{1.0},0.0};
+        ScalarEquation finite_equation{SparseMatrix(1,1),Vector(1,2.0),{1.0},false,0.0};
         finite_equation.matrix.push_back(0,0,1.0);
         finite_equation.matrix.finalize();
         EXPECT_NEAR(sst_linear_tolerance_for_solution_defect(finite_equation,1e-8),5e-9,1e-24);
@@ -141,7 +141,7 @@ int main()
                           std::domain_error,"cannot be represented");
         finite_equation.rhs(0)=std::numeric_limits<double>::infinity();
         EXPECT_THROW(sst_linear_tolerance_for_solution_defect(finite_equation,1e-8),std::invalid_argument);
-        ScalarEquation zero_row{SparseMatrix(1,1),Vector(1,1.0),{0.0},0.0};
+        ScalarEquation zero_row{SparseMatrix(1,1),Vector(1,1.0),{0.0},false,0.0};
         zero_row.matrix.push_back(0,0,0.0);
         zero_row.matrix.finalize();
         EXPECT_THROW_WITH(sst_linear_tolerance_for_solution_defect(zero_row,1e-8),

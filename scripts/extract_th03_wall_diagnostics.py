@@ -45,7 +45,10 @@ def calculate_wall_diagnostics(
         for row in reader:
             if row["patch"] != patch:
                 continue
-            if row["wall_shear_method"] != "first_order_one_sided_diagnostic":
+            if row["wall_shear_method"] not in (
+                "first_order_one_sided_diagnostic",
+                "first_order_one_sided_effective_viscosity",
+            ):
                 raise WallDiagnosticError(
                     "wall-shear reconstruction missing or not supported"
                 )

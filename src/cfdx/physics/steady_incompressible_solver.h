@@ -4929,9 +4929,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 "N8 LSC/BFBt pressure AMG setup failed");
         }
 
+        const bool lsc_bfbt_inner_trace = [] {
+            const char* value = std::getenv("CFDX_BFS_SCHUR_INNER_TRACE");
+            return value != nullptr && std::string(value) == "1";
+        }();
         auto solve_pressure = [pressure_operator,
                                pressure_preconditioner,
-                               max_iterations, tolerance](
+                               max_iterations, tolerance,
+                               lsc_bfbt_inner_trace,
+                               schur_model,
+                               trace_calls = std::size_t{0}](
             const Vector& rhs, Vector& x) mutable {
             const int restart = static_cast<int>(std::min<std::size_t>(
                 64, pressure_operator.n_rows()));
@@ -4939,8 +4946,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 pressure_operator, rhs, x, restart,
                 max_iterations, tolerance,
                 pressure_preconditioner.get());
-            return nested_schur_pressure_solve_usable(
+            const bool accepted = nested_schur_pressure_solve_usable(
                 result, x, pressure_operator.n_rows());
+            if (lsc_bfbt_inner_trace &&
+                (trace_calls < 8 || trace_calls % 100 == 0)) {
+                std::cerr << "COUPLED_NESTED_LSC_BFBT"
+                          << " model=" << to_string(schur_model)
+                          << " call=" << trace_calls
+                          << " status=" << static_cast<int>(result.status)
+                          << " iterations=" << result.iterations
+                          << " residual=" << result.residual
+                          << " relative=" << result.residual_relative
+                          << " accepted=" << (accepted ? 1 : 0) << "\\n";
+            }
+            ++trace_calls;
+            return accepted;
         };
 
         auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
@@ -7418,6 +7438,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
         std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
         std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
+        std::array<double, 3> simplec_min_denominator_ratio_audit{
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity()};
+        std::array<double, 3> simplec_max_response_ratio_audit{0.0, 0.0, 0.0};
+        std::array<std::size_t, 3> simplec_max_response_cell_audit{0, 0, 0};
         // Rhie-Chow operator identity audit (common scope): each algorithm
         // branch evaluates it right after its authoritative flux rebuild.
         // Evidence channel only; no acceptance criterion consumes it.
@@ -7949,9 +7975,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         simplec_denominator_worst_cell_audit[d] = c;
                     simplec_denominator_gap_audit[d] =
                         std::max(simplec_denominator_gap_audit[d], gap);
+                    const double denominator_ratio = denom / diagonal;
+                    const double response_ratio = diagonal / denom;
+                    simplec_min_denominator_ratio_audit[d] = std::min(
+                        simplec_min_denominator_ratio_audit[d], denominator_ratio);
+                    if (response_ratio > simplec_max_response_ratio_audit[d]) {
+                        simplec_max_response_ratio_audit[d] = response_ratio;
+                        simplec_max_response_cell_audit[d] = c;
+                    }
                     rAtU[d][c] = 1.0 / denom;
                 }
             }
+        }
+
+        if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC &&
+            std::getenv("CFDX_SIMPLEC_DIAGONAL_TRACE")) {
+            std::cerr << std::scientific << std::setprecision(8)
+                      << "SIMPLEC_RESPONSE_AUDIT iteration=" << iter;
+            for (std::size_t d = 0; d < 3; ++d)
+                std::cerr << " component=" << d
+                          << " min_denominator_over_diagonal="
+                          << simplec_min_denominator_ratio_audit[d]
+                          << " max_rAtU_over_rAU="
+                          << simplec_max_response_ratio_audit[d]
+                          << " worst_cell=" << simplec_max_response_cell_audit[d]
+                          << " signed_offdiag_linf=" << simplec_signed_offdiag_sum_audit[d]
+                          << " abs_offdiag_linf=" << simplec_abs_offdiag_sum_audit[d]
+                          << " signed_abs_gap_linf=" << simplec_denominator_gap_audit[d];
+            std::cerr << '\\n';
         }
 
         hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0]);

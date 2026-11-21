@@ -174,6 +174,7 @@ class ValidateFichesContractTests(unittest.TestCase):
             "CFDX_V35_MERGE_AUDIT.md",
             "CFDX_V38_PCD_EXACT_SCHUR.md",
             "CFDX_V39_PCD_ORIENTATION_AND_BFS.md",
+            "57-pr1194-repair-diagnostics.md",
         )
         for name in report_names:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:

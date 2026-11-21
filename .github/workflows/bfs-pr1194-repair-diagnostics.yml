@@ -1,0 +1,291 @@
+name: PR1194 repair and temporary BFS diagnostics
+
+on:
+  pull_request:
+    branches:
+      - feat/bfs-convergence-petsc-openfoam
+    paths:
+      - '.github/workflows/bfs-pr1194-repair-diagnostics.yml'
+      - 'scripts/generate_th03_bfs_case.py'
+      - 'scripts/run_cfdx_coupled_campaign.py'
+      - 'tests/unit/test_tvd_deferred_defect_memory.cpp'
+      - 'src/cfdx/physics/**'
+      - 'apps/production_solver/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr1194-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair-and-diagnose:
+    name: Repair contracts + BFS/SST diagnostic campaign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      BUILD_DIR: build-pr1194-diagnostics
+      RESULTS_DIR: build-pr1194-diagnostics/results
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      CFDX_BFS_STAGE_TRACE: '1'
+      # Capture actual Krylov stagnation/breakdown and SST gate evidence.
+      CFDX_SST_DIAGNOSTICS: '1'
+      CFDX_SST_PROGRESS_V81: '1'
+      CFDX_BFS_PCD_INNER_TRACE: '1'
+      CFDX_KRYLOV_DIAGNOSTICS: '1'
+      CFDX_SIMPLEC_DIAGONAL_TRACE: '1'
+      CFDX_BFS_SCHUR_INNER_TRACE: '1'
+    steps:
+      - name: Checkout exact diagnostic PR revision
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Record source and runner identity
+        run: |
+          mkdir -p "$RESULTS_DIR"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "branch=${GITHUB_REF}"
+            echo "runner=${RUNNER_NAME}"
+            echo "os=$(uname -a)"
+            echo "cpu=$(nproc)"
+            echo "memory:"
+            free -h
+            echo "compiler:"
+            g++ --version
+            echo "cmake:"
+            cmake --version
+          } | tee "$RESULTS_DIR/runner-and-source.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install build and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev
+          python -m pip install --upgrade pip
+          python -m pip install -e . numpy matplotlib
+
+      - name: Configure Release with tests and HDF5
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=ON \
+            -DCFDX_ENABLE_MPI=OFF \
+            2>&1 | tee "$RESULTS_DIR/cmake-configure.log"
+
+      - name: Build production solver and repaired regression test
+        run: |
+          cmake --build "$BUILD_DIR" \
+            --target cfdx_production_solver test_tvd_deferred_defect_memory test_bfs_qualification \
+            --parallel 2 2>&1 | tee "$RESULTS_DIR/build.log"
+
+      - name: Run focused regression and BFS smoke tests
+        continue-on-error: true
+        run: |
+          set +e
+          ctest --test-dir "$BUILD_DIR" \
+            -R '^(test_tvd_deferred_defect_memory|test_bfs_quick)$' \
+            --output-on-failure --verbose \
+            2>&1 | tee "$RESULTS_DIR/focused-ctest.log"
+          status=${PIPESTATUS[0]}
+          echo "$status" > "$RESULTS_DIR/focused-ctest.exit-code"
+          exit 0
+
+      - name: Run experimental reference-data contract tests
+        continue-on-error: true
+        run: |
+          set +e
+          python -m pip install pytest
+          python -m pytest -q tests/python/test_qualify_bfs_nasa_fields_v16.py \
+            2>&1 | tee "$RESULTS_DIR/nasa-reference-tests.log"
+          status=${PIPESTATUS[0]}
+          echo "$status" > "$RESULTS_DIR/nasa-reference-tests.exit-code"
+          exit 0
+
+      - name: Download immutable NASA TMR experimental data
+        continue-on-error: true
+        run: |
+          set +e
+          REF="$RESULTS_DIR/driver-seegmiller-reference"
+          mkdir -p "$REF"
+          curl --fail --location --retry 3 \
+            https://tmbwg.github.io/turbmodels/Backstep_validation/cf.exp.dat \
+            --output "$REF/cf.exp.dat"
+          cf_status=$?
+          curl --fail --location --retry 3 \
+            https://tmbwg.github.io/turbmodels/Backstep_validation/cp.expnew.dat \
+            --output "$REF/cp.expnew.dat"
+          cp_status=$?
+          curl --fail --location --retry 3 \
+            https://tmbwg.github.io/turbmodels/Backstep_validation/profiles.exp.dat \
+            --output "$REF/profiles.exp.dat"
+          profiles_status=$?
+          printf 'cf=%s\ncp=%s\nprofiles=%s\n' "$cf_status" "$cp_status" "$profiles_status" \
+            | tee "$REF/download-status.txt"
+          if [ "$cf_status" -eq 0 ] && [ "$cp_status" -eq 0 ] && [ "$profiles_status" -eq 0 ]; then
+            sha256sum "$REF"/*.dat | tee "$REF/SHA256SUMS"
+            set +e
+            python scripts/qualify_bfs_nasa_fields_v16.py \
+              --nasa-dir "$REF" --output "$REF/reference-audit.json" \
+              > "$REF/reference-audit.log" 2>&1
+            audit_status=$?
+            echo "$audit_status" > "$REF/reference-audit.exit-code"
+            exit 0
+          fi
+          echo "NASA reference data download incomplete; no comparison performed." \
+            | tee "$REF/reference-audit.log"
+          exit 0
+
+      - name: Run same-mesh pressure-velocity and Schur campaign
+        continue-on-error: true
+        run: |
+          set +e
+          python3 scripts/run_cfdx_coupled_campaign.py \
+            --build "$BUILD_DIR" \
+            --out "$RESULTS_DIR/schur-campaign" \
+            --only bfs \
+            --bfs-variants simple simplec pcd_auto block_local_amg lsc_amg bfbt_amg \
+            --bfs-upstream 4 \
+            --bfs-downstream 16 \
+            --bfs-ny 10 \
+            --bfs-step-cells 2 \
+            --iterations 1500 \
+            --wall-timeout 600 \
+            2>&1 | tee "$RESULTS_DIR/schur-campaign.log"
+          status=${PIPESTATUS[0]}
+          echo "$status" > "$RESULTS_DIR/schur-campaign.exit-code"
+          exit 0
+
+      - name: Run PR-specific converged, FieldSplit and PIMPLE modes
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          CASE="$RESULTS_DIR/bfs-diagnostic.cfdx.h5"
+          mkdir -p "$RESULTS_DIR/direct-modes"
+          python3 scripts/generate_th03_bfs_case.py \
+            --output "$CASE" --algorithm coupled --schur pcd \
+            --preconditioner auto --iterations 1500 \
+            > "$RESULTS_DIR/direct-modes/case-generation.log" 2>&1
+          run_mode() {
+            local name="$1"
+            shift
+            set +e
+            timeout 600 "$BUILD_DIR/cfdx_production_solver" \
+              --mesh "$CASE" \
+              --output-dir "$RESULTS_DIR/direct-modes/$name" \
+              --iterations 1500 --experimental-sst --benchmark-export "$@" \
+              > "$RESULTS_DIR/direct-modes/$name.log" 2>&1
+            local status=$?
+            echo "$status" > "$RESULTS_DIR/direct-modes/$name.exit-code"
+            set -e
+          }
+          run_mode bfs_converged --bfs-converged
+          run_mode fieldsplit --bfs-fieldsplit
+          run_mode pimple --bfs-pimple
+          {
+            for f in "$RESULTS_DIR"/direct-modes/*.exit-code; do
+              [ -f "$f" ] || continue
+              printf '%s=' "$(basename "$f" .exit-code)"
+              cat "$f"
+            done
+          } > "$RESULTS_DIR/direct-modes/exit-codes.txt"
+
+      - name: Plot CFDX mean-velocity profiles against Driver-Seegmiller
+        if: always()
+        continue-on-error: true
+        run: |
+          REF="$RESULTS_DIR/driver-seegmiller-reference"
+          OUT="$RESULTS_DIR/experimental-profile-plots"
+          mkdir -p "$OUT"
+          ARGS=()
+          for name in bfs_converged fieldsplit pimple; do
+            dir="$RESULTS_DIR/direct-modes/$name"
+            if [ -f "$dir/convergence.json" ] && [ -f "$dir/benchmark_observables/cell_fields.csv" ]; then
+              ARGS+=(--run "$name" "$dir")
+            fi
+          done
+          for name in simple simplec pcd_auto block_local_amg lsc_amg bfbt_amg; do
+            dir="$RESULTS_DIR/schur-campaign/bfs_runs/bfs_$name"
+            if [ -f "$dir/convergence.json" ] && [ -f "$dir/benchmark_observables/cell_fields.csv" ]; then
+              ARGS+=(--run "$name" "$dir")
+            fi
+          done
+          if [ "${#ARGS[@]}" -gt 0 ] && [ -f "$REF/profiles.exp.dat" ]; then
+            python scripts/plot_th03_experimental_profiles.py \
+              --reference-dir "$REF" --output-dir "$OUT" \
+              --height 0.0127 --include-unconverged "${ARGS[@]}" \
+              2>&1 | tee "$OUT/plotting.log"
+            echo "${PIPESTATUS[0]}" > "$OUT/plotting.exit-code"
+          else
+            echo "No compatible solver exports or NASA profile file; plots not generated." \
+              | tee "$OUT/plotting.log"
+            echo 2 > "$OUT/plotting.exit-code"
+          fi
+
+      - name: Collect machine-readable diagnostic index
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RESULTS_DIR"])
+          records = []
+          for p in sorted(root.rglob("*.exit-code")):
+              try:
+                  code = int(p.read_text().strip())
+              except (ValueError, OSError):
+                  code = None
+              records.append({"result_file": str(p.relative_to(root)), "exit_code": code})
+          summary = {
+              "commit": os.environ.get("GITHUB_SHA"),
+              "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "classification": "DIAGNOSTIC_ONLY_NOT_PHYSICAL_QUALIFICATION",
+              "runs": records,
+              "important": [
+                  "The generated 192-cell debug BFS is a software/solver diagnostic, not Driver-Seegmiller validation.",
+                  "A zero process exit code is not a nonlinear or physical convergence certificate.",
+                  "Inspect each run's JSON, accepted-state traces, residual history and full log.",
+                  "No result from a user's unavailable workstation is assumed or reconstructed."
+              ]
+          }
+          (root / "diagnostic-index.json").write_text(json.dumps(summary, indent=2) + "\n")
+          PY
+          cp "$BUILD_DIR/CMakeCache.txt" "$RESULTS_DIR/CMakeCache.txt" || true
+          cp "$BUILD_DIR/compile_commands.json" "$RESULTS_DIR/compile_commands.json" || true
+          cp -r "$BUILD_DIR/Testing" "$RESULTS_DIR/CTest-Testing" || true
+
+      - name: Upload complete diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr1194-repair-diagnostics-${{ github.sha }}
+          path: |
+            ${{ env.RESULTS_DIR }}/
+            ${{ env.BUILD_DIR }}/bfs-pcd-ab.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Summarize diagnostic status
+        if: always()
+        run: |
+          echo "## PR #1194 diagnostic campaign" >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow is diagnostic only. It does not qualify the physical BFS solution." >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RESULTS_DIR/diagnostic-index.json" ]; then
+            cat "$RESULTS_DIR/diagnostic-index.json" >> "$GITHUB_STEP_SUMMARY"
+          fi

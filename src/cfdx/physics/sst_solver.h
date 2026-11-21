@@ -2855,15 +2855,22 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         // residual of the undamped candidate that the inner solver returned.
         // Sampling is enabled when needed for physical acceptance or forensic
         // diagnostics; otherwise legacy non-diagnostic performance is intact.
-        const bool must_audit_returned = inner.converged ||
+        const bool enforce_returned_equations = inner.converged ||
             controls.sst_scale_aware_convergence ||
             picard_damping_v41 < 1.0 ||
             controls.sst_nonlinear_line_search ||
             controls.sst_anderson_m2_v20 ||
             controls.sst_jfnk_v22_experimental ||
-            controls.sst_implicit_spatial_rescue_v82_experimental ||
+            controls.sst_implicit_spatial_rescue_v82_experimental;
+        // Diagnostic environment variables and V33 row probes may request
+        // the expensive reassembly, but must never turn a read-only trace into
+        // a new convergence gate or change the solver's accepted trajectory.
+        const bool diagnostic_returned =
             !v33_trace_cells.empty() ||
-            std::getenv("CFDX_SST_DIAGNOSTICS") != nullptr;
+            std::getenv("CFDX_SST_DIAGNOSTICS") != nullptr ||
+            std::getenv("CFDX_SST_PROGRESS_V81") != nullptr;
+        const bool must_audit_returned =
+            enforce_returned_equations || diagnostic_returned;
         SSTNonlinearResidualSample returned;
         if (must_audit_returned) {
             returned = sst_reassembled_returned_state_residual(
@@ -3281,7 +3288,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             ? (k_change.relative_global_inf <= tolerance &&
                omega_change.relative_global_inf <= tolerance)
             : std::max(dk, dw) <= tolerance;
-        const bool returned_equations_ok = !must_audit_returned ||
+        const bool returned_equations_pass = !must_audit_returned ||
             (controls.sst_scale_aware_convergence
                 ? returned.k_row_scaled / k_change.reference_scale <= tolerance &&
                   returned.omega_row_scaled / omega_change.reference_scale <= tolerance &&
@@ -3289,6 +3296,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                   returned.omega_local_relative <= tolerance
                 : returned.k_row_scaled <= tolerance &&
                   returned.omega_row_scaled <= tolerance);
+        const bool returned_equations_ok =
+            !enforce_returned_equations || returned_equations_pass;
         // With zero accepted step the old state is returned unchanged. A
         // continued repeat will reassemble the same operator indefinitely.
         // Exit early as UNCONVERGED; the carrier transaction will roll back.
@@ -3315,7 +3324,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << " line_accepted=" << line_accepted
                       << " finite=" << (result.nonfinite_bound_events == 0)
                       << " outer_update_ok=" << outer_update_ok
-                      << " returned_equations_ok=" << returned_equations_ok
+                      << " returned_equations_pass=" << returned_equations_pass
+                      << " returned_equations_enforced=" << enforce_returned_equations
                       << " dk_absolute=" << dk
                       << " domega_absolute=" << dw
                       << " k_returned_row_scaled=" << returned.k_row_scaled

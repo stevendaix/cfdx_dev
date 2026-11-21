@@ -1,0 +1,150 @@
+# PR #1194 — repair and temporary diagnostic campaign
+
+## Purpose
+
+This follow-up PR is based on PR #1194 and has two deliberately separate goals:
+
+1. Repair integration defects that prevent the existing regression and SST BFS case from running.
+2. Run a bounded GitHub Actions campaign and retain the complete logs, generated cases, solver outputs, residual histories, JSON evidence, build metadata and CTest output as downloadable artifacts.
+
+The workstation result mentioned in the parent PR discussion (converged k-omega SST solution, reported 6–7% physical discrepancy and long runtime) is not available in this repository snapshot. This PR does not claim to reproduce it. The CI campaign uses the repository's generated TH03 debug case and is explicitly diagnostic, not experimental validation.
+
+## Repairs
+
+- Update ScalarEquation aggregate initializers in the TVD deferred-defect regression test to account for the implicit_relaxation boolean added to the struct.
+- Serialize sst_adaptive_relaxation as the boolean string true, because the production solver's raw-setting contract accepts only true or false. The previous generator emitted enabled, causing the SST case to fail before entering the solver.
+
+No physical convergence tolerance, residual threshold, iteration acceptance criterion or physical reference value is relaxed.
+
+## CI campaign
+
+The temporary workflow .github/workflows/bfs-pr1194-repair-diagnostics.yml:
+
+- builds the production solver and the repaired regression target in Release with HDF5;
+- runs the focused TVD regression and BFS smoke test;
+- runs a same-mesh comparison of SIMPLE, SIMPLEC, PCD-auto, BlockLocal-AMG, LSC-AMG and BFBT-AMG;
+- runs the PR-specific --bfs-converged, --bfs-fieldsplit and --bfs-pimple modes on a common generated case;
+- applies a 600-second wall-clock cap per solver execution, retaining timeout exit codes and partial output;
+- uploads the complete diagnostic directory as a 30-day artifact, even when solver runs fail or time out.
+
+The workflow is intentionally diagnostic: solver non-convergence and timeouts are recorded as negative evidence and do not get silently converted into success. Build/test failures and solver outcomes are distinguishable in the uploaded evidence.
+
+## Interpretation rules
+
+- EXIT_ZERO is process status, not a physical convergence certificate.
+- The generated debug mesh is not a Driver–Seegmiller validation mesh.
+- A small mesh can diagnose configuration, dispatch, stability and cost, but cannot establish grid-independent separation or reattachment.
+- No comparison to the unavailable workstation result is valid until the original case, mesh, inlet profile, initial fields, SST settings and solver controls are recovered or checked into an immutable reproducibility package.
+- Keep all failed variants and timeouts in the report. Do not select only the best run.
+
+## Artifact contents
+
+The artifact contains the exact commit and runner identity, CMake configuration, build log, focused CTest log and exit code, each campaign log and output directory, generated HDF5 cases, solver run directories, direct-mode logs/exit codes, CMake cache, compile commands and CTest temporary output.
+
+## Removal
+
+This workflow is temporary. After the diagnostic campaign has been reviewed and the required evidence has been transferred into a permanent audit report, remove the temporary workflow or replace it with a smaller permanent regression.
+
+## Driver–Seegmiller experimental reference audit
+
+The diagnostic workflow now retrieves the three *raw* NASA Turbulence Modeling Resource files, records their SHA-256 hashes, and runs the existing independent parser/contract tests:
+
+- `cf.exp.dat`: lower-wall skin-friction coefficient and its tabulated experimental uncertainty;
+- `cp.expnew.dat`: top- and bottom-wall pressure coefficients, preserving both original and uniformly shifted pressure origins;
+- `profiles.exp.dat`: mean velocity and Reynolds-stress profiles, including the stations (x/H=-4,1,4,6,10).
+
+Reference definition: NASA TMR 2DBFS, Driver & Seegmiller (1985), DOI 10.2514/3.8890. The reference Reynolds number is approximately (Re_H=36,000), based on step height; the upstream momentum-thickness Reynolds number is 5,000. The measured reattachment position is (x_r/H=6.26\pm0.10). The reference velocity (U_{ref}) is taken near the channel centre at (x/H=-4), not assumed equal to a nominal inlet velocity. NASA also notes that the plotted (C_p) data are shifted to make (C_p\simeq0) near (x/H=40), while the downloadable file retains both origins.
+
+The comparison contract is deliberately multi-observable:
+
+1. (x_r/H): obtain from the first downstream zero crossing of a qualified streamwise wall-shear distribution; compare the signed error with the experimental interval.
+2. (C_f(x/H)): compare at the experimental abscissae using the supplied pointwise experimental uncertainty; report maximum and RMS normalized errors.
+3. (C_p(x/H)): compare both top and bottom walls and explicitly select the original or shifted NASA pressure reference. A pressure-origin mismatch is a failed comparison, not a tunable offset.
+4. (U/U_{ref}), (V/U_{ref}), and (-\overline{u'v'}/U_{ref}^2): compare profiles at (x/H=1,4,6,10) using interpolation in (y/H). The parser also reads the normal Reynolds stresses; these must not be silently omitted from a future complete qualification.
+5. Grid convergence: keep separate from experimental agreement. Require at least three systematically refined, geometrically similar grids and report observed order/GCI for key quantities; a single mesh cannot establish discretization uncertainty.
+
+The workflow currently performs a **reference-data integrity and parser-contract audit**, not a fabricated CFD-to-experiment comparison. The 192-cell CI case has a synthetic inlet profile and is a solver diagnostic only. Its SIMPLE result is not globally converged (momentum residual remains (O(10^{-2})), eddy-viscosity closure changes materially); its COUPLED/PCD result fails the first coupled linear solve. Therefore no (C_f), (C_p), velocity-profile or Reynolds-stress agreement is claimed for those runs. The fail-closed tool `qualify_bfs_nasa_fields_v16.py` emits `NO_CONVERGED_CFDX_RESULT_SUPPLIED` until a genuine prediction dataset is provided.
+
+### Experimental setup mismatch to resolve before physical comparison
+
+Do not identify the OpenFOAM tutorial's nominal (U=44.2\,m/s), (H=0.0127\,m) and (Re_H\simeq36,000) as a complete reproduction of the NASA validation boundary conditions. NASA TMR describes a naturally developing turbulent inlet boundary layer, approximately (1.5H) thick, with momentum-thickness Reynolds number 5,000 and back pressure adjusted to (M\simeq0.128). The inlet development length is deliberately selected to recover the measured upstream profile and skin friction. The current compact CI generator's 1/7-power-law profile and 5% turbulence intensity are not the measured Driver–Seegmiller inlet data; they must remain labelled surrogate/debug inputs, not validation inputs.
+
+### Corrected CI contract
+
+The focused build now explicitly builds `test_bfs_qualification` as well as the production solver and TVD regression executable. This addresses the review finding that CTest's `test_bfs_quick` wrapper launches a separate executable which was not built by the original workflow. The workflow also runs the independent NASA reference-parser tests and archives the raw experimental files, checksums, parser output and exit status.
+
+References:
+- NASA TMR 2DBFS: https://tmbwg.github.io/turbmodels/backstep_val.html
+- Driver & Seegmiller (1985), AIAA Journal 23(2), 163–171, DOI: https://doi.org/10.2514/3.8890
+- NASA NTRS record: https://ntrs.nasa.gov/search.jsp?R=19850039701
+- OpenFOAM tutorial case: https://doc.openfoam.com/2606/examples/verification-validation/turbulent/backward-facing-step/
+
+## Analyse des résultats CI initiaux (commit 7380f1e)
+
+La première campagne complète a bien compilé le solveur Release et le test TVD, mais elle a révélé une erreur de construction du smoke test : `test_bfs_quick` lance `test_bfs_qualification`, qui n'avait pas été demandé dans la liste des cibles à construire. CTest a donc rapporté `Not Run` (exécutable absent), et non un défaut du solveur. La liste des cibles du workflow a été corrigée pour construire explicitement cet exécutable.
+
+Résultats de la matrice numérique sur le maillage debug commun (192 cellules, 1500 itérations maximum) :
+
+| Variante | Temps observé | Observation finale | Statut |
+|---|---:|---|---|
+| SIMPLE | 30,09 s | résidu momentum global 2,23 %, composante active max 6,33 %, continuité 8,53e-4 | non convergé |
+| SIMPLEC | 2,72 s | divergence numérique vers l'itération 119, champs et résidus de l'ordre de 1e19 | rejeté |
+| COUPLED/PCD-auto | 4,38 s | FGMRES 2000 itérations, résidu relatif vrai 6,27e-3 | solveur linéaire non convergé |
+| COUPLED/BlockLocal-AMG | 48,98 s | momentum global 2,28 %, continuité 3,88e-4 | non convergé |
+| COUPLED/LSC-AMG | 149,77 s | momentum global 5,26 %, continuité 4,81e-4 | non convergé |
+| COUPLED/BFBT-AMG | 189,06 s | momentum global 4,40 %, continuité 3,61e-4 | non convergé |
+
+Ces chiffres ne classent pas universellement les algorithmes : ils décrivent uniquement ce maillage, cette initialisation uniforme, ces contrôles et cette exécution. En particulier, les temps des variantes couplées incluent des résolutions internes différentes et ne doivent pas être interprétés sans nombre d'itérations externes, coût par action de préconditionneur et preuve de convergence.
+
+Le mode FieldSplit Full Schur échoue au premier système couplé : FGMRES 445 itérations, résidu relatif vrai 3,31e-3. Le mode COUPLED/PCD échoue après 2000 itérations avec 6,27e-3. Ces deux résultats localisent un défaut de résolution linéaire initial, avant toute comparaison expérimentale.
+
+Le mode PIMPLE progresse nettement plus loin. À 1500 itérations :
+- momentum global relatif : 8,13e-4 ;
+- pire composante momentum active : 6,64e-3 ;
+- continuité normalisée : 1,54e-5 ;
+- résidu global k : 4,63e-6 ;
+- résidu global omega : 8,08e-7 ;
+- transport SST : candidat non certifié / `converged=false` ;
+- gate global U-p-k-omega : `converged=false`.
+
+Le mode PIMPLE est donc le meilleur candidat de progression sur ce petit test, mais il n'a pas convergé. Le faible résidu de continuité et les faibles résidus linéaires de pression ne compensent ni le défaut momentum par composante ni le défaut de fermeture SST.
+
+### Conséquence physique
+
+Aucune des variantes ne fournit un état global convergé : le post-traitement fail-closed doit donc s'arrêter avant le calcul des quantités d'intérêt. Il serait incorrect de comparer les résidus de ces runs à l'expérience comme s'il s'agissait d'une solution RANS établie, et incorrect de déduire (x_r/H), (C_f) ou (C_p) à partir d'un état rejeté ou incomplet.
+
+Le point de recollement expérimental (6.26\pm0.10) est un critère de validation de la solution, pas une condition numérique à imposer au solveur. La campagne doit d'abord produire un état U-p-k-omega certifié, puis des contraintes pariétales et profils cohérents, puis seulement effectuer les comparaisons multi-observables et l'étude de maillage.
+
+
+The repository audit gate now classifies this file explicitly as a campaign evidence dossier (rather than a numerical-method fiche). Its exemption from the seven-section method-fiche template is covered by a regression test; the dossier still carries the experimental DOI and explicit diagnostic/qualification status.
+
+
+## Comparaison graphique des profils CFDX–Driver/Seegmiller
+
+Le script \`scripts/plot_th03_experimental_profiles.py\` produit quatre figures (une par station \(x/H=1,4,6,10\)), chacune avec \(U/U_{ref}\) et \(V/U_{ref}\), en superposant les mesures NASA TMR et les exports natifs \`benchmark_observables/cell_fields.csv\` des variantes CFDX. \(U_{ref}\) est extrait du centre du canal à \(x/H=-4\), conformément à la définition de la référence. Le script enregistre également le décalage réel entre la station demandée et le plan de centres de cellules utilisé, le nombre d'échantillons et \(U_{ref}\) dans \`profile-plot-manifest.json\`.
+
+Les sorties sont explicitement diagnostiques :
+- les runs non convergés ne sont inclus qu'avec l'option explicite \`--include-unconverged\`, et restent étiquetés \`converged=false\` dans le manifeste ;
+- aucune extrapolation suivant \(y/H\) n'est autorisée ;
+- la méthode utilise le plan de centres de cellules le plus proche, et consigne son décalage ; une comparaison de qualification exigera une extraction plus précise et une étude de sensibilité à la station ;
+- les contraintes de Reynolds \(uu,vv,uv\) ne sont pas tracées : les exports actuels contiennent \(U,V,k,\omega,\nu_t\), pas le tenseur de contraintes Reynolds complet. Il serait incorrect de substituer \(k\) à ces composantes ou de prétendre les avoir comparées ;
+- le \(C_f\) exporté par la reconstruction pariétale unilatérale d'ordre 1 reste un diagnostic, et n'est pas promu au rang de comparaison expérimentale qualifiée.
+
+### Lecture solveur par solveur des résultats historiques (maillage debug 192 cellules)
+
+| Solveur | Résultat observé | Diagnostic technique | Priorité d'investigation |
+|---|---|---|---|
+| SIMPLE | 30,09 s ; momentum global 2,23 %, pire composante 6,33 %, continuité \(8,53\times10^{-4}\) | Progression finie mais résidu momentum non certifié. Le défaut dominant est le momentum, pas la continuité seule. | Vérifier les composantes de momentum, la cohérence de la correction de pression et le couplage avec le transport SST avant de modifier les relaxations. |
+| SIMPLEC | 2,72 s ; divergence vers l'itération 119, champs de l'ordre de \(10^{19}\) | Instabilité franche ; le temps court reflète un arrêt précoce, pas une meilleure performance. | Capturer la première variable/équation qui devient non finie, les facteurs de correction et le premier solveur linéaire défaillant. |
+| COUPLED + PCD-auto | 4,38 s ; FGMRES 2000 itérations, résidu vrai relatif \(6,27\times10^{-3}\) | Le premier système couplé n'est pas résolu ; le défaut précède une évaluation physique des champs. | Inspecter le système bloc, le spectre/conditionnement de l'opérateur pression et l'efficacité réelle du préconditionneur PCD. |
+| BlockLocal-AMG | 48,98 s ; momentum 2,28 %, continuité \(3,88\times10^{-4}\) | Le résidu de continuité est meilleur que SIMPLE, mais le momentum reste loin du certificat ; cela ne suffit pas à établir un avantage physique. | Décomposer le coût par application AMG, nombre d'itérations linéaires et évolution de \(\nu_t\). |
+| LSC-AMG | 149,77 s ; momentum 5,26 %, continuité \(4,82\times10^{-4}\) | Plus lent et moins avancé que BlockLocal sur cette exécution. Aucun classement général ne peut être déduit d'un seul maillage. | Examiner la construction de l'approximation de Schur LSC, ses produits opérateur et la qualité du solveur de pression. |
+| BFBT-AMG | 189,06 s ; momentum 4,40 %, continuité \(3,61\times10^{-4}\) | Coût le plus élevé parmi ces variantes et momentum non certifié ; le meilleur résidu de continuité ne compense pas ce défaut. | Quantifier le coût de l'opérateur BFBT et sa robustesse au raffinement, sans changer les tolérances. |
+| FieldSplit / Full Schur | FGMRES 445 itérations, résidu relatif vrai \(3,31\times10^{-3}\) | Échec du premier système couplé ; aucune conclusion sur la précision de la solution finale n'est possible. | Comparer l'action du Schur exact/oracle et l'approximation utilisée, puis isoler le bloc qui bloque Krylov. |
+| PIMPLE | 1500 itérations ; momentum global \(8,13\times10^{-4}\), pire composante \(6,64\times10^{-3}\), continuité \(1,54\times10^{-5}\), transport SST non certifié | Meilleure progression observée, notamment en continuité, mais gate global U-p-k-omega faux. C'est un candidat de recherche, pas un solveur convergé. | Comprendre pourquoi le résidu global masque la composante momentum active et certifier le transport SST / la stabilité de \(\nu_t\). |
+
+Les durées ne sont comparables qu'à matériel, maillage, paramètres, budget et définition de la mesure identiques. Un solveur qui diverge en 3 s n'est pas plus rapide qu'un solveur qui travaille 150 s ; comparer le temps jusqu'à une même tolérance certifiée et le coût total pour une solution physiquement admissible.
+
+### Limite de la comparaison de profils actuelle
+
+La campagne de 192 cellules possède un profil d'entrée synthétique en loi \(1/7\), et non la couche limite mesurée Driver–Seegmiller. Les figures servent donc à visualiser les écarts et à comparer les comportements des variantes sur un cas commun. Elles ne démontrent pas que les conditions d'entrée expérimentales sont reproduites. Les courbes issues d'un run non convergé doivent porter la mention diagnostic/non convergé et ne peuvent soutenir une conclusion de validation.

@@ -1,0 +1,257 @@
+name: TH03 OpenFOAM full-mesh qualification diagnostics
+
+on:
+  pull_request:
+    branches:
+      - feat/bfs-convergence-petsc-openfoam
+    paths:
+      - '.github/workflows/th03-openfoam-full-mesh.yml'
+      - 'scripts/generate_th03_openfoam_blockmesh.py'
+      - 'scripts/audit_th03_openfoam_mesh.py'
+      - 'src/cfdx/**'
+      - 'apps/production_solver/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: th03-openfoam-full-${{ github.ref }}
+  # A newer diagnostic configuration supersedes the old expensive campaign.
+  cancel-in-progress: true
+
+jobs:
+  full-mesh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      BUILD: build-th03-openfoam-full
+      OUT: build-th03-openfoam-full/results
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      # Read-only diagnostics: expose the SST nonlinear gates and nested PCD
+      # solves without changing any equation, tolerance, or solver selection.
+      CFDX_SST_DIAGNOSTICS: '1'
+      CFDX_SST_PROGRESS_V81: '1'
+      CFDX_BFS_PCD_INNER_TRACE: '1'
+      CFDX_PCD_FP_AMG_TRACE: '1'
+      CFDX_KRYLOV_DIAGNOSTICS: '1'
+      CFDX_SIMPLEC_DIAGONAL_TRACE: '1'
+      CFDX_BFS_SCHUR_INNER_TRACE: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev
+          python -m pip install --upgrade pip
+          python -m pip install -e . numpy
+
+      - name: Build production solver
+        run: |
+          mkdir -p "$OUT"
+          cmake -S . -B "$BUILD" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=ON \
+            -DCFDX_ENABLE_MPI=OFF 2>&1 | tee "$OUT/configure.log"
+          cmake --build "$BUILD" --target cfdx_production_solver test_bfs_qualification --parallel 2 \
+            2>&1 | tee "$OUT/build.log"
+
+      - name: Generate OpenFOAM six-block full mesh and audit it
+        run: |
+          python scripts/generate_th03_openfoam_blockmesh.py \
+            --resolution full \
+            --convection-scheme second_order_upwind \
+            --max-iterations 1500 \
+            --joint-globalization \
+            --pressure-refinement-steps 2 \
+            --output "$OUT/th03-openfoam-full.cfdx.h5" \
+            2>&1 | tee "$OUT/mesh-generation.log"
+          python scripts/audit_th03_openfoam_mesh.py \
+            "$OUT/th03-openfoam-full.cfdx.h5" \
+            --output "$OUT/mesh-audit.json" \
+            2>&1 | tee "$OUT/mesh-audit.log"
+          python - <<'PY'
+          import h5py, json, os
+          p=os.path.join(os.environ["OUT"],"th03-openfoam-full.cfdx.h5")
+          with h5py.File(p,"r") as f:
+              print(json.dumps({"n_cells":int(f.attrs["n_cells"]),
+                                "n_faces":int(f.attrs["n_faces"]),
+                                "mesh_source":str(f.attrs.get("mesh_source",""))},indent=2))
+          PY
+
+      - name: Run full-mesh pressure-velocity and Schur model matrix
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/run_cfdx_coupled_campaign.py \
+            --build "$BUILD" \
+            --out "$OUT/model-matrix" \
+            --only bfs \
+            --bfs-reference-case "$OUT/th03-openfoam-full.cfdx.h5" \
+            --bfs-variants simple simplec pcd_auto block_local_amg lsc_amg bfbt_amg simple_schur_amg simplec_schur_amg pcd_pcd pcd_amg block_local_mgr block_local_braess \
+            --iterations 1500 \
+            --wall-timeout 360 \
+            2>&1 | tee "$OUT/model-matrix.log"
+          status=${PIPESTATUS[0]}
+          echo "$status" > "$OUT/model-matrix.exit-code"
+          exit 0
+
+      - name: Run full-mesh FieldSplit and PIMPLE modes
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT/direct-modes"
+          python3 - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from generate_th03_bfs_case import reconfigure_bfs_reference_case
+          source = Path(os.environ["OUT"]) / "th03-openfoam-full.cfdx.h5"
+          root = Path(os.environ["OUT"]) / "direct-modes"
+          for name in ("fieldsplit", "pimple"):
+              target = root / f"{name}.cfdx.h5"
+              reconfigure_bfs_reference_case(
+                  source, target,
+                  algorithm="coupled", schur="pcd", preconditioner="auto",
+                  iterations=1500,
+              )
+              if name == "pimple":
+                  # PIMPLE is a segregated pressure-correction path, not a
+                  # COUPLED+PCD Schur solve. Do not inherit the experimental
+                  # commutator action or COUPLED-only Picard damping.
+                  import h5py, json
+                  with h5py.File(target, "r+") as case:
+                      setup = json.loads(case.attrs["case_setup_json"])
+                      raw = setup["numerics"].setdefault("raw_settings", {})
+                      raw.pop("pcd_lumped_mass_commutator_experimental", None)
+                      raw.pop("coupled_outer_step_v43_experimental", None)
+                      case.attrs["case_setup_json"] = json.dumps(setup)
+          PY
+          for mode in fieldsplit pimple; do
+            set +e
+            timeout 360 "$BUILD/cfdx_production_solver" \
+              --mesh "$OUT/direct-modes/$mode.cfdx.h5" \
+              --output-dir "$OUT/direct-modes/$mode" \
+              --iterations 1500 --experimental-sst --benchmark-export \
+              "--bfs-$mode" 2>&1 | tee "$OUT/direct-modes/$mode.log"
+            status=${PIPESTATUS[0]}
+            echo "$status" > "$OUT/direct-modes/$mode.exit-code"
+            set -e
+          done
+
+      - name: A/B pressure-equation equilibration on identical full mesh
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT/pressure-scaling"
+          python3 - <<'PY'
+          import h5py, json, os, shutil
+          from pathlib import Path
+          root = Path(os.environ["OUT"])
+          source = root / "th03-openfoam-full.cfdx.h5"
+          target_root = root / "pressure-scaling"
+          variants = {
+              "row_column": {"pressure_linear_scaling": "row_column"},
+              "symmetric_diagonal": {"pressure_linear_scaling": "symmetric_diagonal"},
+              "anisotropic_line_amg": {
+                  "pressure_linear_scaling": "none",
+                  "pressure_preconditioner": "anisotropic_line_amg",
+                  "pressure_krylov": "fgmres",
+              },
+          }
+          for mode, settings in variants.items():
+              target = target_root / f"simple_{mode}.cfdx.h5"
+              shutil.copyfile(source, target)
+              with h5py.File(target, "r+") as case:
+                  setup = json.loads(case.attrs["case_setup_json"])
+                  raw = setup["numerics"].setdefault("raw_settings", {})
+                  raw.update(settings)
+                  # V26 refinement is deliberately excluded from this A/B:
+                  # it is not supported together with explicit scaling.
+                  raw.pop("pressure_iterative_refinement_steps", None)
+                  case.attrs["case_setup_json"] = json.dumps(setup, allow_nan=False)
+          PY
+          for mode in row_column symmetric_diagonal anisotropic_line_amg; do
+            set +e
+            timeout 180 "$BUILD/cfdx_production_solver" \
+              --mesh "$OUT/pressure-scaling/simple_${mode}.cfdx.h5" \
+              --output-dir "$OUT/pressure-scaling/${mode}" \
+              --iterations 1 --experimental-sst --benchmark-export \
+              2>&1 | tee "$OUT/pressure-scaling/${mode}.log"
+            status=${PIPESTATUS[0]}
+            echo "$status" > "$OUT/pressure-scaling/${mode}.exit-code"
+            set -e
+          done
+
+      - name: Capture model matrix and physical observables
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["OUT"])
+          # The always() capture step also runs after cancellation or an early
+          # setup failure, when the build step may never have created OUT.
+          root.mkdir(parents=True, exist_ok=True)
+          report = {
+              "classification": "OPENFOAM_FULL_MESH_MULTI_MODEL_DIAGNOSTIC_NOT_QUALIFIED",
+              "mesh": str(root / "th03-openfoam-full.cfdx.h5"),
+              "model_matrix_exit_code": (root / "model-matrix.exit-code").read_text().strip()
+                  if (root / "model-matrix.exit-code").exists() else None,
+              "runs": [],
+          }
+          for p in sorted(root.rglob("execution.json")):
+              if not any(part in str(p) for part in ("direct-modes", "bfs_runs", "pressure-scaling")):
+                  continue
+              run = {"directory": str(p.parent.relative_to(root))}
+              for name in ("execution.json", "convergence.json",
+                           "benchmark_observables/summary.json",
+                           "benchmark_observables/wall_shear.csv",
+                           "benchmark_observables/cell_fields.csv"):
+                  q = p.parent / name
+                  run[name] = {"exists": q.exists(),
+                               "size": q.stat().st_size if q.exists() else 0}
+                  if q.exists() and q.suffix == ".json":
+                      try: run[name]["data"] = json.loads(q.read_text())
+                      except Exception as exc: run[name]["parse_error"] = str(exc)
+              report["runs"].append(run)
+          (root / "physical-observables-index.json").write_text(
+              json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Upload full-mesh evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: th03-openfoam-full-mesh-${{ github.sha }}
+          path: ${{ env.OUT }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## TH-03 OpenFOAM full-mesh run" >> "$GITHUB_STEP_SUMMARY"
+          echo "20,540-cell six-block OpenFOAM geometry reconstruction; diagnostic only." >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$OUT/physical-observables-index.json" ]; then
+            cat "$OUT/physical-observables-index.json" >> "$GITHUB_STEP_SUMMARY"
+          fi

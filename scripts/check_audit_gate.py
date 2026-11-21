@@ -95,6 +95,8 @@ NON_FICHE_REPORTS = {
     "62-bfs-sst-cauchy-subspace-v27.md",
     "63-bfs-sst-adaptive-trust-v28.md",
     "64-bfs-sst-branch-jacobian-v34.md",
+    # PR1194 repair/diagnostic dossier: evidence report, not a method specification.
+    "57-pr1194-repair-diagnostics.md",
     "CFDX_BFS_V17_SST_WALL_AND_VALIDATION.md",
     "CFDX_BFS_V18_OMEGA_OWNER_AND_CONVERGENCE.md",
     "CFDX_V35_MERGE_AUDIT.md",
