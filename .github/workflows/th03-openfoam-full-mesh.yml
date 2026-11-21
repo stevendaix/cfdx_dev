@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: th03-openfoam-full-${{ github.ref }}
-  cancel-in-progress: false
+  # A newer diagnostic configuration supersedes the old expensive campaign.
+  cancel-in-progress: true
 
 jobs:
   full-mesh:
