@@ -365,12 +365,17 @@ struct SSTProductionRuntime {
     // Physical WALL_OMEGA_SST obligations from the case contract. This is
     // distinct from the list of walls used to compute nearest wall distance.
     std::vector<std::string> wall_omega_sst_patches;
-    std::size_t max_transport_iterations = 10;
+    // Full inner budget required for a fail-closed SST transport to converge
+    // at transport_tolerance with the default linear relaxation. The reduced
+    // bootstrap budget below is an optimization for the explicit provisional
+    // schedule only (BFS campaign); the production solver sets its own budget
+    // from case settings.
+    std::size_t max_transport_iterations = 100;
     // Small SST inner budget used during the outer bootstrap (first
-    // bootstrap_iters iterations). Prevents the solver from burning thousands
-    // of wall-resolved k/omega inner iterations before the carrier velocity
-    // field has stabilized. After bootstrap, the full max_transport_iterations
-    // (or certification budget) is used.
+    // bootstrap_iters iterations). Only applied when provisional transport is
+    // explicitly allowed: a fail-closed caller must always get the full
+    // convergence budget, otherwise the outer acceptance contract would
+    // reject every iteration on stiff wall-resolved k/omega transport.
     std::size_t bootstrap_transport_iterations = 10;
     double transport_tolerance = 1e-8;
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
@@ -11033,9 +11038,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 };
             }
             // Bootstrap/certification strategy:
-            // - First 20 iterations (bootstrap): provisional transport with
-            //   normal inner budget only. Intermediate SST convergence is not
-            //   required; establish a stable physical state first.
+            // - First 20 iterations (bootstrap) WITH allow_bounded_provisional:
+            //   reduced inner budget only. Intermediate SST convergence is not
+            //   required; establish a stable physical state first. Fail-closed
+            //   callers always get the full budget: a rejected SST step aborts
+            //   the outer iteration, so a reduced budget would reject every
+            //   iteration before the transport can converge.
             // - After bootstrap: attempt a certification step ONLY when the
             //   carrier is approaching convergence (momentum/continuity/change
             //   metrics all below thresholds). This prevents wasting SST
@@ -11044,14 +11052,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Final "Converged" is declared only when ALL gates pass together
             // (carrier + non-provisional converged SST + nu_t/change criteria).
             bool try_certification = false;
+            bool advanced_bootstrap = false;
             std::size_t cert_inner = controls.sst_runtime->max_transport_iterations;
             double cert_tol = controls.sst_runtime->transport_tolerance;
             const std::size_t bootstrap_iters = 20;
-            if (iter <= bootstrap_iters) {
-                // Bootstrap phase: use a small inner budget so the outer
+            const bool bootstrap_with_reduced_budget =
+                controls.sst_runtime->allow_bounded_provisional_transport &&
+                iter <= bootstrap_iters;
+            if (bootstrap_with_reduced_budget) {
+                // Provisional bootstrap: use a small inner budget so the outer
                 // iteration can advance without being blocked by stiff
                 // wall-resolved k/omega transport. SST convergence is not
                 // required here; establish a stable physical state first.
+                // This replaces (does not precede) the full-budget step below.
                 cert_inner = controls.sst_runtime->bootstrap_transport_iterations;
                 cert_tol = controls.sst_runtime->transport_tolerance;
                 sst_step = advance_sst_production_iterate_transactionally(
@@ -11064,6 +11077,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     &controls.sst_runtime->omega_face_values,
                     controls.sst_runtime->allow_bounded_provisional_transport,
                     need_wall_operator ? &wall_refresh_v17 : nullptr);
+                advanced_bootstrap = true;
             } else if (controls.sst_runtime->allow_bounded_provisional_transport &&
                        !result.history.empty()) {
                 const auto& prev = result.history.back();
@@ -11137,7 +11151,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                       << " omega_res=" << sst_step.transport.second_residual << "\n";
                     }
                 }
-            } else {
+            } else if (!advanced_bootstrap) {
+                // Full-budget step. Fail-closed callers always run here: the
+                // SST transport must converge within max_transport_iterations
+                // or the outer iteration is rejected by contract.
                 sst_step = advance_sst_production_iterate_transactionally(
                     mesh, U, p, mass_flux, *controls.sst_runtime->state,
                     controls.sst_runtime->transport, fixed_velocity_values,

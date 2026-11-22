@@ -459,6 +459,9 @@ int main()
         TurbulenceTransportControls controls;
         controls.model = TurbulenceModel::SST;
         controls.sst_omega_newton_sink = true;
+        // Default is now Gauss-Seidel omega-first (OpenFOAM correct() order).
+        // The parallel (Jacobi) reference run must opt out explicitly.
+        controls.sst_sequential_omega_first = false;
         auto parallel_k=k,parallel_omega=omega;
         auto sequential_k=k,sequential_omega=omega;
         const auto parallel_result=solve_sst_transport(

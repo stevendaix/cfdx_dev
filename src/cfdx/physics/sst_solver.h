@@ -861,6 +861,24 @@ inline TurbulenceTransportResult solve_sst_transport(
         else
             sst_apply_omega_owner_constraints_v18(eqw,wall_production);
 
+        // Unrelaxed twins of eqk/eqw. The Krylov solve uses the implicitly
+        // relaxed system (better conditioned), but every reported residual
+        // and convergence defect must describe the PHYSICAL operator of the
+        // returned state. Measuring them against the relaxed matrix would
+        // report ~0 by construction and silently weaken the acceptance gate.
+        auto eqk_phys=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k,
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
+        auto eqw_phys=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
+            omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
+        if (controls.sst_weighted_wall_matrix_v29_experimental)
+            sst_apply_omega_owner_constraints_v29(eqw_phys,wall_production);
+        else
+            sst_apply_omega_owner_constraints_v18(eqw_phys,wall_production);
+
         // Relative mode converts the requested dimensionless tolerance into
         // each field's physical solution units before the Krylov solve.
         const double k_scale = sst_field_update_diagnostic(
@@ -911,6 +929,10 @@ inline TurbulenceTransportResult solve_sst_transport(
                 nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
                 nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr,
                 1.0,current_relaxation);
+            eqk_phys=assemble_scalar_equation(
+                mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+                nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
+                nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr);
             const ScalarSolveControls updated_k_sc{
                 2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),current_relaxation};
             rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
@@ -925,7 +947,7 @@ inline TurbulenceTransportResult solve_sst_transport(
             if (omega_step<=1e-5) {
                 const auto before=omega_solution;
                 const auto correction=sst_equilibrated_defect_correction_v19(
-                    eqw,omega_solution,tolerance);
+                    eqw_phys,omega_solution,tolerance);
                 if (correction.accepted) {
                     for (std::size_t i=0;i<n;++i) {
                         if (!(omega_solution(i)>=controls.omega_min) ||
@@ -938,9 +960,9 @@ inline TurbulenceTransportResult solve_sst_transport(
                 if (std::getenv("CFDX_SST_DIAGNOSTICS") && correction.attempted)
                     std::cerr << "SST_EQUILIBRATED_DEFECT_V19"
                               << " before=" << correction.before
-                              << " after=" << sst_equation_solution_defect(eqw,omega_solution)
+                              << " after=" << sst_equation_solution_defect(eqw_phys,omega_solution)
                               << " accepted=" << (correction.accepted &&
-                                   sst_equation_solution_defect(eqw,omega_solution)<correction.before)
+                                   sst_equation_solution_defect(eqw_phys,omega_solution)<correction.before)
                               << " iterations=" << correction.iterations << '\n';
             }
         }
@@ -1057,21 +1079,21 @@ inline TurbulenceTransportResult solve_sst_transport(
             prev_dk = dk;
             prev_dw = dw;
         }
-        result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
-        result.second_residual=scalar_equation_residual_inf(eqw,omega_solution);
+        result.k_residual=scalar_equation_residual_inf(eqk_phys,k_solution);
+        result.second_residual=scalar_equation_residual_inf(eqw_phys,omega_solution);
         result.iterations=iter;
-        const double k_defect = sst_equation_solution_defect(eqk,k_solution);
-        const double omega_defect = sst_equation_solution_defect(eqw,omega_solution);
+        const double k_defect = sst_equation_solution_defect(eqk_phys,k_solution);
+        const double omega_defect = sst_equation_solution_defect(eqw_phys,omega_solution);
         const auto relative_certificate = sst_relative_convergence_certificate(
             sst_field_update_diagnostic(oldk,k,controls.k_min),
             sst_field_update_diagnostic(oldw,omega,controls.omega_min),
             k_defect, omega_defect, tolerance);
         const auto k_local = controls.sst_compensated_residual_gate
-            ? sst_local_residual_precision_audit(eqk,k_solution,controls.k_min).compensated
-            : sst_local_equation_defect(eqk,k_solution,controls.k_min);
+            ? sst_local_residual_precision_audit(eqk_phys,k_solution,controls.k_min).compensated
+            : sst_local_equation_defect(eqk_phys,k_solution,controls.k_min);
         const auto omega_local = controls.sst_compensated_residual_gate
-            ? sst_local_residual_precision_audit(eqw,omega_solution,controls.omega_min).compensated
-            : sst_local_equation_defect(eqw,omega_solution,controls.omega_min);
+            ? sst_local_residual_precision_audit(eqw_phys,omega_solution,controls.omega_min).compensated
+            : sst_local_equation_defect(eqw_phys,omega_solution,controls.omega_min);
         const bool local_equations_ok = !controls.sst_scale_aware_convergence ||
             (k_local.maximum_relative <= tolerance &&
              omega_local.maximum_relative <= tolerance);
@@ -1158,16 +1180,19 @@ inline std::pair<ScalarEquation,ScalarEquation> sst_reassembled_equations_v22(
         ? sst_face_diffusion_coefficients(mesh,geometry,gamma_w,omega_bcs,
                                           omega_face_values,controls)
         : std::vector<double>{};
+    // Physical (unrelaxed) production assembly. Callers evaluate the residual
+    // AT the convected state itself, where the OpenFOAM implicit-relaxation
+    // compensation cancels algebraically; assembling with relaxation baked in
+    // would corrupt the row norms, the diagonal certificate and every
+    // row-scaled defect derived from this operator.
     auto eqk=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
         nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
-        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr,
-        1.0,controls.sst_linear_relaxation);
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
     auto eqw=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
         omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega,
-        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr,
-        1.0,controls.sst_linear_relaxation);
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
     if (controls.sst_weighted_wall_matrix_v29_experimental)
         sst_apply_omega_owner_constraints_v29(eqw,wall_production);
     else
