@@ -79,6 +79,10 @@ struct Options {
     std::filesystem::path output_dir;
     std::filesystem::path restart;
     std::size_t iterations = 2;
+    // When --iterations is given explicitly it is authoritative and must be
+    // able to raise the iteration budget above the case-level cap; the cap
+    // only applies to the implicit default.
+    bool iterations_set = false;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
     bool initial_pressure_field = false;
@@ -712,7 +716,10 @@ Options parse(int argc, char** argv)
         if (arg == "--mesh") o.mesh = value("--mesh");
         else if (arg == "--output-dir") o.output_dir = value("--output-dir");
         else if (arg == "--restart") o.restart = value("--restart");
-        else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
+        else if (arg == "--iterations") {
+            o.iterations = std::stoull(value("--iterations"));
+            o.iterations_set = true;
+        }
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
         else if (arg == "--initial-pressure-field") o.initial_pressure_field = true;
@@ -1185,7 +1192,10 @@ int main(int argc, char** argv)
                       << " alpha_p=" << requested_alpha_p << '\n';
             std::cout << "Resolved numerical selections:\n"
                       << cfdx::core::format_numerics_report(case_setup.numerical_report);
-            if (case_setup.numerics.max_iterations > 0)
+            // The case-level max_iterations is a default cap; an explicit
+            // --iterations flag is authoritative and overrides it (so a
+            // continuation run can exceed the case budget).
+            if (!options.iterations_set && case_setup.numerics.max_iterations > 0)
                 controls.convergence.max_iterations =
                     std::min<std::size_t>(
                         controls.convergence.max_iterations,
