@@ -502,6 +502,8 @@ def make_case_setup(
         raise ValueError("SST scalar linear relaxation must be finite and in (0,1]")
     if v19_omega_corner_equal_faces and not v18_omega_owner_cells:
         raise ValueError("V19 corner equal-faces requires V18 owner omega constraints")
+    if v18_omega_owner_cells and not v17_active_wall_operator:
+        raise ValueError("V18 omega owner cells require V17 active wall operator")
     if v17_active_wall_operator and not (
         openfoam_kqr_wall_v16 and sst_molecular_wall_diffusion
     ):

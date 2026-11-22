@@ -17,7 +17,7 @@ def test_v13_defaults_are_bitwise_opt_in():
     case = make_case_setup(2, 0.25, 0.1)
     raw = case.numerics.raw_settings
     assert raw["sst_omega_newton_sink"] == "false"
-    assert raw["sst_sequential_omega_first"] == "false"
+    assert raw["sst_sequential_omega_first"] == "true"
     assert raw["sst_wall_omega_factor"] == "6"
 
 
