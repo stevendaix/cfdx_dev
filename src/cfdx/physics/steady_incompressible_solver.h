@@ -7020,6 +7020,46 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        // Oscillation-damping relaxation guard (works without V19/V21).
+        // When the momentum residual oscillates (sign changes in the
+        // iteration-to-iteration delta), the effective SIMPLE relaxation is
+        // too aggressive for the current nonlinear coupling. Reduce alpha_u
+        // by 20% so the next iteration takes a smaller, more stable step.
+        // Conversely, if the residual decreases consistently for 5+ committed
+        // iterations, gently increase alpha_u toward the configured value.
+        // This mechanism is independent of the physical convergence criteria
+        // and never changes the acceptance gates.
+        if (!controls.adaptive_relaxation.enabled && result.history.size() >= 4) {
+            const auto& h = result.history;
+            const double r0 = h[h.size()-4].momentum_equation_residual_relative;
+            const double r1 = h[h.size()-3].momentum_equation_residual_relative;
+            const double r2 = h[h.size()-2].momentum_equation_residual_relative;
+            const double r3 = h[h.size()-1].momentum_equation_residual_relative;
+            if (std::isfinite(r0) && std::isfinite(r1) &&
+                std::isfinite(r2) && std::isfinite(r3) &&
+                r0 > 0.0 && r1 > 0.0 && r2 > 0.0 && r3 > 0.0) {
+                const double d0 = r1 - r0;
+                const double d1 = r2 - r1;
+                const double d2 = r3 - r2;
+                const bool s0 = d0 > 0.0, s1 = d1 > 0.0, s2 = d2 > 0.0;
+                const std::size_t sign_changes =
+                    (s0 != s1 ? 1u : 0u) + (s1 != s2 ? 1u : 0u);
+                if (sign_changes >= 2 && effective_alpha_u > 0.1) {
+                    effective_alpha_u = std::max(0.1, effective_alpha_u * 0.8);
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "OSCILLATION_DAMPING_V90 iteration=" << iter
+                                  << " alpha_u=" << effective_alpha_u
+                                  << " sign_changes=" << sign_changes
+                                  << " momentum_residual=" << r3 << "\n";
+                } else if (d0 < 0.0 && d1 < 0.0 && d2 < 0.0 &&
+                           result.history.size() >= 5 &&
+                           effective_alpha_u < controls.coupling.alpha_u) {
+                    effective_alpha_u = std::min(
+                        controls.coupling.alpha_u, effective_alpha_u * 1.05);
+                }
+            }
+        }
+
         if (controls.adaptive_relaxation.enabled) {
             // Adapt the momentum and pressure relaxation independently. SIMPLE
             // couples the two equations, but their residuals measure different
@@ -11235,6 +11275,63 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // directly with the normalized carrier convergence metric.
             if (!sst_attempt_snapshot)
                 throw std::logic_error("SST production attempt is missing its state snapshot");
+
+            // Nut-closure under-relaxation (V91): when the SST transport
+            // produces a very large eddy-viscosity change (oscillating
+            // k/omega production from a changing velocity field), blend the
+            // new k/omega with the old state to damp the feedback loop.
+            // The blend factor is computed from the raw nu_t change: if
+            // the change exceeds 30%, the k/omega fields are proportionally
+            // pulled back toward their previous values. This does NOT change
+            // the SST transport equations or convergence gates — it only
+            // limits how fast the nonlinear outer iteration can move.
+            // The blended state remains fully consistent: nu_t is recomputed
+            // from the blended k and omega.
+            {
+                const auto& old_state = *sst_attempt_snapshot;
+                const auto& new_state = *controls.sst_runtime->state;
+                // Compute the max relative nu_t change before blending.
+                double max_nut_change = 0.0;
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                    const double scale = std::max({
+                        controls.kinematic_viscosity,
+                        old_state.nu_t(cell),
+                        new_state.nu_t(cell)});
+                    if (scale > 0.0)
+                        max_nut_change = std::max(max_nut_change,
+                            std::abs(new_state.nu_t(cell) - old_state.nu_t(cell)) / scale);
+                }
+                // If the change exceeds 30%, compute a blend factor that
+                // would cap it at 30%. alpha=1 means no damping (keep new),
+                // alpha=0 means keep old.
+                constexpr double nut_change_cap = 0.30;
+                const double nut_blend = (max_nut_change > nut_change_cap)
+                    ? std::max(0.0, nut_change_cap / max_nut_change)
+                    : 1.0;
+                if (nut_blend < 1.0) {
+                    auto& state = *controls.sst_runtime->state;
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        state.k(cell) = nut_blend * new_state.k(cell)
+                                      + (1.0 - nut_blend) * old_state.k(cell);
+                        state.omega(cell) = nut_blend * new_state.omega(cell)
+                                          + (1.0 - nut_blend) * old_state.omega(cell);
+                        const auto blend = compute_sst_blending(
+                            state.k(cell), state.omega(cell), state.wall_distance(cell),
+                            controls.kinematic_viscosity,
+                            controls.sst_runtime->transport.beta_star,
+                            0.0, controls.density,
+                            controls.sst_runtime->transport.sst_sigma_w2);
+                        state.nu_t(cell) = controls.sst_runtime->transport.a1 * state.k(cell)
+                            / std::max(controls.sst_runtime->transport.a1 * state.omega(cell),
+                                       state.strain_rate(cell) * blend.second);
+                    }
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "NUT_CLOSURE_DAMPING_V91 iteration=" << iter
+                                  << " max_change=" << max_nut_change
+                                  << " blend=" << nut_blend << "\n";
+                }
+            }
+
             sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
                 *sst_attempt_snapshot, *controls.sst_runtime->state,
                 controls.kinematic_viscosity);
