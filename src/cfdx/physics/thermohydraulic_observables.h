@@ -226,7 +226,7 @@ inline ThermohydraulicObservableSummary write_thermohydraulic_observables(
                     out << distance << ',' << multiplier*(ux - dot*nx)
                         << ',' << multiplier*(uy - dot*ny)
                         << ',' << multiplier*(uz - dot*nz)
-                        << ",first_order_one_sided_effective_viscosity";
+                        << ",first_order_one_sided_diagnostic";
                     // y+ is a *diagnostic estimate* from the one-sided
                     // effective shear, not a resolved-wall qualification.
                     const double tau_tangent = multiplier *
