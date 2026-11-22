@@ -7021,15 +7021,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         // Oscillation-damping relaxation guard (works without V19/V21).
-        // When the momentum residual oscillates (sign changes in the
+        // EXPERIMENTAL / OPT-IN ONLY (CFDX_OSCILLATION_DAMPING_V90=1):
+        // when the momentum residual oscillates (sign changes in the
         // iteration-to-iteration delta), the effective SIMPLE relaxation is
         // too aggressive for the current nonlinear coupling. Reduce alpha_u
-        // by 20% so the next iteration takes a smaller, more stable step.
-        // Conversely, if the residual decreases consistently for 5+ committed
-        // iterations, gently increase alpha_u toward the configured value.
-        // This mechanism is independent of the physical convergence criteria
-        // and never changes the acceptance gates.
-        if (!controls.adaptive_relaxation.enabled && result.history.size() >= 4) {
+        // by 10% (floor 0.2) so the next iteration takes a smaller, more
+        // stable step. Conversely, if the residual decreases consistently
+        // for 5+ committed iterations, gently increase alpha_u toward the
+        // configured value. Disabled by default so the qualified SIMPLE
+        // convergence behaviour is preserved; this mechanism never changes
+        // the physical acceptance gates.
+        const bool oscillation_damping_v90 = [] {
+            const char* v = std::getenv("CFDX_OSCILLATION_DAMPING_V90");
+            return v != nullptr && std::string(v) == "1";
+        }();
+        if (oscillation_damping_v90 &&
+            !controls.adaptive_relaxation.enabled && result.history.size() >= 4) {
             const auto& h = result.history;
             const double r0 = h[h.size()-4].momentum_equation_residual_relative;
             const double r1 = h[h.size()-3].momentum_equation_residual_relative;
@@ -7044,8 +7051,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const bool s0 = d0 > 0.0, s1 = d1 > 0.0, s2 = d2 > 0.0;
                 const std::size_t sign_changes =
                     (s0 != s1 ? 1u : 0u) + (s1 != s2 ? 1u : 0u);
-                if (sign_changes >= 2 && effective_alpha_u > 0.1) {
-                    effective_alpha_u = std::max(0.1, effective_alpha_u * 0.8);
+                if (sign_changes >= 2 && effective_alpha_u > 0.2) {
+                    effective_alpha_u = std::max(0.2, effective_alpha_u * 0.9);
                     if (controls.diagnostics.iteration_trace)
                         std::cerr << "OSCILLATION_DAMPING_V90 iteration=" << iter
                                   << " alpha_u=" << effective_alpha_u
@@ -7055,7 +7062,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                            result.history.size() >= 5 &&
                            effective_alpha_u < controls.coupling.alpha_u) {
                     effective_alpha_u = std::min(
-                        controls.coupling.alpha_u, effective_alpha_u * 1.05);
+                        controls.coupling.alpha_u, effective_alpha_u * 1.1);
                 }
             }
         }
@@ -7515,7 +7522,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " actual_preconditioner=" << cfdx::core::to_string(result.coupled_linear_plan.preconditioner)
                           << " resolved_schur=" << cfdx::physics::to_string(result.resolved_coupled_schur_model)
                           << "\n";
-            if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
+            const bool coupled_max_iter_converged =
+                coupled_result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED &&
+                std::isfinite(coupled_result.residual_relative) &&
+                coupled_result.residual_relative <= controls.coupling.coupled_linear_tolerance;
+            if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED &&
+                !coupled_max_iter_converged) {
                 // Report the stalled linear state in scientific notation.
                 // std::to_string truncates to six fixed decimals, so a
                 // MAX_ITER stall printed as "residual=0.000000" hid the
@@ -11308,7 +11320,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double nut_blend = (max_nut_change > nut_change_cap)
                     ? std::max(0.0, nut_change_cap / max_nut_change)
                     : 1.0;
-                if (nut_blend < 1.0) {
+                // EXPERIMENTAL / OPT-IN ONLY (CFDX_NUT_CLOSURE_DAMPING_V91=1):
+                // blend the new k/omega with the old state when the raw nu_t
+                // change exceeds the cap. Disabled by default so the qualified
+                // SST convergence behaviour is preserved; nu_t is recomputed
+                // from the blended k/omega, keeping the state consistent.
+                const bool nut_closure_damping_v91 = [] {
+                    const char* v = std::getenv("CFDX_NUT_CLOSURE_DAMPING_V91");
+                    return v != nullptr && std::string(v) == "1";
+                }();
+                if (nut_closure_damping_v91 && nut_blend < 1.0) {
                     auto& state = *controls.sst_runtime->state;
                     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
                         state.k(cell) = nut_blend * new_state.k(cell)

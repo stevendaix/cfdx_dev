@@ -1394,6 +1394,18 @@ int main(int argc, char** argv)
                 std::cout << "COUPLED_LINEAR_DIAGNOSTIC_BUDGET_V16 iterations=" << value
                           << " tolerance_unchanged=1 physical_qualification=0\n";
             }
+            if (const char* tol = std::getenv("CFDX_COUPLED_LINEAR_TOL")) {
+                try {
+                    std::size_t used = 0;
+                    const double v = std::stod(tol, &used);
+                    if (used != std::string(tol).size() || !(v > 0.0) || !std::isfinite(v))
+                        throw std::invalid_argument("invalid CFDX_COUPLED_LINEAR_TOL");
+                    controls.coupling.coupled_linear_tolerance = v;
+                    std::cout << "COUPLED_LINEAR_TOL_OVERRIDE tolerance=" << v << "\n";
+                } catch (const std::exception&) {
+                    throw std::invalid_argument("invalid CFDX_COUPLED_LINEAR_TOL");
+                }
+            }
             // The same lightweight fingerprint can be enabled on 712 and
             // 20,540 cells, unlike the bounded V16 MatrixMarket export.
             // It is read-only evidence, *not* a convergence metric or SHA.

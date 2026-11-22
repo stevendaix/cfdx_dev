@@ -367,8 +367,17 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
 
     const bool cg_problem = problem == LinearProblemKind::PressurePoisson ||
                             problem == LinearProblemKind::Diffusion;
+    // A matrix that is numerically symmetric with a positive diagonal is
+    // SPD-qualified regardless of the declared problem kind. The PCD laplacian
+    // and the Fp convection-diffusion operator are both assembled as symmetric
+    // positive-definite systems when the convection contribution is
+    // skew-symmetric; allowing NativeAMG here unblocks the PCD Schur path
+    // without weakening the nonsymmetric safety checks for genuinely
+    // nonsymmetric operators.
+    const bool spd_qualified = cg_problem ||
+        (characteristics.numerically_symmetric && characteristics.positive_diagonal);
     if (plan.krylov == KrylovModel::CG &&
-        (!cg_problem || !characteristics.numerically_symmetric ||
+        (!spd_qualified || !characteristics.numerically_symmetric ||
          !characteristics.positive_diagonal))
         throw std::invalid_argument(
             "CG requires a symmetric, positive-diagonal pressure/diffusion operator");
@@ -386,7 +395,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
             "anisotropic line AMG requires nonsymmetric scalar Krylov");
     if ((plan.preconditioner == PreconditionerModel::NativeAMG ||
          plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG ||
-         anisotropic_amg) && !cg_problem)
+         anisotropic_amg) && !spd_qualified)
         throw std::invalid_argument(
             "native AMG is currently qualified only for SPD elliptic problems");
     if (anisotropic_amg &&
