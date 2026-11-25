@@ -19,6 +19,7 @@
 #include "cfdx/physics/sst_two_cycle_v41.h"
 #include "cfdx/physics/sst_branch_preconditioner_v34.h"
 #include "cfdx/physics/sst_openfoam_weighted_owner_v29.h"
+#include "cfdx/physics/sst_coupled_2x2_matrix_solver.h"
 #include "cfdx/physics/scalar_transport_gradient.h"
 #include <algorithm>
 #include <functional>
@@ -753,6 +754,35 @@ inline SSTCellSources sst_cell_sources(
                              c.sst_production_limiter*c.beta_star*c.density*ki*wi);
     s.sk=Pk;
     s.spk=-c.density*c.beta_star*wi;
+
+    // Implicit production: linearize P_k = rho * nut * S^2 around the
+    // current state. nut = a1 * k / max(a1*omega, S*F2) is linear in k,
+    // so dP_k/dk = rho * a1 * S^2 / max(a1*omega, S*F2). Moving this
+    // derivative to the diagonal damps the k/omega -> nut -> momentum ->
+    // strain -> k/omega feedback loop that destabilizes wall-resolved
+    // meshes. When the limiter is active, P_k = limiter*beta_star*rho*k*omega
+    // and dP_k/dk = limiter*beta_star*rho*omega.
+    if (c.sst_implicit_production_experimental) {
+        const double un_limited = c.density * s.nut * S * S;
+        double dPk_dk;
+        if (Pk < un_limited) {
+            // Production limiter active: P_k = limiter*beta_star*rho*k*omega
+            dPk_dk = c.sst_production_limiter * c.beta_star * c.density * wi;
+        } else {
+            // Unlimited: P_k = rho * a1 * k * S^2 / max(a1*omega, S*F2)
+            const double denom = std::max(c.a1 * wi, S * f2);
+            dPk_dk = c.density * c.a1 * S * S / denom;
+        }
+        if (std::isfinite(dPk_dk) && dPk_dk > 0.0) {
+            // Keep the M-matrix diagonal negative: only move enough of the
+            // production derivative to the diagonal to keep spk < 0. The
+            // remainder stays as an explicit source (conservative, stable).
+            const double max_safe_implicit = std::max(0.0, c.density * c.beta_star * wi - 1e-12);
+            const double implicit_amount = std::min(dPk_dk, max_safe_implicit);
+            s.spk += implicit_amount;
+            s.sk = Pk - implicit_amount * ki;
+        }
+    }
     const double cross=2.0*(1.0-f1)*c.density*c.sst_sigma_w2/wi*grad_k_dot_grad_omega;
     // SST-2003 uses the limited k-production in the omega production term.
     // If nut is zero, the limited production is also zero; avoid a 0/0 path.
@@ -839,6 +869,22 @@ inline TurbulenceTransportResult solve_sst_transport(
             gamma_k[i]=q.gamma_k; gamma_w[i]=q.gamma_w;
         }
 
+        // Pseudo-time stepping: add artificial mass term (k - k_old)/dt and
+        // (omega - omega_old)/dt as implicit diagonal + explicit source.
+        // This damps the stiff k<->omega source coupling on wall-resolved
+        // meshes by making the transport system diagonally dominant near walls.
+        const double inv_dt = controls.sst_pseudo_transient_dt > 0.0
+            ? 1.0 / controls.sst_pseudo_transient_dt
+            : 0.0;
+        if (inv_dt > 0.0) {
+            for (std::size_t i = 0; i < n; ++i) {
+                sk(i) += inv_dt * oldk(i);
+                spk(i) += inv_dt;
+                sw(i) += inv_dt * oldw(i);
+                spw(i) += inv_dt;
+            }
+        }
+
         const auto k_wall_gamma = controls.sst_molecular_wall_diffusion
             ? sst_face_diffusion_coefficients(mesh,geometry,gamma_k,k_bcs,nullptr,controls)
             : std::vector<double>{};
@@ -881,14 +927,19 @@ inline TurbulenceTransportResult solve_sst_transport(
 
         // Relative mode converts the requested dimensionless tolerance into
         // each field's physical solution units before the Krylov solve.
+        // With pseudo-transient mode, use a relaxed tolerance during the outer
+        // loop; full convergence is deferred to the certification step.
+        const double effective_tolerance = controls.sst_pseudo_transient_experimental
+            ? controls.sst_transport_tolerance_relaxed
+            : tolerance;
         const double k_scale = sst_field_update_diagnostic(
             oldk, oldk, controls.k_min).reference_scale;
         const double omega_scale = sst_field_update_diagnostic(
             oldw, oldw, controls.omega_min).reference_scale;
         const double k_linear_target = controls.sst_scale_aware_convergence
-            ? tolerance * k_scale : tolerance;
+            ? effective_tolerance * k_scale : effective_tolerance;
         const double omega_linear_target = controls.sst_scale_aware_convergence
-            ? tolerance * omega_scale : tolerance;
+            ? effective_tolerance * omega_scale : effective_tolerance;
         const ScalarSolveControls k_sc{
             2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),current_relaxation};
         const ScalarSolveControls omega_sc{
@@ -900,7 +951,84 @@ inline TurbulenceTransportResult solve_sst_transport(
             omega_solution(i) = omega(i);
         }
         cfdx::core::SolverResult rk, rw;
-        if (controls.sst_sequential_omega_first) {
+        if (controls.sst_coupled_2x2_komega) {
+            // Vrai solveur matriciel couplé 2x2 k/omega.
+            // Résout [A_kk D_kw; D_wk A_ww] [dk; dw] = [r_k; r_w]
+            // par Richardson préconditionnée par bloc-Jacobi en une passe
+            // par itération de transport. Les blocs hors-diagonaux capturent
+            // les termes croisés dFk/dlog(omega) et dFw/dlog(k), stabilisant
+            // le couplage k<->omega raide sur les maillages wall-resolved.
+            // Aucun changement à finite_volume_transport.h n'est nécessaire.
+
+            // Côtés explicites (source sans le terme implicite Sp*psi).
+            std::vector<double> b_k(n), b_w(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                b_k[i] = sk(i);
+                b_w[i] = sw(i);
+            }
+
+            // Coefficients de couplage croisé (diagonaux par cellule).
+            // IMPORTANT : d_kw = dPk/dlog(omega) et d_wk = dSw/dlog(k)
+            // UNIQUEMENT. Les termes de destruction (-spk*k et -spw*w) sont
+            // déjà dans les diagonales de A_kk et A_ww via assemble_scalar_equation,
+            // ils ne doivent PAS être ré-inclus dans les blocs croisés.
+            std::vector<double> d_kw(n, 0.0), d_wk(n, 0.0);
+            const double eps_fd = 1e-4;
+            for (std::size_t i = 0; i < n; ++i) {
+                const double ki = k(i), wi = omega(i);
+                if (!(ki > 0.) || !(wi > 0.)) continue;
+                const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
+
+                const auto q00 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Pk00 = q00.sk;   // production de k (source explicite, pas Fk)
+                const double Sw00 = q00.sw;   // production de omega (source explicite, pas Fw)
+
+                // dPk/dlog(omega) : seulement la production, pas la destruction
+                const double wi_p = wi * (1.0 + eps_fd);
+                const auto q01 = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Pk01 = q01.sk;
+                d_kw[i] = (Pk01 - Pk00) / eps_fd;
+
+                // dSw/dlog(k) : seulement la production, pas la destruction
+                const double ki_p = ki * (1.0 + eps_fd);
+                const auto q10 = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Sw10 = q10.sw;
+                d_wk[i] = (Sw10 - Sw00) / eps_fd;
+            }
+
+            // Vecteurs de travail.
+            std::vector<double> k_std(n), w_std(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                k_std[i] = k(i);
+                w_std[i] = omega(i);
+            }
+
+            // Solveur matriciel couplé 2x2.
+            const auto cres = solve_coupled_2x2_matrix(
+                eqk, eqw, b_k, b_w, k_std, w_std,
+                d_kw, d_wk,
+                current_relaxation, 5, // max 5 itérations Richardson par itération de transport
+                effective_tolerance,
+                controls.k_min, controls.omega_min);
+
+            // Copier le résultat dans k et omega (et k_solution/omega_solution
+            // pour compatibilité avec le code de diagnostic après le bloc).
+            for (std::size_t i = 0; i < n; ++i) {
+                k(i) = k_std[i];
+                omega(i) = w_std[i];
+                k_solution(i) = k_std[i];
+                omega_solution(i) = w_std[i];
+            }
+
+            // Diagnostics factices pour compatibilité avec le code après le bloc.
+            rk.status = cres.converged ? cfdx::core::SolverStatus::CONVERGED
+                                       : cfdx::core::SolverStatus::MAX_ITER_REACHED;
+            rw.status = rk.status;
+            rk.residual_relative_before_relaxation = cres.res_k_norm;
+            rk.residual_relative_after_relaxation = cres.res_k_norm;
+            rw.residual_relative_before_relaxation = cres.res_w_norm;
+            rw.residual_relative_after_relaxation = cres.res_w_norm;
+        } else if (controls.sst_sequential_omega_first) {
             // Reuse the existing scalar transport assembly: no second
             // discretization of gradients, wall values or mass fluxes.
             rw = solve_scalar_equation(eqw, omega_solution, omega_sc);
@@ -978,71 +1106,141 @@ inline TurbulenceTransportResult solve_sst_transport(
         }
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
 
-        // Coupled 2x2 k/omega correction using local Newton step on log variables.
-        // Only applied after the linear k/omega solves have converged and the
-        // Picard iteration has stabilised (iter >= 3), so the local Jacobian
-        // is evaluated near the local fixed point and does not destabilise
-        // early iterations where residuals are still large.
-        if (controls.sst_coupled_2x2_komega &&
-            iter >= 3 &&
-            rk.status == cfdx::core::SolverStatus::CONVERGED &&
-            rw.status == cfdx::core::SolverStatus::CONVERGED) {
+        // Coupled 2x2 k/omega Newton correction with FULL Jacobian (cross terms
+        // included: dFk/dlogomega and dFw/dlogk). Applied at EVERY transport
+        // iteration with adaptive damping and up to 3 inner passes to drive the
+        // local source residual toward zero. This stabilizes the stiff k<->omega
+        // source coupling on wall-resolved meshes.
+        if (controls.sst_coupled_2x2_komega) {
             const double eps = 1e-4;
-            const double max_log_delta = 2.0; // clamp exp argument to avoid overflow
-            double max_delta = 0.0;
-            std::size_t applied = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                const double ki = k(i), wi = omega(i);
-                if (!(ki > 0.) || !(wi > 0.)) continue;
-                const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
+            const double max_log_delta = 0.5; // tighter clamp for stability
+            double effective_damping = controls.sst_coupled_2x2_damping;
 
-                // Residuals at current state
-                const auto q0 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                const double Fk = q0.sk - q0.spk * ki;
-                const double Fw = q0.sw - q0.spw * wi;
+            for (std::size_t pass = 0; pass < 3; ++pass) {
+                // Phase 1: compute full 2x2 Jacobian and residual for all cells
+                double baseline_max_res = 0.0;
+                std::size_t needs_correction = 0;
+                std::vector<double> delta_k_local(n, 0.0), delta_w_local(n, 0.0);
+                for (std::size_t i = 0; i < n; ++i) {
+                    const double ki = k(i), wi = omega(i);
+                    if (!(ki > 0.) || !(wi > 0.)) continue;
+                    const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
 
-                // Skip cells that are already converged (small residual)
-                if (std::abs(Fk) < 1e-10 && std::abs(Fw) < 1e-10) continue;
+                    // Residuals at current state (source terms only)
+                    const auto q00 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                    const double Fk00 = q00.sk - q00.spk * ki;
+                    const double Fw00 = q00.sw - q00.spw * wi;
 
-                // Perturb log k
-                const double ki_p = ki * (1.0 + eps);
-                const auto qk = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                const double Fk_p = qk.sk - qk.spk * ki_p;
-                const double dFk_dlogk = (Fk_p - Fk) / eps;
+                    // Skip cells that are already converged (small residual)
+                    if (std::abs(Fk00) < 1e-10 && std::abs(Fw00) < 1e-10) continue;
 
-                // Perturb log omega
-                const double wi_p = wi * (1.0 + eps);
-                const auto qw = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                const double Fw_p = qw.sw - qw.spw * wi_p;
-                const double dFw_dlogw = (Fw_p - Fw) / eps;
+                    const double cell_res = std::max(std::abs(Fk00), std::abs(Fw00));
+                    baseline_max_res = std::max(baseline_max_res, cell_res);
+                    needs_correction++;
 
-                // Diagonal 2x2: ignore cross terms for robustness.
-                // J = [dFk/dlogk, 0; 0, dFw/dlogw]
-                const double a = dFk_dlogk;
-                const double d_ = dFw_dlogw;
+                    // Perturb log k
+                    const double ki_p = ki * (1.0 + eps);
+                    const auto q10 = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                    const double Fk10 = q10.sk - q10.spk * ki_p;
+                    const double Fw10 = q10.sw - q10.spw * wi;
 
-                if (!std::isfinite(a) || !std::isfinite(d_) ||
-                    std::abs(a) < 1e-12 || std::abs(d_) < 1e-12) continue;
+                    // Perturb log omega
+                    const double wi_p = wi * (1.0 + eps);
+                    const auto q01 = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                    const double Fk01 = q01.sk - q01.spk * ki;
+                    const double Fw01 = q01.sw - q01.spw * wi_p;
 
-                const double delta_k = -Fk / a;
-                const double delta_w = -Fw / d_;
+                    // Full 2x2 Jacobian on log variables:
+                    // J = [dFk/dlogk, dFk/dlogomega; dFw/dlogk, dFw/dlogomega]
+                    const double j11 = (Fk10 - Fk00) / eps;
+                    const double j12 = (Fk01 - Fk00) / eps;
+                    const double j21 = (Fw10 - Fw00) / eps;
+                    const double j22 = (Fw01 - Fw00) / eps;
 
-                if (!std::isfinite(delta_k) || !std::isfinite(delta_w)) continue;
+                    if (!std::isfinite(j11) || !std::isfinite(j12) ||
+                        !std::isfinite(j21) || !std::isfinite(j22)) continue;
 
-                const double clamped_dk = std::clamp(
-                    controls.sst_coupled_2x2_damping * delta_k, -max_log_delta, max_log_delta);
-                const double clamped_dw = std::clamp(
-                    controls.sst_coupled_2x2_damping * delta_w, -max_log_delta, max_log_delta);
+                    // Solve J * [dk, dw] = -[Fk, Fw] by direct 2x2 inversion
+                    const double det = j11 * j22 - j12 * j21;
+                    if (std::abs(det) < 1e-14) continue;
 
-                max_delta = std::max(max_delta, std::max(std::abs(clamped_dk), std::abs(clamped_dw)));
-                k(i) = ki * std::exp(clamped_dk);
-                omega(i) = wi * std::exp(clamped_dw);
-                if (!(k(i) > controls.k_min)) k(i) = controls.k_min;
-                if (!(omega(i) > controls.omega_min)) omega(i) = controls.omega_min;
-                ++applied;
+                    double newton_delta_k = -(Fk00 * j22 - j12 * Fw00) / det;
+                    double newton_delta_w = -(j11 * Fw00 - Fk00 * j21) / det;
+
+                    if (!std::isfinite(newton_delta_k) || !std::isfinite(newton_delta_w)) continue;
+
+                    const double delta_k = std::clamp(
+                        effective_damping * newton_delta_k, -max_log_delta, max_log_delta);
+                    const double delta_w = std::clamp(
+                        effective_damping * newton_delta_w, -max_log_delta, max_log_delta);
+
+                    delta_k_local[i] = delta_k;
+                    delta_w_local[i] = delta_w;
+                }
+
+                if (needs_correction == 0 || baseline_max_res <= 0.0) break;
+
+                // Phase 2: backtracking line search on local source residual
+                bool accepted = false;
+                double accepted_alpha = 0.0;
+                for (double alpha : {1.0, 0.5, 0.25, 0.125}) {
+                    double trial_max_res = 0.0;
+                    bool trial_valid = true;
+                    for (std::size_t i = 0; i < n; ++i) {
+                        if (delta_k_local[i] == 0.0 && delta_w_local[i] == 0.0) continue;
+                        const double ki = k(i), wi = omega(i);
+                        const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
+                        const double kt = ki * std::exp(alpha * delta_k_local[i]);
+                        const double wt = wi * std::exp(alpha * delta_w_local[i]);
+                        if (!(kt > 0.) || !(wt > 0.)) { trial_valid = false; break; }
+                        const auto qt = sst_cell_sources(kt, wt, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                        const double Fk = qt.sk - qt.spk * kt;
+                        const double Fw = qt.sw - qt.spw * wt;
+                        trial_max_res = std::max(trial_max_res, std::max(std::abs(Fk), std::abs(Fw)));
+                    }
+                    if (trial_valid && trial_max_res < baseline_max_res * 0.9) {
+                        accepted = true;
+                        accepted_alpha = alpha;
+                        break;
+                    }
+                }
+
+                // Phase 3: apply accepted step or rollback
+                if (accepted) {
+                    double max_delta = 0.0;
+                    std::size_t applied = 0;
+                    for (std::size_t i = 0; i < n; ++i) {
+                        if (delta_k_local[i] == 0.0 && delta_w_local[i] == 0.0) continue;
+                        const double ki = k(i), wi = omega(i);
+                        k(i) = ki * std::exp(accepted_alpha * delta_k_local[i]);
+                        omega(i) = wi * std::exp(accepted_alpha * delta_w_local[i]);
+                        if (!(k(i) > controls.k_min)) k(i) = controls.k_min;
+                        if (!(omega(i) > controls.omega_min)) omega(i) = controls.omega_min;
+                        max_delta = std::max(max_delta, std::max(std::abs(accepted_alpha * delta_k_local[i]), std::abs(accepted_alpha * delta_w_local[i])));
+                        ++applied;
+                    }
+                    result.coupled_2x2_applied = applied;
+                    result.coupled_2x2_max_delta = max_delta;
+                } else {
+                    // No alpha improved the residual: reduce damping for next pass
+                    effective_damping *= 0.5;
+                    if (effective_damping < 1e-4) break;
+                    continue;
+                }
+
+                // Recompute residual to decide if another pass is needed
+                double post_res = 0.0;
+                for (std::size_t i = 0; i < n; ++i) {
+                    const double ki = k(i), wi = omega(i);
+                    if (!(ki > 0.) || !(wi > 0.)) continue;
+                    const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
+                    const auto q = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                    const double Fk = q.sk - q.spk * ki;
+                    const double Fw = q.sw - q.spw * wi;
+                    post_res = std::max(post_res, std::max(std::abs(Fk), std::abs(Fw)));
+                }
+                if (post_res < 1e-8 || pass == 2) break;
             }
-            result.coupled_2x2_applied = applied;
-            result.coupled_2x2_max_delta = max_delta;
         }
 
         double dk=0.0,dw=0.0;
@@ -1783,7 +1981,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         }
         const auto inner=solve_sst_transport(
             mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,
-            k_bcs,omega_bcs,1,tolerance,face_values_now(),sources_now());
+            k_bcs,omega_bcs,200,tolerance,face_values_now(),sources_now());
         // Assemble a wall-consistent *raw Picard proposal* for Anderson and
         // line search. The old state remains untouched as the merit baseline.
         // Re-evaluation later uses the same refreshed omega/G operator.

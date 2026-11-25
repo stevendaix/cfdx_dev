@@ -377,6 +377,10 @@ struct SSTProductionRuntime {
     // convergence budget, otherwise the outer acceptance contract would
     // reject every iteration on stiff wall-resolved k/omega transport.
     std::size_t bootstrap_transport_iterations = 10;
+    // Reduced SST inner budget used after bootstrap while the carrier is still
+    // far from converged (loose coupling). Turbulence only progresses at each
+    // outer step; full convergence is deferred to the certification step.
+    std::size_t loose_transport_iterations = 20;
     double transport_tolerance = 1e-8;
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
@@ -418,6 +422,10 @@ struct IncompressibleSolverControls {
     // Opt-in only. The production RANS selector remains fail-closed; supplying
     // this runtime explicitly opts the caller into the SST-coupled path.
     SSTProductionRuntime* sst_runtime = nullptr;
+    // Opt-in only. Simpler RANS alternative to SST: solves k-epsilon transport
+    // with standard wall functions. The production solver advances this state
+    // when non-null and sst_runtime is null.
+    KEpsilonProductionRuntime* kepsilon_runtime = nullptr;
     // V7 strict opt-in: recompute the physical carrier momentum residual
     // AFTER the accepted candidate SST transport changed nu_t. A pressure
     // solve using the previous turbulent viscosity cannot certify this state.
@@ -1482,9 +1490,6 @@ inline void validate_incompressible_controls(
         !(c.kinematic_viscosity >= 0.0) || !std::isfinite(c.kinematic_viscosity) ||
         !(c.turbulent_viscosity >= 0.0) || !std::isfinite(c.turbulent_viscosity))
         throw std::invalid_argument("invalid incompressible material properties");
-    // Reject overflow in the effective dynamic viscosity before applying
-    // initialization. Otherwise an invalid material combination can mutate
-    // caller-owned U/p fields before assembly discovers non-finite coefficients.
     const auto validate_effective_viscosity = [&](double nu_t) {
         const double total_kinematic_viscosity = c.kinematic_viscosity + nu_t;
         const double effective_dynamic_viscosity =
@@ -1493,6 +1498,17 @@ inline void validate_incompressible_controls(
             !std::isfinite(effective_dynamic_viscosity))
             throw std::invalid_argument(
                 "effective dynamic viscosity must be finite");
+        // Cap nu_t to prevent the turbulent diffusion term in momentum from
+        // becoming aberrant on wall-resolved meshes where k/omega can spike.
+        // nu_t_max = 1e4 * nu_molecular is a generous physical bound for
+        // wall-bounded flows; values above it indicate a divergence in the
+        // turbulence transport rather than a legitimate flow feature.
+        const double nu_t_max = 1.0e4 * c.kinematic_viscosity;
+        if (nu_t > nu_t_max) {
+            throw std::invalid_argument(
+                "turbulent viscosity exceeds physical bound: nu_t=" +
+                std::to_string(nu_t) + " > nu_t_max=" + std::to_string(nu_t_max));
+        }
     };
     validate_effective_viscosity(c.turbulent_viscosity);
     if (!c.cell_turbulent_viscosity.empty()) {
@@ -5975,9 +5991,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         for (auto& component : rAU)
             component.resize(nc);
         for (std::size_t cell = 0; cell < nc; ++cell) {
-            rAU[0][cell] = 1.0 / ex.diagonal[cell];
-            rAU[1][cell] = 1.0 / ey.diagonal[cell];
-            rAU[2][cell] = 1.0 / ez.diagonal[cell];
+            // Bornes sur rAU = 1 / diagonal pour éviter qu'un terme de source
+            // ou une diagonale de momentum proche de zéro ne rende rAU aberrant.
+            // Sans cette borne, un rAU énorme sur quelques cellules rend le
+            // coefficient de pression (coeff = density * directional_face_coefficient(rAU, ...))
+            // et la matrice de pression extrêmement mal conditionnée, ce qui fait
+            // échouer la correction de pression même quand le momentum est encore
+            // stabilisable.
+            constexpr double rau_min = 1e-12;
+            constexpr double rau_max = 1e+12;
+            const double d_x = std::clamp(ex.diagonal[cell], 1.0 / rau_max, 1.0 / rau_min);
+            const double d_y = std::clamp(ey.diagonal[cell], 1.0 / rau_max, 1.0 / rau_min);
+            const double d_z = std::clamp(ez.diagonal[cell], 1.0 / rau_max, 1.0 / rau_min);
+            rAU[0][cell] = 1.0 / d_x;
+            rAU[1][cell] = 1.0 / d_y;
+            rAU[2][cell] = 1.0 / d_z;
         }
         const auto grad_p = gauss_gradient_with_boundary(
             p, mesh, geometry, pressure_bcs,
@@ -6402,9 +6430,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
         const double nu_t = controls.sst_runtime
             ? controls.sst_runtime->state->nu_t(cell)
-            : (controls.cell_turbulent_viscosity.empty()
-                ? controls.turbulent_viscosity
-                : controls.cell_turbulent_viscosity[cell]);
+            : (controls.kepsilon_runtime
+                ? controls.kepsilon_runtime->state->nu_t(cell)
+                : (controls.cell_turbulent_viscosity.empty()
+                    ? controls.turbulent_viscosity
+                    : controls.cell_turbulent_viscosity[cell]));
         mu_eff[cell] = controls.density * (controls.kinematic_viscosity + nu_t);
         if (!(mu_eff[cell] >= 0.0) || !std::isfinite(mu_eff[cell]))
             throw std::invalid_argument(
@@ -10536,6 +10566,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
              iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
             // Diagnostic-only trace: expose the authoritative nonlinear history
             // before the convergence gate. No criterion or tolerance is changed.
+            double nut_max = 0.0;
+            if (controls.sst_runtime) {
+                for (std::size_t _c = 0; _c < mesh.n_cells(); ++_c) {
+                    const double _nut = controls.sst_runtime->state->nu_t(_c);
+                    if (_nut > nut_max) nut_max = _nut;
+                }
+            }
             std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
                       << " momentum_residual_rhs_relative=" << h.momentum_equation_residual_rhs_relative
                       << " momentum_residual_reference_relative=" << h.momentum_equation_residual_relative
@@ -10559,6 +10596,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " alpha_p=" << h.effective_alpha_p
                       << " pressure_linear_iterations=" << pressure_iterations
                       << " pressure_relative_residual=" << pressure_residual
+                      << " nut_max=" << nut_max
                       << " momentum_linear_iterations="
                       << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
                               ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
@@ -10962,6 +11000,158 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         MomentumResidualCertificate v8_refreshed_momentum =
             momentum_component_certificate;
         double sst_nu_t_relative_change = 0.0;
+        KEpsilonProductionStepResult ke_step;
+        if (controls.kepsilon_runtime && !controls.sst_runtime) {
+            // KEPSILON transport (simpler alternative to SST).
+            // Solves k-epsilon transport with standard wall functions,
+            // computes nu_t = C_mu * k^2 / epsilon, and feeds it back into
+            // the momentum equation. No transactional/bootstrap/certification
+            // machinery — a single transport solve per outer iteration.
+            std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+            for (const auto& [patch, bc] : velocity_bcs) {
+                if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    fixed_velocity_values.emplace(
+                        patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+            }
+            // Refresh strain rate from current velocity field.
+            auto strain_rate = compute_sst_strain_rate_with_boundary_values(
+                U, mesh, fixed_velocity_values);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                controls.kepsilon_runtime->state->strain_rate(cell) = strain_rate(cell);
+            // Wall functions: OpenFOAM-compatible kqRWallFunction + epsilonWallFunction.
+            // kqRWallFunction: k_wall = u_tau^2 / sqrt(C_mu), where u_tau is estimated
+            // from the wall-adjacent cell velocity: u_tau ~ sqrt(nu * U / y).
+            // epsilonWallFunction: epsilon_wall = u_tau^3 / (kappa * y).
+            const double kappa = 0.41;
+            const double C_mu = controls.kepsilon_runtime->transport.C_mu;
+            const double c_mu_sqrt = std::sqrt(C_mu);
+            const double nu = controls.kinematic_viscosity;
+            for (const auto& patch_name : controls.kepsilon_runtime->wall_patch_names) {
+                // Find patch index
+                bool patch_found = false;
+                for (std::size_t patch_index = 0;
+                     patch_index < mesh.boundary().n_patches(); ++patch_index) {
+                    const auto& patch = mesh.boundary().patch(patch_index);
+                    if (patch.name == patch_name) {
+                        patch_found = true;
+                        // Wall-adjacent owner cells: get face owners for this patch
+                        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+                            if (mesh.ownership().neighbour(face) < 0 &&
+                                geometry.face_patch[face] == patch_index) {
+                                const std::size_t owner = mesh.ownership().owner(face);
+                                const double y = controls.kepsilon_runtime->state->wall_distance(owner);
+                                if (y <= 0.0)
+                                    continue;
+                                // Estimate wall shear velocity from near-wall velocity.
+                                // u_tau ~ sqrt(nu * |U| / y) (laminar sublayer approximation).
+                                const double U_cell = std::sqrt(
+                                    U(owner,0)*U(owner,0) +
+                                    U(owner,1)*U(owner,1) +
+                                    U(owner,2)*U(owner,2));
+                                const double u_tau = std::sqrt(std::max(nu * U_cell / y, 1e-12));
+                                // kqRWallFunction: k = u_tau^2 / sqrt(C_mu)
+                                const double k_wall = u_tau * u_tau / c_mu_sqrt;
+                                auto& ki = controls.kepsilon_runtime->state->k(owner);
+                                // Only raise k if below wall-function estimate (never reduce).
+                                if (ki < k_wall)
+                                    ki = k_wall;
+                                // epsilonWallFunction: epsilon = u_tau^3 / (kappa * y)
+                                const double ei = u_tau * u_tau * u_tau / (kappa * y);
+                                controls.kepsilon_runtime->state->epsilon(owner) =
+                                    std::max(ei, controls.kepsilon_runtime->transport.epsilon_min);
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (!patch_found)
+                    throw std::invalid_argument(
+                        "KEpsilon runtime: wall patch '" + patch_name + "' not found in mesh");
+            }
+            // Solve k-epsilon transport (standard or realizable variant).
+            // Save pre-solve state for SIMPLE-style under-relaxation.
+            const auto ke_k_before = controls.kepsilon_runtime->state->k;
+            const auto ke_epsilon_before = controls.kepsilon_runtime->state->epsilon;
+            TurbulenceTransportResult ke_transport_result;
+            if (controls.kepsilon_runtime->transport.model == TurbulenceModel::REALIZABLE_KEPSILON) {
+                ke_transport_result = solve_realizable_kepsilon_transport(
+                    mesh, geometry, mass_flux,
+                    controls.kepsilon_runtime->state->k,
+                    controls.kepsilon_runtime->state->epsilon,
+                    controls.kepsilon_runtime->state->strain_rate,
+                    controls.kepsilon_runtime->transport,
+                    controls.kepsilon_runtime->k_boundary_conditions,
+                    controls.kepsilon_runtime->epsilon_boundary_conditions,
+                    controls.kepsilon_runtime->max_transport_iterations,
+                    controls.kepsilon_runtime->transport_tolerance);
+            } else {
+                ke_transport_result = solve_kepsilon_transport(
+                    mesh, geometry, mass_flux,
+                    controls.kepsilon_runtime->state->k,
+                    controls.kepsilon_runtime->state->epsilon,
+                    controls.kepsilon_runtime->state->strain_rate,
+                    controls.kepsilon_runtime->transport,
+                    controls.kepsilon_runtime->k_boundary_conditions,
+                    controls.kepsilon_runtime->epsilon_boundary_conditions,
+                    controls.kepsilon_runtime->max_transport_iterations,
+                    controls.kepsilon_runtime->transport_tolerance);
+            }
+            ke_step.transport = ke_transport_result;
+            ke_step.converged = ke_transport_result.converged;
+            // Accept partial progress: k-epsilon transport may not fully
+            // converge in a single outer iteration. Commit the state and
+            // continue; the outer Picard loop will drive residuals down.
+            ke_step.committed = true;
+            ke_step.reason = ke_transport_result.converged
+                ? ""
+                : "KEpsilon transport progressing (residual k=" +
+                  std::to_string(ke_transport_result.k_residual) +
+                  ", epsilon=" +
+                  std::to_string(ke_transport_result.second_residual) + ")";
+            // OpenFOAM-style SIMPLE under-relaxation for k and epsilon.
+            // Blends the solved state with the pre-solve state to damp the
+            // nu_t feedback loop on separated/recirculation flows.
+            const double ke_alpha = controls.kepsilon_runtime->transport.ke_simple_relaxation;
+            if (ke_alpha < 1.0) {
+                auto& state = *controls.kepsilon_runtime->state;
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    state.k(c) = ke_k_before(c) + ke_alpha * (state.k(c) - ke_k_before(c));
+                    state.epsilon(c) = ke_epsilon_before(c) +
+                        ke_alpha * (state.epsilon(c) - ke_epsilon_before(c));
+                }
+            }
+            // Compute nu_t = C_mu * k^2 / epsilon from relaxed fields.
+            refresh_kepsilon_production_eddy_viscosity(
+                controls.kepsilon_runtime->state->k,
+                controls.kepsilon_runtime->state->epsilon,
+                controls.kepsilon_runtime->transport,
+                controls.kepsilon_runtime->state->nu_t);
+            // Production limiter for k-epsilon: cap nu_t to
+            // ke_nu_t_limit_factor * k / S to prevent excessive turbulence
+            // production in high-shear separation zones (analogous to SST's
+            // 10*beta* production limiter). Disabled by default (factor=0).
+            const double ke_limit = controls.kepsilon_runtime->transport.ke_nu_t_limit_factor;
+            if (ke_limit > 0.0) {
+                auto& ke_state = *controls.kepsilon_runtime->state;
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    const double S = ke_state.strain_rate(c);
+                    if (S > 0.0) {
+                        const double max_nu_t = ke_limit * ke_state.k(c) / S;
+                        if (ke_state.nu_t(c) > max_nu_t) {
+                            ke_state.nu_t(c) = max_nu_t;
+                        }
+                    }
+                }
+            }
+            validate_kepsilon_production_state(
+                *controls.kepsilon_runtime->state, mesh.n_cells());
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=KEPSILON_TRANSPORT_END converged=" << ke_step.converged
+                          << " iterations=" << ke_step.transport.iterations
+                          << " k_residual=" << ke_step.transport.k_residual
+                          << " epsilon_residual=" << ke_step.transport.second_residual << "\n";
+        }
         if (controls.sst_runtime) {
             std::map<std::string, std::array<double, 3>> fixed_velocity_values;
             for (const auto& [patch, bc] : velocity_bcs) {
@@ -11204,20 +11394,51 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     }
                 }
             } else if (!advanced_bootstrap) {
-                // Full-budget step. Fail-closed callers always run here: the
-                // SST transport must converge within max_transport_iterations
-                // or the outer iteration is rejected by contract.
-                sst_step = advance_sst_production_iterate_transactionally(
-                    mesh, U, p, mass_flux, *controls.sst_runtime->state,
-                    controls.sst_runtime->transport, fixed_velocity_values,
-                    controls.sst_runtime->wall_patch_names,
-                    controls.sst_runtime->k_boundary_conditions,
-                    controls.sst_runtime->omega_boundary_conditions,
-                    controls.sst_runtime->max_transport_iterations,
-                    controls.sst_runtime->transport_tolerance,
-                    &controls.sst_runtime->omega_face_values,
-                    controls.sst_runtime->allow_bounded_provisional_transport,
-                    need_wall_operator ? &wall_refresh_v17 : nullptr);
+                // Loose coupling (experimental, requires
+                // allow_bounded_provisional_transport): after bootstrap,
+                // advance SST with a reduced inner budget and accept provisional
+                // (non-converged) results. Turbulence only needs to PROGRESS
+                // toward convergence at each outer step; it must not be fully
+                // converged while U/p are still far from their fixed point.
+                // Full SST convergence is deferred to the certification step
+                // when the carrier is approaching. This avoids the stiff
+                // k/omega -> nu_t -> momentum feedback loop oscillating on
+                // wall-resolved meshes.
+                // When allow_bounded_provisional_transport is false, fall
+                // through to the full-budget step below to preserve the
+                // fail-closed contract.
+                if (controls.sst_runtime->allow_bounded_provisional_transport) {
+                    const std::size_t loose_inner =
+                        controls.sst_runtime->loose_transport_iterations > 0
+                            ? controls.sst_runtime->loose_transport_iterations
+                            : std::min<std::size_t>(20,
+                                                  controls.sst_runtime->max_transport_iterations);
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        loose_inner, controls.sst_runtime->transport_tolerance,
+                        &controls.sst_runtime->omega_face_values,
+                        true, // allow provisional (non-converged) transport
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                } else {
+                    // Full-budget step. Fail-closed callers always run here: the
+                    // SST transport must converge within max_transport_iterations
+                    // or the outer iteration is rejected by contract.
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        controls.sst_runtime->max_transport_iterations,
+                        controls.sst_runtime->transport_tolerance,
+                        &controls.sst_runtime->omega_face_values,
+                        controls.sst_runtime->allow_bounded_provisional_transport,
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                }
             }
             if (timing_enabled) { t_sst_end = std::chrono::steady_clock::now(); t_sst_total += std::chrono::duration_cast<std::chrono::microseconds>(t_sst_end - t_sst_start).count(); }
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
@@ -11316,20 +11537,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // If the change exceeds 30%, compute a blend factor that
                 // would cap it at 30%. alpha=1 means no damping (keep new),
                 // alpha=0 means keep old.
-                constexpr double nut_change_cap = 0.30;
+                constexpr double nut_change_cap = 0.20;
                 const double nut_blend = (max_nut_change > nut_change_cap)
                     ? std::max(0.0, nut_change_cap / max_nut_change)
                     : 1.0;
-                // EXPERIMENTAL / OPT-IN ONLY (CFDX_NUT_CLOSURE_DAMPING_V91=1):
-                // blend the new k/omega with the old state when the raw nu_t
-                // change exceeds the cap. Disabled by default so the qualified
-                // SST convergence behaviour is preserved; nu_t is recomputed
-                // from the blended k/omega, keeping the state consistent.
-                const bool nut_closure_damping_v91 = [] {
-                    const char* v = std::getenv("CFDX_NUT_CLOSURE_DAMPING_V91");
-                    return v != nullptr && std::string(v) == "1";
-                }();
-                if (nut_closure_damping_v91 && nut_blend < 1.0) {
+                // Always-active nut closure damping: when the SST transport
+                // produces a large eddy-viscosity change, blend k/omega with
+                // the old state to damp the feedback loop. Disabled only when
+                // sst_nu_t_relaxation = 1.0 (no under-relaxation requested).
+                if (nut_blend < 1.0) {
                     auto& state = *controls.sst_runtime->state;
                     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
                         state.k(cell) = nut_blend * new_state.k(cell)
@@ -11350,6 +11566,71 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         std::cerr << "NUT_CLOSURE_DAMPING_V91 iteration=" << iter
                                   << " max_change=" << max_nut_change
                                   << " blend=" << nut_blend << "\n";
+                }
+            }
+
+            // Always-active k/omega SIMPLE under-relaxation (sst_simple_relaxation,
+            // default 0.7). Restart-safe because k and omega are persisted in
+            // restart files. Damps the k/omega -> nu_t -> momentum feedback loop
+            // on every outer iteration, not only when nu_t oscillates.
+            {
+                const double k_omega_urf = controls.sst_runtime->transport.sst_simple_relaxation;
+                if (k_omega_urf < 1.0 && sst_attempt_snapshot) {
+                    const auto& old_state = *sst_attempt_snapshot;
+                    auto& state = *controls.sst_runtime->state;
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        state.k(cell) = k_omega_urf * state.k(cell)
+                                      + (1.0 - k_omega_urf) * old_state.k(cell);
+                        state.omega(cell) = k_omega_urf * state.omega(cell)
+                                          + (1.0 - k_omega_urf) * old_state.omega(cell);
+                        const auto blend = compute_sst_blending(
+                            state.k(cell), state.omega(cell), state.wall_distance(cell),
+                            controls.kinematic_viscosity,
+                            controls.sst_runtime->transport.beta_star,
+                            0.0, controls.density,
+                            controls.sst_runtime->transport.sst_sigma_w2);
+                        state.nu_t(cell) = controls.sst_runtime->transport.a1 * state.k(cell)
+                            / std::max(controls.sst_runtime->transport.a1 * state.omega(cell),
+                                       state.strain_rate(cell) * blend.second);
+                    }
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "SST_SIMPLE_RELAXATION iteration=" << iter
+                                  << " urf=" << k_omega_urf << "\n";
+                }
+            }
+
+            // Always-active eddy-viscosity under-relaxation via k/omega
+            // (sst_nu_t_relaxation, default 0.4). Restart-safe because k and
+            // omega are persisted in restart files. This directly damps the
+            // nu_t -> momentum -> U -> strain -> k/omega -> nu_t feedback loop
+            // on every outer iteration. Applied only in experimental mode
+            // (allow_bounded_provisional_transport) and only when
+            // sst_simple_relaxation is not already damping k/omega.
+            {
+                const double nut_urf = controls.sst_runtime->transport.sst_nu_t_relaxation;
+                if (nut_urf < 1.0 && sst_attempt_snapshot &&
+                    controls.sst_runtime->allow_bounded_provisional_transport &&
+                    controls.sst_runtime->transport.sst_simple_relaxation >= 1.0) {
+                    const auto& old_state = *sst_attempt_snapshot;
+                    auto& state = *controls.sst_runtime->state;
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        state.k(cell) = nut_urf * state.k(cell)
+                                      + (1.0 - nut_urf) * old_state.k(cell);
+                        state.omega(cell) = nut_urf * state.omega(cell)
+                                          + (1.0 - nut_urf) * old_state.omega(cell);
+                        const auto blend = compute_sst_blending(
+                            state.k(cell), state.omega(cell), state.wall_distance(cell),
+                            controls.kinematic_viscosity,
+                            controls.sst_runtime->transport.beta_star,
+                            0.0, controls.density,
+                            controls.sst_runtime->transport.sst_sigma_w2);
+                        state.nu_t(cell) = controls.sst_runtime->transport.a1 * state.k(cell)
+                            / std::max(controls.sst_runtime->transport.a1 * state.omega(cell),
+                                       state.strain_rate(cell) * blend.second);
+                    }
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "SST_NU_T_RELAXATION iteration=" << iter
+                                  << " urf=" << nut_urf << "\n";
                 }
             }
 

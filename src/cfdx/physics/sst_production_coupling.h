@@ -423,6 +423,126 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     return metadata;
 }
 
+// ============================================================================
+// K-epsilon production state and runtime (simpler alternative to SST)
+// ============================================================================
+
+struct KEpsilonProductionState {
+    cfdx::core::Field<double, cfdx::core::Location::CELL> k;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> epsilon;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> nu_t;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> wall_distance;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> strain_rate;
+
+    explicit KEpsilonProductionState(std::size_t n_cells)
+        : k(n_cells, "k", "m2/s2", 1),
+          epsilon(n_cells, "epsilon", "m2/s3", 1),
+          nu_t(n_cells, "nu_t", "m2/s", 1),
+          wall_distance(n_cells, "wall_distance", "m", 1),
+          strain_rate(n_cells, "kepsilon_strain_rate", "1/s", 1)
+    {
+        if (n_cells == 0)
+            throw std::invalid_argument("KEpsilon production state requires at least one cell");
+    }
+};
+
+inline void validate_kepsilon_production_state(const KEpsilonProductionState& state,
+                                               std::size_t expected_cells)
+{
+    const auto valid_shape = [expected_cells](const auto& field) {
+        return field.size() == expected_cells && field.dimension() == 1;
+    };
+    if (expected_cells == 0 ||
+        !valid_shape(state.k) || !valid_shape(state.epsilon) ||
+        !valid_shape(state.nu_t) || !valid_shape(state.wall_distance) ||
+        !valid_shape(state.strain_rate))
+        throw std::invalid_argument("KEpsilon production state has an invalid field shape");
+
+    for (std::size_t cell = 0; cell < expected_cells; ++cell) {
+        if (!std::isfinite(state.k(cell)) || state.k(cell) < 0.0 ||
+            !std::isfinite(state.epsilon(cell)) || state.epsilon(cell) <= 0.0 ||
+            !std::isfinite(state.nu_t(cell)) || state.nu_t(cell) < 0.0 ||
+            !std::isfinite(state.wall_distance(cell)) || state.wall_distance(cell) <= 0.0 ||
+            !std::isfinite(state.strain_rate(cell)) || state.strain_rate(cell) < 0.0)
+            throw std::invalid_argument(
+                "KEpsilon production state contains a non-finite or physically invalid cell value");
+    }
+}
+
+struct KEpsilonProductionRuntime {
+    KEpsilonProductionState* state = nullptr;
+    TurbulenceTransportControls transport;
+    ScalarBoundaryConditions k_boundary_conditions;
+    ScalarBoundaryConditions epsilon_boundary_conditions;
+    std::vector<std::string> wall_patch_names;
+    std::size_t max_transport_iterations = 100;
+    double transport_tolerance = 1e-8;
+    bool allow_bounded_provisional_transport = false;
+};
+
+struct KEpsilonProductionStepResult {
+    bool committed = false;
+    bool converged = false;
+    bool provisional = false;
+    std::string reason;
+    TurbulenceTransportResult transport;
+};
+
+// Compute k-epsilon eddy viscosity: nu_t = C_mu * k^2 / epsilon
+inline void refresh_kepsilon_production_eddy_viscosity(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& k,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& epsilon,
+    const TurbulenceTransportControls& controls,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& nu_t)
+{
+    const std::size_t n = k.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const double ki = std::max(k(i), controls.k_min);
+        const double ei = std::max(epsilon(i), controls.epsilon_min);
+        nu_t(i) = controls.C_mu * ki * ki / ei;
+    }
+}
+
+// Standard k-epsilon wall function for epsilon at wall-adjacent cells.
+// epsilon_wall = C_mu^(3/4) * sqrt(k) * C_mu^(1/4) ... -> C_mu^0.75 * k^1.5 / (kappa * y)
+inline double kepsilon_wall_epsilon(double k, double y, double C_mu, double kappa)
+{
+    if (k <= 0.0 || y <= 0.0 || C_mu <= 0.0 || kappa <= 0.0)
+        return 0.0;
+    const double c_mu_075 = std::pow(C_mu, 0.75);
+    return c_mu_075 * std::pow(k, 1.5) / (kappa * y);
+}
+
+// Construct the initial production-owned KEpsilon state from explicit case data.
+inline KEpsilonProductionState initialize_kepsilon_production_state(
+    const cfdx::core::Mesh& mesh,
+    const TurbulenceTransportControls& controls,
+    const std::vector<double>& wall_distance,
+    const std::vector<double>& strain_rate,
+    const double initial_k,
+    const double initial_epsilon)
+{
+    const std::size_t n = mesh.n_cells();
+    if (n == 0 || wall_distance.size() != n || strain_rate.size() != n)
+        throw std::invalid_argument(
+            "KEpsilon production initialization requires mesh-sized wall-distance and strain-rate fields");
+
+    KEpsilonProductionState state(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        state.k(i) = initial_k;
+        state.epsilon(i) = initial_epsilon;
+        state.wall_distance(i) = wall_distance[i];
+        state.strain_rate(i) = strain_rate[i];
+    }
+    // Compute initial nu_t
+    std::vector<double> F2(n, 1.0); // not used for k-epsilon
+    refresh_kepsilon_production_eddy_viscosity(state.k, state.epsilon, controls, state.nu_t);
+    validate_kepsilon_production_state(state, n);
+    return state;
+}
+
+// ============================================================================
+
 // Construct the initial production-owned SST state from explicit case data.
 // Wall distance and strain rate are required inputs from the production mesh and
 // current carrier field; this helper deliberately does not invent either field.

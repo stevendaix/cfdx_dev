@@ -164,10 +164,16 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         for(std::size_t i=0;i<n;++i) {
             const double ki=std::max(k(i),controls.k_min);
             const double ei=std::max(epsilon(i),controls.epsilon_min);
-            sk(i)=P(i);
-            spk(i)=-controls.density*ei/ki;
-            se(i)=controls.C1*P(i)*ei/ki;
-            spe(i)=-controls.density*controls.C2*ei/ki;
+            const double destruction = controls.density * ei / ki;
+            // Treat destruction explicitly (move to sk/se) rather than
+            // implicitly (sp/spe). The implicit destruction coefficient
+            // -rho*epsilon/k can be O(1e3) near the inlet, which makes the
+            // scalar linear system ill-conditioned. Explicit treatment is
+            // more robust; convergence is driven by the outer Picard loop.
+            sk(i)=P(i) - destruction;
+            spk(i)=0.0;
+            se(i)=controls.C1*P(i)*ei/ki - controls.density*controls.C2*ei/ki;
+            spe(i)=0.0;
         }
 
         std::vector<double> gamma_k(n), gamma_e(n);
@@ -183,10 +189,10 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
+            nullptr,nullptr,nullptr,&gamma_k, controls.ke_convection_scheme, &k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_e, ConvectionScheme::UPWIND, &epsilon);
+            nullptr,nullptr,nullptr,&gamma_e, controls.ke_convection_scheme, &epsilon);
 
         ScalarSolveControls sc;
         sc.max_iterations=2000;
@@ -349,11 +355,17 @@ inline RealizableKEpsilonCellSources realizable_kepsilon_cell_sources(
     const double production = c.density*q.nut*strain*strain;
     const double eta = strain*ki/ei;
     q.c1 = std::max(0.43, eta/(eta + 5.0));
-    q.sk = production;
-    q.spk = -c.density*ei/ki;
-    q.se = q.c1*c.density*strain*ei;
-    q.spe = -c.density*c.realizable_C2*ei /
+    const double destruction_k = c.density*ei/ki;
+    const double destruction_e = c.density*c.realizable_C2*ei /
         (ki + std::sqrt(c.molecular_viscosity*ei));
+    // Treat destruction explicitly (move to sk/se) rather than implicitly
+    // (sp/spe). The implicit destruction coefficient -rho*epsilon/k can be
+    // O(1e3) near the inlet, which makes the scalar linear system
+    // ill-conditioned.
+    q.sk = production - destruction_k;
+    q.spk = 0.0;
+    q.se = q.c1*c.density*strain*ei - destruction_e;
+    q.spe = 0.0;
     q.gamma_k = c.density*(
         c.molecular_viscosity + q.nut/c.realizable_sigma_k);
     q.gamma_epsilon = c.density*(
@@ -404,10 +416,10 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
+            nullptr,nullptr,nullptr,&gamma_k, controls.ke_convection_scheme, &k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_epsilon, ConvectionScheme::UPWIND, &epsilon);
+            nullptr,nullptr,nullptr,&gamma_epsilon, controls.ke_convection_scheme, &epsilon);
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector ks(n,0.0), es(n,0.0);
         for (std::size_t i=0; i<n; ++i) { ks(i)=k(i); es(i)=epsilon(i); }

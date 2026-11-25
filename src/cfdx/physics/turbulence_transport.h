@@ -197,6 +197,48 @@ struct TurbulenceTransportControls {
     // changing the physical fixed-point.
     bool sst_coupled_2x2_komega = false;
     double sst_coupled_2x2_damping = 0.1;
+    // Pseudo-time stepping for k/omega transport. Adds an artificial mass term
+    // (k - k_prev)/dt to the k equation and (omega - omega_prev)/dt to the
+    // omega equation, acting as implicit under-relaxation that damps the
+    // stiff k<->omega source coupling on wall-resolved meshes. Smaller dt =
+    // stronger damping (safer but slower); larger dt = weaker damping.
+    // Set to 0.0 to disable. Typical values: 1e-3 to 1e-1 (non-dimensional).
+    double sst_pseudo_transient_dt = 0.0;
+    // Relaxed transport tolerance for k/omega. Instead of converging to 1e-8
+    // at every outer iteration (too strict while U/p are still far from their
+    // fixed point), use this looser tolerance during the outer loop and only
+    // tighten at the final certification step. Default 1e-4.
+    double sst_transport_tolerance_relaxed = 1e-4;
+    // When true, transport runs with sst_transport_tolerance_relaxed and does
+    // not require full convergence at every outer iteration. Full convergence
+    // is deferred to the certification step when the carrier is approaching.
+    bool sst_pseudo_transient_experimental = false;
+    // OpenFOAM-style SIMPLE outer under-relaxation for k-epsilon. After the
+    // k-epsilon transport returns new (k, epsilon), the caller blends:
+    //   k_new = k_old + alpha * (k_solved - k_old)
+    //   epsilon_new = epsilon_old + alpha * (epsilon_solved - epsilon_old)
+    // and recomputes nu_t from the relaxed fields. Default 1.0 preserves the
+    // historical no-relaxation path.
+    double ke_simple_relaxation = 1.0;
+    // Production limiter for k-epsilon: caps nu_t to C_limit * k / S in
+    // high-shear zones to prevent excessive turbulence production and
+    // premature reattachment in separated flows (analogous to SST's
+    // 10*beta* production limiter). Default 0.0 disables the limiter.
+    double ke_nu_t_limit_factor = 0.0;
+    // Convection scheme for k-epsilon transport. UPWIND (first-order) is the
+    // historical default but causes excessive numerical diffusion in separated
+    // shear layers, leading to premature reattachment on cases like BFS.
+    // SECOND_ORDER_UPWIND or TVD_VANLEER reduce numerical diffusion and improve
+    // reattachment-length prediction. Default UPWIND preserves existing behaviour.
+    ConvectionScheme ke_convection_scheme = ConvectionScheme::UPWIND;
+    // OpenFOAM-style under-relaxation of the eddy viscosity nu_t. After the
+    // SST transport computes a new nu_t from (k, omega), the caller blends:
+    //   nu_t_new = URF * nu_t_computed + (1 - URF) * nu_t_old
+    // This directly damps the k/omega -> nu_t -> momentum -> U -> strain ->
+    // k/omega feedback loop, which is the dominant instability on
+    // wall-resolved meshes. Default 0.4 follows RANS best practice (nu_t is
+    // under-relaxed more aggressively than k/omega). Set to 1.0 to disable.
+    double sst_nu_t_relaxation = 0.4;
 };
 
 struct TurbulenceBoundDiagnostics {
@@ -387,6 +429,17 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !(c.sst_linear_relaxation > 0.0 && c.sst_linear_relaxation <= 1.0) ||
        !std::isfinite(c.sst_simple_relaxation) ||
        !(c.sst_simple_relaxation > 0.0 && c.sst_simple_relaxation <= 1.0) ||
+       !std::isfinite(c.ke_simple_relaxation) ||
+       !(c.ke_simple_relaxation > 0.0 && c.ke_simple_relaxation <= 1.0) ||
+       !std::isfinite(c.sst_nu_t_relaxation) ||
+       !(c.sst_nu_t_relaxation > 0.0 && c.sst_nu_t_relaxation <= 1.0) ||
+       !std::isfinite(c.sst_coupled_2x2_damping) ||
+       !(c.sst_coupled_2x2_damping > 0.0 && c.sst_coupled_2x2_damping <= 1.0) ||
+       !std::isfinite(c.sst_transport_tolerance_relaxed) ||
+       !(c.sst_transport_tolerance_relaxed > 0.0 && c.sst_transport_tolerance_relaxed <= 1e-2) ||
+       (c.sst_pseudo_transient_dt < 0.0) ||
+       !std::isfinite(c.ke_nu_t_limit_factor) ||
+       !(c.ke_nu_t_limit_factor >= 0.0 && c.ke_nu_t_limit_factor <= 10.0) ||
        (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||
