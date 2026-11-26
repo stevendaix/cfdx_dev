@@ -10,6 +10,12 @@ computed (convective, diffusive, pressure correction, etc.).
 
 Boundary faces are deliberately excluded: their contribution is a physical
 boundary flux and must appear in the global balance rather than cancel.
+
+This is a topological conservation theorem only. It does not prove that a
+chosen flux is consistent with the PDE, bounded, monotone, energy stable,
+coercive, or convergent. Those properties depend on the flux reconstruction,
+diffusion coefficients, boundary treatment, discrete inner products and
+linear/nonlinear solver; they require separate contracts.
 -/
 
 namespace CFDX.FiniteVolume
