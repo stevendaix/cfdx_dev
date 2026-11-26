@@ -273,12 +273,12 @@ repeats the verification on a genuinely skewed cell with vertices
 products, kernel-checked by `skew_tetra_edges_p1_p3_not_orthogonal` and
 `skew_tetra_edges_p2_p3_not_orthogonal`. Lean proves exactly:
 
-- the edge-determinant volume relation \`6 V = 2\`, i.e. \`V = 1/3\`
+- the edge-determinant volume relation `6 V = 2`, i.e. `V = 1/3`
   (`skew_tetra_volume_edge_determinant`);
 - exact closure of the four outward-oriented face-area vectors
   (`skew_tetra_area_closure`);
 - the nine first-moment components
-  \`sum_f C_{f,i} S_{f,j} = V delta_{ij}\`
+  `sum_f C_{f,i} S_{f,j} = V delta_{ij}`
   (`skew_tetra_first_moment`);
 - exact affine Gauss numerators for exact face-centre values
   (`skew_tetra_affine_gauss_numerator_exact`).
