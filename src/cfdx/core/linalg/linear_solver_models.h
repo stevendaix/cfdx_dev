@@ -377,8 +377,9 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     // positive Gershgorin lower bound (a sufficient SPD certificate).
     // Canonical pressure-Poisson/diffusion operators retain their established
     // structural contract, including the constant-nullspace case.
+    const bool generic_spd_problem = problem == LinearProblemKind::General;
     const bool spd_qualified = cg_problem ||
-        (characteristics.numerically_symmetric &&
+        (generic_spd_problem && characteristics.numerically_symmetric &&
          characteristics.positive_diagonal &&
          characteristics.strictly_diagonally_dominant);
     if (plan.krylov == KrylovModel::CG &&
