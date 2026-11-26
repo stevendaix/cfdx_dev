@@ -263,6 +263,38 @@ path is the interpolation loop in `compute_gradient_gauss`, followed by the
 cell-face CSR accumulation with owner-positive and neighbour-negative
 `face_Sf`, and division by the positive cell volume.
 
+## Skew-tetrahedron generalization
+
+The geometric moment identities were so far checked only on the axis-aligned
+reference tetrahedron. The new module `CFDX.Geometry.SkewTetrahedron`
+repeats the verification on a genuinely skewed cell with vertices
+(0,0,0), (1,0,0), (0,2,0) and (1,1,1), whose edge directions `p1 - p0` and
+`p3 - p0` (respectively `p2 - p0` and `p3 - p0`) have nonzero dot
+products, kernel-checked by `skew_tetra_edges_p1_p3_not_orthogonal` and
+`skew_tetra_edges_p2_p3_not_orthogonal`. Lean proves exactly:
+
+- the edge-determinant volume relation \`6 V = 2\`, i.e. \`V = 1/3\`
+  (`skew_tetra_volume_edge_determinant`);
+- exact closure of the four outward-oriented face-area vectors
+  (`skew_tetra_area_closure`);
+- the nine first-moment components
+  \`sum_f C_{f,i} S_{f,j} = V delta_{ij}\`
+  (`skew_tetra_first_moment`);
+- exact affine Gauss numerators for exact face-centre values
+  (`skew_tetra_affine_gauss_numerator_exact`).
+
+The C++ counterpart in `tests/unit/test_oriented_numerics.cpp` builds the
+same tetrahedron in the production `Mesh`/`GeometryCache` structures and
+checks the volume, the four oriented face-area vectors, oriented surface
+closure, and all nine first-moment components through the runtime cache.
+
+Together with the two-point interpolation counterexample, this isolates the
+source of the affine defect: skewness breaks the clamped two-point face
+interpolation, while the Gauss operator itself remains affine-exact on the
+skewed cell whenever the supplied face values are the exact affine values at
+the face centres. This remains a reference-cell result on one skewed simplex;
+arbitrary polyhedral cells and runtime CSR conformance are still open.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
