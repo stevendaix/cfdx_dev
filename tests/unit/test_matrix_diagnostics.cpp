@@ -77,6 +77,27 @@ int main() {
         EXPECT_TRUE(!c.numerically_symmetric);
     });
 
+    run_case("matrix_characteristics_reject_nonfinite_coefficients_before_spd_qualification", [] {
+        SparseMatrix nan_matrix(2, 2);
+        nan_matrix.push_back(0, 0, 2.0);
+        nan_matrix.push_back(0, 1, std::numeric_limits<double>::quiet_NaN());
+        nan_matrix.push_back(1, 0, std::numeric_limits<double>::quiet_NaN());
+        nan_matrix.push_back(1, 1, 2.0);
+        nan_matrix.finalize();
+
+        const auto nan_diagnostics = diagnose_matrix(nan_matrix, 1e-14, false);
+        EXPECT_TRUE(!nan_diagnostics.finite);
+        EXPECT_THROW(measure_matrix_characteristics(nan_matrix), std::invalid_argument);
+
+        SparseMatrix infinite_matrix(2, 2);
+        infinite_matrix.push_back(0, 0, 2.0);
+        infinite_matrix.push_back(0, 1, std::numeric_limits<double>::infinity());
+        infinite_matrix.push_back(1, 0, std::numeric_limits<double>::infinity());
+        infinite_matrix.push_back(1, 1, 2.0);
+        infinite_matrix.finalize();
+        EXPECT_THROW(measure_matrix_characteristics(infinite_matrix), std::invalid_argument);
+    });
+
     run_case("row_and_column_scaling_are_explicit", [] {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1e-6);
