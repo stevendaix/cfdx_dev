@@ -29,6 +29,15 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # This job does not consume the optional Microsoft apt feed.
+          # Remove it from the ephemeral runner because intermittent HTTP 403
+          # responses otherwise abort apt-get update before CFDX dependencies
+          # can be installed.
+          for source in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$source" ] && grep -q "packages.microsoft.com" "$source"; then
+              sudo rm -f "$source"
+            fi
+          done
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
 
