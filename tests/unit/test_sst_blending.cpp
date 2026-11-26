@@ -401,6 +401,62 @@ int main()
         EXPECT_TRUE(r.last_second_linear_after>=r.last_second_linear_before);
         EXPECT_TRUE(r.k_residual>0 || r.second_residual>0);
     });
+    run_case("sst_pseudo_time_does_not_enter_steady_residual_certificate", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double,Location::FACE> flux(mesh.n_faces(),"phi","kg/s",1);
+        flux.fill(0.0);
+        Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1),
+            omega(mesh.n_cells(),"omega","1/s",1),
+            strain(mesh.n_cells(),"strain","1/s",1),
+            F1(mesh.n_cells(),"F1","1",1), F2(mesh.n_cells(),"F2","1",1);
+        k.fill(0.4); omega.fill(20.0); strain.fill(10.0);
+        F1.fill(0.8); F2.fill(0.7);
+        ScalarBoundaryConditions kb, ob;
+        for (const char* patch : {"x0", "x1", "walls"}) {
+            kb[patch]={ScalarBoundaryType::FIXED_VALUE,0.03,0.0};
+            ob[patch]={ScalarBoundaryType::FIXED_VALUE,2.0,0.0};
+        }
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.sst_pseudo_transient_dt = 0.05;
+        controls.sst_sequential_omega_first = false;
+
+        // Independent unshifted steady source/operator oracle at the start
+        // of this one-step Picard solve.
+        const auto cross = sst_boundary_gradient_dot(
+            k,omega,mesh,geometry,kb,ob,nullptr,
+            controls.sst_use_wls_boundary_gradients,
+            controls.sst_gradient_dimension);
+        const auto q = sst_cell_sources(
+            k(0),omega(0),strain(0),F1(0),F2(0),cross[0],controls,-1);
+        Field<double,Location::CELL> sk(mesh.n_cells(),"Sk","W/m3",1),
+            sw(mesh.n_cells(),"Sw","W/m3",1),
+            spk(mesh.n_cells(),"Spk","kg/m3/s",1),
+            spw(mesh.n_cells(),"Spw","kg/m3/s",1);
+        sk.fill(q.sk); sw.fill(q.sw); spk.fill(q.spk); spw.fill(q.spw);
+        const std::vector<double> gamma_k(mesh.n_cells(),q.gamma_k),
+            gamma_w(mesh.n_cells(),q.gamma_w);
+        const auto physical_k = assemble_scalar_equation(
+            mesh,geometry,flux,0.0,sk,spk,kb,true,nullptr,nullptr,nullptr,
+            &gamma_k,ConvectionScheme::UPWIND,&k,nullptr,true,nullptr);
+        const auto physical_omega = assemble_scalar_equation(
+            mesh,geometry,flux,0.0,sw,spw,ob,true,nullptr,nullptr,nullptr,
+            &gamma_w,ConvectionScheme::UPWIND,&omega,nullptr,true,nullptr);
+
+        const auto result = solve_sst_transport(
+            mesh,geometry,flux,k,omega,strain,F1,F2,controls,kb,ob,1,1e-12);
+        Vector k_returned(mesh.n_cells()), omega_returned(mesh.n_cells());
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            k_returned(cell)=k(cell);
+            omega_returned(cell)=omega(cell);
+        }
+        EXPECT_NEAR(result.k_residual,
+            scalar_equation_residual_inf(physical_k,k_returned),1e-10);
+        EXPECT_NEAR(result.second_residual,
+            scalar_equation_residual_inf(physical_omega,omega_returned),1e-10);
+    });
     run_case("v13_sst_newton_sink_preserves_the_exact_omega_source", [] {
         TurbulenceTransportControls old;
         old.model = TurbulenceModel::SST;
