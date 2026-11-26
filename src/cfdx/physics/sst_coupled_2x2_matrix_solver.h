@@ -4,8 +4,15 @@
 //
 // Résout le système bloc :
 //
-//   [ A_kk   D_kw ] [ dk ]   [ r_k ]
-//   [ D_wk   A_ww ] [ dw ] = [ r_w ]
+//   [ A_kk   C_kw ] [ k ]   [ b_k + C_kw*w0 ]
+//   [ C_wk   A_ww ] [ w ] = [ b_w + C_wk*k0 ]
+//
+// C_kw=-d(S_k)/d(omega) and C_wk=-d(S_omega)/d(k), in derivatives
+// with respect to the dimensional fields (not logarithmic variables).
+// The affine RHS shift makes the tangent pass through the current iterate,
+// preserving the original segregated FV residual at the linearization point.
+// The assembled ScalarEquation RHS is used so boundary and relaxation terms
+// are not silently dropped.
 //
 // par itération de Richardson préconditionnée par bloc-Jacobi.
 //
@@ -50,12 +57,10 @@ struct Coupled2x2SolveResult {
 inline Coupled2x2SolveResult solve_coupled_2x2_matrix(
     const ScalarEquation& eqk,
     const ScalarEquation& eqw,
-    const std::vector<double>& b_k,   // côté explicite de k (sk = Pk)
-    const std::vector<double>& b_w,   // côté explicite de omega (sw)
     std::vector<double>& k,
     std::vector<double>& w,
-    const std::vector<double>& d_kw,  // dPk/dlog(omega)  (diagonal, pas de destruction)
-    const std::vector<double>& d_wk,  // dSw/dlog(k)      (diagonal, pas de destruction)
+    const std::vector<double>& d_kw,  // -d(S_k)/d(omega), dimensional cross coefficient
+    const std::vector<double>& d_wk,  // -d(S_omega)/d(k), dimensional cross coefficient
     double relaxation = 0.7,
     std::size_t max_iterations = 10,
     double tolerance = 1e-4,
@@ -64,6 +69,32 @@ inline Coupled2x2SolveResult solve_coupled_2x2_matrix(
 {
     const std::size_t n = k.size();
     Coupled2x2SolveResult result;
+    if (n == 0 || w.size() != n || d_kw.size() != n || d_wk.size() != n ||
+        eqk.rhs.size() != n || eqw.rhs.size() != n ||
+        eqk.matrix.n_rows() != n || eqk.matrix.n_cols() != n ||
+        eqw.matrix.n_rows() != n || eqw.matrix.n_cols() != n ||
+        eqk.diagonal.size() != n || eqw.diagonal.size() != n ||
+        !(relaxation > 0.0 && relaxation <= 1.0) ||
+        !std::isfinite(relaxation) || max_iterations == 0 ||
+        !(tolerance > 0.0) || !std::isfinite(tolerance) ||
+        !(k_min > 0.0) || !(omega_min > 0.0))
+        throw std::invalid_argument("SST coupled 2x2: invalid system or controls");
+
+    // Start from the complete assembled scalar RHS, including boundary
+    // contributions. The affine tangent shift preserves the base residual:
+    // b_tangent - A*x0 - C*y0 == b_FV - A*x0.
+    std::vector<double> b_k(n), b_w(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!std::isfinite(eqk.rhs(i)) || !std::isfinite(eqw.rhs(i)) ||
+            !std::isfinite(k[i]) || !std::isfinite(w[i]) ||
+            !std::isfinite(d_kw[i]) || !std::isfinite(d_wk[i]) ||
+            !(k[i] > 0.0) || !(w[i] > 0.0))
+            throw std::invalid_argument("SST coupled 2x2: non-finite or non-positive state");
+        b_k[i] = eqk.rhs(i) + d_kw[i] * w[i];
+        b_w[i] = eqw.rhs(i) + d_wk[i] * k[i];
+        if (!std::isfinite(b_k[i]) || !std::isfinite(b_w[i]))
+            throw std::invalid_argument("SST coupled 2x2: affine RHS overflow");
+    }
 
     const auto& diag_kk = eqk.diagonal;
     const auto& diag_ww = eqw.diagonal;
@@ -153,10 +184,13 @@ inline Coupled2x2SolveResult solve_coupled_2x2_matrix(
                 dw[i] = inv_a_ww[i] * rw;
             }
 
-            // Clamp pour éviter les sauts excessifs.
-            const double max_delta = 10.0;
-            dk[i] = std::clamp(dk[i], -max_delta, max_delta);
-            dw[i] = std::clamp(dw[i], -max_delta, max_delta);
+            // Bound corrections in dimensionless relative units; k and
+            // omega have different physical dimensions and cannot share an
+            // absolute increment cap.
+            const double max_delta_k = 10.0 * std::max(k[i], k_min);
+            const double max_delta_w = 10.0 * std::max(w[i], omega_min);
+            dk[i] = std::clamp(dk[i], -max_delta_k, max_delta_k);
+            dw[i] = std::clamp(dw[i], -max_delta_w, max_delta_w);
         }
 
         // Mise à jour Richardson avec sous-relaxation + floor de positivité.
