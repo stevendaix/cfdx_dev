@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <map>
 #include <utility>
 #include <tuple>
@@ -2260,9 +2261,10 @@ int main()
         velocity.fill(0.0);
         const std::array<std::vector<double>,3> rAU{{{1.0,1.0},{1.0,1.0},{1.0,1.0}}};
         const VelocityBoundaryConditions velocity_bcs;
-        const auto flux_before=make_rhie_chow_flux_from_physical_velocity(
+        const auto flux_before=make_rhie_chow_flux_from_hbya(
             mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
-        EXPECT_TRUE(std::isfinite(flux_before(3)) && std::isfinite(flux_before(6)));
+        EXPECT_NEAR(flux_before(3),0.0,1e-12);
+        EXPECT_NEAR(flux_before(6),0.0,1e-12);
 
         state.k(1)=1.1;
         update_sst_static_pressure_face_values(
@@ -2274,9 +2276,9 @@ int main()
         const auto bc_updated=resolve_scalar_boundary_condition(
             mesh,geometry,6,pressure_bcs);
         EXPECT_NEAR(bc_updated.value,100001.1,1e-12);
-        const auto flux_after=make_rhie_chow_flux_from_physical_velocity(
+        const auto flux_after=make_rhie_chow_flux_from_hbya(
             mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
-        EXPECT_TRUE(std::isfinite(flux_after(3)) && std::isfinite(flux_after(6)));
+        EXPECT_NEAR(flux_after(3),0.0,1e-12);
         EXPECT_TRUE(std::abs(flux_after(6)-flux_before(6))>1e-12);
 
         ScalarBoundaryConditions missing_k;
