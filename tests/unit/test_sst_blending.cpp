@@ -102,6 +102,45 @@ static cfdx::core::Mesh make_sst_transaction_unit_cube()
     return mesh;
 }
 
+static cfdx::core::Mesh make_sst_two_cell_pressure_face_mesh()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(12);
+    const double points[12][3] = {
+        {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+        {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}
+    };
+    for (std::size_t i=0;i<12;++i)
+        mesh.points().set(i,points[i][0],points[i][1],points[i][2]);
+    const std::vector<std::vector<FaceIndex>> faces = {
+        {0,3,9,6}, {1,7,10,4}, {0,1,7,6}, {3,9,10,4},
+        {0,3,4,1}, {6,7,10,9}, {2,5,11,8}, {1,2,8,7},
+        {4,10,11,5}, {1,4,5,2}, {7,8,11,10}
+    };
+    for (const auto& face : faces) mesh.faces().push_face(face);
+    mesh.ownership().resize(faces.size());
+    for (std::size_t f=0;f<faces.size();++f) {
+        mesh.ownership().set_owner(f, f==6 || f>=7 ? 1 : 0);
+        mesh.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    mesh.ownership().set_owner(1,0);
+    mesh.ownership().set_neighbour(1,1);
+    mesh.cells().push_cell({0,1,2,3,4,5});
+    mesh.cells().push_cell({1,6,7,8,9,10});
+    Patch outlet;
+    outlet.name="outlet";
+    outlet.type=PatchType::WALL;
+    outlet.face_ids={3,6};
+    mesh.boundary().add_patch(outlet);
+    Patch walls;
+    walls.name="walls";
+    walls.type=PatchType::WALL;
+    walls.face_ids={0,2,4,5,7,8,9,10};
+    mesh.boundary().add_patch(walls);
+    return mesh;
+}
+
 int main()
 {
     run_case("v11_sst_post_damping_residual_is_reassembled_on_returned_fields", [] {
@@ -2186,6 +2225,63 @@ int main()
                      std::invalid_argument);
         EXPECT_THROW(v21_pressure_relaxation_merit(true,
             std::numeric_limits<double>::quiet_NaN(), 0.1, 0.0), std::invalid_argument);
+    });
+
+    run_case("sst_modified_pressure_uses_face_owner_k_and_refreshes_transactionally", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_two_cell_pressure_face_mesh();
+        const auto geometry=build_fv_geometry(mesh);
+        SSTProductionState state(mesh.n_cells());
+        state.k(0)=0.2;
+        state.k(1)=0.8;
+        ScalarBoundaryConditions pressure_bcs, k_bcs;
+        pressure_bcs["outlet"]={ScalarBoundaryType::FIXED_VALUE,100000.0,0.0};
+        k_bcs["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        auto face_values=std::make_shared<ScalarBoundaryFaceValues>();
+        update_sst_static_pressure_face_values(
+            mesh,state,1.5,pressure_bcs,k_bcs,*face_values,1);
+        pressure_bcs["outlet"].face_values=face_values;
+        const auto& outlet_values=face_values->values.at("outlet");
+        EXPECT_NEAR(outlet_values[3],100000.2,1e-12);
+        EXPECT_NEAR(outlet_values[6],100000.8,1e-12);
+        EXPECT_TRUE(face_values->generation==1);
+        const auto bc_left=resolve_scalar_boundary_condition(
+            mesh,geometry,3,pressure_bcs);
+        const auto bc_right=resolve_scalar_boundary_condition(
+            mesh,geometry,6,pressure_bcs);
+        EXPECT_NEAR(bc_left.value,100000.2,1e-12);
+        EXPECT_NEAR(bc_right.value,100000.8,1e-12);
+
+        Field<double,Location::CELL> pressure(mesh.n_cells(),"p_star","Pa",1);
+        pressure(0)=100000.2;
+        pressure(1)=100000.8;
+        Field<double,Location::CELL> velocity(mesh.n_cells(),"U","m/s",3);
+        velocity.fill(0.0);
+        const std::array<std::vector<double>,3> rAU{{{1.0,1.0},{1.0,1.0},{1.0,1.0}}};
+        const VelocityBoundaryConditions velocity_bcs;
+        const auto flux_before=make_rhie_chow_flux_from_physical_velocity(
+            mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
+        EXPECT_TRUE(std::isfinite(flux_before(3)) && std::isfinite(flux_before(6)));
+
+        state.k(1)=1.1;
+        update_sst_static_pressure_face_values(
+            mesh,state,1.5,pressure_bcs,k_bcs,*face_values,2);
+        EXPECT_TRUE(face_values->generation==2);
+        EXPECT_NEAR(face_values->values.at("outlet")[3],100000.2,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[6],100001.1,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[6]-outlet_values[6],0.3,1e-12);
+        const auto bc_updated=resolve_scalar_boundary_condition(
+            mesh,geometry,6,pressure_bcs);
+        EXPECT_NEAR(bc_updated.value,100001.1,1e-12);
+        const auto flux_after=make_rhie_chow_flux_from_physical_velocity(
+            mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
+        EXPECT_TRUE(std::isfinite(flux_after(3)) && std::isfinite(flux_after(6)));
+        EXPECT_TRUE(std::abs(flux_after(6)-flux_before(6))>1e-12);
+
+        ScalarBoundaryConditions missing_k;
+        EXPECT_THROW(update_sst_static_pressure_face_values(
+            mesh,state,1.5,pressure_bcs,missing_k,*face_values,3),std::invalid_argument);
+        EXPECT_TRUE(face_values->generation==2);
     });
 
     return run_all();

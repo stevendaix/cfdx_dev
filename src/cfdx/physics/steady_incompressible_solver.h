@@ -1765,7 +1765,6 @@ gauss_gradient_with_boundary(
                     mesh.boundary().patch(p).type == PatchType::EMPTY)
                     continue;
                 if (p < mesh.boundary().n_patches()) {
-                    const auto& name = mesh.boundary().patch(p).name;
                     const auto bc = resolve_scalar_boundary_condition(
                         mesh, geometry, f, bcs);
                     if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
@@ -1813,6 +1812,7 @@ gauss_pressure_gradient_jacobian_action(
         (void)name;
         bc.value = 0.0;
         bc.gradient = 0.0;
+        bc.face_values.reset();
     }
     return gauss_gradient_with_boundary(direction, mesh, geometry,
                                         homogeneous_bcs, skew_correct,
@@ -2972,6 +2972,7 @@ make_full_rhie_chow_pressure_rows_reference(
     for (auto& [name,bc]:homogeneous_p_bcs) {
         if (bc.type==ScalarBoundaryType::FIXED_VALUE) bc.value=0.0;
         if (bc.type==ScalarBoundaryType::FIXED_GRADIENT) bc.gradient=0.0;
+        bc.face_values.reset();
     }
     std::vector<std::map<std::size_t,double>> rows(nc);
     std::vector<double> div(nc,0.0);
@@ -8317,7 +8318,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (mesh.ownership().neighbour(f) >= 0) continue;
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch >= mesh.boundary().n_patches()) continue;
-                const auto& name = mesh.boundary().patch(patch).name;
                 const auto bc = resolve_scalar_boundary_condition(
                     mesh, geometry, f, pressure_bcs);
                 if (bc.type != ScalarBoundaryType::FIXED_VALUE) continue;
