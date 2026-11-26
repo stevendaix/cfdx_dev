@@ -11647,6 +11647,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
             }
 
+            // Publish a second snapshot for the accepted, relaxed SST state.
+            // The pressure gradient and any state-only Rhie-Chow reconstruction
+            // below must not reuse the pre-SST k boundary trace from the carrier
+            // predictor at the top of this outer iteration.
+            if (controls.sst_runtime->pressure_face_values) {
+                const auto next_generation =
+                    controls.sst_runtime->pressure_face_values->generation + 1;
+                update_sst_static_pressure_face_values(
+                    mesh, *controls.sst_runtime->state, controls.density,
+                    pressure_bcs, controls.sst_runtime->k_boundary_conditions,
+                    *controls.sst_runtime->pressure_face_values, next_generation);
+                final_grad_p = controls.pressure_high_low_production
+                    ? gauss_gradient_pressure_high_low(
+                        mesh, geometry, p, pressure_low_state, pressure_bcs,
+                        controls.pressure_projected_face_interpolation)
+                    : gauss_gradient_with_boundary(
+                        p, mesh, geometry, pressure_bcs,
+                        controls.pressure_skew_corrected_gradient,
+                        controls.pressure_projected_face_interpolation);
+            }
             sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
                 *sst_attempt_snapshot, *controls.sst_runtime->state,
                 controls.kinematic_viscosity);
