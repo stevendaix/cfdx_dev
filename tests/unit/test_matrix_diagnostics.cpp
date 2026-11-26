@@ -158,5 +158,51 @@ int main() {
         EXPECT_TRUE(plan.preconditioner == PreconditionerModel::NativeAMG);
     });
 
+    run_case("generic_cg_and_amg_reject_symmetric_positive_diagonal_indefinite_matrix", [] {
+        SparseMatrix indefinite(2, 2);
+        indefinite.push_back(0, 0, 1.0);
+        indefinite.push_back(0, 1, 2.0);
+        indefinite.push_back(1, 0, 2.0);
+        indefinite.push_back(1, 1, 1.0);
+        indefinite.finalize();
+        // Eigenvalues are 3 and -1: symmetric with a positive diagonal,
+        // but indefinite. A positive diagonal is not an SPD certificate.
+        const auto c = measure_matrix_characteristics(indefinite);
+        EXPECT_TRUE(c.numerically_symmetric);
+        EXPECT_TRUE(c.positive_diagonal);
+        EXPECT_TRUE(!c.strictly_diagonally_dominant);
+
+        LinearSolverRequest cg;
+        cg.krylov = KrylovModel::CG;
+        cg.preconditioner = PreconditionerModel::Jacobi;
+        EXPECT_THROW(select_linear_solver(LinearProblemKind::General, c, cg),
+                     std::invalid_argument);
+
+        LinearSolverRequest amg;
+        amg.krylov = KrylovModel::FGMRES;
+        amg.preconditioner = PreconditionerModel::NativeAMG;
+        EXPECT_THROW(select_linear_solver(LinearProblemKind::General, c, amg),
+                     std::invalid_argument);
+    });
+
+    run_case("strict_gershgorin_margin_certifies_generic_symmetric_positive_definite_matrix", [] {
+        SparseMatrix spd(2, 2);
+        spd.push_back(0, 0, 3.0);
+        spd.push_back(0, 1, -1.0);
+        spd.push_back(1, 0, -1.0);
+        spd.push_back(1, 1, 3.0);
+        spd.finalize();
+        const auto c = measure_matrix_characteristics(spd);
+        EXPECT_TRUE(c.numerically_symmetric);
+        EXPECT_TRUE(c.positive_diagonal);
+        EXPECT_TRUE(c.strictly_diagonally_dominant);
+
+        LinearSolverRequest cg;
+        cg.krylov = KrylovModel::CG;
+        cg.preconditioner = PreconditionerModel::Jacobi;
+        const auto plan = select_linear_solver(LinearProblemKind::General, c, cg);
+        EXPECT_TRUE(plan.krylov == KrylovModel::CG);
+    });
+
     return run_all();
 }
