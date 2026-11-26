@@ -1046,6 +1046,18 @@ inline TurbulenceTransportResult solve_sst_transport(
                 spk(i)=q.spk;
                 gamma_k[i]=q.gamma_k;
             }
+            // Keep the refreshed steady source separate from the artificial
+            // pseudo-time contribution. The sequential omega-first branch
+            // rebuilds k after updating omega; it must retain the same
+            // pseudo-time diagonal/source as the original k equation.
+            const auto updated_sk_physical = sk;
+            const auto updated_spk_physical = spk;
+            if (inv_dt > 0.0) {
+                for (std::size_t cell=0;cell<n;++cell) {
+                    sk(cell) += inv_dt * oldk(cell);
+                    spk(cell) += inv_dt;
+                }
+            }
             const auto updated_k_wall_gamma = controls.sst_molecular_wall_diffusion
                 ? sst_face_diffusion_coefficients(mesh,geometry,gamma_k,k_bcs,nullptr,controls)
                 : std::vector<double>{};
@@ -1055,7 +1067,7 @@ inline TurbulenceTransportResult solve_sst_transport(
                 nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr,
                 1.0,current_relaxation);
             eqk_phys=assemble_scalar_equation(
-                mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+                mesh,geometry,mass_flux,0.0,updated_sk_physical,updated_spk_physical,k_bcs,true,
                 nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
                 nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr);
             const ScalarSolveControls updated_k_sc{
