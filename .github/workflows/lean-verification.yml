@@ -57,6 +57,14 @@ jobs:
       - name: Resolve pinned dependencies
         run: lake update
 
+      - name: Export generated Lake manifest for repository lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-lean-lake-manifest
+          path: formal/lean/lake-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Restore Mathlib compiled cache
         run: lake exe cache get
 
