@@ -401,6 +401,31 @@ int main()
         EXPECT_TRUE(r.last_second_linear_after>=r.last_second_linear_before);
         EXPECT_TRUE(r.k_residual>0 || r.second_residual>0);
     });
+    run_case("sst_coupled_2x2_tangent_preserves_assembled_scalar_fixed_point", [] {
+        using namespace cfdx::core;
+        ScalarEquation eqk, eqw;
+        eqk.matrix = SparseMatrix(1,1);
+        eqk.matrix.push_back(0,0,2.0);
+        eqk.matrix.finalize();
+        eqk.rhs = Vector(1,5.0);
+        eqk.diagonal = {2.0};
+        eqw.matrix = SparseMatrix(1,1);
+        eqw.matrix.push_back(0,0,3.0);
+        eqw.matrix.finalize();
+        eqw.rhs = Vector(1,7.0);
+        eqw.diagonal = {3.0};
+
+        // This is the exact solution of the two assembled scalar equations.
+        // Nonzero cross derivatives must not move their common fixed point.
+        std::vector<double> k{2.5}, omega{7.0/3.0};
+        const std::vector<double> c_kw{-0.4}, c_wk{0.25};
+        const auto result = solve_coupled_2x2_matrix(
+            eqk,eqw,k,omega,c_kw,c_wk,1.0,5,1e-12,1e-12,1e-12);
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(k[0],2.5,0.0);
+        EXPECT_NEAR(omega[0],7.0/3.0,0.0);
+    });
     run_case("sst_pseudo_time_does_not_enter_steady_residual_certificate", [] {
         using namespace cfdx::core;
         const auto mesh = make_sst_transaction_unit_cube();
