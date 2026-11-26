@@ -301,8 +301,12 @@ inline MatrixCharacteristics measure_matrix_characteristics(
             ? 1.0
             : d.max_abs_value / d.min_nonzero_abs_value;
     c.square = d.rows == d.columns;
-    const double gershgorin_tolerance =
-        1e-14 * std::max(1.0, d.max_abs_diagonal);
+    // Keep the Gershgorin certificate invariant under a uniform change
+    // of coefficient units. A unit lower bound would turn this into an
+    // absolute threshold and reject perfectly scaled small SPD operators.
+    const double gershgorin_scale = std::max(
+        d.max_abs_diagonal, std::numeric_limits<double>::min());
+    const double gershgorin_tolerance = 1e-14 * gershgorin_scale;
     c.diagonally_dominant =
         c.square && std::isfinite(d.minimum_gershgorin_margin) &&
         d.minimum_gershgorin_margin >= -gershgorin_tolerance;
