@@ -1,0 +1,49 @@
+name: Lean 4 Mathematical Verification
+
+on:
+  pull_request:
+    paths:
+      - "formal/lean/**"
+      - "scripts/check_lean_placeholders.py"
+      - ".github/workflows/lean-verification.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "formal/lean/**"
+      - "scripts/check_lean_placeholders.py"
+      - ".github/workflows/lean-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    name: Lean 4 / Mathlib
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: formal/lean
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lean and restore Lake cache
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: formal/lean
+          use-github-cache: true
+
+      - name: Build all Lean modules
+        run: lake build
+
+      - name: Reject unproved placeholders and local axioms
+        working-directory: .
+        run: python3 scripts/check_lean_placeholders.py
