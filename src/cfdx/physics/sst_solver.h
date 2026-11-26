@@ -1274,6 +1274,50 @@ inline TurbulenceTransportResult solve_sst_transport(
             prev_dk = dk;
             prev_dw = dw;
         }
+        // Reassemble the unrelaxed STEADY operators at the returned
+        // nonlinear state. The matrices assembled at the start of this Picard
+        // iteration are frozen at old(k,omega,F1,F2); evaluating their residual
+        // after the update certifies only that frozen linear subproblem, not
+        // the nonlinear SST equations. Pseudo-time mass terms are deliberately
+        // absent from this returned-state certificate.
+        const auto returned_cross = sst_boundary_gradient_dot(
+            k,omega,mesh,geometry,k_bcs,omega_bcs,omega_face_values,
+            controls.sst_use_wls_boundary_gradients,controls.sst_gradient_dimension);
+        cfdx::core::Field<double,cfdx::core::Location::CELL>
+            returned_sk(n,"Sk_returned","W/m3",1),
+            returned_sw(n,"Sw_returned","W/m3",1),
+            returned_spk(n,"Spk_returned","kg/m3/s",1),
+            returned_spw(n,"Spw_returned","kg/m3/s",1);
+        std::vector<double> returned_gamma_k(n),returned_gamma_w(n);
+        for(std::size_t i=0;i<n;++i) {
+            const auto q=sst_cell_sources(
+                k(i),omega(i),strain_rate(i),F1(i),F2(i),returned_cross[i],controls,
+                wall_production ? wall_production->for_cell(i) : -1.0);
+            returned_sk(i)=q.sk; returned_spk(i)=q.spk;
+            returned_sw(i)=q.sw; returned_spw(i)=q.spw;
+            returned_gamma_k[i]=q.gamma_k; returned_gamma_w[i]=q.gamma_w;
+        }
+        const auto returned_k_wall_gamma = controls.sst_molecular_wall_diffusion
+            ? sst_face_diffusion_coefficients(
+                mesh,geometry,returned_gamma_k,k_bcs,nullptr,controls)
+            : std::vector<double>{};
+        const auto returned_omega_wall_gamma = controls.sst_molecular_wall_diffusion
+            ? sst_face_diffusion_coefficients(
+                mesh,geometry,returned_gamma_w,omega_bcs,omega_face_values,controls)
+            : std::vector<double>{};
+        eqk_phys=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,returned_sk,returned_spk,k_bcs,true,
+            nullptr,nullptr,nullptr,&returned_gamma_k,ConvectionScheme::UPWIND,&k,
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &returned_k_wall_gamma : nullptr);
+        eqw_phys=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,returned_sw,returned_spw,omega_bcs,true,
+            omega_face_values,nullptr,nullptr,&returned_gamma_w,ConvectionScheme::UPWIND,&omega,
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &returned_omega_wall_gamma : nullptr);
+        if (controls.sst_weighted_wall_matrix_v29_experimental)
+            sst_apply_omega_owner_constraints_v29(eqw_phys,wall_production);
+        else
+            sst_apply_omega_owner_constraints_v18(eqw_phys,wall_production);
+
         result.k_residual=scalar_equation_residual_inf(eqk_phys,k_solution);
         result.second_residual=scalar_equation_residual_inf(eqw_phys,omega_solution);
         result.iterations=iter;
