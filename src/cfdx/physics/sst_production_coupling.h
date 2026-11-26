@@ -41,6 +41,113 @@ struct SSTProductionState {
 // Validate the production-owned fields before a state is used by transport or
 // momentum assembly. Model conventions are governed by docs/audits/09-turbulence-rans.md.
 // No flooring or automatic initialization is performed.
+// Case pressure values are static pressure. The incompressible SST
+// momentum equation solves modified pressure p* = p_static + 2/3 rho k.
+// The current pressure FV adapter stores one scalar value per patch, so this
+// conversion is exact only when the k boundary trace is constant on each
+// fixed-pressure outlet. Reject nonuniform traces rather than silently
+// imposing the wrong p* field.
+inline void apply_sst_static_pressure_boundary_contract(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::io::CaseSetup& setup,
+    const SSTProductionState& state,
+    double density,
+    ScalarBoundaryConditions& pressure_bcs)
+{
+    if (!std::isfinite(density) || density <= 0.0 ||
+        state.k.size() != mesh.n_cells() || state.k.dimension() != 1)
+        throw std::invalid_argument(
+            "SST pressure boundary conversion requires positive density and a valid k field");
+
+    for (std::size_t patch_index = 0;
+         patch_index < mesh.boundary().n_patches(); ++patch_index) {
+        const auto& patch = mesh.boundary().patch(patch_index);
+        const auto* boundary = setup.find_boundary(patch.name);
+        if (boundary == nullptr || boundary->type != cfdx::io::BCType::PRESSURE_OUTLET)
+            continue;
+
+        const auto pressure_it = pressure_bcs.find(patch.name);
+        if (pressure_it == pressure_bcs.end() ||
+            pressure_it->second.type != ScalarBoundaryType::FIXED_VALUE ||
+            !std::isfinite(pressure_it->second.value))
+            throw std::invalid_argument(
+                "SST pressure outlet '" + patch.name +
+                "' requires a finite fixed static-pressure value");
+
+        const cfdx::io::SSTScalarBoundarySpec* k_condition = nullptr;
+        for (const auto& condition : boundary->sst_scalar_conditions) {
+            if (condition.field != "k") continue;
+            if (k_condition != nullptr)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' has duplicate k boundary conditions");
+            k_condition = &condition;
+        }
+        if (k_condition == nullptr)
+            throw std::invalid_argument(
+                "SST pressure outlet '" + patch.name +
+                "' has no explicit k boundary condition");
+
+        if (patch.face_ids.empty())
+            throw std::invalid_argument(
+                "SST pressure outlet '" + patch.name + "' has no boundary faces");
+
+        double k_trace = 0.0;
+        bool first_face = true;
+        double trace_scale = 0.0;
+        std::vector<double> face_k;
+        face_k.reserve(patch.face_ids.size());
+        for (const auto face : patch.face_ids) {
+            if (face >= mesh.n_faces())
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name + "' contains an invalid face");
+            double value = 0.0;
+            if (k_condition->type == cfdx::io::SSTScalarBoundaryType::FIXED_VALUE) {
+                value = k_condition->value;
+            } else if (k_condition->type ==
+                       cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT) {
+                const auto owner = mesh.ownership().owner(face);
+                if (owner >= state.k.size())
+                    throw std::invalid_argument(
+                        "SST pressure outlet '" + patch.name + "' has an invalid owner cell");
+                value = state.k(owner);
+            } else {
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' supports only fixed-value or zero-gradient k for pressure conversion");
+            }
+            if (!std::isfinite(value) || value < 0.0)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' has a non-finite or negative k boundary trace");
+            face_k.push_back(value);
+            trace_scale = std::max(trace_scale, std::abs(value));
+            if (first_face) {
+                k_trace = value;
+                first_face = false;
+            }
+        }
+
+        const double uniformity_tolerance =
+            64.0 * std::numeric_limits<double>::epsilon() *
+            std::max(trace_scale, std::numeric_limits<double>::min());
+        for (const double value : face_k) {
+            if (std::abs(value - k_trace) > uniformity_tolerance)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' has nonuniform k; face-valued modified-pressure BC is required");
+        }
+
+        const double modified_pressure =
+            pressure_it->second.value + (2.0 / 3.0) * density * k_trace;
+        if (!std::isfinite(modified_pressure))
+            throw std::overflow_error(
+                "SST modified pressure boundary value is non-finite on patch '" +
+                patch.name + "'");
+        pressure_it->second.value = modified_pressure;
+    }
+}
+
 inline void validate_sst_production_state(const SSTProductionState& state,
                                           std::size_t expected_cells)
 {
