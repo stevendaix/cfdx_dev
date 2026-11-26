@@ -114,4 +114,33 @@ theorem owner_neighbour_internal_fluxes_cancel
       cellInternalFluxBalance topology.toOrientedMesh flux c = 0 := by
   exact internal_face_fluxes_cancel topology.toOrientedMesh flux
 
+/-- The complete face-flux contribution to one cell, including boundaries. -/
+def cellFluxBalance
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (flux : Face → ℝ) (c : Cell) : ℝ :=
+  ∑ f : Face, ownerNeighbourIncidence topology c f * flux f
+
+/-- The global sum of cell face balances equals the outward boundary flux.
+
+Internal faces cancel pairwise. A boundary face contributes once, through
+its owner, because it has no neighbour cell.
+-/
+theorem global_cell_flux_balance_eq_boundary_flux
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face) (flux : Face → ℝ) :
+    ∑ c : Cell, cellFluxBalance topology flux c =
+      ∑ f : Face, if f ∉ topology.internalFaces then flux f else 0 := by
+  classical
+  unfold cellFluxBalance
+  rw [Finset.sum_comm]
+  apply Finset.sum_congr rfl
+  intro f hf
+  rw [← Finset.sum_mul]
+  by_cases hInternal : f ∈ topology.internalFaces
+  · rw [owner_neighbour_incidence_cancels topology hInternal]
+    simp
+  · have hBoundary := topology.boundary_face_has_no_neighbour f hInternal
+    simp [ownerNeighbourIncidence, hBoundary]
+
 end CFDX.FiniteVolume
