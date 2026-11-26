@@ -13,8 +13,8 @@ FORBIDDEN = {
     # Lean permits declaration modifiers before axiom (notably private).
     # Check the declaration command after supported command modifiers.
     "axiom declaration": re.compile(
-        r"(?m)^\s*(?:(?:private|protected|noncomputable|unsafe|partial|scoped|local|global)\s+)*"
-        r"axiom\s+"
+        r"(?m)^\s*(?:(?:private|protected|noncomputable|unsafe|partial|scoped|"
+        r"local|global)\s+)*axiom\s+"
     ),
 }
 
