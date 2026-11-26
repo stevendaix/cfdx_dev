@@ -134,4 +134,67 @@ theorem two_point_gauss_orthogonal_face_exact :
         skewCounterexamplePhi (1 / 2) 0 0 := by
   norm_num [skewCounterexamplePhi]
 
+
+/-! ## Sufficient moment condition for affine exactness
+
+This contract is intentionally stated separately from the two-point face
+interpolation above. It applies when the face values supplied to Gauss are
+the exact affine values at the geometric face centres (for example, if a
+reconstruction has established that property). It does not assert that the
+current two-point interpolation supplies those values on skew meshes.
+-/
+
+/-- Euclidean dot product on the three stored spatial components. -/
+def dot3 (u v : Vec3) : ℝ :=
+  ∑ i : Fin 3, u i * v i
+
+/-- Affine scalar field with intercept a and gradient g. -/
+def affineValue3 (a : ℝ) (g x : Vec3) : ℝ :=
+  a + dot3 g x
+
+/-- Gauss numerator component using exact affine values at face centres. -/
+def affineGaussNumeratorComponent
+    {Cell Face : Type*} [Fintype Face]
+    (faceCentre : Face → Vec3)
+    (orientedArea : Cell → Face → Vec3)
+    (a : ℝ) (g : Vec3) (c : Cell) (d : Fin 3) : ℝ :=
+  ∑ f : Face,
+    affineValue3 a g (faceCentre f) * orientedArea c f d
+
+/-- Affine exactness of the Gauss numerator under geometric closure and
+the first-moment identity. The first-moment hypothesis is the componentwise
+geometric condition
+sum_f (g dot Cf) S_cf = V_c g_d for the requested gradient direction.
+It must be verified for the actual face centres, oriented areas and volume.
+-/
+theorem affine_gauss_numerator_exact
+    {Cell Face : Type*} [Fintype Face]
+    (faceCentre : Face → Vec3)
+    (orientedArea : Cell → Face → Vec3)
+    (volume : Cell → ℝ)
+    (a : ℝ) (g : Vec3) (c : Cell) (d : Fin 3)
+    (area_closure :
+      ∑ f : Face, orientedArea c f d = 0)
+    (first_moment :
+      ∑ f : Face, dot3 g (faceCentre f) * orientedArea c f d =
+        volume c * g d) :
+    affineGaussNumeratorComponent faceCentre orientedArea a g c d =
+      volume c * g d := by
+  unfold affineGaussNumeratorComponent affineValue3
+  calc
+    (∑ f : Face,
+        (a + dot3 g (faceCentre f)) * orientedArea c f d)
+      = (∑ f : Face, a * orientedArea c f d) +
+          ∑ f : Face, dot3 g (faceCentre f) * orientedArea c f d := by
+            rw [Finset.sum_add_distrib]
+            congr 1
+            · apply Finset.sum_congr rfl
+              intro f hf
+              ring
+            · apply Finset.sum_congr rfl
+              intro f hf
+              rfl
+    _ = 0 + volume c * g d := by rw [Finset.mul_sum, area_closure, first_moment]
+    _ = volume c * g d := by ring
+
 end CFDX.FiniteVolume
