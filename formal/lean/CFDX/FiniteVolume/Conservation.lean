@@ -66,6 +66,8 @@ structure OwnerNeighbourTopology (Cell Face : Type*)
     ∀ f ∈ internalFaces, ∃ n, neighbour f = some n
   internal_face_owner_neighbour_distinct :
     ∀ f ∈ internalFaces, ∀ n, neighbour f = some n → owner f ≠ n
+  boundary_face_has_no_neighbour :
+    ∀ f, f ∉ internalFaces → neighbour f = none
 
 /-- Signed incidence induced by one owner and an optional neighbour.
 
