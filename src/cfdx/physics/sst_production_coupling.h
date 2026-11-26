@@ -99,20 +99,12 @@ inline void apply_sst_static_pressure_boundary_contract(
                 throw std::invalid_argument(
                     "SST pressure outlet '" + patch.name + "' contains an invalid face");
             double value = 0.0;
-            if (k_condition->type == cfdx::io::SSTScalarBoundaryType::FIXED_VALUE) {
-                value = k_condition->value;
-            } else if (k_condition->type ==
-                       cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT) {
-                const auto owner = mesh.ownership().owner(face);
-                if (owner >= state.k.size())
-                    throw std::invalid_argument(
-                        "SST pressure outlet '" + patch.name + "' has an invalid owner cell");
-                value = state.k(owner);
-            } else {
+            if (k_condition->type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
                 throw std::invalid_argument(
                     "SST pressure outlet '" + patch.name +
-                    "' supports only fixed-value or zero-gradient k for pressure conversion");
-            }
+                    "' requires fixed-value k: zero-gradient k evolves with the owner "
+                    "cell and cannot be represented by the patch-constant pressure adapter");
+            value = k_condition->value;
             if (!std::isfinite(value) || value < 0.0)
                 throw std::invalid_argument(
                     "SST pressure outlet '" + patch.name +
