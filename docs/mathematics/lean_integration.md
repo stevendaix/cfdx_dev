@@ -195,6 +195,18 @@ extension must state the face-value exactness and geometric first-moment
 conditions needed for affine exactness, and quantify the interpolation defect
 when those conditions fail.
 
+The formal module also includes a kernel-checked counterexample,
+`two_point_gauss_skew_face_defect`, matching the C++ test
+`two_point_gauss_face_interpolation_has_affine_skewness_defect`. For
+\(\phi(x,y,z)=2x+3y+1\), owner centre \((0,0,0)\), neighbour centre
+\((1,0,0)\), and skew face centre \((1/2,1/2,0)\), the projection weight is
+\(w=1/2\). Owner/neighbour interpolation gives \(2\), while the exact
+affine face value is \(3.5\), hence the interpolation defect is \(-1.5\).
+A companion theorem confirms exactness for the aligned face centre
+\((1/2,0,0)\). This is a concrete counterexample, not a general error bound;
+it demonstrates why two-point interpolation cannot be claimed affine-exact
+on arbitrary skew faces.
+
 The formal operator is an algebraic specification of the production formula,
 not a proof of C++ implementation equivalence. The relevant implementation
 path is the interpolation loop in `compute_gradient_gauss`, followed by the
