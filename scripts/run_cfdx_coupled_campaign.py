@@ -306,6 +306,11 @@ def build_commands(args: argparse.Namespace):
                 if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
                     env.pop(key)
             env["CFDX_BFS_STAGE_TRACE"] = "1"
+            # On the existing fail-closed SST fixed-point stall, emit the
+            # exact worst k/omega FV rows and their convection/diffusion/
+            # production/destruction/cross-diffusion decomposition. This is
+            # read-only and does not alter the acceptance predicate.
+            env["CFDX_SST_STALL_FORENSICS_V42"] = "1"
             yield (
                 tag,
                 [
