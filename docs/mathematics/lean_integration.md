@@ -207,6 +207,14 @@ identity for arbitrary CFDX polyhedra, nor validate the production face
 centres, area vectors, cell volumes, or CSR incidence. Those remain the
 runtime conformance target.
 
+The geometric identity is also substituted into the generic affine
+Gauss theorem in `reference_tetra_affine_gauss_numerator_exact`. For any
+affine intercept and gradient, and exact values at the four face centroids,
+the reference tetrahedron's Gauss numerator is proved to be exactly
+\(V\mathbf g\). This closes the formal implication for the reference cell;
+it still does not make a claim about the production interpolation on
+arbitrary skew meshes or arbitrary geometry-cache inputs.
+
 A separate sufficient-condition theorem,
 `affine_gauss_numerator_exact`, states the affine-exactness contract for
 exact face-centre values. It assumes (i) geometric area closure and (ii) the
