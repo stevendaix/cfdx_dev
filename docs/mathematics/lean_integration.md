@@ -195,6 +195,21 @@ extension must state the face-value exactness and geometric first-moment
 conditions needed for affine exactness, and quantify the interpolation defect
 when those conditions fail.
 
+A separate sufficient-condition theorem,
+`affine_gauss_numerator_exact`, states the affine-exactness contract for
+exact face-centre values. It assumes (i) geometric area closure and (ii) the
+first-moment identity
+\[
+\sum_f (\mathbf g\cdot\mathbf C_f) S_{cf,d}=V_c g_d.
+\]
+Under those hypotheses it proves that the Gauss numerator is
+\(V_c g_d\). This is deliberately a conditional theorem: it does not yet
+prove the moment identity for every CFDX mesh, nor that the current
+`GAUSS_TWO_POINT` interpolation supplies exact affine face values. The
+condition is relevant to point-reconstructed Gauss and other schemes only
+after their reconstruction and geometric moment hypotheses have been
+verified against the implementation.
+
 The formal module also includes a kernel-checked counterexample,
 `two_point_gauss_skew_face_defect`, matching the C++ test
 `two_point_gauss_face_interpolation_has_affine_skewness_defect`. For
