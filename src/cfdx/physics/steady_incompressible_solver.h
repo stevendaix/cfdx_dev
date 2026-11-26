@@ -4226,7 +4226,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const auto& name = mesh.boundary().patch(patch).name;
                     const auto it = pressure_bcs.find(name);
                     if (it != pressure_bcs.end()) {
-                        local_bc = it->second;
+                        local_bc = resolve_scalar_boundary_condition(
+                            mesh, geometry, f, pressure_bcs);
                         bc = &local_bc;
                     }
                 }
@@ -4432,7 +4433,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     }
                     const auto pit = pressure_bcs.find(name);
                     if (pit != pressure_bcs.end()) {
-                        local_pbc = pit->second;
+                        local_pbc = resolve_scalar_boundary_condition(
+                            mesh, geometry, f, pressure_bcs);
                         pbc = &local_pbc;
                     }
                 }
@@ -6085,9 +6087,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         if (ubc != velocity_bcs.end() &&
                             ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
                             uf = ubc->second.value;
-                        const auto pbc = pressure_bcs.find(name);
-                        if (pbc != pressure_bcs.end() &&
-                            pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                        const auto pbc = resolve_scalar_boundary_condition(
+                            mesh, geometry, face, pressure_bcs);
+                        if (pbc.type == ScalarBoundaryType::FIXED_VALUE) {
                             const Vec3 dvec = geometry.face_centres[face] -
                                               geometry.cell_centres[owner];
                             const Vec3 dAU{
@@ -6102,7 +6104,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                                 pressure_face_orthogonal_coefficient(sf, dvec, dAU);
                             const double deferred = pressure_face_nonorthogonal_flux(sf, dvec, dAU, gp);
                             flux_pressure_orthogonal -= face_sign * rho * coefficient *
-                                (pbc->second.value - p(owner));
+                                (pbc.value - p(owner));
                             flux_pressure_nonorthogonal -= face_sign * rho * deferred;
                             flux_pressure_compensation += face_sign * rho *
                                 (dAU.x * gp.x * sf.x + dAU.y * gp.y * sf.y + dAU.z * gp.z * sf.z);
@@ -8454,9 +8456,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const std::size_t patch = geometry.face_patch[f];
                         if (patch >= mesh.boundary().n_patches()) continue;
                         const auto& name = mesh.boundary().patch(patch).name;
-                        const auto pbc = pressure_bcs.find(name);
-                        if (pbc == pressure_bcs.end() ||
-                            pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                        const auto pbc = resolve_scalar_boundary_condition(
+                            mesh, geometry, f, pressure_bcs);
+                        if (pbc.type != ScalarBoundaryType::FIXED_VALUE)
                             continue;
                         const Vec3 dvec =
                             geometry.face_centres[f] - geometry.cell_centres[o];
@@ -8474,7 +8476,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const double deferred = controls.density *
                             pressure_face_nonorthogonal_flux(
                                 Sf, dvec, dAU, grad_boundary);
-                        const double source = coeff * (pbc->second.value - p(o)) +
+                        const double source = coeff * (pbc.value - p(o)) +
                                               deferred;
                         rhs_boundary_source[o] += source;
                         if (std::abs(source) > boundary_source_linf) {
@@ -8572,9 +8574,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             const std::size_t patch = geometry.face_patch[f];
                             if (patch < mesh.boundary().n_patches()) {
                                 patch_name = mesh.boundary().patch(patch).name;
-                                const auto pbc = pressure_bcs.find(patch_name);
-                                if (pbc != pressure_bcs.end() &&
-                                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                                const auto pbc = resolve_scalar_boundary_condition(
+                                    mesh, geometry, f, pressure_bcs);
+                                if (pbc.type == ScalarBoundaryType::FIXED_VALUE) {
                                     const Vec3 dvec =
                                         geometry.face_centres[f] - geometry.cell_centres[o];
                                     const Vec3 Sf = geometry.face_area_vectors[f];
@@ -8591,7 +8593,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     deferred_flux = controls.density *
                                         pressure_face_nonorthogonal_flux(
                                             Sf, dvec, dAU, grad_boundary);
-                                    boundary_source = coeff * (pbc->second.value - p(o)) +
+                                    boundary_source = coeff * (pbc.value - p(o)) +
                                                       deferred_flux;
                                 }
                             }
@@ -15640,7 +15642,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 } else {
                     if (patch < mesh.boundary().n_patches()) {
                         const auto& name = mesh.boundary().patch(patch).name;
-                        const auto pit = pressure_bcs.find(name);
+                        const auto pit = resolve_scalar_boundary_condition(
+                            mesh, geometry, face, pressure_bcs);
                         const auto uit = velocity_bcs.find(name);
                         if (uit != velocity_bcs.end() &&
                             uit->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
@@ -15648,8 +15651,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         else
                             u_face_auth = Vec3{
                                 final_ux(debug_cell), final_uy(debug_cell), final_uz(debug_cell)};
-                        if (pit != pressure_bcs.end() &&
-                            pit->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                        if (pit.type == ScalarBoundaryType::FIXED_VALUE) {
                             const Vec3 Sf_raw = geometry.face_area_vectors[face];
                             const Vec3 dvec = geometry.face_centres[face] -
                                               geometry.cell_centres[debug_cell];
@@ -15666,7 +15668,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     dAU_boundary.y*e.y*e.y +
                                     dAU_boundary.z*e.z*e.z;
                             const double normal_dp =
-                                (pit->second.value - p(debug_cell)) / d;
+                                (pit.value - p(debug_cell)) / d;
                             const Vec3 gp{
                                 final_grad_p.component_data(0)[debug_cell],
                                 final_grad_p.component_data(1)[debug_cell],
@@ -15674,7 +15676,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             pressure_flux_correction = controls.density * (
                                 pressure_face_orthogonal_coefficient(
                                     Sf_raw, dvec, dAU_boundary) *
-                                    (pit->second.value - p(debug_cell)) +
+                                    (pit.value - p(debug_cell)) +
                                 pressure_face_nonorthogonal_flux(
                                     Sf_raw, dvec, dAU_boundary, gp));
                             grad_face_correction = e * normal_dp + gp - e * gp.dot(e);

@@ -2242,6 +2242,7 @@ int main()
             mesh,state,1.5,pressure_bcs,k_bcs,*face_values,1);
         pressure_bcs["outlet"].face_values=face_values;
         const auto& outlet_values=face_values->values.at("outlet");
+        const double old_right_value=outlet_values[6];
         EXPECT_NEAR(outlet_values[3],100000.2,1e-12);
         EXPECT_NEAR(outlet_values[6],100000.8,1e-12);
         EXPECT_TRUE(face_values->generation==1);
@@ -2269,7 +2270,7 @@ int main()
         EXPECT_TRUE(face_values->generation==2);
         EXPECT_NEAR(face_values->values.at("outlet")[3],100000.2,1e-12);
         EXPECT_NEAR(face_values->values.at("outlet")[6],100001.1,1e-12);
-        EXPECT_NEAR(face_values->values.at("outlet")[6]-outlet_values[6],0.3,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[6]-old_right_value,0.3,1e-12);
         const auto bc_updated=resolve_scalar_boundary_condition(
             mesh,geometry,6,pressure_bcs);
         EXPECT_NEAR(bc_updated.value,100001.1,1e-12);
