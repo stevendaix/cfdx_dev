@@ -10,7 +10,8 @@
 // OpenFOAM-inspired:
 //   - PIMPLE-style multiple pressure correctors with under-relaxation
 //   - Adaptive relaxation driven by residual history
-//   - Full-order convection for the final operator
+//   - Robust first-order UPWIND startup; final accuracy requires a
+//     higher-order bounded scheme and a separate mesh-convergence study
 
 #include "cfdx/core/linalg/linear_solver_models.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
