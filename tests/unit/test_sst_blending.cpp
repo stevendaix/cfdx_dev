@@ -401,6 +401,19 @@ int main()
         EXPECT_TRUE(r.last_second_linear_after>=r.last_second_linear_before);
         EXPECT_TRUE(r.k_residual>0 || r.second_residual>0);
     });
+    run_case("sst_coupled_source_jacobian_uses_dimensional_derivative_and_cell_volume", [] {
+        // S(phi)=S0 + dS/dphi*(phi-phi0), so -dS/dphi*V is
+        // the cross-matrix coefficient for an integrated FV source.
+        const double c1 = sst_negative_source_derivative_coefficient(
+            10.0,8.0,0.1,4.0,2.0);
+        const double c2 = sst_negative_source_derivative_coefficient(
+            10.0,8.0,0.1,4.0,5.0);
+        EXPECT_NEAR(c1,10.0,1e-13);
+        EXPECT_NEAR(c2,25.0,1e-13);
+        EXPECT_NEAR(c2/c1,2.5,1e-13);
+        EXPECT_THROW(sst_negative_source_derivative_coefficient(
+            10.0,8.0,0.1,4.0,0.0),std::invalid_argument);
+    });
     run_case("sst_coupled_2x2_tangent_preserves_assembled_scalar_fixed_point", [] {
         using namespace cfdx::core;
         ScalarEquation eqk, eqw;
