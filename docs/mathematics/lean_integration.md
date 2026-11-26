@@ -1,7 +1,6 @@
 # CFDX Lean 4 mathematical foundations
 
 ## Purpose
-
 CFDX uses Lean 4 and Mathlib as a separate formal-methods project for
 machine-checked mathematical specifications and proofs. The production solver
 remains C++ (with Python for workflows and analysis). Lean is not a CMake,
@@ -23,7 +22,9 @@ evidence on tested inputs; they are not a universal proof of all C++ executions.
 ## Layout
 
 - `formal/lean/lean-toolchain`: pinned Lean compiler version.
-- `formal/lean/lakefile.lean`: pinned Mathlib dependency.
+- `formal/lean/lakefile.lean`: pinned Mathlib release.
+- `formal/lean/lake-manifest.json`: committed lockfile pinning exact revisions
+  of Mathlib and all transitive Lake dependencies.
 - `formal/lean/CFDX/`: CFDX-owned formal definitions and theorems.
 - `scripts/check_lean_placeholders.py`: rejects explicit `sorry`, `admit`,
   and local `axiom` declarations in CFDX-owned Lean source.
@@ -35,15 +36,17 @@ Install the Lean toolchain manager (elan), then run:
 
 ```bash
 cd formal/lean
-lake update
 lake exe cache get
 lake build
 cd ../..
 python3 scripts/check_lean_placeholders.py
 ```
 
-The toolchain and Mathlib release are pinned together. Dependency updates must
-update both pins deliberately and pass the complete Lean workflow.
+The Lean toolchain, Mathlib release, and transitive dependency revisions are
+pinned. Ordinary builds must use the committed `lake-manifest.json` and must
+not run `lake update`. A deliberate dependency update must regenerate and
+review the manifest, update the relevant pins, and pass the complete Lean
+workflow.
 
 ## Initial mathematical contract
 
@@ -61,7 +64,8 @@ operator, or that a finite-precision distributed solve converges.
 
 The Lean workflow:
 
-- builds the standalone Lean project;
+- builds the standalone Lean project against the committed Lake lockfile;
+- checks that the lockfile remains unchanged during the build;
 - checks CFDX-owned Lean files for explicit proof placeholders and local
   `axiom` declarations;
 - does not alter or replace the existing C++/Python/CFD validation workflows.
@@ -74,8 +78,8 @@ results, with a documented allowlist.
 
 ## Integration roadmap
 
-1. **Infrastructure:** pinned Lean/Mathlib, independent CI, initial algebraic
-   contract, and documentation.
+1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
+   independent CI, initial algebraic contract, and documentation.
 2. **Finite-volume foundations:** oriented faces, incidence signs, fluxes,
    internal-face cancellation, and global conservation under explicit mesh
    assumptions.
