@@ -77,8 +77,8 @@ Le décalage du RHS garantit que le résidu du système couplé, évalué à l'�
 
 **Trois défauts trouvés dans l'ancienne implémentation :**
 
-- les différences finies étaient calculées par rapport à (log\omega) et (log k), puis utilisées comme coefficients multipliant les champs dimensionnels ; il manquait respectivement la division par (omega) et par (k) ;
-- les côtés droits étaient reconstruits à partir de `sk` et `sw`, au lieu des RHS assemblés `eqk.rhs` et `eqw.rhs), omettant ainsi les contributions de frontière et de relaxation ;
+- les différences finies étaient calculées par rapport à (log\omega) et (log k), puis utilisées comme coefficients multipliant les champs dimensionnels ; il manquait respectivement la division par $\\omega$ et par $k$, ainsi que la multiplication par le volume de cellule pour obtenir un coefficient de matrice intégré ;
+- les côtés droits étaient reconstruits à partir de `sk` et `sw`, au lieu des RHS assemblés `eqk.rhs` et `eqw.rhs`, omettant ainsi les contributions de frontière et de relaxation ;
 - les termes croisés étaient ajoutés sans correction affine du RHS, ce qui changeait le point fixe.
 
 **Correction sur la branche :** les dérivées sont converties en dérivées par rapport aux variables dimensionnelles, avec le signe correspondant au transfert de la dérivée de source à gauche. Le solveur construit son RHS tangent depuis les RHS assemblés et ajoute le décalage affine évalué à l'état courant. Le plafonnement des corrections est désormais relatif à chaque variable, et non un même incrément absolu pour (k) et (omega).
