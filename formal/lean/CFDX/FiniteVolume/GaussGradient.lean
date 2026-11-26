@@ -269,4 +269,61 @@ theorem reference_tetra_affine_gauss_numerator_exact
     (reference_tetra_area_closure d)
     hmoment
 
+
+/-! ## Two-cell shared-face geometric conformance fixture
+
+This reference geometry consists of two unit cubes, [0,1]×[0,1]×[0,1]
+and [1,2]×[0,1]×[0,1]. Each cell has six local faces. The common x=1
+face is the high-x face of cell 0 and the low-x face of cell 1, so its
+outward-oriented area vector changes sign between the two cells.
+-/
+
+/-- Face centres in the local outward-face ordering of the two unit cubes. -/
+def twoCellFaceCentre (c : Fin 2) (f : Fin 6) : Vec3 :=
+  if f.val = 0 then fun d =>
+    if d.val = 0 then (if c.val = 0 then 0 else 1) else 1 / 2
+  else if f.val = 1 then fun d =>
+    if d.val = 0 then (if c.val = 0 then 1 else 2) else 1 / 2
+  else if f.val = 2 then fun d =>
+    if d.val = 0 then (if c.val = 0 then 1 / 2 else 3 / 2)
+    else if d.val = 1 then 0 else 1 / 2
+  else if f.val = 3 then fun d =>
+    if d.val = 0 then (if c.val = 0 then 1 / 2 else 3 / 2)
+    else if d.val = 1 then 1 else 1 / 2
+  else if f.val = 4 then fun d =>
+    if d.val = 0 then (if c.val = 0 then 1 / 2 else 3 / 2)
+    else if d.val = 1 then 1 / 2 else 0
+  else fun d =>
+    if d.val = 0 then (if c.val = 0 then 1 / 2 else 3 / 2)
+    else if d.val = 1 then 1 / 2 else 1
+
+/-- Outward-oriented area vectors for each cell's six local faces. -/
+def twoCellOrientedArea (_c : Fin 2) (f : Fin 6) : Vec3 :=
+  if f.val = 0 then fun d => if d.val = 0 then -1 else 0
+  else if f.val = 1 then fun d => if d.val = 0 then 1 else 0
+  else if f.val = 2 then fun d => if d.val = 1 then -1 else 0
+  else if f.val = 3 then fun d => if d.val = 1 then 1 else 0
+  else if f.val = 4 then fun d => if d.val = 2 then -1 else 0
+  else fun d => if d.val = 2 then 1 else 0
+
+/-- Each cell in the two-cell reference mesh has unit volume. -/
+def twoCellVolume (_c : Fin 2) : ℝ := 1
+
+/-- Both cells satisfy exact area closure, including opposite orientations
+of their shared face. -/
+theorem two_cell_area_closure (c : Fin 2) (d : Fin 3) :
+    (∑ f : Fin 6, twoCellOrientedArea c f d) = 0 := by
+  fin_cases c <;> fin_cases d <;>
+    norm_num [twoCellOrientedArea, Fin.sum_univ_succ]
+
+/-- Each cell's first-moment tensor is exactly its volume times identity.
+This explicitly checks the neighbour-side sign reversal on the shared face. -/
+theorem two_cell_first_moment (c : Fin 2) (i j : Fin 3) :
+    (∑ f : Fin 6,
+      twoCellFaceCentre c f i * twoCellOrientedArea c f j) =
+      if i = j then twoCellVolume c else 0 := by
+  fin_cases c <;> fin_cases i <;> fin_cases j <;>
+    norm_num [twoCellFaceCentre, twoCellOrientedArea, twoCellVolume,
+      Fin.sum_univ_succ]
+
 end CFDX.FiniteVolume
