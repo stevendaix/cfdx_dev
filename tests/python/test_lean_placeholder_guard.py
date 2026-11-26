@@ -39,10 +39,12 @@ def test_axiom_declarations_with_modifiers_are_rejected(declaration: str) -> Non
 
 @pytest.mark.parametrize("placeholder", ["sorry", "admit"])
 def test_unproved_placeholders_are_rejected(placeholder: str) -> None:
-    violations = GUARD.find_violations(f"theorem bogus : True := {placeholder}", "fixture.lean")
+    source = f"theorem bogus : True := {placeholder}"
+    violations = GUARD.find_violations(source, "fixture.lean")
     assert len(violations) == 1
     assert placeholder in violations[0]
 
 
 def test_proved_theorem_is_accepted() -> None:
-    assert GUARD.find_violations("theorem good : True := by trivial", "fixture.lean") == []
+    source = "theorem good : True := by trivial"
+    assert GUARD.find_violations(source, "fixture.lean") == []
