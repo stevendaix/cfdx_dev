@@ -28,14 +28,6 @@ jobs:
 
       - name: Install GUI system dependencies
         run: |
-          # The runner image may include the optional Microsoft apt feed.
-          # It is not used by this job and has intermittently returned HTTP 403,
-          # which makes apt-get update fail before installing the GUI packages.
-          for source in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            if [ -f "$source" ] && grep -q "packages.microsoft.com" "$source"; then
-              sudo rm -f "$source"
-            fi
-          done
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xvfb \
