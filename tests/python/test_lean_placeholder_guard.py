@@ -28,6 +28,7 @@ SPEC.loader.exec_module(GUARD)
         "scoped private axiom bogus : False",
         "local axiom bogus : False",
         "global axiom bogus : False",
+        "private axiom α : False",
     ],
 )
 def test_axiom_declarations_with_modifiers_are_rejected(declaration: str) -> None:
