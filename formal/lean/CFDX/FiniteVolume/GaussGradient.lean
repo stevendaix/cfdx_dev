@@ -186,15 +186,12 @@ theorem affine_gauss_numerator_exact
         (a + dot3 g (faceCentre f)) * orientedArea c f d)
       = (∑ f : Face, a * orientedArea c f d) +
           ∑ f : Face, dot3 g (faceCentre f) * orientedArea c f d := by
-            rw [Finset.sum_add_distrib]
-            congr 1
-            · apply Finset.sum_congr rfl
-              intro f hf
-              ring
-            · apply Finset.sum_congr rfl
-              intro f hf
-              rfl
-    _ = 0 + volume c * g d := by rw [Finset.mul_sum, area_closure, first_moment]
+            rw [← Finset.sum_add_distrib]
+            apply Finset.sum_congr rfl
+            intro f hf
+            ring
+    _ = 0 + volume c * g d := by
+          rw [← Finset.mul_sum, area_closure, first_moment]
     _ = volume c * g d := by ring
 
 end CFDX.FiniteVolume
