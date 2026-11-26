@@ -20,6 +20,8 @@
 #include <cmath>
 #include <iostream>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <map>
 #include <stdexcept>
 #include <utility>
@@ -34,10 +36,15 @@ enum class ScalarBoundaryType {
     FIXED_GRADIENT
 };
 
+struct ScalarBoundaryFaceValues;
+
 struct ScalarBoundaryCondition {
     ScalarBoundaryType type = ScalarBoundaryType::ZERO_GRADIENT;
     double value = 0.0;
     double gradient = 0.0;
+    // Optional shared face trace. Used by SST modified pressure without
+    // changing the physical patch-level static-pressure datum.
+    std::shared_ptr<const ScalarBoundaryFaceValues> face_values;
 };
 
 using ScalarBoundaryConditions = std::map<std::string, ScalarBoundaryCondition>;
@@ -79,6 +86,8 @@ inline LimitedFaceKindV56 convection_kind_v56(ConvectionScheme scheme) {
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
     std::map<std::string, std::vector<double>> values;
+    // Nonzero generation identifies one accepted-state SST pressure snapshot.
+    std::uint64_t generation = 0;
 };
 
 struct FvGeometry {
@@ -304,9 +313,13 @@ inline ScalarBoundaryCondition resolve_scalar_boundary_condition(
         const auto& patch_name = mesh.boundary().patch(patch).name;
         const auto it = boundary_conditions.find(patch_name);
         if (it != boundary_conditions.end()) bc = it->second;
-        if (face_values) {
-            const auto fv = face_values->values.find(patch_name);
-            if (fv != face_values->values.end() &&
+        const auto* effective_face_values = face_values;
+        if (effective_face_values == nullptr && it != boundary_conditions.end() &&
+            it->second.face_values)
+            effective_face_values = it->second.face_values.get();
+        if (effective_face_values) {
+            const auto fv = effective_face_values->values.find(patch_name);
+            if (fv != effective_face_values->values.end() &&
                 face < fv->second.size() && std::isfinite(fv->second[face])) {
                 bc.type = ScalarBoundaryType::FIXED_VALUE;
                 bc.value = fv->second[face];

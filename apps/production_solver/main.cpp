@@ -2200,16 +2200,20 @@ int main(int argc, char** argv)
                 initialization.mode = InitializationMode::Provided;
             }
 
-            // The case stores physical static pressure; the SST momentum
-            // operator solves p* = p_static + 2/3 rho k. Convert the
-            // patch-constant pressure adapter only for FIXED_VALUE k. A
-            // ZERO_GRADIENT trace evolves during SST iterations and is rejected.
-            apply_sst_static_pressure_boundary_contract(
-                mesh, case_setup, *experimental_sst_state,
-                sst_controls.density, pbc);
+            // Keep pressure BCs as physical static pressure. Build a face-wise
+            // modified-pressure snapshot; ZERO_GRADIENT k uses each face owner.
             experimental_sst_runtime.state = &*experimental_sst_state;
             experimental_sst_runtime.transport = sst_controls;
             experimental_sst_runtime.k_boundary_conditions = boundary_contract.k;
+            update_sst_static_pressure_face_values(
+                mesh, *experimental_sst_state, sst_controls.density,
+                pbc, experimental_sst_runtime.k_boundary_conditions,
+                *experimental_sst_runtime.pressure_face_values, 1);
+            for (auto& [patch_name, pressure_bc] : pbc) {
+                (void)patch_name;
+                if (pressure_bc.type == ScalarBoundaryType::FIXED_VALUE)
+                    pressure_bc.face_values = experimental_sst_runtime.pressure_face_values;
+            }
             experimental_sst_runtime.omega_boundary_conditions = boundary_contract.omega;
             experimental_sst_runtime.wall_patch_names = wall_patch_names;
             experimental_sst_runtime.wall_omega_sst_patches =

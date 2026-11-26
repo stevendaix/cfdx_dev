@@ -38,6 +38,75 @@ struct SSTProductionState {
     }
 };
 
+// Build the face-wise modified-pressure trace from the accepted SST k field.
+// Input pressure BCs remain physical static pressure and are never mutated.
+// FIXED_VALUE k uses its prescribed trace; ZERO_GRADIENT k uses the owner value
+// independently on each face. Publish only after every face validates.
+inline void update_sst_static_pressure_face_values(
+    const cfdx::core::Mesh& mesh,
+    const SSTProductionState& state,
+    double density,
+    const ScalarBoundaryConditions& static_pressure_bcs,
+    const ScalarBoundaryConditions& k_bcs,
+    ScalarBoundaryFaceValues& output,
+    std::uint64_t generation)
+{
+    if (!(density > 0.0) || !std::isfinite(density) ||
+        state.k.dimension() != 1 || state.k.size() != mesh.n_cells() ||
+        generation == 0)
+        throw std::invalid_argument(
+            "SST pressure face snapshot: invalid density, state, or generation");
+    ScalarBoundaryFaceValues candidate;
+    candidate.generation = generation;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (const auto& [patch_name, pressure_bc] : static_pressure_bcs) {
+        if (pressure_bc.type != ScalarBoundaryType::FIXED_VALUE) continue;
+        if (!std::isfinite(pressure_bc.value))
+            throw std::invalid_argument(
+                "SST pressure face snapshot: non-finite static pressure on " + patch_name);
+        const std::size_t patch_id = mesh.boundary().find(patch_name);
+        if (patch_id >= mesh.boundary().n_patches())
+            throw std::invalid_argument(
+                "SST pressure face snapshot: unknown pressure patch " + patch_name);
+        const auto& patch = mesh.boundary().patch(patch_id);
+        if (patch.face_ids.empty())
+            throw std::invalid_argument(
+                "SST pressure face snapshot: empty pressure patch " + patch_name);
+        const auto k_it = k_bcs.find(patch_name);
+        if (k_it == k_bcs.end())
+            throw std::invalid_argument(
+                "SST pressure face snapshot: missing k boundary condition on " + patch_name);
+        std::vector<double> face_values(mesh.n_faces(), nan);
+        for (const std::size_t face : patch.face_ids) {
+            if (face >= mesh.n_faces() || mesh.ownership().neighbour(face) >= 0)
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: invalid boundary face on " + patch_name);
+            const std::size_t owner = mesh.ownership().owner(face);
+            if (owner >= mesh.n_cells())
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: invalid owner on " + patch_name);
+            double k_face = 0.0;
+            if (k_it->second.type == ScalarBoundaryType::FIXED_VALUE)
+                k_face = k_it->second.value;
+            else if (k_it->second.type == ScalarBoundaryType::ZERO_GRADIENT)
+                k_face = state.k(owner);
+            else
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: unsupported k boundary type on " + patch_name);
+            if (!std::isfinite(k_face) || k_face < 0.0)
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: invalid k trace on " + patch_name);
+            const double p_star = pressure_bc.value + (2.0 / 3.0) * density * k_face;
+            if (!std::isfinite(p_star))
+                throw std::overflow_error(
+                    "SST pressure face snapshot: non-finite modified pressure on " + patch_name);
+            face_values[face] = p_star;
+        }
+        candidate.values.emplace(patch_name, std::move(face_values));
+    }
+    output = std::move(candidate);
+}
+
 // Case pressure values are static pressure. The incompressible SST
 // momentum equation solves modified pressure p* = p_static + 2/3 rho k.
 // The current pressure FV adapter stores one scalar value per patch. Only a

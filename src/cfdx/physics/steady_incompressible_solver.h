@@ -361,6 +361,9 @@ struct SSTProductionRuntime {
     // contract. Kept owned by the runtime so the pointer passed to transport
     // remains valid for the duration of the update.
     ScalarBoundaryFaceValues omega_face_values;
+    // Shared face-valued p*=p_static+2*rho*k snapshot for all pressure operators.
+    std::shared_ptr<ScalarBoundaryFaceValues> pressure_face_values =
+        std::make_shared<ScalarBoundaryFaceValues>();
     std::vector<std::string> wall_patch_names;
     // Physical WALL_OMEGA_SST obligations from the case contract. This is
     // distinct from the list of walls used to compute nearest wall distance.
@@ -1763,15 +1766,15 @@ gauss_gradient_with_boundary(
                     continue;
                 if (p < mesh.boundary().n_patches()) {
                     const auto& name = mesh.boundary().patch(p).name;
-                    const auto it = bcs.find(name);
-                    if (it != bcs.end() && it->second.type == ScalarBoundaryType::FIXED_VALUE)
-                        vf = it->second.value;
-                    else if (it != bcs.end() &&
-                             it->second.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                    const auto bc = resolve_scalar_boundary_condition(
+                        mesh, geometry, f, bcs);
+                    if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                        vf = bc.value;
+                    } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                         const Vec3 outward = Sf * (1.0 / Sf.mag());
                         const Vec3 centre_to_face =
                             geometry.face_centres[f] - geometry.cell_centres[c];
-                        vf += it->second.gradient * centre_to_face.dot(outward);
+                        vf += bc.gradient * centre_to_face.dot(outward);
                     }
                 }
             }
@@ -2243,9 +2246,9 @@ make_rhie_chow_mass_flux(
                             else Hf.z=value;
                         }
 
-                const auto pbc = pressure_bcs.find(name);
-                if (pbc != pressure_bcs.end() &&
-                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                const auto pbc = resolve_scalar_boundary_condition(
+                    mesh, geometry, f, pressure_bcs);
+                if (pbc.type == ScalarBoundaryType::FIXED_VALUE) {
                     const std::size_t o = own.owner(f);
                     const Vec3 Sf = geometry.face_area_vectors[f];
                     const Vec3 dvec =
@@ -2267,7 +2270,7 @@ make_rhie_chow_mass_flux(
                     const double deferred = pressure_face_nonorthogonal_flux(
                         Sf, dvec, dAU_boundary, gp);
                     correction = rho * (
-                        implicit_coefficient * (pbc->second.value - p(o)) +
+                        implicit_coefficient * (pbc.value - p(o)) +
                         deferred);
                     if (coupled_physical_velocity) {
                         const Vec3 gp{
@@ -2651,12 +2654,13 @@ gauss_gradient_pressure_high_low(
                    mesh.boundary().patch(patch).type==PatchType::EMPTY)
                     continue;
                 if(patch<mesh.boundary().n_patches()) {
-                    const auto it=bcs.find(mesh.boundary().patch(patch).name);
-                    if(it!=bcs.end() && it->second.type==ScalarBoundaryType::FIXED_VALUE)
-                        vf=it->second.value;
-                    else if(it!=bcs.end() && it->second.type==ScalarBoundaryType::FIXED_GRADIENT) {
+                    const auto bc=resolve_scalar_boundary_condition(
+                        mesh,geometry,f,bcs);
+                    if(bc.type==ScalarBoundaryType::FIXED_VALUE)
+                        vf=bc.value;
+                    else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT) {
                         const Vec3 unit=Sf*(1.0/Sf.mag());
-                        vf+=it->second.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
+                        vf+=bc.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
                     }
                 }
             }
@@ -6806,6 +6810,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t last_committed_cell_iteration = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        if (controls.sst_runtime && controls.sst_runtime->state &&
+            controls.sst_runtime->pressure_face_values) {
+            const auto next_generation =
+                controls.sst_runtime->pressure_face_values->generation + 1;
+            update_sst_static_pressure_face_values(
+                mesh, *controls.sst_runtime->state, controls.density,
+                pressure_bcs, controls.sst_runtime->k_boundary_conditions,
+                *controls.sst_runtime->pressure_face_values, next_generation);
+        }
         // The V52 frozen-common-state comparison captures the 6N iterate
         // BEFORE any of the six 4N coupled solvers changes U/p/SST. This
         // captures the identical HDF5-initialized candidate for every Schur
@@ -8305,9 +8318,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch >= mesh.boundary().n_patches()) continue;
                 const auto& name = mesh.boundary().patch(patch).name;
-                const auto it = pressure_bcs.find(name);
-                if (it == pressure_bcs.end() ||
-                    it->second.type != ScalarBoundaryType::FIXED_VALUE) continue;
+                const auto bc = resolve_scalar_boundary_condition(
+                    mesh, geometry, f, pressure_bcs);
+                if (bc.type != ScalarBoundaryType::FIXED_VALUE) continue;
                 const std::size_t o = mesh.ownership().owner(f);
                 const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
                 const Vec3 Sf = geometry.face_area_vectors[f];
@@ -8338,7 +8351,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double deferred_boundary = pressure_face_nonorthogonal_flux(
                     Sf, dvec, dAU_boundary, gp_boundary);
                 const double boundary_source = controls.density * (
-                    boundary_coeff * (it->second.value - p(o)) +
+                    boundary_coeff * (bc.value - p(o)) +
                     deferred_boundary);
                 if (compensated_assembly)
                     pressure_accumulator->add_pressure_boundary(
