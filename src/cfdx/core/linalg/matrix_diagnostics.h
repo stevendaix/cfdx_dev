@@ -347,7 +347,11 @@ inline MatrixCharacteristics measure_matrix_characteristics(
         const auto* row = matrix.row_offsets_data();
         const auto* col = matrix.columns_data();
         const auto* val = matrix.values_data();
-        const double scale = std::max(1.0, d.max_abs_value);
+        // symmetry_relative_tolerance is dimensionless: scaling by max(1,|A|)
+        // silently turns it into an absolute tolerance for small-unit systems
+        // and can certify a strongly nonsymmetric matrix as symmetric.
+        const double scale = std::max(
+            d.max_abs_value, std::numeric_limits<double>::min());
         c.numerically_symmetric = true;
         for (std::size_t i = 0; i < matrix.n_rows() && c.numerically_symmetric; ++i) {
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
