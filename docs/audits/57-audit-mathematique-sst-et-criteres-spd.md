@@ -150,9 +150,9 @@ p^*_{f}=p_{stat,f}+\frac{2}{3}\rho k_f.
 \]
 
 L'adaptateur FV actuel ne stocke qu'une valeur scalaire par patch. La conversion est donc exacte uniquement si la trace de $k$ est constante sur le patch :
-- $k$ en FIXED_VALUE : la valeur prescrite est utilisée sur chaque face ;
-- $k$ en ZERO_GRADIENT : la valeur propriétaire de chaque face est utilisée ;
-- si les valeurs de face diffèrent, le chemin de production rejette le cas. Une moyenne de patch ne serait pas une condition limite équivalente.
+- $k$ en FIXED_VALUE : la valeur prescrite, constante sur le patch, permet la conversion exacte ;
+- $k$ en ZERO_GRADIENT : le cas est rejeté, même si le champ propriétaire est initialement uniforme, car cette trace évolue avec le champ SST pendant les itérations ;
+- aucune moyenne de patch ni conversion calculée une seule fois à partir d'un état initial n'est admise. Le support général exige une condition de pression modifiée évaluée par face et synchronisée avec l'état SST courant.
 
 La conversion est appliquée après l'initialisation/restauration du champ SST et avant l'appel au solveur. Des tests vérifient l'offset (2\rho k/3) et le rejet d'un contrat $k$ absent. La prise en charge d'une pression modifiée variable par face reste à développer pour les traces $k_f$ non uniformes.
 
@@ -164,7 +164,7 @@ La conversion est appliquée après l'initialisation/restauration du champ SST e
 | Pseudo-temps exclu du résidu stationnaire | Code corrigé ; test ajouté ; CI à confirmer |
 | Tangente couplée (k)-(omega) | Correction affine/dimensionnelle intégrée ; tests ajoutés |
 | Qualification SPD générique | Gershgorin strict réservé au problème générique ; AMG non elliptique refusé |
-| Pression statique vers pression modifiée | Implémentée pour trace k uniforme ; non uniforme rejeté |
+| Pression statique vers pression modifiée | Implémentée uniquement pour k FIXED_VALUE ; ZERO_GRADIENT rejeté |
 | Support face-valued de p* | Non implémenté |
 | Qualification physique BFS/SST | Non acquise ; calcul convergé, bilans et étude de maillage requis |
 
