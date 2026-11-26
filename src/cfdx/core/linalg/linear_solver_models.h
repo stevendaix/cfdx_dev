@@ -385,7 +385,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         (!spd_qualified || !characteristics.numerically_symmetric ||
          !characteristics.positive_diagonal))
         throw std::invalid_argument(
-            "CG requires a symmetric, positive-diagonal pressure/diffusion operator");
+            "CG requires a symmetric positive-definite operator; generic operators need a strict Gershgorin certificate");
     if (plan.krylov == KrylovModel::CG &&
         plan.preconditioner != PreconditionerModel::None &&
         plan.preconditioner != PreconditionerModel::Jacobi &&
