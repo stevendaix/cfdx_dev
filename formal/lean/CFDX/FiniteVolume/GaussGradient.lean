@@ -103,4 +103,35 @@ theorem gauss_gradient_const_eq_zero
   rw [gauss_gradient_numerator_const]
   simp
 
+
+/-! ## Explicit skew-face counterexample for two-point interpolation
+
+The next definitions encode the same affine field and skew face used by
+`two_point_gauss_face_interpolation_has_affine_skewness_defect` in the C++
+unit tests. The owner-neighbour centre line is the x-axis, while the face
+centre is displaced in y. The clamped projection weight is 1/2, so the
+two-point interpolation samples the affine field at (1/2, 0, 0), not at the
+actual face centre (1/2, 1/2, 0).
+-/
+
+/-- The affine scalar field phi(x,y,z) = 2x + 3y + 1. -/
+def skewCounterexamplePhi (x y z : ℝ) : ℝ :=
+  2 * x + 3 * y + 1
+
+/-- The exact counterexample used by the C++ skewness-defect unit test. -/
+theorem two_point_gauss_skew_face_defect :
+    (1 - (1 / 2 : ℝ)) * skewCounterexamplePhi 0 0 0 +
+        (1 / 2 : ℝ) * skewCounterexamplePhi 1 0 0 -
+        skewCounterexamplePhi (1 / 2) (1 / 2) 0 = -(3 / 2 : ℝ) := by
+  norm_num [skewCounterexamplePhi]
+
+/-- The same interpolation is exact when the face centre lies on the
+owner-neighbour centre line. This isolates skew displacement as the source
+of the counterexample above. -/
+theorem two_point_gauss_orthogonal_face_exact :
+    (1 - (1 / 2 : ℝ)) * skewCounterexamplePhi 0 0 0 +
+        (1 / 2 : ℝ) * skewCounterexamplePhi 1 0 0 =
+        skewCounterexamplePhi (1 / 2) 0 0 := by
+  norm_num [skewCounterexamplePhi]
+
 end CFDX.FiniteVolume
