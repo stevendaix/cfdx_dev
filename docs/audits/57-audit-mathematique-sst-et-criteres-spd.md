@@ -149,7 +149,7 @@ La donnée de pression du cas est interprétée comme une pression statique phys
 p^*_{f}=p_{stat,f}+\frac{2}{3}\rho k_f.
 \]
 
-L'adaptateur FV actuel ne stocke qu'une valeur scalaire par patch. La conversion est donc exacte uniquement si la trace de $k$ est constante sur le patch :
+L'adaptateur FV actuel ne stocke qu'une valeur scalaire par patch. Le sous-ensemble accepté est donc limité à une condition $k$ FIXED_VALUE, prescrite et constante sur le patch :
 - $k$ en FIXED_VALUE : la valeur prescrite, constante sur le patch, permet la conversion exacte ;
 - $k$ en ZERO_GRADIENT : le cas est rejeté, même si le champ propriétaire est initialement uniforme, car cette trace évolue avec le champ SST pendant les itérations ;
 - aucune moyenne de patch ni conversion calculée une seule fois à partir d'un état initial n'est admise. Le support général exige une condition de pression modifiée évaluée par face et synchronisée avec l'état SST courant.
