@@ -195,6 +195,15 @@ extension must state the face-value exactness and geometric first-moment
 conditions needed for affine exactness, and quantify the interpolation defect
 when those conditions fail.
 
+A matching C++ unit test,
+`reference_tetrahedron_geometry_cache_satisfies_gauss_moment_identity`,
+now evaluates the same closure and first-moment identities from the actual
+`GeometryCache` outputs: `face_centres`, owner-oriented `face_Sf`, and
+`cell_volumes`. The test uses a single tetrahedral cell and checks all nine
+tensor components. It is a direct Lean-to-C++ conformance check for this
+reference fixture only; arbitrary polyhedral meshes and general cell-face
+CSR incidence remain to be covered.
+
 The reference-cell geometry is now checked explicitly for a unit
 tetrahedron. Lean proves exact closure of its four outward-oriented face-area
 vectors and the first-moment tensor identity
