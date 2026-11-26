@@ -202,6 +202,10 @@ struct MatrixCharacteristics {
     // differ by >= 10^3. This is not a mesh aspect-ratio measurement.
     bool strongly_directional_coupling = false;
     bool positive_diagonal = true;
+    // True only when the measured symmetric matrix has a strictly positive
+    // Gershgorin lower bound. Symmetry + positive diagonal alone does NOT
+    // imply positive definiteness (e.g. [[1,2],[2,1]]).
+    bool strictly_diagonally_dominant = false;
     bool saddle_point = false;
 };
 
@@ -367,15 +371,16 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
 
     const bool cg_problem = problem == LinearProblemKind::PressurePoisson ||
                             problem == LinearProblemKind::Diffusion;
-    // A matrix that is numerically symmetric with a positive diagonal is
-    // SPD-qualified regardless of the declared problem kind. The PCD laplacian
-    // and the Fp convection-diffusion operator are both assembled as symmetric
-    // positive-definite systems when the convection contribution is
-    // skew-symmetric; allowing NativeAMG here unblocks the PCD Schur path
-    // without weakening the nonsymmetric safety checks for genuinely
-    // nonsymmetric operators.
+    // Symmetry and a positive diagonal are necessary, but NOT sufficient,
+    // for positive definiteness. For non-canonical problem kinds, only admit
+    // CG/elliptic AMG when the measured symmetric matrix also has a strictly
+    // positive Gershgorin lower bound (a sufficient SPD certificate).
+    // Canonical pressure-Poisson/diffusion operators retain their established
+    // structural contract, including the constant-nullspace case.
     const bool spd_qualified = cg_problem ||
-        (characteristics.numerically_symmetric && characteristics.positive_diagonal);
+        (characteristics.numerically_symmetric &&
+         characteristics.positive_diagonal &&
+         characteristics.strictly_diagonally_dominant);
     if (plan.krylov == KrylovModel::CG &&
         (!spd_qualified || !characteristics.numerically_symmetric ||
          !characteristics.positive_diagonal))
