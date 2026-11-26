@@ -469,6 +469,48 @@ int main()
         EXPECT_NEAR(k[0],2.5,0.0);
         EXPECT_NEAR(omega[0],7.0/3.0,0.0);
     });
+    run_case("sst_static_pressure_outlet_is_converted_to_modified_pressure", [] {
+        using namespace cfdx::core;
+        auto mesh = make_sst_transaction_unit_cube();
+        mesh.boundary().patch(1).type = PatchType::OUTLET;
+        CaseSetup setup;
+        BoundarySpec outlet;
+        outlet.patch_name = "x1";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
+        outlet.pressure = 101325.0;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.3},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}};
+        setup.boundary_conditions.push_back(outlet);
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.4);
+        ScalarBoundaryConditions pressure_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 101325.0, 0.0};
+        pressure_bcs["x0"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        apply_sst_static_pressure_boundary_contract(
+            mesh, setup, state, 1.2, pressure_bcs);
+        EXPECT_NEAR(pressure_bcs.at("x1").value,
+                    101325.0 + (2.0 / 3.0) * 1.2 * 0.3, 1e-12);
+        EXPECT_NEAR(pressure_bcs.at("x0").value, 0.0, 0.0);
+    });
+    run_case("sst_static_pressure_outlet_rejects_missing_k_boundary_contract", [] {
+        using namespace cfdx::core;
+        auto mesh = make_sst_transaction_unit_cube();
+        mesh.boundary().patch(1).type = PatchType::OUTLET;
+        CaseSetup setup;
+        BoundarySpec outlet;
+        outlet.patch_name = "x1";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
+        setup.boundary_conditions.push_back(outlet);
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.4);
+        ScalarBoundaryConditions pressure_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        EXPECT_THROW(apply_sst_static_pressure_boundary_contract(
+            mesh, setup, state, 1.2, pressure_bcs), std::invalid_argument);
+    });
     run_case("sst_pseudo_time_does_not_enter_steady_residual_certificate", [] {
         using namespace cfdx::core;
         const auto mesh = make_sst_transaction_unit_cube();
