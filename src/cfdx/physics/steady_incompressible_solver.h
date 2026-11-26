@@ -8094,10 +8094,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (patch >= mesh.boundary().n_patches() ||
                         mesh.boundary().patch(patch).type == PatchType::EMPTY)
                         continue;
-                    const auto pbc = pressure_bcs.find(
-                        mesh.boundary().patch(patch).name);
-                    if (pbc == pressure_bcs.end() ||
-                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    const auto pbc = resolve_scalar_boundary_condition(
+                        mesh, geometry, f, pressure_bcs);
+                    if (pbc.type != ScalarBoundaryType::FIXED_VALUE)
                         continue;
                     const Vec3 Sf = geometry.face_area_vectors[f];
                     const Vec3 dvec = geometry.face_centres[f] -
@@ -8115,7 +8114,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double correction_deferred = pressure_face_nonorthogonal_flux(
                         Sf, dvec, delta_dAU, grad_p_cell);
                     phiHbyA(f) += controls.density * (
-                        correction_coeff * (pbc->second.value - p(o)) +
+                        correction_coeff * (pbc.value - p(o)) +
                         correction_deferred);
                     continue;
                 }
@@ -8209,10 +8208,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (patch >= mesh.boundary().n_patches() ||
                         mesh.boundary().patch(patch).type == PatchType::EMPTY)
                         continue;
-                    const auto pbc = pressure_bcs.find(
-                        mesh.boundary().patch(patch).name);
-                    if (pbc == pressure_bcs.end() ||
-                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    const auto pbc = resolve_scalar_boundary_condition(
+                        mesh, geometry, f, pressure_bcs);
+                    if (pbc.type != ScalarBoundaryType::FIXED_VALUE)
                         continue;
                     const Vec3 dvec =
                         geometry.face_centres[f] - geometry.cell_centres[o];
@@ -8229,7 +8227,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double deferred = pressure_face_nonorthogonal_flux(
                         Sf, dvec, delta_dAU, grad_p_boundary);
                     flux(f) += controls.density *
-                        (orthogonal * (pbc->second.value - p(o)) + deferred);
+                        (orthogonal * (pbc.value - p(o)) + deferred);
                 }
             };
 
