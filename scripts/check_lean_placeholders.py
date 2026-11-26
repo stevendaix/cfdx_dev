@@ -10,9 +10,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1] / "formal" / "lean" / "CFDX"
 FORBIDDEN = {
     "sorry": re.compile(r"\bsorry\b"),
     "admit": re.compile(r"\badmit\b"),
-    "axiom declaration": re.compile(
-        r"(?m)^\s*axiom\s+[A-Za-z_][A-Za-z0-9_'.]*"
-    ),
+    "axiom declaration": re.compile(r"(?m)^\s*axiom\s+[A-Za-z_][A-Za-z0-9_'.]*"),
 }
 
 
