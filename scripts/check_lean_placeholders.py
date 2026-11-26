@@ -14,7 +14,7 @@ FORBIDDEN = {
     # Check the declaration command after supported command modifiers.
     "axiom declaration": re.compile(
         r"(?m)^\s*(?:(?:private|protected|noncomputable|unsafe|partial|scoped|local|global)\s+)*"
-        r"axiom\s+[A-Za-z_][A-Za-z0-9_'.]*"
+        r"axiom\s+"
     ),
 }
 
