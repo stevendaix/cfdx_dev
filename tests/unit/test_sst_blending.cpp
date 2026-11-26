@@ -488,7 +488,7 @@ int main()
         }
         TurbulenceTransportControls controls;
         controls.model = TurbulenceModel::SST;
-        controls.sst_pseudo_transient_dt = 0.05;
+        controls.sst_pseudo_transient_dt = 0.001;
         controls.sst_sequential_omega_first = true;
 
         const auto result = solve_sst_transport(
