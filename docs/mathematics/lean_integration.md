@@ -76,6 +76,35 @@ logical environment. Future work should add an explicit audit of theorem
 assumptions (for example with `#print axioms`) for designated critical
 results, with a documented allowlist.
 
+## First finite-volume conservation theorem
+
+`CFDX.FiniteVolume.OrientedMesh` represents a finite cell/face incidence
+relation using signed real coefficients. Its explicit
+`internal_face_balance` hypothesis states that, for each internal face, the
+sum of its signed incidence coefficients over all cells is zero.
+
+`CFDX.FiniteVolume.internal_face_fluxes_cancel` proves that summing the cell
+balances over all cells cancels the contribution of every internal face.
+The proof is exact and algebraic: it exchanges the finite cell/face sums,
+factors out the one shared face flux, and applies the incidence cancellation
+hypothesis.
+
+This theorem deliberately has a narrow scope:
+
+- The same scalar face flux is shared by every cell incident to a face.
+  Independently evaluated left/right fluxes need an additional equality
+  hypothesis or a conservative numerical flux construction.
+- Boundary faces are excluded. Their contribution is not zero; it belongs in
+  the global boundary-flux balance.
+- The theorem does not yet derive incidence cancellation from a concrete
+  mesh data structure, face orientation, or cell adjacency representation.
+- It does not prove consistency, accuracy, stability, positivity, pressure-
+  velocity coupling, or convergence of a CFDX discretization.
+
+The next formal step is to derive the incidence hypothesis from the actual
+CFDX mesh topology and face ownership/orientation rules, then compare the
+formal cell-face balance with the C++ flux assembly on deterministic meshes.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
