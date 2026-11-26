@@ -46,30 +46,26 @@ jobs:
       - name: Install pinned Lean toolchain
         run: lean --version
 
+      - name: Verify committed Lake lockfile
+        run: test -s lake-manifest.json
+
       - name: Restore Lake cache
         uses: actions/cache@v4
         with:
           path: formal/lean/.lake
-          key: lean-${{ runner.os }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lakefile.lean') }}-${{ github.sha }}
+          key: lean-${{ runner.os }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lakefile.lean', 'formal/lean/lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
-            lean-${{ runner.os }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lakefile.lean') }}-
-
-      - name: Resolve pinned dependencies
-        run: lake update
-
-      - name: Export generated Lake manifest for repository lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfdx-lean-lake-manifest
-          path: formal/lean/lake-manifest.json
-          if-no-files-found: error
-          retention-days: 1
+            lean-${{ runner.os }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lakefile.lean', 'formal/lean/lake-manifest.json') }}-
 
       - name: Restore Mathlib compiled cache
         run: lake exe cache get
 
       - name: Build all Lean modules
         run: lake build
+
+      - name: Verify dependency lockfile is unchanged
+        working-directory: .
+        run: git diff --exit-code -- formal/lean/lake-manifest.json
 
       - name: Reject unproved placeholders and local axioms
         working-directory: .
