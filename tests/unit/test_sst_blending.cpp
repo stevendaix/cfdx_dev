@@ -473,8 +473,8 @@ int main()
         using namespace cfdx::core;
         auto mesh = make_sst_transaction_unit_cube();
         mesh.boundary().patch(1).type = PatchType::OUTLET;
-        CaseSetup setup;
-        BoundarySpec outlet;
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec outlet;
         outlet.patch_name = "x1";
         outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
         outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
@@ -529,8 +529,8 @@ int main()
         walls.face_ids = {3,4,5,6,7,8,9,10};
         mesh.boundary().add_patch(walls);
 
-        CaseSetup setup;
-        BoundarySpec outlet;
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec outlet;
         outlet.patch_name = "out";
         outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
         outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
@@ -550,8 +550,8 @@ int main()
         using namespace cfdx::core;
         auto mesh = make_sst_transaction_unit_cube();
         mesh.boundary().patch(1).type = PatchType::OUTLET;
-        CaseSetup setup;
-        BoundarySpec outlet;
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec outlet;
         outlet.patch_name = "x1";
         outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
         outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
