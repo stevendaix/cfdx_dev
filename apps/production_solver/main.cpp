@@ -2180,6 +2180,24 @@ int main(int argc, char** argv)
                 }
             }
 
+            // A case/HDF5 initial pressure is physical static pressure, but
+            // the SST momentum unknown is p* = p_static + 2/3 rho k. The
+            // imported/declared U and p fields are now made explicit so the
+            // solver's generic uniform initializer cannot overwrite this
+            // cell-wise modified-pressure state. DAT restart pressure is
+            // already p* and deliberately bypasses this conversion.
+            if (options.restart.empty()) {
+                if (!options.initial_velocity_field) {
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                        U.set(cell, initialization.uniform_velocity.x,
+                              initialization.uniform_velocity.y,
+                              initialization.uniform_velocity.z);
+                }
+                convert_sst_static_pressure_initial_field(
+                    p, *experimental_sst_state, sst_controls.density);
+                initialization.mode = InitializationMode::Provided;
+            }
+
             // The case stores physical static pressure; the SST momentum
             // operator solves p* = p_static + 2/3 rho k. Convert the
             // patch-constant pressure adapter only for FIXED_VALUE k. A
