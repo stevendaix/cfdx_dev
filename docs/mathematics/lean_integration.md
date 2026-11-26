@@ -133,9 +133,14 @@ the condition as an unexplained axiom.
 
 This is a mathematical correspondence at the level of the owner/neighbour
 data model, not yet a proof that the C++ validators and CSR traversal satisfy
-the Lean structure for every runtime mesh. The remaining bridge must test
-(and document the exact assumptions of) the mapping from validated C++ mesh
-storage to the finite Lean topology, including exactly-once cell-face
+the Lean structure for every runtime mesh. An existing small-mesh numerical counterpart is
+`tests/unit/test_conservation_assembly.cpp`: its two-cell/one-internal-face
+case checks owner +flux, neighbour -flux, and a zero global sum; it also tests
+mismatched independently assembled contributions and the boundary-neighbour
+zero contribution. This is valuable implementation evidence, but it is not a
+machine-checked cross-language equivalence test. The remaining bridge must
+establish (and document the exact assumptions of) the mapping from validated
+C++ mesh storage to the finite Lean topology, including exactly-once cell-face
 references, boundary classification, and shared face-flux storage.
 
 ## Integration roadmap
