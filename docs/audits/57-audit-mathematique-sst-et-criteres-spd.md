@@ -81,9 +81,9 @@ Le décalage du RHS garantit que le résidu du système couplé, évalué à l'�
 - les côtés droits étaient reconstruits à partir de `sk` et `sw`, au lieu des RHS assemblés `eqk.rhs` et `eqw.rhs`, omettant ainsi les contributions de frontière et de relaxation ;
 - les termes croisés étaient ajoutés sans correction affine du RHS, ce qui changeait le point fixe.
 
-**Correction sur la branche :** les dérivées sont converties en dérivées par rapport aux variables dimensionnelles, avec le signe correspondant au transfert de la dérivée de source à gauche. Le solveur construit son RHS tangent depuis les RHS assemblés et ajoute le décalage affine évalué à l'état courant. Le plafonnement des corrections est désormais relatif à chaque variable, et non un même incrément absolu pour (k) et (omega).
+**Correction sur la branche :** les dérivées sont converties en dérivées par rapport aux variables dimensionnelles, intégrées par le volume de cellule et munies du signe correspondant au transfert de la dérivée de source à gauche. Le solveur construit son RHS tangent depuis les RHS assemblés et ajoute le décalage affine évalué à l'état courant. Le plafonnement des corrections est relatif à chaque variable. Le test de pivot du bloc 2×2 utilise un seuil relatif à l'échelle des produits diagonaux et croisés, au lieu d'un seuil absolu dimensionné ; le repli Jacobi reste ainsi invariant à un changement cohérent d'échelle des équations.
 
-Test de régression ajouté : `sst_coupled_2x2_tangent_preserves_assembled_scalar_fixed_point`.
+Tests de régression ajoutés : `sst_coupled_2x2_tangent_preserves_assembled_scalar_fixed_point`, `sst_coupled_source_jacobian_uses_dimensional_derivative_and_cell_volume` et `sst_coupled_2x2_block_pivot_is_invariant_to_equation_scaling`.
 
 Cette correction rend le tangent cohérent au point de linéarisation. Elle ne transforme pas pour autant cette approximation partielle des dérivées de sources en Jacobien exact du système SST complet.
 
