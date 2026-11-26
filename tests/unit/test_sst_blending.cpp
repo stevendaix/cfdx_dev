@@ -492,9 +492,8 @@ int main()
         controls.sst_pseudo_transient_dt = 0.05;
         controls.sst_sequential_omega_first = true;
 
-        const auto result = solve_sst_transport_dynamic_blending(
-            mesh,geometry,flux,k,omega,strain,
-            wall,controls,kb,ob,1,1e-12);
+        const auto result = solve_sst_transport(
+            mesh,geometry,flux,k,omega,strain,F1,F2,controls,kb,ob,1,1e-12);
 
         // Independent returned-state reassembly using the frozen outer F1/F2
         // fields supplied to this transport solve, but no pseudo-time mass.
