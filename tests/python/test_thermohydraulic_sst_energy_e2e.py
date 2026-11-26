@@ -23,14 +23,22 @@ import test_n9_poiseuille_body_force_production as channel
 
 
 def write_sst_thermal_case(
-    path: Path, *, prt: str | None = "0.9", buoyant: bool = False, uniform: bool = False
+    path: Path,
+    *,
+    prt: str | None = "0.9",
+    buoyant: bool = False,
+    uniform: bool = False,
+    sst: bool = True,
 ) -> None:
     channel.NX, channel.NY = 3, 5
     channel.MAX_ITERATIONS = 40
     channel._write_case(path)
     with h5py.File(path, "r+") as case:
         setup = json.loads(case.attrs["case_setup_json"])
-        setup["turbulence_model"] = "k_omega_sst"
+        if sst:
+            setup["turbulence_model"] = "k_omega_sst"
+        else:
+            setup.pop("turbulence_model", None)
         setup["energy_model"] = "buoyant" if buoyant else "conjugate"
         setup["radiation_model"] = "none"
         setup["materials"] = [
@@ -40,7 +48,7 @@ def write_sst_thermal_case(
                 "dynamic_viscosity": 0.012,
                 "thermal_conductivity": 0.024,
                 "specific_heat": 1005.0,
-                "turbulence_model": "k_omega_sst",
+                **({"turbulence_model": "k_omega_sst"} if sst else {}),
                 "extra_properties": (
                     {"turbulent_prandtl": prt} if prt is not None else {}
                 ),
@@ -52,7 +60,7 @@ def write_sst_thermal_case(
                 "velocity": 0.0,
                 "velocity_vector": [0.0, 0.0, 0.0],
                 "temperature": 300.0,
-                "scalar_fields": {"k": 0.01, "omega": 2.0},
+                **({"scalar_fields": {"k": 0.01, "omega": 2.0}} if sst else {}),
             }
         )
         if buoyant:
@@ -66,20 +74,23 @@ def write_sst_thermal_case(
             if name in {"top", "bottom"}:
                 patch["value_type"] = "wall_thermal"
                 patch["wall_temperature"] = 300.0 if uniform or name == "top" else 310.0
-                patch["sst_scalar_conditions"] = [
-                    {"field": "k", "type": "wall_k_zero", "value": 0.0},
-                    {"field": "omega", "type": "wall_omega_sst", "value": 0.0},
-                ]
+                if sst:
+                    patch["sst_scalar_conditions"] = [
+                        {"field": "k", "type": "wall_k_zero", "value": 0.0},
+                        {"field": "omega", "type": "wall_omega_sst", "value": 0.0},
+                    ]
             elif name in {"front", "back"}:
-                patch["sst_scalar_conditions"] = [
-                    {"field": "k", "type": "zero_gradient", "value": 0.0},
-                    {"field": "omega", "type": "zero_gradient", "value": 0.0},
-                ]
+                if sst:
+                    patch["sst_scalar_conditions"] = [
+                        {"field": "k", "type": "zero_gradient", "value": 0.0},
+                        {"field": "omega", "type": "zero_gradient", "value": 0.0},
+                    ]
             else:
-                patch["sst_scalar_conditions"] = [
-                    {"field": "k", "type": "fixed_value", "value": 0.01},
-                    {"field": "omega", "type": "fixed_value", "value": 2.0},
-                ]
+                if sst:
+                    patch["sst_scalar_conditions"] = [
+                        {"field": "k", "type": "fixed_value", "value": 0.01},
+                        {"field": "omega", "type": "fixed_value", "value": 2.0},
+                    ]
                 if name == "inlet":
                     # This fixture isolates SST/thermal coupling, not a
                     # pressure-driven channel-flow qualification. Prescribe
@@ -89,25 +100,30 @@ def write_sst_thermal_case(
                     # eddy viscosity for the turbulent-Prandtl A/B test.
                     patch["value_type"] = "fixed"
                     patch["velocity_vector"] = [0.0, 0.0, 0.0]
-                    patch["turbulence_intensity"] = 0.05
-                    patch["turbulence_length_scale"] = 0.1
+                    if sst:
+                        patch["turbulence_intensity"] = 0.05
+                        patch["turbulence_length_scale"] = 0.1
         del case.attrs["case_setup_json"]
         case.attrs["case_setup_json"] = json.dumps(setup)
 
 
-def execute(solver: Path, case: Path, result: Path) -> subprocess.CompletedProcess:
+def execute(
+    solver: Path, case: Path, result: Path, *, experimental_sst: bool = True
+) -> subprocess.CompletedProcess:
+    command = [
+        str(solver),
+        "--mesh",
+        str(case),
+        "--output-dir",
+        str(result),
+        "--iterations",
+        "40",
+    ]
+    if experimental_sst:
+        command.append("--experimental-sst")
+    command.append("--benchmark-export")
     return subprocess.run(
-        [
-            str(solver),
-            "--mesh",
-            str(case),
-            "--output-dir",
-            str(result),
-            "--iterations",
-            "40",
-            "--experimental-sst",
-            "--benchmark-export",
-        ],
+        command,
         text=True,
         capture_output=True,
         timeout=120,
@@ -163,11 +179,15 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
     assert fluxes["0.4"] > fluxes["1.8"] * 1.15
 
 
-def test_real_buoyant_sst_isothermal_equilibrium(solver: Path, tmp_path: Path) -> None:
-    case = tmp_path / "buoyant_uniform.cfdx.h5"
-    out = tmp_path / "buoyant_uniform"
-    write_sst_thermal_case(case, buoyant=True, uniform=True)
-    run = execute(solver, case, out)
+def test_real_buoyant_laminar_isothermal_equilibrium(solver: Path, tmp_path: Path) -> None:
+    # This test verifies the Boussinesq equilibrium independently of SST.
+    # The separate Pr_t A/B test above exercises the real SST/energy coupling.
+    # Combining zero buoyancy with a non-equilibrium k/omega field and wall
+    # turbulence conditions does not define a steady SST state.
+    case = tmp_path / "buoyant_laminar_uniform.cfdx.h5"
+    out = tmp_path / "buoyant_laminar_uniform"
+    write_sst_thermal_case(case, buoyant=True, uniform=True, sst=False)
+    run = execute(solver, case, out, experimental_sst=False)
     assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
     assert "Buoyant flow-energy outer loop converged" in run.stdout
     summary = json.loads((out / "energy_summary.json").read_text())
