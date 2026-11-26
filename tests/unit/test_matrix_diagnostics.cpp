@@ -198,6 +198,19 @@ int main() {
                      std::invalid_argument);
     });
 
+    run_case("strict_gershgorin_certificate_is_invariant_to_uniform_matrix_scaling", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 3.0e-20);
+        A.push_back(0, 1, -1.0e-20);
+        A.push_back(1, 0, -1.0e-20);
+        A.push_back(1, 1, 3.0e-20);
+        A.finalize();
+        const auto c = measure_matrix_characteristics(A);
+        EXPECT_TRUE(c.numerically_symmetric);
+        EXPECT_TRUE(c.positive_diagonal);
+        EXPECT_TRUE(c.strictly_diagonally_dominant);
+    });
+
     run_case("strict_gershgorin_margin_certifies_generic_symmetric_positive_definite_matrix", [] {
         SparseMatrix spd(2, 2);
         spd.push_back(0, 0, 3.0);
