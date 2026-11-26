@@ -494,6 +494,58 @@ int main()
                     101325.0 + (2.0 / 3.0) * 1.2 * 0.3, 1e-12);
         EXPECT_NEAR(pressure_bcs.at("x0").value, 0.0, 0.0);
     });
+    run_case("sst_static_pressure_outlet_rejects_nonuniform_k_trace", [] {
+        using namespace cfdx::core;
+        Mesh mesh;
+        mesh.points().resize(12);
+        const double points[12][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
+        for (std::size_t i=0;i<12;++i)
+            mesh.points().set(i,points[i][0],points[i][1],points[i][2]);
+        const std::vector<std::vector<FaceIndex>> faces = {
+            {0,6,9,3}, {1,4,10,7}, {2,5,11,8},
+            {0,1,7,6}, {1,2,8,7}, {3,9,10,4},
+            {4,10,11,5}, {0,3,4,1}, {1,4,5,2},
+            {6,7,10,9}, {7,8,11,10}};
+        for (const auto& face : faces) mesh.faces().push_face(face);
+        mesh.ownership().resize(faces.size());
+        for (std::size_t face=0;face<faces.size();++face) {
+            mesh.ownership().set_owner(face, face==2 || face==4 || face==6 ||
+                face==8 || face==10 ? 1 : 0);
+            mesh.ownership().set_neighbour(
+                face, face==1 ? 1 : FaceOwnership::BOUNDARY);
+        }
+        mesh.cells().push_cell({0,1,3,5,7,9});
+        mesh.cells().push_cell({1,2,4,6,8,10});
+        Patch outlet_patch;
+        outlet_patch.name = "out";
+        outlet_patch.type = PatchType::OUTLET;
+        outlet_patch.face_ids = {0,2};
+        mesh.boundary().add_patch(outlet_patch);
+        Patch walls;
+        walls.name = "walls";
+        walls.type = PatchType::WALL;
+        walls.face_ids = {3,4,5,6,7,8,9,10};
+        mesh.boundary().add_patch(walls);
+
+        CaseSetup setup;
+        BoundarySpec outlet;
+        outlet.patch_name = "out";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}};
+        setup.boundary_conditions.push_back(outlet);
+        SSTProductionState state(mesh.n_cells());
+        state.k(0)=0.2;
+        state.k(1)=0.4;
+        ScalarBoundaryConditions pressure_bcs;
+        pressure_bcs["out"] = {ScalarBoundaryType::FIXED_VALUE, 101325.0, 0.0};
+        EXPECT_THROW(apply_sst_static_pressure_boundary_contract(
+            mesh, setup, state, 1.2, pressure_bcs), std::invalid_argument);
+    });
     run_case("sst_static_pressure_outlet_rejects_missing_k_boundary_contract", [] {
         using namespace cfdx::core;
         auto mesh = make_sst_transaction_unit_cube();
