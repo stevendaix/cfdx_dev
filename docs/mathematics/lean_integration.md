@@ -105,6 +105,39 @@ The next formal step is to derive the incidence hypothesis from the actual
 CFDX mesh topology and face ownership/orientation rules, then compare the
 formal cell-face balance with the C++ flux assembly on deterministic meshes.
 
+## Mapping to the current CFDX mesh and flux code
+
+A source audit of the current C++ implementation identifies a direct
+owner/neighbour representation:
+
+- `src/cfdx/core/mesh/ownership.h`: each face has one owner and either one
+  neighbour or the boundary sentinel `-1`. Validation rejects out-of-range
+  cells, unknown negative sentinels, and self-connected internal faces.
+- `src/cfdx/core/mesh/mesh.h`: topology validation checks owner/neighbour
+  consistency, the expected number of cell-face references, and that each
+  face is referenced by its owner and (for internal faces) its neighbour.
+- `src/cfdx/core/numerics/divergence.h`: cell divergence traverses the
+  cell-face CSR and adds the face field for the owner, subtracting it for the
+  neighbour, then divides by cell volume.
+- `src/cfdx/core/numerics/conservation.h`: the independent face-balance
+  reconstruction traverses each stored face once, adds one face flux to its
+  owner, subtracts that same value from its neighbour, and accumulates
+  boundary flux separately.
+
+The new `OwnerNeighbourTopology` Lean structure models the owner, optional
+neighbour, internal-face set, and distinct-owner/neighbour invariant. Its
+incidence coefficient is +1 for the owner and -1 for the neighbour; the
+boundary case has no neighbour contribution. The new theorem derives the
+zero-sum incidence condition from that representation, rather than taking
+the condition as an unexplained axiom.
+
+This is a mathematical correspondence at the level of the owner/neighbour
+data model, not yet a proof that the C++ validators and CSR traversal satisfy
+the Lean structure for every runtime mesh. The remaining bridge must test
+(and document the exact assumptions of) the mapping from validated C++ mesh
+storage to the finite Lean topology, including exactly-once cell-face
+references, boundary classification, and shared face-flux storage.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
