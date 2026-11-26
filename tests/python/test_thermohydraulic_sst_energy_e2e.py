@@ -179,7 +179,9 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
     assert fluxes["0.4"] > fluxes["1.8"] * 1.15
 
 
-def test_real_buoyant_laminar_isothermal_equilibrium(solver: Path, tmp_path: Path) -> None:
+def test_real_buoyant_laminar_isothermal_equilibrium(
+    solver: Path, tmp_path: Path
+) -> None:
     # This test verifies the Boussinesq equilibrium independently of SST.
     # The separate Pr_t A/B test above exercises the real SST/energy coupling.
     # Combining zero buoyancy with a non-equilibrium k/omega field and wall
