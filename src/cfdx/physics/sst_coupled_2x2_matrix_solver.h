@@ -16,11 +16,12 @@
 //
 // par itération de Richardson préconditionnée par bloc-Jacobi.
 //
-// CORRECTIONS par rapport à la première version :
-//   1. Pas de double comptage du terme de destruction :
-//      - d_kw = dPk/dlog(omega) uniquement (le terme -spk*k est déjà dans A_kk)
-//      - d_wk = dSw/dlog(k) uniquement (le terme -spw*w est déjà dans A_ww)
-//   2. Critère de convergence normalisé par équation :
+// Contrat de linéarisation : les coefficients croisés sont les dérivées
+// négatives des sources explicites par rapport aux champs dimensionnels.
+// Les contributions de destruction implicites restent dans A_kk/A_ww.
+// Le décalage affine du RHS est indispensable : sans lui, l'ajout des blocs
+// croisés change le point fixe des deux équations scalaires.
+// Critère de convergence normalisé par équation :
 //      R_k* = ||r_k|| / (||b_k|| + eps), R_w* = ||r_w|| / (||b_w|| + eps)
 //   3. Pas de coupure de positivité forcée à l'intérieur du solveur linéaire
 //      (la positivité est gérée par le code appelant via enforce_turbulence_bounds).
