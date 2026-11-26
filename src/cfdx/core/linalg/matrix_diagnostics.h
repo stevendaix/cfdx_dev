@@ -301,10 +301,16 @@ inline MatrixCharacteristics measure_matrix_characteristics(
             ? 1.0
             : d.max_abs_value / d.min_nonzero_abs_value;
     c.square = d.rows == d.columns;
+    const double gershgorin_tolerance =
+        1e-14 * std::max(1.0, d.max_abs_diagonal);
     c.diagonally_dominant =
         c.square && std::isfinite(d.minimum_gershgorin_margin) &&
-        d.minimum_gershgorin_margin >=
-            -1e-14 * std::max(1.0, d.max_abs_diagonal);
+        d.minimum_gershgorin_margin >= -gershgorin_tolerance;
+    // Strict Gershgorin positivity is a sufficient (not necessary) SPD
+    // certificate for a symmetric matrix. Weak diagonal dominance is not.
+    c.strictly_diagonally_dominant =
+        c.square && std::isfinite(d.minimum_gershgorin_margin) &&
+        d.minimum_gershgorin_margin > gershgorin_tolerance;
     c.strongly_scaled = std::isfinite(c.coefficient_range) &&
                         c.coefficient_range >= 1.0e8;
     c.large_diagonal_dynamic_range = std::isfinite(d.diagonal_dynamic_range) &&
