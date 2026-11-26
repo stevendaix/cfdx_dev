@@ -39,8 +39,64 @@ static Mesh make_two_cell_cartesian()
     return m;
 }
 
+
+static Mesh make_unit_tetrahedron()
+{
+    Mesh m;
+    m.points().resize(4);
+    m.points().set(0,0.0,0.0,0.0);
+    m.points().set(1,1.0,0.0,0.0);
+    m.points().set(2,0.0,1.0,0.0);
+    m.points().set(3,0.0,0.0,1.0);
+
+    // The geometry cache canonicalizes every face to owner -> exterior.
+    const std::vector<std::vector<VertexIndex>> faces = {
+        {1,2,3}, {0,3,2}, {0,1,3}, {0,2,1}
+    };
+    for (const auto& face : faces) m.faces().push_face(face);
+
+    m.ownership().resize(faces.size());
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        m.ownership().set_owner(f, 0);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.cells().push_cell({0,1,2,3});
+    return m;
+}
+
 int main()
 {
+    run_case("reference_tetrahedron_geometry_cache_satisfies_gauss_moment_identity", [] {
+        const Mesh m = make_unit_tetrahedron();
+        const GeometryCache geometry = make_geometry_cache(m);
+        EXPECT_NEAR(geometry.cell_volumes[0], 1.0 / 6.0, 1e-12);
+
+        const auto component = [](const Vec3& value, std::size_t d) {
+            return d == 0 ? value.x : (d == 1 ? value.y : value.z);
+        };
+
+        // Check the same oriented area closure used by the Lean reference cell.
+        Vec3 area_sum;
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            area_sum = area_sum + geometry.face_Sf[f];
+        EXPECT_NEAR(area_sum.x, 0.0, 1e-12);
+        EXPECT_NEAR(area_sum.y, 0.0, 1e-12);
+        EXPECT_NEAR(area_sum.z, 0.0, 1e-12);
+
+        // The first-moment tensor sum_f C_f outer Sf_f must equal V * I.
+        for (std::size_t i = 0; i < 3; ++i) {
+            for (std::size_t j = 0; j < 3; ++j) {
+                double moment = 0.0;
+                for (std::size_t f = 0; f < m.n_faces(); ++f) {
+                    moment += component(geometry.face_centres[f], i) *
+                              component(geometry.face_Sf[f], j);
+                }
+                const double expected = (i == j) ? geometry.cell_volumes[0] : 0.0;
+                EXPECT_NEAR(moment, expected, 1e-12);
+            }
+        }
+    });
+
     run_case("gauss_gradient_respects_internal_face_orientation", [] {
         const Mesh m = make_two_cell_cartesian();
         Field<double,Location::CELL> phi(2,"phi","m",1);
