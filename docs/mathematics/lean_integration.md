@@ -153,6 +153,54 @@ establish (and document the exact assumptions of) the mapping from validated
 C++ mesh storage to the finite Lean topology, including exactly-once cell-face
 references, boundary classification, and shared face-flux storage.
 
+## Gauss-gradient contract: constant preservation
+
+`CFDX.FiniteVolume.GaussGradient` defines a finite-volume Gauss-gradient
+operator matching the algebraic structure of
+`compute_gradient_gauss` in `src/cfdx/core/numerics/gradient.h`:
+
+[
+(G_h \phi)_c =
+\frac{1}{V_c}
+\sum_f \phi_f\,\mathbf S_{cf},
+\qquad
+\phi_f =
+\begin{cases}
+\phi_o, & f\text{ boundary},\\
+(1-w_f)\phi_o+w_f\phi_n, & f\text{ internal}.
+\end{cases}
+]
+
+Here \(\mathbf S_{cf}\) is the face area vector oriented outward from cell
+\(c\), and \(V_c>0\). The formal geometry requires the cell closure identity
+\(\sum_f\mathbf S_{cf}=0\), with non-incident faces represented by zero
+vectors. It also records the production interpolation range
+\(0\leq w_f\leq1\).
+
+The kernel-checked theorem
+`gauss_gradient_const_eq_zero` proves that a constant cell field has zero
+Gauss gradient under this closure identity. The proof is deliberately
+conditional: it does not yet prove that every geometry cache built by CFDX
+satisfies the closure identity or that every CSR cell-face traversal contains
+exactly the intended oriented faces. That is the subject of the subsequent
+C++/Lean conformance bridge.
+
+**Important limitation:** this theorem is not affine exactness. CFDX computes
+the internal interpolation weight by a clamped projection of the face centre
+onto the owner-neighbour centre line. On a skew mesh, that interpolation need
+not reproduce the exact affine field value at the face centre. Therefore the
+current theorem does not justify a claim of second-order or linear-exact
+Gauss gradients on arbitrary unstructured meshes. The next mathematical
+extension must state the face-value exactness and geometric first-moment
+conditions needed for affine exactness, and quantify the interpolation defect
+when those conditions fail.
+
+The formal operator is an algebraic specification of the production formula,
+not a proof of C++ implementation equivalence. The relevant implementation
+path is the interpolation loop in `compute_gradient_gauss`, followed by the
+cell-face CSR accumulation with owner-positive and neighbour-negative
+`face_Sf`, and division by the positive cell volume.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
