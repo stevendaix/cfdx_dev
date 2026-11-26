@@ -494,6 +494,25 @@ int main()
                     101325.0 + (2.0 / 3.0) * 1.2 * 0.3, 1e-12);
         EXPECT_NEAR(pressure_bcs.at("x0").value, 0.0, 0.0);
     });
+    run_case("sst_initial_static_pressure_is_converted_cellwise_and_atomically", [] {
+        using namespace cfdx::core;
+        Field<double,Location::CELL> pressure(2,"p","Pa",1);
+        pressure(0)=100000.0;
+        pressure(1)=100250.0;
+        SSTProductionState state(2);
+        state.k(0)=0.0;
+        state.k(1)=0.75;
+        convert_sst_static_pressure_initial_field(pressure,state,1.2);
+        EXPECT_NEAR(pressure(0),100000.0,0.0);
+        EXPECT_NEAR(pressure(1),100250.0+(2.0/3.0)*1.2*0.75,1e-12);
+
+        const double before0=pressure(0), before1=pressure(1);
+        state.k(1)=std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(convert_sst_static_pressure_initial_field(pressure,state,1.2),
+                     std::invalid_argument);
+        EXPECT_NEAR(pressure(0),before0,0.0);
+        EXPECT_NEAR(pressure(1),before1,0.0);
+    });
     run_case("sst_static_pressure_outlet_rejects_evolving_zero_gradient_k_trace", [] {
         using namespace cfdx::core;
         auto mesh = make_sst_transaction_unit_cube();
