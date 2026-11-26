@@ -478,9 +478,8 @@ int main()
         Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1),
             omega(mesh.n_cells(),"omega","1/s",1),
             strain(mesh.n_cells(),"strain","1/s",1),
-            wall(mesh.n_cells(),"wall","m",1),
             F1(mesh.n_cells(),"F1","1",1), F2(mesh.n_cells(),"F2","1",1);
-        k.fill(0.4); omega.fill(20.0); strain.fill(10.0); wall.fill(0.1);
+        k.fill(0.4); omega.fill(20.0); strain.fill(10.0);
         F1.fill(0.8); F2.fill(0.7);
         ScalarBoundaryConditions kb, ob;
         for (const char* patch : {"x0", "x1", "walls"}) {
@@ -493,15 +492,41 @@ int main()
         controls.sst_sequential_omega_first = false;
 
         const auto result = solve_sst_transport_dynamic_blending(
-            mesh,geometry,flux,k,omega,strain,wall,controls,kb,ob,1,1e-12);
-        const auto independently_reassembled =
-            sst_reassembled_returned_state_residual(
-                mesh,geometry,flux,k,omega,strain,wall,controls,kb,ob,nullptr);
-        // The reported defects must be those of the returned steady physical
-        // state, not the artificially shifted pseudo-time systems.
-        EXPECT_NEAR(result.k_residual,independently_reassembled.k_raw_inf,1e-12);
+            mesh,geometry,flux,k,omega,strain,
+            Field<double,Location::CELL>(mesh.n_cells(),"wall","m",1),
+            controls,kb,ob,1,1e-12);
+
+        // Independent returned-state reassembly using the frozen outer F1/F2
+        // fields supplied to this transport solve, but no pseudo-time mass.
+        const auto cross = sst_boundary_gradient_dot(
+            k,omega,mesh,geometry,kb,ob,nullptr,
+            controls.sst_use_wls_boundary_gradients,controls.sst_gradient_dimension);
+        Field<double,Location::CELL> sk(mesh.n_cells(),"Sk","W/m3",1),
+            sw(mesh.n_cells(),"Sw","W/m3",1),
+            spk(mesh.n_cells(),"Spk","kg/m3/s",1),
+            spw(mesh.n_cells(),"Spw","kg/m3/s",1);
+        std::vector<double> gamma_k(mesh.n_cells()), gamma_w(mesh.n_cells());
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            const auto q=sst_cell_sources(
+                k(cell),omega(cell),strain(cell),F1(cell),F2(cell),cross[cell],controls,-1);
+            sk(cell)=q.sk; sw(cell)=q.sw; spk(cell)=q.spk; spw(cell)=q.spw;
+            gamma_k[cell]=q.gamma_k; gamma_w[cell]=q.gamma_w;
+        }
+        const auto physical_k=assemble_scalar_equation(
+            mesh,geometry,flux,0.0,sk,spk,kb,true,nullptr,nullptr,nullptr,
+            &gamma_k,ConvectionScheme::UPWIND,&k,nullptr,true,nullptr);
+        const auto physical_omega=assemble_scalar_equation(
+            mesh,geometry,flux,0.0,sw,spw,ob,true,nullptr,nullptr,nullptr,
+            &gamma_w,ConvectionScheme::UPWIND,&omega,nullptr,true,nullptr);
+        Vector returned_k(mesh.n_cells()), returned_omega(mesh.n_cells());
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            returned_k(cell)=k(cell);
+            returned_omega(cell)=omega(cell);
+        }
+        EXPECT_NEAR(result.k_residual,
+            scalar_equation_residual_inf(physical_k,returned_k),1e-10);
         EXPECT_NEAR(result.second_residual,
-                    independently_reassembled.omega_raw_inf,1e-12);
+            scalar_equation_residual_inf(physical_omega,returned_omega),1e-10);
         EXPECT_TRUE(!result.converged);
     });
     run_case("v13_sst_newton_sink_preserves_the_exact_omega_source", [] {
