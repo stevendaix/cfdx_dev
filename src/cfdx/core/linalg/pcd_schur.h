@@ -419,6 +419,12 @@ private:
                                                  std::size_t np) {
         if (!valid_pressure_operator(matrix, np)) return false;
         double maximum_diagonal = 0.0;
+        double maximum_coefficient = 0.0;
+        for (std::size_t k = 0; k < matrix.nnz(); ++k)
+            maximum_coefficient = std::max(
+                maximum_coefficient, std::abs(matrix.values_data()[k]));
+        const double symmetry_scale = std::max(
+            maximum_coefficient, std::numeric_limits<double>::min());
         bool strict_diagonal_dominance = true;
         for (std::size_t row = 0; row < np; ++row) {
             const double diagonal = matrix(row, row);
@@ -432,8 +438,7 @@ private:
                 if (col >= np) return false;
                 const double opposite = matrix(col, row);
                 if (!std::isfinite(opposite) ||
-                    std::abs(val - opposite) >
-                        1e-12 * std::max({1.0, std::abs(val), std::abs(opposite)}))
+                    std::abs(val - opposite) > 1e-12 * symmetry_scale)
                     return false;
                 if (col != row) off_diagonal_sum += std::abs(val);
             }
