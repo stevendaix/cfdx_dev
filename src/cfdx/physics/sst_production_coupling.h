@@ -137,6 +137,37 @@ inline void apply_sst_static_pressure_boundary_contract(
     }
 }
 
+// Case-file and imported initial pressure values are physical static pressure,
+// while the SST momentum operator stores modified pressure p* = p_static +
+// 2/3 rho k. Convert the cell field exactly once before the first solve. DAT
+// restarts already store the solver's p* state and must not call this helper.
+inline void convert_sst_static_pressure_initial_field(
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
+    const SSTProductionState& state,
+    double density)
+{
+    if (!std::isfinite(density) || density <= 0.0 ||
+        pressure.dimension() != 1 || pressure.size() == 0 ||
+        pressure.size() != state.k.size() || state.k.dimension() != 1)
+        throw std::invalid_argument(
+            "SST initial pressure conversion requires positive density and matching scalar fields");
+
+    std::vector<double> modified_pressure(pressure.size());
+    for (std::size_t cell = 0; cell < pressure.size(); ++cell) {
+        const double p_static = pressure(cell);
+        const double k = state.k(cell);
+        if (!std::isfinite(p_static) || !std::isfinite(k) || k < 0.0)
+            throw std::invalid_argument(
+                "SST initial pressure conversion received a non-finite pressure or invalid k");
+        modified_pressure[cell] = p_static + (2.0 / 3.0) * density * k;
+        if (!std::isfinite(modified_pressure[cell]))
+            throw std::overflow_error(
+                "SST initial modified pressure is non-finite");
+    }
+    for (std::size_t cell = 0; cell < pressure.size(); ++cell)
+        pressure(cell) = modified_pressure[cell];
+}
+
 // Validate the production-owned fields before a state is used by transport or
 // momentum assembly. Model conventions are governed by docs/audits/09-turbulence-rans.md.
 // No flooring or automatic initialization is performed.
