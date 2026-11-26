@@ -168,3 +168,16 @@ La conversion est appliquée après l'initialisation/restauration du champ SST e
 | Support face-valued de p* | Non implémenté |
 | Qualification physique BFS/SST | Non acquise ; calcul convergé, bilans et étude de maillage requis |
 
+
+
+### Initialisation cohérente de la pression modifiée
+
+L'audit des échecs de la campagne TH-07 a également révélé une incohérence distincte : les conditions de pression de sortie étaient converties en $p^*$, mais le champ cellulaire initial conservait $p_{stat}$. Or le solveur de quantité de mouvement utilise $p^*$ dans toutes les cellules. Cela créait, dès le premier résidu, un décalage de pression artificiel lorsque $k$ était non nul.
+
+La branche convertit maintenant le champ initial cellule par cellule :
+\[
+p^*_c = p_{stat,c} + \frac{2}{3}\rho k_c.
+\]
+La conversion est atomique (toutes les valeurs candidates sont contrôlées avant écriture), est effectuée après chargement éventuel des champs SST importés et avant le premier appel solveur, et force l'initialisation en mode `Provided` afin que l'initialiseur uniforme générique ne réécrase pas $p^*$. Le champ de vitesse uniforme déclaré est alors matérialisé explicitement. Les DAT restart ne sont pas convertis : ils contiennent déjà la pression de l'état solveur.
+
+Test ajouté : `sst_initial_static_pressure_is_converted_cellwise_and_atomically`. Cette correction doit encore être confirmée par le test E2E TH-07 et par une campagne BFS ; elle ne résout pas la limite indépendante du traitement de $k$ ZERO_GRADIENT sur une sortie à pression imposée.
