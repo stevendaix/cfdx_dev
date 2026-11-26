@@ -64,6 +64,19 @@ int main() {
         EXPECT_TRUE(d.minimum_gershgorin_margin >= 0.0);
     });
 
+    run_case("symmetry_detection_is_relative_for_small_coefficient_matrices", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0e-20);
+        A.push_back(0, 1, 0.0);
+        A.push_back(1, 0, 1.0e-13);
+        A.push_back(1, 1, 1.0e-20);
+        A.finalize();
+        // The off-diagonal mismatch is seven orders larger than the matrix
+        // diagonal. A unit-scale absolute tolerance must not hide it.
+        const auto c = measure_matrix_characteristics(A);
+        EXPECT_TRUE(!c.numerically_symmetric);
+    });
+
     run_case("row_and_column_scaling_are_explicit", [] {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1e-6);
