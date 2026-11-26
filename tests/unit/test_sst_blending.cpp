@@ -12,6 +12,7 @@
 #include <limits>
 #include <map>
 #include <utility>
+#include <tuple>
 #include <vector>
 
 using namespace cfdx::testing;
@@ -400,6 +401,35 @@ int main()
         EXPECT_TRUE(r.last_k_linear_after>=r.last_k_linear_before);
         EXPECT_TRUE(r.last_second_linear_after>=r.last_second_linear_before);
         EXPECT_TRUE(r.k_residual>0 || r.second_residual>0);
+    });
+    run_case("sst_coupled_2x2_block_pivot_is_invariant_to_equation_scaling", [] {
+        using namespace cfdx::core;
+        const auto solve_at_scale = [](double scale) {
+            ScalarEquation eqk, eqw;
+            eqk.matrix = SparseMatrix(1,1);
+            eqk.matrix.push_back(0,0,2.0*scale);
+            eqk.matrix.finalize();
+            eqk.rhs = Vector(1,4.0*scale);
+            eqk.diagonal = {2.0*scale};
+            eqw.matrix = SparseMatrix(1,1);
+            eqw.matrix.push_back(0,0,3.0*scale);
+            eqw.matrix.finalize();
+            eqw.rhs = Vector(1,6.0*scale);
+            eqw.diagonal = {3.0*scale};
+            std::vector<double> k{1.0}, omega{1.0};
+            const std::vector<double> c_kw{1.8*scale}, c_wk{1.8*scale};
+            const auto result = solve_coupled_2x2_matrix(
+                eqk,eqw,k,omega,c_kw,c_wk,1.0,5,1e-10,1e-12,1e-12);
+            return std::tuple{result,k[0],omega[0]};
+        };
+        const auto ordinary = solve_at_scale(1.0);
+        const auto rescaled = solve_at_scale(1e-20);
+        EXPECT_TRUE(std::get<0>(ordinary).converged);
+        EXPECT_TRUE(std::get<0>(rescaled).converged);
+        EXPECT_TRUE(std::get<0>(ordinary).iterations == 1);
+        EXPECT_TRUE(std::get<0>(rescaled).iterations == 1);
+        EXPECT_NEAR(std::get<1>(ordinary),std::get<1>(rescaled),1e-12);
+        EXPECT_NEAR(std::get<2>(ordinary),std::get<2>(rescaled),1e-12);
     });
     run_case("sst_coupled_source_jacobian_uses_dimensional_derivative_and_cell_volume", [] {
         // S(phi)=S0 + dS/dphi*(phi-phi0), so -dS/dphi*V is
