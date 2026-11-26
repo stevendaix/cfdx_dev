@@ -26,7 +26,9 @@ jobs:
   lean:
     name: Lean 4 / Mathlib
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    container:
+      image: leanprover/lean4:v4.19.0
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: formal/lean
@@ -35,11 +37,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Lean and restore Lake cache
-        uses: leanprover/lean-action@v1
+      - name: Restore Lake build cache
+        uses: actions/cache@v4
         with:
-          lake-package-directory: formal/lean
-          use-github-cache: true
+          path: formal/lean/.lake
+          key: lean-${{ runner.os }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lakefile.lean') }}-${{ github.sha }}
+          restore-keys: |
+            lean-${{ runner.os }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lakefile.lean') }}-
+
+      - name: Resolve pinned dependencies
+        run: lake update
+
+      - name: Restore Mathlib compiled cache
+        run: lake exe cache get
 
       - name: Build all Lean modules
         run: lake build
