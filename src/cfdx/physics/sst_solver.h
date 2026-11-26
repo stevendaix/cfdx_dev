@@ -984,12 +984,14 @@ inline TurbulenceTransportResult solve_sst_transport(
                 const double wi_p = wi * (1.0 + eps_fd);
                 const auto q01 = sst_cell_sources(
                     ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                d_kw[i] = -(q01.sk - Sk00) / (eps_fd * wi);
+                d_kw[i] = sst_negative_source_derivative_coefficient(
+                    Sk00,q01.sk,eps_fd,wi,geometry.cell_volumes.at(i));
 
                 const double ki_p = ki * (1.0 + eps_fd);
                 const auto q10 = sst_cell_sources(
                     ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                d_wk[i] = -(q10.sw - Sw00) / (eps_fd * ki);
+                d_wk[i] = sst_negative_source_derivative_coefficient(
+                    Sw00,q10.sw,eps_fd,ki,geometry.cell_volumes.at(i));
             }
 
             // Vecteurs de travail.
