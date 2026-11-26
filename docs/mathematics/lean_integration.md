@@ -101,6 +101,14 @@ This theorem deliberately has a narrow scope:
 - It does not prove consistency, accuracy, stability, positivity, pressure-
   velocity coupling, or convergence of a CFDX discretization.
 
+The owner/neighbour model also proves
+`CFDX.FiniteVolume.global_cell_flux_balance_eq_boundary_flux`: summing the
+complete owner/neighbour face balances over all cells leaves exactly the
+outward owner-oriented boundary flux. Internal faces cancel; boundary faces
+are retained once. This is the discrete global balance identity corresponding
+to the C++ conservation audit, subject to the topology and shared-flux
+assumptions above.
+
 The next formal step is to derive the incidence hypothesis from the actual
 CFDX mesh topology and face ownership/orientation rules, then compare the
 formal cell-face balance with the C++ flux assembly on deterministic meshes.
