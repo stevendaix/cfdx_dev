@@ -869,6 +869,16 @@ inline TurbulenceTransportResult solve_sst_transport(
             gamma_k[i]=q.gamma_k; gamma_w[i]=q.gamma_w;
         }
 
+        // Preserve the steady physical source before adding the artificial
+        // pseudo-time mass. The shifted system is only a candidate generator:
+        // its residual is NOT the steady SST residual and must never certify
+        // convergence. The physical twins below are assembled from these
+        // unshifted sources.
+        const auto sk_physical = sk;
+        const auto spk_physical = spk;
+        const auto sw_physical = sw;
+        const auto spw_physical = spw;
+
         // Pseudo-time stepping: add artificial mass term (k - k_old)/dt and
         // (omega - omega_old)/dt as implicit diagonal + explicit source.
         // This damps the stiff k<->omega source coupling on wall-resolved
@@ -913,11 +923,11 @@ inline TurbulenceTransportResult solve_sst_transport(
         // returned state. Measuring them against the relaxed matrix would
         // report ~0 by construction and silently weaken the acceptance gate.
         auto eqk_phys=assemble_scalar_equation(
-            mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+            mesh,geometry,mass_flux,0.0,sk_physical,spk_physical,k_bcs,true,
             nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k,
             nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
         auto eqw_phys=assemble_scalar_equation(
-            mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
+            mesh,geometry,mass_flux,0.0,sw_physical,spw_physical,omega_bcs,true,
             omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
             nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
         if (controls.sst_weighted_wall_matrix_v29_experimental)
