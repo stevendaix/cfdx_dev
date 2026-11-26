@@ -40,10 +40,10 @@ struct SSTProductionState {
 
 // Case pressure values are static pressure. The incompressible SST
 // momentum equation solves modified pressure p* = p_static + 2/3 rho k.
-// The current pressure FV adapter stores one scalar value per patch, so this
-// conversion is exact only when the k boundary trace is constant on each
-// fixed-pressure outlet. Reject nonuniform traces rather than silently
-// imposing the wrong p* field.
+// The current pressure FV adapter stores one scalar value per patch. Only a
+// fixed-value k condition gives a prescribed, iteration-invariant offset on
+// that patch. Zero-gradient k is rejected because its owner-cell trace evolves
+// during the SST iteration and cannot be frozen into one patch scalar.
 inline void apply_sst_static_pressure_boundary_contract(
     const cfdx::core::Mesh& mesh,
     const cfdx::io::CaseSetup& setup,
