@@ -2193,6 +2193,8 @@ int main(int argc, char** argv)
                               initialization.uniform_velocity.y,
                               initialization.uniform_velocity.z);
                 }
+                if (!options.initial_pressure_field)
+                    p.fill(case_setup.initial_condition.pressure);
                 convert_sst_static_pressure_initial_field(
                     p, *experimental_sst_state, sst_controls.density);
                 initialization.mode = InitializationMode::Provided;
