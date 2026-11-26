@@ -19,9 +19,11 @@
 
 namespace cfdx::physics {
 
-// Recommended controls for a converged BFS/SST calculation. These are
-// opt-in recommendations: the caller applies them explicitly. All physical
-// convergence tolerances are unchanged from the caller-provided criteria.
+// Recommended controls for a robust BFS/SST convergence attempt. The preset
+// deliberately starts with first-order UPWIND for robustness; it is NOT an
+// accuracy-qualified final discretization. A separate higher-order run and
+// mesh-convergence study are mandatory for physical observables. These are
+// opt-in recommendations and do not change caller-provided physical tolerances.
 inline IncompressibleSolverControls bfs_converged_controls(
     double alpha_u = 0.6, double alpha_p = 0.25,
     std::size_t max_outer = 2000, double linear_tol = 1e-10)
