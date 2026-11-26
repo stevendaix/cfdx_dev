@@ -132,14 +132,28 @@ inline Coupled2x2SolveResult solve_coupled_2x2_matrix(
         const double d = diag_ww[i];
         const double b = d_kw[i];
         const double c = d_wk[i];
-        const double det = a * d - b * c;
-        if (std::isfinite(det) && std::abs(det) > 1e-14) {
-            inv_det[i] = 1.0 / det;
-        } else {
-            // Fallback Jacobi simple : inverse de la diagonale uniquement.
-            if (std::isfinite(a) && std::abs(a) > 1e-14) inv_a_kk[i] = 1.0 / a;
-            if (std::isfinite(d) && std::abs(d) > 1e-14) inv_a_ww[i] = 1.0 / d;
+        if (!std::isfinite(a) || !std::isfinite(d) ||
+            !(a > 0.0) || !(d > 0.0))
+            throw std::invalid_argument("SST coupled 2x2: non-positive scalar diagonal");
+        const long double ad = static_cast<long double>(a) * d;
+        const long double bc = static_cast<long double>(b) * c;
+        const long double det = ad - bc;
+        const long double det_scale = std::max(std::abs(ad),std::abs(bc));
+        const long double det_tolerance =
+            64.0L * std::numeric_limits<double>::epsilon() * det_scale;
+        if (std::isfinite(det) && std::abs(det) > det_tolerance) {
+            const double inverse = static_cast<double>(1.0L / det);
+            if (std::isfinite(inverse)) {
+                inv_det[i] = inverse;
+                continue;
+            }
         }
+        // Scale-independent fallback: both scalar diagonals have already
+        // been validated positive, so no dimensioned absolute cutoff is used.
+        inv_a_kk[i] = 1.0 / a;
+        inv_a_ww[i] = 1.0 / d;
+        if (!std::isfinite(inv_a_kk[i]) || !std::isfinite(inv_a_ww[i]))
+            throw std::domain_error("SST coupled 2x2: scalar diagonal inverse overflow");
     }
 
     // Normes des côtés explicites pour la normalisation des résidus.
