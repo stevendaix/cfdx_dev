@@ -53,6 +53,39 @@ int main()
         EXPECT_NEAR(grad.component_data(2)[1],0.0,1e-12);
     });
 
+    run_case("gauss_gradient_constant_field_zero_for_every_cell_component", [] {
+        const Mesh m = make_two_cell_cartesian();
+        const GeometryCache geometry = make_geometry_cache(m);
+        const auto& ownership = m.ownership();
+        const auto* cell_faces = m.cells().faces_data();
+        const auto* cell_offsets = m.cells().offsets_data();
+
+        // Verify the geometric closure hypothesis used by the Lean theorem
+        // on the actual geometry cache and cell-face CSR for this mesh.
+        for (std::size_t c = 0; c < m.n_cells(); ++c) {
+            Vec3 area_sum;
+            for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                const std::size_t f = cell_faces[k];
+                const Vec3 oriented_area = (ownership.owner(f) == c)
+                    ? geometry.face_Sf[f]
+                    : geometry.face_Sf[f] * (-1.0);
+                area_sum = area_sum + oriented_area;
+            }
+            EXPECT_NEAR(area_sum.x, 0.0, 1e-12);
+            EXPECT_NEAR(area_sum.y, 0.0, 1e-12);
+            EXPECT_NEAR(area_sum.z, 0.0, 1e-12);
+        }
+
+        Field<double,Location::CELL> phi(m.n_cells(), "phi", "1", 1);
+        phi.fill(3.25);
+        const auto grad = compute_gradient_gauss(phi, m, geometry);
+        for (std::size_t c = 0; c < m.n_cells(); ++c) {
+            for (std::size_t d = 0; d < 3; ++d) {
+                EXPECT_NEAR(grad(c, d), 0.0, 1e-12);
+            }
+        }
+    });
+
     run_case("divergence_uses_oriented_cell_volumes", [] {
         const Mesh m = make_two_cell_cartesian();
         Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
