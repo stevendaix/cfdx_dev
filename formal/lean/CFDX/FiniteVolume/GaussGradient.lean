@@ -326,4 +326,17 @@ theorem two_cell_first_moment (c : Fin 2) (i j : Fin 3) :
     norm_num [twoCellFaceCentre, twoCellOrientedArea, twoCellVolume,
       Fin.sum_univ_succ]
 
+/-- The two local face slots representing the common x=1 face have
+the same geometric centre: cell 0's high-x face (slot 1) and cell 1's
+low-x face (slot 0). -/
+theorem two_cell_shared_face_centre_matches (d : Fin 3) :
+    twoCellFaceCentre 0 1 d = twoCellFaceCentre 1 0 d := by
+  fin_cases d <;> norm_num [twoCellFaceCentre]
+
+/-- The owner-oriented shared-face area is exactly reversed when viewed
+from the neighbour cell. -/
+theorem two_cell_shared_face_area_opposes (d : Fin 3) :
+    twoCellOrientedArea 0 1 d = -twoCellOrientedArea 1 0 d := by
+  fin_cases d <;> norm_num [twoCellOrientedArea]
+
 end CFDX.FiniteVolume
