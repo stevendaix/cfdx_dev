@@ -46,6 +46,26 @@
 
 namespace cfdx::physics {
 
+// Convert a relative finite-difference perturbation of a source density
+// into the negative derivative coefficient used by the assembled FV matrix.
+// The cell volume is essential: ScalarEquation stores integrated source terms.
+inline double sst_negative_source_derivative_coefficient(
+    double source_at_base, double source_at_perturbed,
+    double relative_step, double base_variable, double cell_volume)
+{
+    if (!std::isfinite(source_at_base) || !std::isfinite(source_at_perturbed) ||
+        !(relative_step > 0.0) || !std::isfinite(relative_step) ||
+        !(base_variable > 0.0) || !std::isfinite(base_variable) ||
+        !(cell_volume > 0.0) || !std::isfinite(cell_volume))
+        throw std::invalid_argument("SST coupled 2x2: invalid source derivative data");
+    const double coefficient =
+        -(source_at_perturbed - source_at_base) /
+        (relative_step * base_variable) * cell_volume;
+    if (!std::isfinite(coefficient))
+        throw std::domain_error("SST coupled 2x2: source derivative overflow");
+    return coefficient;
+}
+
 // Résultat du solveur couplé 2x2 matriciel.
 struct Coupled2x2SolveResult {
     std::size_t iterations = 0;
