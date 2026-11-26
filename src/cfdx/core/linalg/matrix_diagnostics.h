@@ -292,6 +292,13 @@ inline MatrixCharacteristics measure_matrix_characteristics(
             "matrix symmetry relative tolerance must be finite and non-negative");
 
     const auto d = diagnose_matrix(matrix, 1e-14, false);
+    // Solver selection must never infer symmetry or an SPD Gershgorin
+    // certificate from a matrix whose coefficients could not be inspected.
+    // In particular, NaN comparisons are false and std::min can otherwise
+    // leave a positive/infinite Gershgorin margin after a NaN off-diagonal.
+    if (!d.structurally_consistent || !d.finite)
+        throw std::invalid_argument(
+            "matrix characteristics require a structurally consistent finite matrix");
     MatrixCharacteristics c;
     c.equations = d.rows;
     c.average_nnz_per_row =
