@@ -64,6 +64,33 @@ static Mesh make_unit_tetrahedron()
     return m;
 }
 
+
+static Mesh make_skew_tetrahedron()
+{
+    Mesh m;
+    m.points().resize(4);
+    m.points().set(0,0.0,0.0,0.0);
+    m.points().set(1,1.0,0.0,0.0);
+    m.points().set(2,0.0,2.0,0.0);
+    m.points().set(3,1.0,1.0,1.0);
+
+    // Same owner->exterior winding pattern as the unit reference tetrahedron.
+    // Edge dot products (1,0,0).(1,1,1) = 1 and (0,2,0).(1,1,1) = 2 are
+    // nonzero, so this cell is genuinely skewed, unlike the reference cell.
+    const std::vector<std::vector<VertexIndex>> faces = {
+        {1,2,3}, {0,3,2}, {0,1,3}, {0,2,1}
+    };
+    for (const auto& face : faces) m.faces().push_face(face);
+
+    m.ownership().resize(faces.size());
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        m.ownership().set_owner(f, 0);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.cells().push_cell({0,1,2,3});
+    return m;
+}
+
 int main()
 {
     run_case("reference_tetrahedron_geometry_cache_satisfies_gauss_moment_identity", [] {
@@ -84,6 +111,55 @@ int main()
         EXPECT_NEAR(area_sum.z, 0.0, 1e-12);
 
         // The first-moment tensor sum_f C_f outer Sf_f must equal V * I.
+        for (std::size_t i = 0; i < 3; ++i) {
+            for (std::size_t j = 0; j < 3; ++j) {
+                double moment = 0.0;
+                for (std::size_t f = 0; f < m.n_faces(); ++f) {
+                    moment += component(geometry.face_centres[f], i) *
+                              component(geometry.face_Sf[f], j);
+                }
+                const double expected = (i == j) ? geometry.cell_volumes[0] : 0.0;
+                EXPECT_NEAR(moment, expected, 1e-12);
+            }
+        }
+    });
+
+    run_case("skew_tetrahedron_geometry_cache_satisfies_gauss_moment_identity", [] {
+        const Mesh m = make_skew_tetrahedron();
+        const GeometryCache geometry = make_geometry_cache(m);
+
+        // Edge determinant |det(p1-p0, p2-p0, p3-p0)| = 2, hence
+        // V = 2/6 = 1/3, matching the Lean skew_tetra_volume_edge_determinant.
+        EXPECT_NEAR(geometry.cell_volumes[0], 1.0 / 3.0, 1e-12);
+        EXPECT_TRUE(is_valid(geometry, m));
+
+        const auto component = [](const Vec3& value, std::size_t d) {
+            return d == 0 ? value.x : (d == 1 ? value.y : value.z);
+        };
+
+        // Outward-oriented face area vectors, matching the Lean fixture
+        // skewTetraOrientedArea in CFDX.Geometry.SkewTetrahedron.
+        const double expectedSf[4][3] = {
+            {1.0, 0.5, -0.5}, {-1.0, 0.0, 1.0},
+            {0.0, -0.5, 0.5}, {0.0, 0.0, -1.0}};
+        for (std::size_t f = 0; f < 4; ++f) {
+            EXPECT_NEAR(component(geometry.face_Sf[f], 0), expectedSf[f][0], 1e-12);
+            EXPECT_NEAR(component(geometry.face_Sf[f], 1), expectedSf[f][1], 1e-12);
+            EXPECT_NEAR(component(geometry.face_Sf[f], 2), expectedSf[f][2], 1e-12);
+        }
+
+        // Exact oriented surface closure on the skewed cell.
+        Vec3 area_sum;
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            area_sum = area_sum + geometry.face_Sf[f];
+        EXPECT_NEAR(area_sum.x, 0.0, 1e-12);
+        EXPECT_NEAR(area_sum.y, 0.0, 1e-12);
+        EXPECT_NEAR(area_sum.z, 0.0, 1e-12);
+
+        // The first-moment tensor sum_f C_f outer Sf_f equals V * I on the
+        // skewed cell: all nine components, matching the Lean theorem
+        // skew_tetra_first_moment. This extends the moment conformance from
+        // the axis-aligned reference simplex to an oblique cell.
         for (std::size_t i = 0; i < 3; ++i) {
             for (std::size_t j = 0; j < 3; ++j) {
                 double moment = 0.0;
