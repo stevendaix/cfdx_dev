@@ -186,7 +186,7 @@ def test_real_buoyant_laminar_isothermal_equilibrium(solver: Path, tmp_path: Pat
     # turbulence conditions does not define a steady SST state.
     case = tmp_path / "buoyant_laminar_uniform.cfdx.h5"
     out = tmp_path / "buoyant_laminar_uniform"
-    write_sst_thermal_case(case, buoyant=True, uniform=True, sst=False)
+    write_sst_thermal_case(case, prt=None, buoyant=True, uniform=True, sst=False)
     run = execute(solver, case, out, experimental_sst=False)
     assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
     assert "Buoyant flow-energy outer loop converged" in run.stdout
