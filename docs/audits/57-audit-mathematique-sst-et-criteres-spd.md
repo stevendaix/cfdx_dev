@@ -149,12 +149,12 @@ La donnée de pression du cas est interprétée comme une pression statique phys
 p^*_{f}=p_{stat,f}+\frac{2}{3}\rho k_f.
 \]
 
-L'adaptateur FV actuel ne stocke qu'une valeur scalaire par patch. La conversion est donc exacte uniquement si la trace de (k) est constante sur le patch :
-- (k) en FIXED_VALUE : la valeur prescrite est utilisée sur chaque face ;
-- (k) en ZERO_GRADIENT : la valeur propriétaire de chaque face est utilisée ;
+L'adaptateur FV actuel ne stocke qu'une valeur scalaire par patch. La conversion est donc exacte uniquement si la trace de $k$ est constante sur le patch :
+- $k$ en FIXED_VALUE : la valeur prescrite est utilisée sur chaque face ;
+- $k$ en ZERO_GRADIENT : la valeur propriétaire de chaque face est utilisée ;
 - si les valeurs de face diffèrent, le chemin de production rejette le cas. Une moyenne de patch ne serait pas une condition limite équivalente.
 
-La conversion est appliquée après l'initialisation/restauration du champ SST et avant l'appel au solveur. Des tests vérifient l'offset (2\rho k/3) et le rejet d'un contrat (k) absent. La prise en charge d'une pression modifiée variable par face reste à développer pour les traces (k_f) non uniformes.
+La conversion est appliquée après l'initialisation/restauration du champ SST et avant l'appel au solveur. Des tests vérifient l'offset (2\rho k/3) et le rejet d'un contrat $k$ absent. La prise en charge d'une pression modifiée variable par face reste à développer pour les traces $k_f$ non uniformes.
 
 ## 7. Statut d'implémentation
 
