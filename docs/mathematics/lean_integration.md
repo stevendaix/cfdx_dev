@@ -125,7 +125,9 @@ owner/neighbour representation:
   boundary flux separately.
 
 The new `OwnerNeighbourTopology` Lean structure models the owner, optional
-neighbour, internal-face set, and distinct-owner/neighbour invariant. Its
+neighbour, internal-face set, and distinct-owner/neighbour invariant. It also
+makes the internal/boundary classification explicit: every internal face has
+a neighbour, and every face outside the internal set has no neighbour. Its
 incidence coefficient is +1 for the owner and -1 for the neighbour; the
 boundary case has no neighbour contribution. The new theorem derives the
 zero-sum incidence condition from that representation, rather than taking
