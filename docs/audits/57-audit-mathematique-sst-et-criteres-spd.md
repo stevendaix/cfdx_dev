@@ -136,3 +136,35 @@ Avant toute promotion des options SST expérimentales :
 5. vérifier les bilans locaux, la positivité et l'indépendance au maillage avant de comparer (x_r/h) à Driver–Seegmiller.
 
 Aucune tolérance physique n'a été relâchée et aucun résultat de convergence physique n'est revendiqué par ces corrections.
+
+
+## 6. Condition limite de pression statique en SST
+
+La pression du solveur est la pression modifiée
+\[
+p^* = p_{stat} + \frac{2}{3}\rho k.
+\]
+La donnée de pression du cas est interprétée comme une pression statique physique. Pour un outlet à pression imposée, la valeur utilisée par l'opérateur pression doit donc être
+\[
+p^*_{f}=p_{stat,f}+\frac{2}{3}\rho k_f.
+\]
+
+L'adaptateur FV actuel ne stocke qu'une valeur scalaire par patch. La conversion est donc exacte uniquement si la trace de (k) est constante sur le patch :
+- (k) en FIXED_VALUE : la valeur prescrite est utilisée sur chaque face ;
+- (k) en ZERO_GRADIENT : la valeur propriétaire de chaque face est utilisée ;
+- si les valeurs de face diffèrent, le chemin de production rejette le cas. Une moyenne de patch ne serait pas une condition limite équivalente.
+
+La conversion est appliquée après l'initialisation/restauration du champ SST et avant l'appel au solveur. Des tests vérifient l'offset (2\rho k/3) et le rejet d'un contrat (k) absent. La prise en charge d'une pression modifiée variable par face reste à développer pour les traces (k_f) non uniformes.
+
+## 7. Statut d'implémentation
+
+| Élément | Statut |
+|---|---|
+| Résidu SST réassemblé à l'état retourné | Code corrigé ; test ajouté ; CI à confirmer |
+| Pseudo-temps exclu du résidu stationnaire | Code corrigé ; test ajouté ; CI à confirmer |
+| Tangente couplée (k)-(omega) | Correction affine/dimensionnelle intégrée ; tests ajoutés |
+| Qualification SPD générique | Gershgorin strict réservé au problème générique ; AMG non elliptique refusé |
+| Pression statique vers pression modifiée | Implémentée pour trace k uniforme ; non uniforme rejeté |
+| Support face-valued de p* | Non implémenté |
+| Qualification physique BFS/SST | Non acquise ; calcul convergé, bilans et étude de maillage requis |
+
