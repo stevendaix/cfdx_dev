@@ -2180,6 +2180,13 @@ int main(int argc, char** argv)
                 }
             }
 
+            // The case stores physical static pressure; the SST momentum
+            // operator solves p* = p_static + 2/3 rho k. Convert the
+            // patch-constant pressure adapter only when the k trace is
+            // constant on that patch; nonuniform traces fail closed.
+            apply_sst_static_pressure_boundary_contract(
+                mesh, case_setup, *experimental_sst_state,
+                sst_controls.density, pbc);
             experimental_sst_runtime.state = &*experimental_sst_state;
             experimental_sst_runtime.transport = sst_controls;
             experimental_sst_runtime.k_boundary_conditions = boundary_contract.k;
