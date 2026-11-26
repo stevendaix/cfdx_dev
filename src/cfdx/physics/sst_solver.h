@@ -962,26 +962,11 @@ inline TurbulenceTransportResult solve_sst_transport(
         }
         cfdx::core::SolverResult rk, rw;
         if (controls.sst_coupled_2x2_komega) {
-            // Vrai solveur matriciel couplé 2x2 k/omega.
-            // Résout [A_kk D_kw; D_wk A_ww] [dk; dw] = [r_k; r_w]
-            // par Richardson préconditionnée par bloc-Jacobi en une passe
-            // par itération de transport. Les blocs hors-diagonaux capturent
-            // les termes croisés dFk/dlog(omega) et dFw/dlog(k), stabilisant
-            // le couplage k<->omega raide sur les maillages wall-resolved.
-            // Aucun changement à finite_volume_transport.h n'est nécessaire.
-
-            // Côtés explicites (source sans le terme implicite Sp*psi).
-            std::vector<double> b_k(n), b_w(n);
-            for (std::size_t i = 0; i < n; ++i) {
-                b_k[i] = sk(i);
-                b_w[i] = sw(i);
-            }
-
-            // Coefficients de couplage croisé (diagonaux par cellule).
-            // IMPORTANT : d_kw = dPk/dlog(omega) et d_wk = dSw/dlog(k)
-            // UNIQUEMENT. Les termes de destruction (-spk*k et -spw*w) sont
-            // déjà dans les diagonales de A_kk et A_ww via assemble_scalar_equation,
-            // ils ne doivent PAS être ré-inclus dans les blocs croisés.
+            // The block system is the tangent of the assembled FV equations.
+            // Use derivatives with respect to the dimensional fields. The
+            // negative sign moves the source derivative to the left-hand side;
+            // the solver adds the affine C*y0 term to the assembled RHS so the
+            // tangent preserves the original scalar residual at (k, omega).
             std::vector<double> d_kw(n, 0.0), d_wk(n, 0.0);
             const double eps_fd = 1e-4;
             for (std::size_t i = 0; i < n; ++i) {
@@ -989,21 +974,22 @@ inline TurbulenceTransportResult solve_sst_transport(
                 if (!(ki > 0.) || !(wi > 0.)) continue;
                 const int wp_idx = wall_production ? wall_production->for_cell(i) : -1;
 
-                const auto q00 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                const double Pk00 = q00.sk;   // production de k (source explicite, pas Fk)
-                const double Sw00 = q00.sw;   // production de omega (source explicite, pas Fw)
+                const auto q00 = sst_cell_sources(
+                    ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                const double Sk00 = q00.sk;
+                const double Sw00 = q00.sw;
 
-                // dPk/dlog(omega) : seulement la production, pas la destruction
+                // Relative finite-difference perturbations, converted back to
+                // derivatives per unit omega and per unit k respectively.
                 const double wi_p = wi * (1.0 + eps_fd);
-                const auto q01 = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                const double Pk01 = q01.sk;
-                d_kw[i] = (Pk01 - Pk00) / eps_fd;
+                const auto q01 = sst_cell_sources(
+                    ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                d_kw[i] = -(q01.sk - Sk00) / (eps_fd * wi);
 
-                // dSw/dlog(k) : seulement la production, pas la destruction
                 const double ki_p = ki * (1.0 + eps_fd);
-                const auto q10 = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                const double Sw10 = q10.sw;
-                d_wk[i] = (Sw10 - Sw00) / eps_fd;
+                const auto q10 = sst_cell_sources(
+                    ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
+                d_wk[i] = -(q10.sw - Sw00) / (eps_fd * ki);
             }
 
             // Vecteurs de travail.
@@ -1015,8 +1001,7 @@ inline TurbulenceTransportResult solve_sst_transport(
 
             // Solveur matriciel couplé 2x2.
             const auto cres = solve_coupled_2x2_matrix(
-                eqk, eqw, b_k, b_w, k_std, w_std,
-                d_kw, d_wk,
+                eqk, eqw, k_std, w_std, d_kw, d_wk,
                 current_relaxation, 5, // max 5 itérations Richardson par itération de transport
                 effective_tolerance,
                 controls.k_min, controls.omega_min);
