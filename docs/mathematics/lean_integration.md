@@ -263,6 +263,26 @@ path is the interpolation loop in `compute_gradient_gauss`, followed by the
 cell-face CSR accumulation with owner-positive and neighbour-negative
 `face_Sf`, and division by the positive cell volume.
 
+## CSR cell-face storage invariants
+
+The Lean module `CFDX.Geometry.CsrTopology` formalizes the storage contract
+of the CSR cell-face structure on top of the owner/neighbour topology:
+
+- a cell never stores the same face twice (`CsrCellFaceStorage.nodup`);
+- every face is stored by its owner, and every internal face is also stored
+  by its neighbour (`owner_stores`, `neighbour_stores`);
+- no third cell ever stores a face (`only_owner_neighbour_stores`).
+
+Derived results: an internal face is stored by exactly two cells
+(`internal_face_storing_count`), a boundary face by exactly one
+(`boundary_face_storing_count`), and the CSR-stored signed incidence of an
+internal face cancels over all cells
+(`csr_internal_face_incidence_cancels`), which connects the storage
+contract directly to the conservation theorem. This is an abstract storage
+contract over finite types, not yet a proof that every runtime mesh imported
+by CFDX satisfies it; the C++ conformance tests on deterministic meshes
+remain the bridge.
+
 ## Skew-tetrahedron generalization
 
 The geometric moment identities were so far checked only on the axis-aligned
