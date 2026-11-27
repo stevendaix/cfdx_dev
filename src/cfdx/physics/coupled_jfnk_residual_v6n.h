@@ -363,19 +363,31 @@ struct CoupledJfnkResidualV6N {
         std::copy(sst.values.begin(), sst.values.end(),
                   residual.signed_raw.begin() + static_cast<std::ptrdiff_t>(4 * nc));
 
-        // Normalized diagnostic (not differenced by J*v).
+        // Per-equation physical residual scales. These are frozen by the
+        // JFNK driver at the accepted base state and are never recomputed
+        // inside a directional difference or candidate line search.
         residual.normalized.resize(6 * nc);
+        residual.normalization_scales.resize(6 * nc);
         double global_rhs = 0.0;
         for (double s : rhs_scale) global_rhs = std::max(global_rhs, s);
         for (std::size_t cell = 0; cell < nc; ++cell) {
             for (std::size_t d = 0; d < 6; ++d) {
-                double raw = d < 3 ? raw_momentum[d][cell]
+                const double raw = d < 3 ? raw_momentum[d][cell]
                     : d == 3 ? div[cell]
                     : sst.values[(d - 4) * nc + cell];
-                double divisor = d < 3 ? std::max(rhs_scale[d], 1e-8 * global_rhs)
+                const double divisor = d < 3 ? std::max(rhs_scale[d], 1e-8 * global_rhs)
                     : d == 3 ? std::max(flux_l1, 1e-300)
                     : sst.row_norms[(d - 4) * nc + cell] * sst.local_scales[(d - 4) * nc + cell];
-                residual.normalized[d * nc + cell] = raw / divisor;
+                if (!(divisor > 0.0) || !std::isfinite(divisor) ||
+                    !std::isfinite(raw))
+                    throw std::runtime_error(
+                        "JFNK residual: invalid equation-specific normalization scale");
+                const auto index = d * nc + cell;
+                residual.normalization_scales[index] = divisor;
+                residual.normalized[index] = raw / divisor;
+                if (!std::isfinite(residual.normalized[index]))
+                    throw std::runtime_error(
+                        "JFNK residual: normalized equation residual is nonfinite");
             }
         }
         residual.face_flux = rc.flux;
