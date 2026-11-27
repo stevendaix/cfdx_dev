@@ -2287,5 +2287,25 @@ int main()
         EXPECT_TRUE(face_values->generation==2);
     });
 
+    run_case("sst_local_newton_source_residual_keeps_destruction_negative", [] {
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.density = 1.7;
+        controls.beta_star = 0.09;
+        controls.beta1 = 0.075;
+        controls.sst_omega_newton_sink = false;
+        const double kval = 0.4;
+        const double wval = 8.0;
+        const auto q = sst_cell_sources(
+            kval, wval, 0.0, 1.0, 1.0, 0.0, controls);
+        const double net_k = q.sk + q.spk * kval;
+        const double net_omega = q.sw + q.spw * wval;
+        EXPECT_TRUE(net_k < 0.0);
+        EXPECT_TRUE(net_omega < 0.0);
+        EXPECT_NEAR(net_k,
+            -controls.density * controls.beta_star * wval * kval, 1e-14);
+        EXPECT_NEAR(net_omega,
+            -controls.density * controls.beta1 * wval * wval, 1e-14);
+    });
     return run_all();
 }
