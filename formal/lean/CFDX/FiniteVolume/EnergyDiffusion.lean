@@ -233,16 +233,24 @@ theorem threeCellGramEntry_row_sum_zero (i : Fin 3) :
   fin_cases i <;>
     norm_num [threeCellGramEntry, Fin.sum_univ_succ]
 
-/-- The quadratic form is a sum of the two reconstruction components
-squared, hence nonnegative for every cell field. -/
+/-- Exact factorization of the three-cell quadratic form into the
+squared reconstruction components. This is stronger evidence than a
+numerical eigenvalue check: it is an identity over all real cell values. -/
+theorem threeCellGramEntry_energy_identity (x : Fin 3 → ℝ) :
+    (∑ i : Fin 3,
+      x i * ∑ j : Fin 3, threeCellGramEntry i j * x j)
+      = (x 0 - x 2) ^ 2
+        + (x 0 / 5 + x 1 - 6 * x 2 / 5) ^ 2 := by
+  simp [threeCellGramEntry, Fin.sum_univ_succ]
+  ring
+
+/-- The quadratic form is nonnegative for every cell field, by its exact
+sum-of-squares factorization. -/
 theorem threeCellGramEntry_psd (x : Fin 3 → ℝ) :
     0 ≤ ∑ i : Fin 3,
       x i * ∑ j : Fin 3, threeCellGramEntry i j * x j := by
-  simp [threeCellGramEntry, Fin.sum_univ_succ]
-  nlinarith [
-    sq_nonneg (x 0 - x 2),
-    sq_nonneg (x 0 / 5 + x 1 - 6 * x 2 / 5)
-  ]
+  rw [threeCellGramEntry_energy_identity]
+  positivity
 
 /-- A positive off-diagonal entry violates the Z-matrix sign condition,
 despite symmetry, conservation and positive semidefiniteness. -/
