@@ -83,4 +83,24 @@ theorem conservative_power_can_have_either_sign :
   · refine ⟨negativeWorkForce, negative_work_force_is_conservative, ?_⟩
     norm_num [negative_work_force_removes_energy]
 
+/-- Finite-volume kinetic-energy work with positive cell-volume weights.
+The density can be included in the weight when it is positive and cellwise
+constant over the velocity degree of freedom. -/
+def volumeWeightedPower
+    (volume velocity force : Fin 2 → ℝ) : ℝ :=
+  ∑ i : Fin 2, volume i * velocity i * force i
+
+/-- Positive cell volumes do not rescue the implication from conservation
+to non-positive power: the same conservative internal force injects energy
+for every strictly positive pair of cell-volume weights. -/
+theorem conservative_force_injects_volume_weighted_energy
+    (volume : Fin 2 → ℝ)
+    (hvolume : ∀ i, 0 < volume i) :
+    globalForce positiveWorkForce = 0 ∧
+      0 < volumeWeightedPower volume twoCellVelocity positiveWorkForce := by
+  constructor
+  · exact positive_work_force_is_conservative
+  · simpa [volumeWeightedPower, twoCellVelocity, positiveWorkForce] using
+      add_pos (hvolume (0 : Fin 2)) (hvolume (1 : Fin 2))
+
 end CFDX.FiniteVolume
