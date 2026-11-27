@@ -4,6 +4,7 @@
 // momentum, Rhie-Chow flux and SST transport from the trial state alone.
 // No accepted/lagged state is read. Residual layout:
 //   [momentum_x(N), momentum_y(N), momentum_z(N), continuity(N), k(N), omega(N)]
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/physical_six_candidate_v51.h"
 #include "cfdx/physics/state_only_rhie_chow_v49.h"
 #include "cfdx/physics/state_only_six_residual_v50.h"
