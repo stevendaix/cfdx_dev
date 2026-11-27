@@ -117,6 +117,38 @@ inline void compute_kepsilon_production_field(
     }
 }
 
+struct KEpsilonCellSources {
+    double sk = 0.0;
+    double spk = 0.0;
+    double se = 0.0;
+    double spe = 0.0;
+};
+
+// Source densities for the standard k-epsilon equations, with destruction
+// moved explicitly out of the implicit diagonal. Preserve the exact net
+// source S_u + S_p*phi of the original semi-implicit formulation.
+inline KEpsilonCellSources kepsilon_standard_cell_sources(
+    double k, double epsilon, double production,
+    const TurbulenceTransportControls& controls)
+{
+    if (!std::isfinite(k) || !std::isfinite(epsilon) ||
+        !std::isfinite(production) || !std::isfinite(controls.density) ||
+        !std::isfinite(controls.C1) || !std::isfinite(controls.C2) ||
+        !(controls.density > 0.0) || production < 0.0)
+        throw std::invalid_argument("standard k-epsilon: invalid source input");
+    const double ki = std::max(k, controls.k_min);
+    const double ei = std::max(epsilon, controls.epsilon_min);
+    if (!(ki > 0.0) || !(ei > 0.0))
+        throw std::invalid_argument("standard k-epsilon: invalid floored state");
+    KEpsilonCellSources q;
+    q.sk = production - controls.density * ei;
+    q.spk = 0.0;
+    q.se = controls.C1 * production * ei / ki -
+           controls.density * controls.C2 * ei * ei / ki;
+    q.spe = 0.0;
+    return q;
+}
+
 inline TurbulenceTransportResult solve_kepsilon_transport(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -162,18 +194,12 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             n,"Spe","kg/m3/s",1);
 
         for(std::size_t i=0;i<n;++i) {
-            const double ki=std::max(k(i),controls.k_min);
-            const double ei=std::max(epsilon(i),controls.epsilon_min);
-            const double destruction = controls.density * ei / ki;
-            // Treat destruction explicitly (move to sk/se) rather than
-            // implicitly (sp/spe). The implicit destruction coefficient
-            // -rho*epsilon/k can be O(1e3) near the inlet, which makes the
-            // scalar linear system ill-conditioned. Explicit treatment is
-            // more robust; convergence is driven by the outer Picard loop.
-            sk(i)=P(i) - destruction;
-            spk(i)=0.0;
-            se(i)=controls.C1*P(i)*ei/ki - controls.density*controls.C2*ei/ki;
-            spe(i)=0.0;
+            const auto q = kepsilon_standard_cell_sources(
+                k(i), epsilon(i), P(i), controls);
+            sk(i)=q.sk;
+            spk(i)=q.spk;
+            se(i)=q.se;
+            spe(i)=q.spe;
         }
 
         std::vector<double> gamma_k(n), gamma_e(n);
@@ -355,8 +381,8 @@ inline RealizableKEpsilonCellSources realizable_kepsilon_cell_sources(
     const double production = c.density*q.nut*strain*strain;
     const double eta = strain*ki/ei;
     q.c1 = std::max(0.43, eta/(eta + 5.0));
-    const double destruction_k = c.density*ei/ki;
-    const double destruction_e = c.density*c.realizable_C2*ei /
+    const double destruction_k = c.density*ei;
+    const double destruction_e = c.density*c.realizable_C2*ei*ei /
         (ki + std::sqrt(c.molecular_viscosity*ei));
     // Treat destruction explicitly (move to sk/se) rather than implicitly
     // (sp/spe). The implicit destruction coefficient -rho*epsilon/k can be
