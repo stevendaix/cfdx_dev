@@ -26,6 +26,8 @@
 #include "cfdx/physics/sst_openfoam_wall_triplet_v15.h"
 #include "cfdx/physics/sst_coupled_pseudo_time_v30.h"
 #include "cfdx/core/linalg/six_field_block_preconditioner_v8.h"
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -34,6 +36,14 @@
 #include <vector>
 
 namespace cfdx::physics {
+
+inline void accumulate_coupled_jfnk_block_scale(
+    std::array<double, 6>& scales, std::size_t block, double value)
+{
+    if (block >= scales.size() || !std::isfinite(value))
+        throw std::invalid_argument("JFNK block scale: invalid block or value");
+    scales[block] = std::max(scales[block], std::abs(value));
+}
 
 struct CoupledJfnkDriverResult {
     bool accepted = false;
@@ -136,12 +146,14 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
     // Fixed physical scales: max magnitude per block, floored at 1.0.
     std::array<double, 6> scales{};
     {
-        const auto init = [&](std::size_t block, double value) {
-            scales[block] = std::max(std::abs(value), 1.0);
-        };
+        scales.fill(1.0);
         for (std::size_t i = 0; i < nc; ++i) {
-            init(0, Ux(i)); init(1, Uy(i)); init(2, Uz(i));
-            init(3, p(i)); init(4, k(i)); init(5, omega(i));
+            accumulate_coupled_jfnk_block_scale(scales, 0, Ux(i));
+            accumulate_coupled_jfnk_block_scale(scales, 1, Uy(i));
+            accumulate_coupled_jfnk_block_scale(scales, 2, Uz(i));
+            accumulate_coupled_jfnk_block_scale(scales, 3, p(i));
+            accumulate_coupled_jfnk_block_scale(scales, 4, k(i));
+            accumulate_coupled_jfnk_block_scale(scales, 5, omega(i));
         }
     }
 
