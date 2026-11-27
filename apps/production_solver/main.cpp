@@ -120,6 +120,9 @@ struct Options {
     bool probe_stream = false;    bool cell_hotspots = false;
     bool cell_map_full = false;
     std::size_t cell_hotspots_every = 5;
+    std::filesystem::path momentum_budget_csv;
+    std::size_t momentum_budget_every = 5;
+    bool momentum_budget_all_cells = false;
 
 };
 
@@ -800,6 +803,21 @@ Options parse(int argc, char** argv)
             if (used != raw.size() || o.cell_hotspots_every < 1 || o.cell_hotspots_every > 100000)
                 throw std::invalid_argument("--cell-hotspots-every must be in [1,100000]");
         }
+        else if (arg == "--momentum-budget-csv")
+            o.momentum_budget_csv = value("--momentum-budget-csv");
+        else if (arg == "--momentum-budget-every") {
+            const auto raw = value("--momentum-budget-every");
+            std::size_t used = 0;
+            try { o.momentum_budget_every = std::stoull(raw, &used); }
+            catch (const std::exception&) {
+                throw std::invalid_argument("invalid --momentum-budget-every");
+            }
+            if (used != raw.size() || o.momentum_budget_every < 1 ||
+                o.momentum_budget_every > 100000)
+                throw std::invalid_argument("--momentum-budget-every must be in [1,100000]");
+        }
+        else if (arg == "--momentum-budget-all-cells")
+            o.momentum_budget_all_cells = true;
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -833,6 +851,9 @@ Options parse(int argc, char** argv)
             std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
                           "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
+            std::cout << "  --momentum-budget-csv FILE [--momentum-budget-every N]\\n"
+                         "    (accepted-state signed face/CSR momentum budget; top 12 cells by default)\\n"
+                         "  --momentum-budget-all-cells (export every cell; requires --momentum-budget-csv)\\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
@@ -844,6 +865,14 @@ Options parse(int argc, char** argv)
     // empty file, or worse a file with a header and no data.
     if (!o.probe_csv.empty() && o.probes.empty())
         throw std::invalid_argument("--probe-csv requires at least one --probe");
+    if (o.momentum_budget_all_cells && o.momentum_budget_csv.empty())
+        throw std::invalid_argument("--momentum-budget-all-cells requires --momentum-budget-csv");
+    if (!o.momentum_budget_csv.empty() &&
+        (o.momentum_budget_csv.is_absolute() ||
+         o.momentum_budget_csv.has_parent_path() ||
+         o.momentum_budget_csv.filename() != o.momentum_budget_csv))
+        throw std::invalid_argument(
+            "--momentum-budget-csv must be a filename inside --output-dir");
     if (o.probe_stream && o.probes.empty())
         throw std::invalid_argument("--probe-stream requires at least one --probe");
     if (o.pressure_replay_prefix.empty() != o.pressure_replay_iterations.empty())
@@ -2904,6 +2933,90 @@ int main(int argc, char** argv)
                     options.output_dir / "initialized_velocity_field.json",
                     initialized_json.str());
             };
+
+        std::ofstream momentum_budget_output;
+        if (!options.momentum_budget_csv.empty()) {
+            const auto budget_path = options.output_dir / options.momentum_budget_csv;
+            if (std::filesystem::is_symlink(
+                    std::filesystem::symlink_status(budget_path)))
+                throw std::invalid_argument(
+                    "momentum budget output must not be a symbolic link");
+            momentum_budget_output.open(budget_path, std::ios::out | std::ios::trunc);
+            if (!momentum_budget_output)
+                throw std::runtime_error("cannot open momentum budget CSV");
+            momentum_budget_output << std::setprecision(17)
+                << "iteration,component,rank,cell,x,y,z,convection,viscous,"
+                   "transpose_viscous,pressure,body_force,bounded_divergence,"
+                   "mass_divergence,collocated_difference,physical_residual,"
+                   "bounded_operator_residual,worst_absolute_residual,temporal,"
+                   "algebraic_residual,matrix_face_difference,matrix_face_scale,"
+                   "matrix_closure_linf,matrix_closure_relative_linf,"
+                   "matrix_closure_worst_cell\n";
+            if (!momentum_budget_output)
+                throw std::runtime_error("cannot write momentum budget CSV header");
+            controls.momentum_face_budget_every = options.momentum_budget_every;
+            controls.momentum_face_budget_callback =
+                [&momentum_budget_output, &options](
+                    std::size_t iteration, std::size_t component,
+                    const MomentumFaceBudget& budget, const FvGeometry& geometry) {
+                    if (!budget.matrix_closure_checked ||
+                        !momentum_matrix_face_closure_consistent(budget))
+                        throw std::runtime_error(
+                            "production momentum budget requires a valid cellwise face/CSR certificate");
+                    if (budget.cells.size() != geometry.cell_centres.size())
+                        throw std::runtime_error(
+                            "production momentum budget cell/geometry size mismatch");
+                    std::vector<std::size_t> order(budget.cells.size());
+                    for (std::size_t cell = 0; cell < order.size(); ++cell)
+                        order[cell] = cell;
+                    const std::size_t count = options.momentum_budget_all_cells
+                        ? order.size()
+                        : std::min<std::size_t>(12, order.size());
+                    std::partial_sort(
+                        order.begin(),
+                        order.begin() + static_cast<std::ptrdiff_t>(count),
+                        order.end(),
+                        [&budget](std::size_t lhs, std::size_t rhs) {
+                            const double a = std::abs(budget.cells[lhs].physical_residual);
+                            const double b = std::abs(budget.cells[rhs].physical_residual);
+                            return a == b ? lhs < rhs : a > b;
+                        });
+                    for (std::size_t rank = 0; rank < count; ++rank) {
+                        const std::size_t cell = order[rank];
+                        const auto& centre = geometry.cell_centres[cell];
+                        const auto& term = budget.cells[cell];
+                        const double values[] = {
+                            centre.x, centre.y, centre.z, term.convection, term.viscous,
+                            term.transpose_viscous, term.pressure, term.body_force,
+                            term.bounded_divergence, term.mass_divergence,
+                            term.collocated_difference, term.physical_residual,
+                            term.bounded_operator_residual, budget.worst_absolute_residual,
+                            term.temporal, term.algebraic_residual,
+                            term.matrix_face_difference, term.matrix_face_scale,
+                            budget.matrix_closure_linf,
+                            budget.matrix_closure_relative_linf};
+                        for (const double value : values)
+                            if (!std::isfinite(value))
+                                throw std::runtime_error(
+                                    "production momentum budget contains a nonfinite value");
+                        momentum_budget_output
+                            << iteration << ',' << component << ',' << rank << ','
+                            << cell;
+                        for (const double value : values)
+                            momentum_budget_output << ',' << value;
+                        momentum_budget_output << ','
+                            << budget.matrix_closure_worst_cell << '\n';
+                    }
+                    momentum_budget_output.flush();
+                    if (!momentum_budget_output)
+                        throw std::runtime_error("cannot write momentum budget CSV");
+                };
+            std::cout << "MOMENTUM_FACE_BUDGET enabled file="
+                      << options.momentum_budget_csv.string()
+                      << " every=" << options.momentum_budget_every
+                      << " all_cells=" << (options.momentum_budget_all_cells ? 1 : 0)
+                      << " accepted_state=1\n";
+        }
 
         controls.iteration_output_callback =
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
