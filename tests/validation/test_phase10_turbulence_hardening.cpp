@@ -217,7 +217,7 @@ int main() {
         const auto q=realizable_kepsilon_cell_sources(0.1,0.05,inv,c);
         const double eta=2.0*0.1/0.05;
         EXPECT_NEAR(q.c1,std::max(0.43,eta/(eta+5.0)),1e-14);
-        const double destruction_e=c.density*c.realizable_C2*0.05/
+        const double destruction_e=c.density*c.realizable_C2*0.05*0.05/
             (0.1+std::sqrt(c.molecular_viscosity*0.05));
         EXPECT_NEAR(q.se, q.c1*c.density*2.0*0.05-destruction_e, 1e-14);
         EXPECT_NEAR(q.spe, 0.0, 0.0);
