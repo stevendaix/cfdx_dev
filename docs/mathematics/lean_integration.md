@@ -446,3 +446,15 @@ CFDX's C++ stress and momentum assembly implements the same traction. In
 particular, the current C++ transpose-viscous traction must not be relabelled
 as a Reynolds-stress closure. The next step is a mesh-level incidence/scatter
 contract and a deterministic vector-valued C++ conformance test.
+
+
+### Finite collection of vector internal faces
+
+The vector module also introduces `InternalFace3` and
+`sum_internal_face_work_equals_sum_velocity_jump_work`. The latter lifts
+the single-face identity to an arbitrary finite list of internal-face
+records by summing the face-local equalities. This is a useful intermediate
+lemma for a mesh proof, but the list abstraction does not encode mesh
+incidence, owner/neighbour uniqueness, boundary classification, or whether
+each geometric face is included exactly once. Those remain explicit proof
+obligations before calling this a mesh-global finite-volume theorem.
