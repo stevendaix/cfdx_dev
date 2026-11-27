@@ -1,10 +1,10 @@
 #pragma once
-// CoupledJfnkDriver: production JFNK driver for the 6N U+p+k+omega system
-// (Option D). Packs the six fields into a monolithic vector, runs
-// coupled_newton_krylov_step with a matrix-free residual and a six-field
-// block right preconditioner, and commits to the production fields on
-// acceptance. On failure returns accepted=false so the caller falls back to
-// SIMPLE. Entirely opt-in: never invoked unless the control flag is set.
+// CoupledJfnkDriver: experimental, unpreconditioned JFNK prototype for the
+// 6N U+p+k+omega system (Option D). It is not a production solver and must
+// not be used to qualify a production SIMPLE/COUPLED state. Its residual and
+// boundary/operator contracts are intentionally incomplete; see audit issue
+// #1207. A future production integration requires exact operator equivalence,
+// pressure gauge handling, wall/SST traces, and a physical block preconditioner.
 //
 // V33: the monolithic residual now consumes the SAME OpenFOAM-style wall
 // operator (omega face values + Spalding nut + owner omega constraint) used
