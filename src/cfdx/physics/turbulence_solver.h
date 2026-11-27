@@ -18,6 +18,8 @@ struct TurbulenceTransportResult {
     std::size_t iterations=0;
     double k_residual=0.0;
     double second_residual=0.0;
+    double k_relative_residual=std::numeric_limits<double>::infinity();
+    double second_relative_residual=std::numeric_limits<double>::infinity();
     std::size_t k_floor_events=0;
     std::size_t second_floor_events=0;
     std::size_t nonfinite_bound_events=0;
@@ -46,6 +48,19 @@ struct TurbulenceTransportResult {
     std::size_t coupled_2x2_applied=0;
     double coupled_2x2_max_delta=0.0;
 };
+
+inline double turbulence_equation_relative_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& accepted_solution)
+{
+    const double residual = scalar_equation_residual_inf(equation, accepted_solution);
+    double rhs_inf = 0.0;
+    for (std::size_t row = 0; row < equation.rhs.size(); ++row)
+        rhs_inf = std::max(rhs_inf, std::abs(equation.rhs(row)));
+    if (rhs_inf == 0.0)
+        return residual == 0.0 ? 0.0 : std::numeric_limits<double>::infinity();
+    return residual / rhs_inf;
+}
 
 inline void record_turbulence_bounds(
     TurbulenceTransportResult& result,
@@ -238,8 +253,15 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         }
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
 
-        result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
-        result.second_residual=scalar_equation_residual_inf(eqe,epsilon_solution);
+        cfdx::core::Vector accepted_k(n,0.0), accepted_epsilon(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_epsilon(i)=epsilon(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqe,accepted_epsilon);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqe,accepted_epsilon);
         result.iterations=iter;
 
         double dk=0.0,de=0.0;
@@ -309,8 +331,15 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
         double dk=0.0,de=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-oldk(i)));de=std::max(de,std::abs(epsilon(i)-olde(i)));}
-        result.k_residual=scalar_equation_residual_inf(eqk,ks);
-        result.second_residual=scalar_equation_residual_inf(eqe,es);
+        cfdx::core::Vector accepted_k(n,0.0), accepted_epsilon(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_epsilon(i)=epsilon(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqe,accepted_epsilon);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqe,accepted_epsilon);
         result.iterations=iter;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
@@ -549,7 +578,16 @@ inline TurbulenceTransportResult solve_komega_transport(
         for(std::size_t i=0;i<n;++i){k(i)=ks(i);omega(i)=ws(i);}
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
         double dk=0,dw=0; for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
-        result.k_residual=scalar_equation_residual_inf(eqk,ks); result.second_residual=scalar_equation_residual_inf(eqw,ws); result.iterations=iter;
+        cfdx::core::Vector accepted_k(n,0.0), accepted_omega(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_omega(i)=omega(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqw,accepted_omega);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqw,accepted_omega);
+        result.iterations=iter;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
     }
     return result;
