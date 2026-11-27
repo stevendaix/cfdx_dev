@@ -115,6 +115,17 @@ int main() {
                          forward, 0, std::numeric_limits<double>::quiet_NaN()),
                      std::invalid_argument);
     });
+    run_case("coupled_jfnk_rejects_unimplemented_wall_and_ptc_options", [] {
+        const CoupledJfnkWallOperator no_wall_operator{};
+        const double disabled_ptc = std::numeric_limits<double>::infinity();
+        EXPECT_TRUE(!coupled_jfnk_has_unsupported_extensions(
+            no_wall_operator, nullptr, disabled_ptc));
+        EXPECT_TRUE(coupled_jfnk_has_unsupported_extensions(
+            no_wall_operator, nullptr, 0.25));
+        EXPECT_TRUE(coupled_jfnk_has_unsupported_extensions(
+            no_wall_operator, nullptr,
+            std::numeric_limits<double>::quiet_NaN()));
+    });
     run_case("coupled_jfnk_velocity_bc_rejects_mixed_component_types", [] {
         ScalarBoundaryConditions ux, uy, uz;
         ux["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
