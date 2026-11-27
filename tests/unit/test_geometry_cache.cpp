@@ -213,6 +213,32 @@ int main() {
         EXPECT_NEAR(cache.face_Sf[5].z, 0.0, 1e-12);
         EXPECT_NEAR(cache.face_non_orthogonality_deg[5], 0.0, 1e-12);
         EXPECT_NEAR(cache.face_skewness[5], 0.0, 1e-12);
+
+        // Verify the first-moment identity for both cells, including the
+        // shared face whose owner-oriented area vector must be reversed for
+        // the neighbour cell. This is the multi-cell counterpart of the
+        // reference-tetrahedron Lean/C++ conformance fixture.
+        const auto* cell_faces = m.cells().faces_data();
+        const auto* cell_offsets = m.cells().offsets_data();
+        const auto component = [](const Vec3& value, std::size_t d) {
+            return d == 0 ? value.x : (d == 1 ? value.y : value.z);
+        };
+        for (std::size_t c = 0; c < m.n_cells(); ++c) {
+            for (std::size_t i = 0; i < 3; ++i) {
+                for (std::size_t j = 0; j < 3; ++j) {
+                    double moment = 0.0;
+                    for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                        const std::size_t f = cell_faces[k];
+                        const Vec3 area = (m.ownership().owner(f) == c)
+                            ? cache.face_Sf[f] : cache.face_Sf[f] * (-1.0);
+                        moment += component(cache.face_centres[f], i) *
+                                  component(area, j);
+                    }
+                    const double expected = (i == j) ? cache.cell_volumes[c] : 0.0;
+                    EXPECT_NEAR(moment, expected, 1e-12);
+                }
+            }
+        }
     });
 
     return run_all();

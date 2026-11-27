@@ -230,6 +230,21 @@ condition is relevant to point-reconstructed Gauss and other schemes only
 after their reconstruction and geometric moment hypotheses have been
 verified against the implementation.
 
+The next conformance fixture extends the reference simplex to two adjacent
+unit cubes sharing one internal face. Lean's
+`two_cell_first_moment` proves the first-moment identity separately for
+both cells. The two cells use local face slots, so the shared face is
+represented as cell 0's high-x face (slot 1) and cell 1's low-x face (slot 0).
+The additional theorems `two_cell_shared_face_centre_matches` and
+`two_cell_shared_face_area_opposes` prove that these local slots have the
+same geometric centre and exactly opposite outward-oriented area vectors.
+The matching C++ extension evaluates the production geometry cache and
+traverses each cell's CSR face list, applying the owner/neighbour sign
+convention used by `compute_gradient_gauss`. It checks all nine tensor
+components for both cells. This specifically tests the shared-face
+orientation bridge; it remains a structured two-cell fixture, not a proof
+for arbitrary polyhedral meshes or malformed CSR.
+
 The formal module also includes a kernel-checked counterexample,
 `two_point_gauss_skew_face_defect`, matching the C++ test
 `two_point_gauss_face_interpolation_has_affine_skewness_defect`. For
