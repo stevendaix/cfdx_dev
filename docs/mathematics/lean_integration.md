@@ -382,3 +382,33 @@ boundary, pressure, viscous and closure contributions. The next implementation
 step is a deterministic C++ counterpart on two cells that compares the
 owner/neighbour face scatter with the Lean examples. Neither correspondence
 nor solver stability is claimed yet.
+
+
+### Face-jump work identity (two-cell prototype)
+
+The same Lean module now defines `twoCellInternalFaceForce q`: the owner
+receives the integrated face force (+q), and the neighbour receives
+(-q). The theorem `two_cell_power_equals_face_jump_work` proves exactly
+[
+  sum_{c\in\{P,N\}} U_c f_c
+  = (U_P-U_N)q.
+]
+This is the discrete face-jump work identity for one internal face. It is
+the simplest prototype of the summation-by-parts identity needed for a
+finite-volume stress divergence: internal face work depends on the jump of
+the cell velocity and the shared face traction, not on the global force sum.
+
+The `volumeWeightedPower` definition was refined to distinguish an
+integrated face-force residual from a per-volume force density:
+[
+  \sum_c V_c U_c (F_c/V_c).
+]
+For strictly positive cell volumes, the same conservative two-cell example
+still gives positive power. This removes the dimensional ambiguity of
+multiplying an integrated face force directly by a cell volume.
+
+This remains a two-cell scalar prototype. The next extension must handle
+vector traction, density-weighted kinetic energy, nonuniform cell volumes,
+boundary-face work, and the actual momentum residual including pressure,
+viscous stress, Rhie–Chow and temporal terms. It is not yet a theorem about
+the C++ `momentum_face_budget` implementation.
