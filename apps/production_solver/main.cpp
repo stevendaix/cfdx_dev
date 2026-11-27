@@ -377,7 +377,7 @@ std::string json_escape(const std::string& text)
         case '\\': out += "\\\\"; break;
         case '\b': out += "\\b"; break;
         case '\f': out += "\\f"; break;
-        case '\n': out += "\\n"; break;
+        case '\n': out += "\n"; break;
         case '\r': out += "\\r"; break;
         case '\t': out += "\\t"; break;
         default: {
@@ -851,9 +851,9 @@ Options parse(int argc, char** argv)
             std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
                           "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
-            std::cout << "  --momentum-budget-csv FILE [--momentum-budget-every N]\\n"
-                         "    (accepted-state signed face/CSR momentum budget; top 12 cells by default)\\n"
-                         "  --momentum-budget-all-cells (export every cell; requires --momentum-budget-csv)\\n";
+            std::cout << "  --momentum-budget-csv FILE [--momentum-budget-every N]\n"
+                         "    (accepted-state signed face/CSR momentum budget; top 12 cells by default)\n"
+                         "  --momentum-budget-all-cells (export every cell; requires --momentum-budget-csv)\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
