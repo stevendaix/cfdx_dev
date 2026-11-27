@@ -367,6 +367,13 @@ int main() {
         Mesh mesh = make_unit_cube();
         SourceInfo source = make_test_source();
         CaseSetup setup = make_default_setup();
+        BoundarySpec::InletProfileSpec profile;
+        profile.enabled = true;
+        profile.axis = 1;
+        profile.profile_file = "inlet_profile.csv";
+        profile.coords = {0.0, 0.5, 1.0};
+        profile.values = {0.0, 2.0, 3.0};
+        setup.boundary_conditions[0].inlet_profile = profile;
         GapAnalysis gap;
 
         EXPECT_TRUE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
@@ -398,6 +405,13 @@ int main() {
         EXPECT_TRUE(loaded_setup.boundary_conditions.size() == 1);
         EXPECT_TRUE(loaded_setup.boundary_conditions[0].patch_name == "inlet");
         EXPECT_TRUE(loaded_setup.boundary_conditions[0].velocity_magnitude == 10.0);
+        EXPECT_TRUE(loaded_setup.boundary_conditions[0].inlet_profile.has_value());
+        const auto& loaded_profile = *loaded_setup.boundary_conditions[0].inlet_profile;
+        EXPECT_TRUE(loaded_profile.enabled);
+        EXPECT_TRUE(loaded_profile.axis == 1);
+        EXPECT_TRUE(loaded_profile.profile_file == "inlet_profile.csv");
+        EXPECT_TRUE(loaded_profile.coords == std::vector<double>({0.0, 0.5, 1.0}));
+        EXPECT_TRUE(loaded_profile.values == std::vector<double>({0.0, 2.0, 3.0}));
 
         // Verify materials
         EXPECT_TRUE(loaded_setup.materials.size() == 1);
