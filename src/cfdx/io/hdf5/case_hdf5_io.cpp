@@ -782,7 +782,7 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             const mini_json::value* ip_v = mini_json::find(bc_v, "inlet_profile");
             if (ip_v && ip_v->is_object()) {
                 BoundarySpec::InletProfileSpec ip;
-                ip.enabled = json_get_number(*ip_v, "enabled") != 0.0;
+                ip.enabled = json_get_bool(*ip_v, "enabled");
                 ip.axis = static_cast<int>(json_get_number(*ip_v, "axis"));
                 ip.profile_file = json_get_string(*ip_v, "profile_file");
                 const mini_json::value* coords = mini_json::find(*ip_v, "coords");
