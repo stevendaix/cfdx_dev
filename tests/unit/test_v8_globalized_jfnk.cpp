@@ -5,6 +5,9 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
+#include <stdexcept>
+#include <vector>
 #include <string>
 
 using namespace cfdx::core;
