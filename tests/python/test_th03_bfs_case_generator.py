@@ -55,14 +55,13 @@ def test_mesh_generation_rejects_nonmatching_step_height() -> None:
 
 
 def test_bfs_generators_reject_nonfinite_or_nonpositive_step_height() -> None:
-    import numpy as np
-
     for height in (float("nan"), float("inf"), float("-inf"), 0.0, -0.0127):
         with pytest.raises(ValueError, match="invalid step resolution"):
             bfs.make_mesh(4, 12, 10, 2, height=height)
-        with pytest.raises(ValueError, match="step height must be finite and positive"):
+        with pytest.raises(
+            ValueError, match="step height must be finite and positive"
+        ):
             bfs.make_setup(height, reynolds=36000.0, velocity=1.0)
-
 
 
 def test_synthetic_bfs_inlet_profile_matches_two_wall_channel(tmp_path: Path) -> None:
