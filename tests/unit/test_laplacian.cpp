@@ -299,6 +299,34 @@ int main() {
             std::runtime_error);
     });
 
+    run_case("laplacian_two_point_matrix_matches_weighted_incidence", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        const GeometryCache geometry = make_geometry_cache(m);
+        const Vec3 d = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const Vec3 Sf = geometry.face_Sf[5];
+        const double alpha = Sf.dot(d) / d.dot(d);
+        EXPECT_TRUE(alpha > 0.0);
+
+        // The production routine returns -V^{-1} B^T W B for the
+        // ORTHOGONAL two-point scheme. Reconstruct both matrix columns
+        // by applying the production operator to the canonical basis.
+        const double volumes[2] = {
+            geometry.cell_volumes[0], geometry.cell_volumes[1]};
+        for (std::size_t column = 0; column < 2; ++column) {
+            ScalarCellField basis(2, "basis", "1", 1);
+            basis(0) = column == 0 ? 1.0 : 0.0;
+            basis(1) = column == 1 ? 1.0 : 0.0;
+            const auto applied = compute_laplacian(
+                basis, m, geometry, LaplacianScheme::ORTHOGONAL);
+            const double owner_value = column == 0 ? 1.0 : 0.0;
+            const double neighbour_value = column == 1 ? 1.0 : 0.0;
+            const double graph_owner = alpha *
+                (owner_value - neighbour_value);
+            const double graph_neighbour = -graph_owner;
+            EXPECT_NEAR(-volumes[0] * applied(0), graph_owner, 1e-12);
+            EXPECT_NEAR(-volumes[1] * applied(1), graph_neighbour, 1e-12);
+        }
+    });
     run_case("laplacian_linear_field_two_cells", []() {
         Mesh m = make_two_cell_unit_cubes();
         ScalarCellField f(2, "p", "Pa", 1);
