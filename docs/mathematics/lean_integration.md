@@ -502,3 +502,21 @@ prove runtime mesh validity, face orientation of geometry vectors, density
 or time weighting, nor correspondence to the production C++ assembly. The
 exact-head CI must compile these new lemmas before they are treated as
 machine-checked results.
+
+
+### Volume-weighted vector power
+
+The mesh vector-work contract now also defines
+`cellVectorFaceForceDensity` as integrated face force divided by cell volume,
+and `meshVolumeWeightedVectorWork` as the cell-volume-weighted velocity
+pairing. The theorem
+`mesh_volume_weighted_work_eq_integrated_face_work` states that, for
+strictly positive cell volumes, this power pairing is exactly the integrated
+face-work sum. This keeps the dimensions distinct: traction integrated over
+a face is a force (N), its cell divergence is a force density (N/m^3), and
+multiplication by cell volume recovers force before taking velocity work (W).
+
+This theorem does not insert density automatically. The correct density
+factor depends on whether the transported momentum equation and closure
+traction are expressed in dynamic or kinematic form. That convention must be
+fixed explicitly when the Reynolds-stress traction interface is designed.
