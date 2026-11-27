@@ -93,7 +93,18 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          cmake --build build --parallel 8 2>&1 | tee build.log
+          # Sanitizer translation units (unity build, -g, -fsanitize=address,
+          #undefined) each peak at several GiB of RAM. Eight concurrent
+          # compiler jobs exhausted the 16 GiB hosted runner: the runner agent
+          # itself was SIGTERM-killed (exit code 143), every post and
+          # if:always() diagnostics step was skipped, and the CTest suite never
+          # started. Four parallel jobs match the runner vCPU count and keep
+          # the full sanitizer coverage, test suite and gates unchanged.
+          if [[ "${{ matrix.build_type }}" == "DebugSanitizers" ]]; then
+            cmake --build build --parallel 4 2>&1 | tee build.log
+          else
+            cmake --build build --parallel 8 2>&1 | tee build.log
+          fi
 
       - name: Run fast CTest
         id: ctest
