@@ -45,6 +45,14 @@ inline std::vector<double> coupled_jfnk_fixed_scales(
     return initial_residual.normalization_scales;
 }
 
+inline bool coupled_jfnk_nonlinear_converged(
+    const CoupledNewtonKrylovResult& step_result, double tolerance)
+{
+    return step_result.accepted && std::isfinite(tolerance) &&
+        tolerance > 0.0 && std::isfinite(step_result.physical_merit_after) &&
+        step_result.physical_merit_after <= tolerance;
+}
+
 struct CoupledJfnkDriverResult {
     bool accepted = false;
     bool production_committed = false;
@@ -105,10 +113,15 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
     int max_newton_steps = 10,
     const CoupledJfnkWallOperator& wall_op = {},
     SSTV30ContinuationState* ptc_state = nullptr,
-    double ptc_max_diagonal_fraction = std::numeric_limits<double>::infinity())
+    double ptc_max_diagonal_fraction = std::numeric_limits<double>::infinity(),
+    double nonlinear_tolerance = 1e-8)
 {
     CoupledJfnkDriverResult result;
     using namespace cfdx::core;
+    if (!(nonlinear_tolerance > 0.0) || !std::isfinite(nonlinear_tolerance)) {
+        result.reason = "JFNK driver: invalid nonlinear convergence tolerance";
+        return result;
+    }
     const std::size_t nc = mesh.n_cells();
     if (nc == 0) {
         result.reason = "JFNK driver: empty mesh";
@@ -230,17 +243,20 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
         if (step == 0)
             result.initial_merit = step_result.physical_merit_before;
         result.final_merit = step_result.physical_merit_after;
+        if (!step_result.accepted) {
+            // A rejected Newton step means JFNK failed; caller falls back to SIMPLE.
+            break;
+        }
         state = step_result.state;
-        if (step_result.accepted) {
+        if (coupled_jfnk_nonlinear_converged(step_result, nonlinear_tolerance)) {
             converged = true;
             break;
         }
-        // A rejected Newton step means JFNK failed; caller falls back to SIMPLE.
-        break;
     }
 
     if (!converged) {
-        result.reason = "JFNK did not converge within " +
+        result.reason = "JFNK failed to reach nonlinear tolerance " +
+            std::to_string(nonlinear_tolerance) + " within " +
             std::to_string(max_newton_steps) + " Newton steps";
         return result;
     }
@@ -253,7 +269,7 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
         sst_state, mesh, sst_controls, U, fixed_velocity_values, wall_patch_names);
     result.accepted = true;
     result.production_committed = true;
-    result.reason = "JFNK converged and production state committed";
+    result.reason = "JFNK reached the nonlinear residual tolerance and committed production state";
     return result;
 }
 
