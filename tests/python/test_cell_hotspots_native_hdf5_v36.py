@@ -139,7 +139,7 @@ def main() -> None:
         assert invalid_budget.returncode == 2
         assert "--momentum-budget-csv" in invalid_budget.stderr
     print(
-        "V36 NATIVE HDF5: opt-in/off physical evidence identical, maps valid, bounds fail closed"
+        "V36 NATIVE HDF5: diagnostics are nonintrusive; cell maps and momentum face/CSR budget valid"
     )
 
 
