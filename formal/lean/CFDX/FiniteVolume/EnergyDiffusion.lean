@@ -125,4 +125,61 @@ theorem energyDiffusion_kernel_iff
     funext c
     simp [energyDiffusionOperator, metricApply, hG]
 
+
+/-- Bilinear form associated with the energy diffusion operator. -/
+theorem energyDiffusion_bilinear_identity
+    (G : FixedReconstruction Cell Grad)
+    (M : SPDGradientMetric Grad) (x y : Cell → ℝ) :
+    ∑ c : Cell, x c * energyDiffusionOperator G M y c
+      = ∑ i : Grad,
+          reconstruct G x i * metricApply M (reconstruct G y) i := by
+  classical
+  unfold energyDiffusionOperator metricApply reconstruct
+  simp only [Finset.mul_sum]
+  rw [Finset.sum_comm]
+  apply Finset.sum_congr rfl
+  intro i hi
+  rw [← Finset.sum_mul]
+  apply Finset.sum_congr rfl
+  intro c hc
+  ring
+
+/-- Symmetry of the metric pairing follows from symmetry of its coefficient
+matrix. -/
+theorem metric_pairing_symmetric
+    (M : SPDGradientMetric Grad) (x y : Grad → ℝ) :
+    ∑ i : Grad, x i * metricApply M y i
+      = ∑ i : Grad, y i * metricApply M x i := by
+  classical
+  unfold metricApply
+  calc
+    (∑ i : Grad, x i * ∑ j : Grad, M.coeff i j * y j)
+        = ∑ i : Grad, ∑ j : Grad, y j * (M.coeff j i * x i) := by
+          apply Finset.sum_congr rfl
+          intro i hi
+          rw [Finset.mul_sum]
+          apply Finset.sum_congr rfl
+          intro j hj
+          rw [M.symmetric i j]
+          ring
+    _ = ∑ i : Grad, y i * ∑ j : Grad, M.coeff i j * x j := by
+          rw [Finset.sum_comm]
+          apply Finset.sum_congr rfl
+          intro i hi
+          rw [Finset.sum_mul]
+          apply Finset.sum_congr rfl
+          intro j hj
+          rw [M.symmetric j i]
+          ring
+
+/-- The induced cell-space bilinear form is symmetric. This is the
+operator-level symmetry contract for the fixed reconstruction model. -/
+theorem energyDiffusion_bilinear_symmetric
+    (G : FixedReconstruction Cell Grad)
+    (M : SPDGradientMetric Grad) (x y : Cell → ℝ) :
+    ∑ c : Cell, x c * energyDiffusionOperator G M y c
+      = ∑ c : Cell, y c * energyDiffusionOperator G M x c := by
+  rw [energyDiffusion_bilinear_identity, energyDiffusion_bilinear_identity]
+  exact metric_pairing_symmetric M (reconstruct G x) (reconstruct G y)
+
 end CFDX.FiniteVolume
