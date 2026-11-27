@@ -5,3 +5,4 @@ import CFDX.Geometry.SkewTetrahedron
 import CFDX.Geometry.CsrTopology
 import CFDX.Geometry.UnitHexahedron
 import CFDX.FiniteVolume.TwoPointLaplacian
+import CFDX.FiniteVolume.IncidenceAdjoint
