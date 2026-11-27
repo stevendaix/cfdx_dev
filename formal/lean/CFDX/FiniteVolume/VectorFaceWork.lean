@@ -64,12 +64,30 @@ theorem internal_face_vector_scatter_is_conservative
       (internalFaceScatter3 traction) 1 component = 0 := by
   simp [internalFaceScatter3]
 
-theorem internal_face_vector_work_can_be_positive
+theorem internal_face_vector_work_is_zero_for_zero_velocity
     (traction : Fin 3 → ℝ) :
     let ownerVelocity : Fin 3 → ℝ := fun _ => 0
     let neighbourVelocity : Fin 3 → ℝ := fun _ => 0
     internalFaceCellWork3 ownerVelocity neighbourVelocity traction = 0 := by
   simp [internalFaceCellWork3, dot3]
+
+
+/-- Concrete positive-work example for an internal vector traction. -/
+theorem internal_face_vector_work_can_inject_energy :
+    let ownerVelocity : Fin 3 → ℝ := fun i => if i = 0 then 1 else 0
+    let neighbourVelocity : Fin 3 → ℝ := fun _ => 0
+    let traction : Fin 3 → ℝ := fun i => if i = 0 then 1 else 0
+    internalFaceCellWork3 ownerVelocity neighbourVelocity traction = 1 := by
+  norm_num [internalFaceCellWork3, dot3]
+
+/-- Reversing the velocity orientation reverses the work sign without
+changing the equal-and-opposite internal scatter. -/
+theorem internal_face_vector_work_can_remove_energy :
+    let ownerVelocity : Fin 3 → ℝ := fun _ => 0
+    let neighbourVelocity : Fin 3 → ℝ := fun i => if i = 0 then 1 else 0
+    let traction : Fin 3 → ℝ := fun i => if i = 0 then 1 else 0
+    internalFaceCellWork3 ownerVelocity neighbourVelocity traction = -1 := by
+  norm_num [internalFaceCellWork3, dot3]
 
 theorem boundary_face_work_is_not_an_internal_jump
     (ownerVelocity outwardTraction : Fin 3 → ℝ) :
