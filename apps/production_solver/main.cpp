@@ -1133,11 +1133,23 @@ int main(int argc, char** argv)
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
                 // Non-uniform inlet profile (e.g. Driver-Seegmiller BL u(y) from CSV)
-                if (bc->inlet_profile.has_value() && bc->inlet_profile->enabled &&
-                    !bc->inlet_profile->profile_file.empty()) {
-                    auto ux_provider = read_inlet_profile(bc->inlet_profile->profile_file,
-                                                          bc->inlet_profile->axis);
-                    auto zero_provider = std::make_shared<const cfdx::core::ConstantValueProvider>(0.0);
+                if (bc->inlet_profile.has_value() && bc->inlet_profile->enabled) {
+                    const auto& profile = *bc->inlet_profile;
+                    std::shared_ptr<const cfdx::core::ValueProvider> ux_provider;
+                    if (!profile.profile_file.empty()) {
+                        ux_provider = read_inlet_profile(profile.profile_file, profile.axis);
+                    } else if (profile.coords.size() >= 2 &&
+                               profile.coords.size() == profile.values.size()) {
+                        ux_provider = std::make_shared<
+                            const cfdx::core::TableOverSpaceValueProvider>(
+                                profile.coords, profile.values, profile.axis);
+                    } else {
+                        throw std::invalid_argument(
+                            "production solver: enabled inlet profile on patch '" +
+                            patch.name + "' requires a CSV file or at least two inline samples");
+                    }
+                    auto zero_provider =
+                        std::make_shared<const cfdx::core::ConstantValueProvider>(0.0);
                     VelocityBoundaryCondition prof_bc;
                     prof_bc.type = VelocityBoundaryCondition::Type::PROFILE;
                     prof_bc.ux_provider = std::move(ux_provider);
