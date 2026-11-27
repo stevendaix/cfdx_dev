@@ -109,6 +109,29 @@ inline void update_sst_static_pressure_face_values(
     output = std::move(candidate);
 }
 
+// Rebuild the shared modified-pressure trace after the carrier/SST
+// transaction restores its accepted k field. Build into a temporary object
+// first, then publish in one assignment so a failed rebuild cannot expose a
+// partially updated face map. A fresh generation invalidates consumers of the
+// rejected candidate's snapshot.
+inline void rebuild_sst_pressure_face_values_after_state_restore(
+    const cfdx::core::Mesh& mesh,
+    const SSTProductionState& restored_state,
+    double density,
+    const ScalarBoundaryConditions& static_pressure_bcs,
+    const ScalarBoundaryConditions& k_bcs,
+    ScalarBoundaryFaceValues& shared_snapshot)
+{
+    if (shared_snapshot.generation == std::numeric_limits<std::uint64_t>::max())
+        throw std::overflow_error(
+            "SST pressure face snapshot: generation counter exhausted on rollback");
+    ScalarBoundaryFaceValues restored_snapshot;
+    update_sst_static_pressure_face_values(
+        mesh, restored_state, density, static_pressure_bcs, k_bcs,
+        restored_snapshot, shared_snapshot.generation + 1);
+    shared_snapshot = std::move(restored_snapshot);
+}
+
 // Case pressure values are static pressure. The incompressible SST
 // momentum equation solves modified pressure p* = p_static + 2/3 rho k.
 // The current pressure FV adapter stores one scalar value per patch. Only a
