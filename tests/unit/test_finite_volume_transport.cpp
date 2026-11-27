@@ -209,6 +209,29 @@ int main()
             skew_face,owner,&neighbour),0.5,1e-12);
     });
 
+    run_case("two_point_gauss_face_interpolation_has_affine_skewness_defect", [] {
+        const Vec3 owner(0.0, 0.0, 0.0);
+        const Vec3 neighbour(1.0, 0.0, 0.0);
+        const Vec3 skew_face(0.5, 0.5, 0.0);
+        const auto weight = geometric_interpolation_weight(
+            skew_face, owner, &neighbour);
+
+        // phi(x,y)=2x+3y+1 is affine. The owner/neighbour interpolation
+        // reconstructs the value at (0.5,0,0), not at the skew face centre
+        // (0.5,0.5,0), so it must not be advertised as generally linear-exact.
+        const auto phi = [](const Vec3& x) {
+            return 2.0 * x.x + 3.0 * x.y + 1.0;
+        };
+        const double reconstructed =
+            (1.0 - weight) * phi(owner) + weight * phi(neighbour);
+        const double exact_face_value = phi(skew_face);
+
+        EXPECT_NEAR(weight, 0.5, 1e-12);
+        EXPECT_NEAR(reconstructed, 2.0, 1e-12);
+        EXPECT_NEAR(exact_face_value, 3.5, 1e-12);
+        EXPECT_NEAR(reconstructed - exact_face_value, -1.5, 1e-12);
+    });
+
     run_case("linear_and_blended_interpolation_are_exact_on_stretched_orthogonal_mesh", [] {
         const Mesh m=make_two_cell_stretched_chain();
         const FvGeometry g=build_fv_geometry(m);
