@@ -317,10 +317,24 @@ inline ScalarBoundaryCondition resolve_scalar_boundary_condition(
         if (effective_face_values == nullptr && it != boundary_conditions.end() &&
             it->second.face_values)
             effective_face_values = it->second.face_values.get();
+        const bool provider_attached =
+            it != boundary_conditions.end() && it->second.face_values != nullptr;
         if (effective_face_values) {
             const auto fv = effective_face_values->values.find(patch_name);
-            if (fv != effective_face_values->values.end() &&
-                face < fv->second.size() && std::isfinite(fv->second[face])) {
+            if (fv == effective_face_values->values.end()) {
+                if (provider_attached)
+                    throw std::invalid_argument(
+                        "resolve_scalar_boundary_condition: face-value provider is missing patch '" +
+                        patch_name + "'");
+            } else {
+                if (face >= fv->second.size())
+                    throw std::out_of_range(
+                        "resolve_scalar_boundary_condition: face-value provider is too short for patch '" +
+                        patch_name + "'");
+                if (!std::isfinite(fv->second[face]))
+                    throw std::invalid_argument(
+                        "resolve_scalar_boundary_condition: non-finite face value for patch '" +
+                        patch_name + "'");
                 bc.type = ScalarBoundaryType::FIXED_VALUE;
                 bc.value = fv->second[face];
             }
