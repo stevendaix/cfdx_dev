@@ -345,3 +345,40 @@ Each stage must state its hypotheses and distinguish proved properties,
 tested properties, assumptions, and open questions. No solver tolerance,
 physical model, convergence gate, or qualification result may be weakened to
 make a formal or numerical check pass.
+
+
+## Discrete energy transfer: conservation is not stability
+
+The module `CFDX.FiniteVolume.EnergyTransfer` is included in the root
+`CFDX.lean` build. It defines a two-cell discrete velocity and three
+equal-and-opposite force examples. The kernel-checked results establish:
+
+- a conservative internal force can have positive discrete power (+2);
+- another conservative force can have negative discrete power (-2);
+- the same conservative force can have zero power when paired with a
+  uniform velocity.
+
+The theorem `conservation_does_not_imply_nonpositive_power` is a constructive
+counterexample to the implication from zero global force balance to
+non-positive discrete power. The theorem
+`conservative_power_can_have_either_sign` makes the sign-indefiniteness
+explicit.
+
+This is a finite-dimensional logical counterexample, not a discretization
+of the CFDX Navier–Stokes operator and not a turbulence closure. Its purpose
+is to prevent an invalid inference: pairwise conservation of internal face
+forces does not establish kinetic-energy stability.
+
+The Euclidean inner product is used only in this minimal example. A production
+energy contract must use CFDX's actual cell volumes, density convention,
+time-discrete kinetic-energy definition, pressure/velocity coupling,
+interpolation, non-orthogonal corrections and boundary work. It must also
+allow physically legitimate backscatter. Therefore no blanket
+non-positive-power requirement is imposed on every turbulence closure.
+
+The next formal step is a mesh-weighted discrete power identity tied to the
+actual momentum residual and an explicit decomposition into internal,
+boundary, pressure, viscous and closure contributions. The next implementation
+step is a deterministic C++ counterpart on two cells that compares the
+owner/neighbour face scatter with the Lean examples. Neither correspondence
+nor solver stability is claimed yet.
