@@ -75,9 +75,15 @@ def write_sst_thermal_case(
                 patch["value_type"] = "wall_thermal"
                 patch["wall_temperature"] = 300.0 if uniform or name == "top" else 310.0
                 if sst:
+                    # This fixture verifies production SST -> turbulent
+                    # thermal diffusivity coupling, not a wall-function or
+                    # wall-resolved SST qualification. Keep the turbulence
+                    # trace spatially uniform so the test isolates Pr_t rather
+                    # than driving a pressure/velocity transient from a
+                    # synthetic wall-to-core k jump.
                     patch["sst_scalar_conditions"] = [
-                        {"field": "k", "type": "wall_k_zero", "value": 0.0},
-                        {"field": "omega", "type": "wall_omega_sst", "value": 0.0},
+                        {"field": "k", "type": "fixed_value", "value": 0.01},
+                        {"field": "omega", "type": "fixed_value", "value": 2.0},
                     ]
             elif name in {"front", "back"}:
                 if sst:
