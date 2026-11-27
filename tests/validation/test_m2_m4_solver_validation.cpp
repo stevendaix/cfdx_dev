@@ -162,9 +162,8 @@ int main()
         rc.tolerance=1e-9;rc.linear_tolerance=1e-11;
         std::vector<Field<double,Location::CELL>> intensities;
         for (std::size_t direction=0;direction<dirs.size();++direction) {
-            Field<double,Location::CELL> I(1,"I","W/m2/sr",1);
-            I(0)=blackbody_intensity(1000.0);
-            intensities.push_back(std::move(I));
+            intensities.emplace_back(1,"I","W/m2/sr",1);
+            intensities.back()(0)=blackbody_intensity(1000.0);
         }
         const auto initial_wall_trace=build_dom_diffuse_gray_face_values(
             m,g,dirs,intensities,walls,0);
