@@ -116,6 +116,14 @@ int main() {
                          forward, 0, std::numeric_limits<double>::quiet_NaN()),
                      std::invalid_argument);
     });
+    run_case("coupled_jfnk_requires_pressure_reference", [] {
+        ScalarBoundaryConditions pressure_bcs;
+        EXPECT_TRUE(!jfnk_pressure_has_dirichlet_reference(pressure_bcs));
+        pressure_bcs["outlet"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        EXPECT_TRUE(!jfnk_pressure_has_dirichlet_reference(pressure_bcs));
+        pressure_bcs["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        EXPECT_TRUE(jfnk_pressure_has_dirichlet_reference(pressure_bcs));
+    });
     run_case("coupled_jfnk_detects_frozen_face_valued_pressure_snapshot", [] {
         ScalarBoundaryConditions pressure_bcs;
         EXPECT_TRUE(!jfnk_has_face_valued_pressure_snapshot(pressure_bcs));
