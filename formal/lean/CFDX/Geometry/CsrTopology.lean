@@ -87,7 +87,7 @@ theorem storing_cells_internal_iff
     · exact storage.owner_stores f
     · obtain ⟨n', hn'', hc'⟩ := storage.neighbour_stores f hf
       have hnn : n = n' := Option.some.inj (hn.symm.trans hn'')
-      rw [hnn] at hc'
+      rw [hnn]
       exact hc'
 
 /-- Characterization of the cells storing a boundary face: only the owner. -/
