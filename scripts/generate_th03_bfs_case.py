@@ -68,6 +68,7 @@ def make_mesh(
         and 4 <= n_down <= 1500
         and 4 <= ny <= 500
         and 1 <= step_cells < ny // 2
+        and np.isfinite(height)
         and height > 0
         and np.isfinite(wall_stretch)
         and 0 <= wall_stretch <= 5.0
@@ -106,6 +107,8 @@ def make_mesh(
         for i, x in enumerate(xs):
             points[pid(i, j, 0)] = (x, y, 0.0)
             points[pid(i, j, 1)] = (x, y, height)
+    if not np.all(np.isfinite(points)):
+        raise ValueError("generated BFS mesh coordinates must be finite")
     faces: list[list[int]] = []
     owners: list[int] = []
     neighbours: list[int] = []
@@ -283,6 +286,8 @@ def make_setup(
     wall_resolved: bool = False,
 ) -> str:
     validate_solver_selection(algorithm, schur, preconditioner)
+    if not np.isfinite(height) or height <= 0:
+        raise ValueError("BFS step height must be finite and positive")
     if iterations < 1 or iterations > 100000:
         raise ValueError("BFS iteration budget must be in [1,100000]")
     density = 1.2
