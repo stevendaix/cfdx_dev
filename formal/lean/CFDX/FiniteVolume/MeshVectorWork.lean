@@ -34,6 +34,49 @@ def meshCellVectorWork
   ∑ cell : Cell,
     dot3 (velocity cell) (cellVectorFaceForce topology traction cell)
 
+/-- Per-volume vector force density reconstructed from integrated face
+tractions. Cell volumes are kept explicit to prevent confusing an integrated
+force (N) with a force density (N/m^3). -/
+def cellVectorFaceForceDensity
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (traction : Face → Fin 3 → ℝ)
+    (volume : Cell → ℝ) (cell : Cell) : Fin 3 → ℝ :=
+  fun i => cellVectorFaceForce topology traction cell i / volume cell
+
+/-- Volume-weighted work of the per-volume face-force divergence. -/
+def meshVolumeWeightedVectorWork
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ)
+    (volume : Cell → ℝ) : ℝ :=
+  ∑ cell : Cell,
+    volume cell *
+      dot3 (velocity cell)
+        (cellVectorFaceForceDensity topology traction volume cell)
+
+/-- Multiplying the per-volume force density by cell volume recovers the
+integrated face-work sum exactly, provided every cell volume is positive.
+This is the discrete power pairing used by the C++ transpose-stress path. -/
+theorem mesh_volume_weighted_work_eq_integrated_face_work
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ)
+    (volume : Cell → ℝ) (hvolume : ∀ cell, 0 < volume cell) :
+    meshVolumeWeightedVectorWork topology velocity traction volume =
+      meshCellVectorWork topology velocity traction := by
+  classical
+  unfold meshVolumeWeightedVectorWork meshCellVectorForceDensity
+    meshCellVectorForceDensity cellVectorFaceForceDensity
+  unfold meshCellVectorWork cellVectorFaceForce
+  apply Finset.sum_congr rfl
+  intro cell hcell
+  simp [dot3]
+  field_simp [ne_of_gt (hvolume cell)]
+  ring
+
 /-- Face work obtained by summing the cell work contributions associated
 with that face's signed incidence. -/
 def incidenceVectorFaceWork
