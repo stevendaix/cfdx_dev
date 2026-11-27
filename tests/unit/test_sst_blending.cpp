@@ -2228,6 +2228,39 @@ int main()
             std::numeric_limits<double>::quiet_NaN(), 0.1, 0.0), std::invalid_argument);
     });
 
+    run_case("attached_face_boundary_provider_fails_closed_when_incomplete", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_two_cell_pressure_face_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        ScalarBoundaryConditions bcs;
+        bcs["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 12.0, 0.0};
+
+        auto missing_patch = std::make_shared<ScalarBoundaryFaceValues>();
+        bcs["outlet"].face_values = missing_patch;
+        EXPECT_THROW(resolve_scalar_boundary_condition(mesh, geometry, 3, bcs),
+                     std::invalid_argument);
+
+        auto too_short = std::make_shared<ScalarBoundaryFaceValues>();
+        too_short->values["outlet"] = {0.0, 0.0, 0.0};
+        bcs["outlet"].face_values = too_short;
+        EXPECT_THROW(resolve_scalar_boundary_condition(mesh, geometry, 3, bcs),
+                     std::out_of_range);
+
+        auto nonfinite = std::make_shared<ScalarBoundaryFaceValues>();
+        nonfinite->values["outlet"] = std::vector<double>(mesh.n_faces(), 0.0);
+        nonfinite->values["outlet"][3] = std::numeric_limits<double>::quiet_NaN();
+        bcs["outlet"].face_values = nonfinite;
+        EXPECT_THROW(resolve_scalar_boundary_condition(mesh, geometry, 3, bcs),
+                     std::invalid_argument);
+
+        auto valid = std::make_shared<ScalarBoundaryFaceValues>();
+        valid->values["outlet"] = std::vector<double>(mesh.n_faces(), 0.0);
+        valid->values["outlet"][3] = 15.0;
+        bcs["outlet"].face_values = valid;
+        const auto resolved = resolve_scalar_boundary_condition(mesh, geometry, 3, bcs);
+        EXPECT_TRUE(resolved.type == ScalarBoundaryType::FIXED_VALUE);
+        EXPECT_NEAR(resolved.value, 15.0, 0.0);
+    });
     run_case("sst_modified_pressure_uses_face_owner_k_and_refreshes_transactionally", [] {
         using namespace cfdx::core;
         const auto mesh=make_sst_two_cell_pressure_face_mesh();
