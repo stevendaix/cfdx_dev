@@ -183,4 +183,71 @@ theorem energyDiffusion_bilinear_symmetric
   rw [energyDiffusion_bilinear_identity, energyDiffusion_bilinear_identity]
   exact metric_pairing_symmetric M (reconstruct G x) (reconstruct G y)
 
+
+/-! ## Exact three-cell counterexample: PSD does not imply monotonicity
+
+The following symmetric matrix is the Gram matrix of the two-row
+reconstruction
+  G = [[1, 0, -1], [1/5, 1, -6/5]].
+It has zero row sums and is positive semidefinite, but its (0,1)
+off-diagonal coefficient is positive. Thus the energy structure alone
+does not imply the non-positive off-diagonal condition of an M-matrix.
+-/
+
+/-- Coefficients of the exact two-by-three reconstruction used in the
+three-cell counterexample. -/
+def threeCellReconstructionCoeff (g : Fin 2) (c : Fin 3) : ℝ :=
+  if g.val = 0 then
+    if c.val = 0 then 1 else if c.val = 1 then 0 else -1
+  else
+    if c.val = 0 then 1 / 5 else if c.val = 1 then 1 else -6 / 5
+
+/-- Explicit entries of GᵀG for the three-cell counterexample. -/
+def threeCellGramEntry (i j : Fin 3) : ℝ :=
+  if i.val = 0 then
+    if j.val = 0 then 26 / 25 else if j.val = 1 then 1 / 5 else -31 / 25
+  else if i.val = 1 then
+    if j.val = 0 then 1 / 5 else if j.val = 1 then 1 else -6 / 5
+  else
+    if j.val = 0 then -31 / 25 else if j.val = 1 then -6 / 5 else 61 / 25
+
+/-- The displayed matrix is exactly the Gram matrix of the stated
+reconstruction, not a separately chosen example. -/
+theorem threeCellGramEntry_eq_reconstruction_gram (i j : Fin 3) :
+    threeCellGramEntry i j =
+      ∑ g : Fin 2,
+        threeCellReconstructionCoeff g i *
+          threeCellReconstructionCoeff g j := by
+  fin_cases i <;> fin_cases j <;>
+    norm_num [threeCellGramEntry, threeCellReconstructionCoeff,
+      Fin.sum_univ_succ]
+
+/-- The counterexample matrix is symmetric. -/
+theorem threeCellGramEntry_symmetric (i j : Fin 3) :
+    threeCellGramEntry i j = threeCellGramEntry j i := by
+  fin_cases i <;> fin_cases j <;> norm_num [threeCellGramEntry]
+
+/-- Every row sums to zero, so constants are in the nullspace. -/
+theorem threeCellGramEntry_row_sum_zero (i : Fin 3) :
+    ∑ j : Fin 3, threeCellGramEntry i j = 0 := by
+  fin_cases i <;>
+    norm_num [threeCellGramEntry, Fin.sum_univ_succ]
+
+/-- The quadratic form is a sum of the two reconstruction components
+squared, hence nonnegative for every cell field. -/
+theorem threeCellGramEntry_psd (x : Fin 3 → ℝ) :
+    0 ≤ ∑ i : Fin 3,
+      x i * ∑ j : Fin 3, threeCellGramEntry i j * x j := by
+  simp [threeCellGramEntry, Fin.sum_univ_succ]
+  nlinarith [
+    sq_nonneg (x 0 - x 2),
+    sq_nonneg (x 0 / 5 + x 1 - 6 * x 2 / 5)
+  ]
+
+/-- A positive off-diagonal entry violates the Z-matrix sign condition,
+despite symmetry, conservation and positive semidefiniteness. -/
+theorem threeCellGramEntry_positive_off_diagonal :
+    0 < threeCellGramEntry (0 : Fin 3) (1 : Fin 3) := by
+  norm_num [threeCellGramEntry]
+
 end CFDX.FiniteVolume
