@@ -80,6 +80,22 @@ int main() {
     c.model=TurbulenceModel::KEPSILON;
     EXPECT_CLOSE(turbulence_nu_t(k,eps,S,y,c),0.09);
 
+    c.model=TurbulenceModel::KEPSILON;
+    {
+        const double production = 5.7;
+        const auto q = kepsilon_standard_cell_sources(k, eps, production, c);
+        EXPECT_CLOSE(q.sk, production - c.density * eps);
+        EXPECT_CLOSE(q.spk, 0.0);
+        EXPECT_CLOSE(q.se,
+            c.C1 * production * eps / k -
+            c.density * c.C2 * eps * eps / k);
+        EXPECT_CLOSE(q.spe, 0.0);
+        EXPECT_CLOSE(q.sk + q.spk * k, production - c.density * eps);
+        EXPECT_CLOSE(q.se + q.spe * eps,
+            c.C1 * production * eps / k -
+            c.density * c.C2 * eps * eps / k);
+    }
+
     c.model=TurbulenceModel::RNG_KEPSILON;
     {
         const double rho=1.0, nu=1e-3, Cmu=0.0845, C1=1.42, C2=1.68;
@@ -101,8 +117,8 @@ int main() {
         const double cmu=1.0/(c.realizable_A0+As*Ustar*k/eps);
         const double nut=cmu*k*k/eps, P=c.density*nut*S*S;
         const double c1=std::max(0.43,(S*k/eps)/((S*k/eps)+5.0));
-        const double destruction_k=c.density*eps/k;
-        const double destruction_e=c.density*c.realizable_C2*eps/
+        const double destruction_k=c.density*eps;
+        const double destruction_e=c.density*c.realizable_C2*eps*eps/
             (k+std::sqrt(c.molecular_viscosity*eps));
         EXPECT_CLOSE(q.cmu,cmu); EXPECT_CLOSE(q.nut,nut);
         EXPECT_CLOSE(q.sk,P-destruction_k); EXPECT_CLOSE(q.spk,0.0);
