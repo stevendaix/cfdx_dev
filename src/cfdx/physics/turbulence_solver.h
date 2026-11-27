@@ -488,11 +488,20 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
             dk=std::max(dk,std::abs(k(i)-oldk(i)));
             de=std::max(de,std::abs(epsilon(i)-olde(i)));
         }
-        result.k_residual=scalar_equation_residual_inf(eqk,ks);
-        result.second_residual=scalar_equation_residual_inf(eqe,es);
+        cfdx::core::Vector accepted_k(n,0.0), accepted_epsilon(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_epsilon(i)=epsilon(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqe,accepted_epsilon);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqe,accepted_epsilon);
         result.iterations=iter;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
             re.status==cfdx::core::SolverStatus::CONVERGED &&
+            result.k_relative_residual<=tolerance &&
+            result.second_relative_residual<=tolerance &&
             std::max(dk,de)<=tolerance) {
             result.converged=true;
             break;
@@ -645,6 +654,13 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
     const std::size_t n=mesh.n_cells();
     if(nu_tilde.size()!=n||vorticity.size()!=n||wall_distance.size()!=n||mass_flux.size()!=mesh.n_faces())
         throw std::invalid_argument("Spalart-Allmaras field size mismatch");
+    for (std::size_t i=0;i<n;++i) {
+        if (!std::isfinite(nu_tilde(i)))
+            throw std::invalid_argument("Spalart-Allmaras transport: non-finite input");
+        if (controls.negative_nu_tilde_policy==NegativeNuTildePolicy::REJECT &&
+            nu_tilde(i)<0.0)
+            throw std::domain_error("Spalart-Allmaras transport: negative input rejected by policy");
+    }
     SpalartAllmarasModel sa; sa.cb1=controls.sa_cb1;sa.cb2=controls.sa_cb2;sa.sigma=controls.sa_sigma;sa.kappa=controls.sa_kappa;sa.cw2=controls.sa_cw2;sa.cw3=controls.sa_cw3;sa.cv1=controls.sa_cv1;sa.ct3=controls.sa_ct3;sa.ct4=controls.sa_ct4;
     sa.cw1=sa.cb1/(sa.kappa*sa.kappa)+(1.0+sa.cb2)/sa.sigma;
     TurbulenceTransportResult result;
@@ -668,10 +684,34 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
         }
         auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,nullptr,&gamma, ConvectionScheme::UPWIND, &nu_tilde);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector sol(n,0.0); for(std::size_t i=0;i<n;++i)sol(i)=nu_tilde(i);
-        const auto rr=solve_scalar_equation(eq,sol,sc); for(std::size_t i=0;i<n;++i)nu_tilde(i)=std::max(sol(i),0.0);
+        const auto rr=solve_scalar_equation(eq,sol,sc);
+        for (std::size_t i=0;i<n;++i) {
+            if (!std::isfinite(sol(i)))
+                throw std::domain_error("Spalart-Allmaras transport: non-finite candidate");
+            if (controls.negative_nu_tilde_policy==NegativeNuTildePolicy::REJECT &&
+                sol(i)<0.0)
+                throw std::domain_error("Spalart-Allmaras transport: negative candidate rejected by policy");
+        }
+        for (std::size_t i=0;i<n;++i) {
+            if (sol(i)<0.0) {
+                const double correction=-sol(i);
+                ++result.k_floor_events;
+                result.k_total_floor_correction+=correction;
+                result.k_max_floor_correction=std::max(result.k_max_floor_correction,correction);
+            }
+            nu_tilde(i)=controls.negative_nu_tilde_policy==NegativeNuTildePolicy::CLAMP_ZERO
+                ? std::max(sol(i),0.0) : sol(i);
+        }
         double du=0;for(std::size_t i=0;i<n;++i)du=std::max(du,std::abs(nu_tilde(i)-old(i)));
-        result.k_residual=scalar_equation_residual_inf(eq,sol);result.second_residual=result.k_residual;result.iterations=iter;
-        if(rr.status==cfdx::core::SolverStatus::CONVERGED&&du<=tolerance){result.converged=true;break;}
+        cfdx::core::Vector accepted(n,0.0);
+        for (std::size_t i=0;i<n;++i) accepted(i)=nu_tilde(i);
+        result.k_residual=scalar_equation_residual_inf(eq,accepted);
+        result.second_residual=result.k_residual;
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eq,accepted);
+        result.second_relative_residual=result.k_relative_residual;
+        result.iterations=iter;
+        if(rr.status==cfdx::core::SolverStatus::CONVERGED &&
+           result.k_relative_residual<=tolerance && du<=tolerance){result.converged=true;break;}
     }
     return result;
 }
