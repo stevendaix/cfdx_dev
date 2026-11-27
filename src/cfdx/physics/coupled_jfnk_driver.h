@@ -28,6 +28,18 @@
 
 namespace cfdx::physics {
 
+// Accumulate a deterministic maximum magnitude for one of the six JFNK
+// variable blocks. The caller initializes each block to its coordinate
+// fallback (currently 1.0); every cell contributes through max, so the result
+// is independent of mesh traversal order.
+inline void accumulate_coupled_jfnk_block_scale(
+    std::array<double, 6>& block_scales, std::size_t block, double value)
+{
+    if (block >= block_scales.size() || !std::isfinite(value))
+        throw std::invalid_argument("JFNK variable scales: invalid block or nonfinite value");
+    block_scales[block] = std::max(block_scales[block], std::abs(value));
+}
+
 inline std::vector<double> coupled_jfnk_fixed_scales(
     const PhysicalResidualV51& initial_residual, std::size_t cell_count)
 {
