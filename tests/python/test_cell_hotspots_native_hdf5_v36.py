@@ -100,14 +100,31 @@ def main() -> None:
             rows = list(csv.DictReader(stream))
         assert rows, "accepted momentum budget callback must emit CSV rows"
         expected_columns = {
-            "iteration", "component", "rank", "cell", "x", "y", "z",
-            "convection", "viscous", "transpose_viscous", "pressure",
-            "body_force", "bounded_divergence", "mass_divergence",
-            "collocated_difference", "physical_residual",
-            "bounded_operator_residual", "worst_absolute_residual",
-            "temporal", "algebraic_residual", "matrix_face_difference",
-            "matrix_face_scale", "matrix_closure_linf",
-            "matrix_closure_relative_linf", "matrix_closure_worst_cell",
+            "iteration",
+            "component",
+            "rank",
+            "cell",
+            "x",
+            "y",
+            "z",
+            "convection",
+            "viscous",
+            "transpose_viscous",
+            "pressure",
+            "body_force",
+            "bounded_divergence",
+            "mass_divergence",
+            "collocated_difference",
+            "physical_residual",
+            "bounded_operator_residual",
+            "worst_absolute_residual",
+            "temporal",
+            "algebraic_residual",
+            "matrix_face_difference",
+            "matrix_face_scale",
+            "matrix_closure_linf",
+            "matrix_closure_relative_linf",
+            "matrix_closure_worst_cell",
         }
         assert set(rows[0]) == expected_columns
         groups: dict[tuple[int, int], set[int]] = {}
@@ -124,16 +141,16 @@ def main() -> None:
             assert math.isfinite(scale) and math.isfinite(difference)
             assert abs(difference) <= 2e-10 * max(scale, 1e-15)
         assert set(groups) == {
-            (iteration, component)
-            for iteration in (1, 2)
-            for component in (0, 1, 2)
+            (iteration, component) for iteration in (1, 2) for component in (0, 1, 2)
         }
         assert all(cells == set(range(trace.n_cells)) for cells in groups.values())
         invalid = run(solver, mesh, root / "bad", "--cell-hotspots-every", "0")
         assert invalid.returncode == 2
         assert "--cell-hotspots-every" in invalid.stderr
         invalid_budget = run(
-            solver, mesh, root / "bad_budget",
+            solver,
+            mesh,
+            root / "bad_budget",
             "--momentum-budget-all-cells",
         )
         assert invalid_budget.returncode == 2
