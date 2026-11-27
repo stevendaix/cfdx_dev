@@ -45,6 +45,35 @@ inline std::vector<double> coupled_jfnk_fixed_scales(
     return initial_residual.normalization_scales;
 }
 
+inline std::vector<double> coupled_jfnk_variable_scales(
+    const std::vector<double>& state, std::size_t cell_count)
+{
+    if (cell_count == 0 ||
+        cell_count > std::numeric_limits<std::size_t>::max() / 6 ||
+        state.size() != 6 * cell_count)
+        throw std::invalid_argument("JFNK variable scales: invalid six-field state shape");
+    std::array<double, 6> block_scales{};
+    for (std::size_t block = 0; block < 6; ++block) {
+        for (std::size_t cell = 0; cell < cell_count; ++cell) {
+            const double value = state[block * cell_count + cell];
+            if (!std::isfinite(value))
+                throw std::invalid_argument("JFNK variable scales: nonfinite state");
+            block_scales[block] = std::max(block_scales[block], std::abs(value));
+        }
+        // A zero field still needs a finite perturbation scale. The unit
+        // fallback is used only for the finite-difference coordinate system,
+        // never as a residual/acceptance scale.
+        if (block_scales[block] == 0.0)
+            block_scales[block] = 1.0;
+    }
+    std::vector<double> scales(6 * cell_count);
+    for (std::size_t block = 0; block < 6; ++block)
+        std::fill(scales.begin() + static_cast<std::ptrdiff_t>(block * cell_count),
+                  scales.begin() + static_cast<std::ptrdiff_t>((block + 1) * cell_count),
+                  block_scales[block]);
+    return scales;
+}
+
 inline bool coupled_jfnk_nonlinear_converged(
     const CoupledNewtonKrylovResult& step_result, double tolerance)
 {
@@ -230,13 +259,14 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
 
     // Run JFNK iterations from the current state.
     std::vector<double> state = pack();
+    const auto variable_scales = coupled_jfnk_variable_scales(state, nc);
     result.initial_merit = std::numeric_limits<double>::infinity();
     bool converged = false;
     for (int step = 0; step < max_newton_steps; ++step) {
         ++result.newton_iterations;
         const auto step_result = coupled_newton_krylov_step(
             residual_cb, state, scales, jfnk_controls, admissible,
-            CoupledRightPreconditioner{});
+            CoupledRightPreconditioner{}, variable_scales);
         result.residual_evaluations +=
             static_cast<int>(step_result.residual_evaluations);
         result.linear_relative_residual = step_result.linear_true_relative_residual;
