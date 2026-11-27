@@ -255,20 +255,27 @@ def validate_solver_selection(
 
 
 def make_bl_profile_csv(path: str | Path, height: float, velocity: float) -> str:
-    """Write a two-column CSV (y, u) for a 1/7 power-law inlet BL profile.
+    """Write a symmetric 1/7-power channel profile on the actual BFS inlet.
 
-    u(0)=0 at the wall, u(height)=velocity at the channel centreline. This is a
-    stand-in for a measured Driver–Seegmiller inlet BL; replace with experimental
-    data (rescaled to the inlet channel height) when available.
+    The debug mesh inlet spans y in [h, 8h] and both ends are walls. The
+    synthetic profile therefore satisfies no-slip at y=h and y=8h, with its
+    maximum at the channel centreline. It is a numerical stand-in, not
+    Driver–Seegmiller experimental inlet data.
     """
+    if not np.isfinite(height) or height <= 0:
+        raise ValueError("BFS inlet profile height must be finite and positive")
+    if not np.isfinite(velocity) or velocity <= 0:
+        raise ValueError("BFS inlet profile velocity must be finite and positive")
     n = 65
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w") as f:
         f.write("y,u\n")
         for i in range(n):
-            y = height * i / (n - 1)
-            u = velocity * (y / height) ** (1.0 / 7.0) if height > 0 else 0.0
+            eta = i / (n - 1)
+            y = height * (1.0 + 7.0 * eta)
+            shape = 1.0 - abs(2.0 * eta - 1.0)
+            u = velocity * shape ** (1.0 / 7.0)
             f.write(f"{y:.10f},{u:.10f}\n")
     return str(p)
 
