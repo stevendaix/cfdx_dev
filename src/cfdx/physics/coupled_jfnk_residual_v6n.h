@@ -108,6 +108,24 @@ inline bool jfnk_has_face_valued_pressure_snapshot(
     return false;
 }
 
+// Return a finite divisor without inventing a physical scale for a
+// nonzero residual. A zero denominator is admissible only for an exactly
+// zero residual; the unit sentinel then contributes exactly zero to the merit.
+inline double jfnk_residual_scale_or_exact_zero(
+    double raw_residual, double candidate_scale, const char* equation_name)
+{
+    if (!std::isfinite(raw_residual) || !std::isfinite(candidate_scale) ||
+        candidate_scale < 0.0)
+        throw std::runtime_error(std::string("JFNK residual: invalid ") + equation_name + " scale");
+    if (candidate_scale == 0.0) {
+        if (raw_residual != 0.0)
+            throw std::runtime_error(std::string("JFNK residual: nonzero ") +
+                equation_name + " residual has zero backward-error scale");
+        return 1.0;
+    }
+    return candidate_scale;
+}
+
 struct CoupledJfnkResidualV6N {
     static PhysicalResidualV51 evaluate(
         const ::cfdx::core::Mesh& mesh,
@@ -308,40 +326,50 @@ struct CoupledJfnkResidualV6N {
         Field<double, Location::FACE> flux_field(nf, "phi_jfnk", "kg/s", 1);
         for (std::size_t f = 0; f < nf; ++f) flux_field(f) = rc.flux[f];
 
-        // Raw momentum residuals: b - A*U for each component.
+        // Raw momentum residuals and componentwise backward-error scales.
+        // For each row, |b_i| + sum_j |A_ij| |U_j| is invariant to cancellation
+        // in b and remains meaningful when the assembled RHS is nearly zero.
         std::array<std::vector<double>, 3> raw_momentum;
-        std::array<double, 3> rhs_scale{};
+        std::array<std::vector<double>, 3> momentum_row_scales;
         for (std::size_t d = 0; d < 3; ++d) {
             const auto eq = momentum_equation(flux_field, d);
             raw_momentum[d].resize(nc);
+            momentum_row_scales[d].resize(nc);
             const auto* offsets = eq.matrix.row_offsets_data();
             const auto* columns = eq.matrix.columns_data();
             const auto* values = eq.matrix.values_data();
-            rhs_scale[d] = 1e-300;
-            for (std::size_t i = 0; i < nc; ++i)
-                rhs_scale[d] = std::max(rhs_scale[d], std::abs(eq.rhs(i)));
             for (std::size_t i = 0; i < nc; ++i) {
                 long double sum = -static_cast<long double>(eq.rhs(i));
+                long double row_scale = std::abs(static_cast<long double>(eq.rhs(i)));
                 for (auto j = offsets[i]; j < offsets[i + 1]; ++j) {
                     if (columns[j] >= nc)
                         throw std::logic_error("JFNK residual: bad momentum CSR");
-                    sum += static_cast<long double>(values[j]) *
-                        comps[d](columns[j]);
+                    const long double coefficient = values[j];
+                    const long double state_value = comps[d](columns[j]);
+                    sum += coefficient * state_value;
+                    row_scale += std::abs(coefficient) * std::abs(state_value);
                 }
                 raw_momentum[d][i] = static_cast<double>(sum);
+                momentum_row_scales[d][i] = static_cast<double>(row_scale);
             }
         }
 
-        // Continuity: divergence of the converged face flux.
+        // Continuity: divergence and local absolute-flux scale on the same
+        // cell stencil. This is a local mass-imbalance ratio, not a global
+        // flux L1 norm that can hide a poorly balanced low-flow cell.
         std::vector<double> div(nc, 0.0);
-        double flux_l1 = 0.0;
+        std::vector<double> continuity_row_scales(nc, 0.0);
         for (std::size_t f = 0; f < nf; ++f) {
             const double mf = rc.flux[f];
-            flux_l1 += std::abs(mf);
-            div[mesh.ownership().owner(f)] += mf;
+            const auto owner = mesh.ownership().owner(f);
+            div[owner] += mf;
+            continuity_row_scales[owner] += std::abs(mf);
             const auto adjacent = mesh.ownership().neighbour(f);
-            if (adjacent >= 0)
-                div[static_cast<std::size_t>(adjacent)] -= mf;
+            if (adjacent >= 0) {
+                const auto neighbour = static_cast<std::size_t>(adjacent);
+                div[neighbour] -= mf;
+                continuity_row_scales[neighbour] += std::abs(mf);
+            }
         }
 
         // SST k and omega residuals on the trial state.
@@ -368,20 +396,17 @@ struct CoupledJfnkResidualV6N {
         // inside a directional difference or candidate line search.
         residual.normalized.resize(6 * nc);
         residual.normalization_scales.resize(6 * nc);
-        double global_rhs = 0.0;
-        for (double s : rhs_scale) global_rhs = std::max(global_rhs, s);
         for (std::size_t cell = 0; cell < nc; ++cell) {
             for (std::size_t d = 0; d < 6; ++d) {
                 const double raw = d < 3 ? raw_momentum[d][cell]
                     : d == 3 ? div[cell]
                     : sst.values[(d - 4) * nc + cell];
-                const double divisor = d < 3 ? std::max(rhs_scale[d], 1e-8 * global_rhs)
-                    : d == 3 ? std::max(flux_l1, 1e-300)
+                const double candidate_scale = d < 3 ? momentum_row_scales[d][cell]
+                    : d == 3 ? continuity_row_scales[cell]
                     : sst.row_norms[(d - 4) * nc + cell] * sst.local_scales[(d - 4) * nc + cell];
-                if (!(divisor > 0.0) || !std::isfinite(divisor) ||
-                    !std::isfinite(raw))
-                    throw std::runtime_error(
-                        "JFNK residual: invalid equation-specific normalization scale");
+                const char* equation_name = d < 3 ? "momentum" : d == 3 ? "continuity" : "SST";
+                const double divisor = jfnk_residual_scale_or_exact_zero(
+                    raw, candidate_scale, equation_name);
                 const auto index = d * nc + cell;
                 residual.normalization_scales[index] = divisor;
                 residual.normalized[index] = raw / divisor;
