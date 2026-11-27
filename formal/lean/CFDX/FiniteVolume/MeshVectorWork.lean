@@ -74,7 +74,7 @@ theorem internal_face_incidence_work_eq_velocity_jump
       dot3 (velocity (topology.owner face) - velocity neighbour) (traction face) := by
   classical
   unfold incidenceVectorFaceWork ownerNeighbourIncidence
-  simp [dot3, hneighbour, Finset.sum_add_distrib, Finset.sum_ite_eq']
+  simp [dot3, hneighbour, Finset.sum_add_distrib, Finset.sum_ite_eq'] <;> ring
 
 /-- For a boundary face, incidence work is owner work only. -/
 theorem boundary_face_incidence_work_eq_owner_work
