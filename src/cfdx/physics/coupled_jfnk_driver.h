@@ -143,9 +143,8 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
     };
 
     // Fixed physical scales: max magnitude per block, floored at 1.0.
-    std::array<double, 6> scales{};
+    std::vector<double> scales(6, 1.0);
     {
-        scales.fill(1.0);
         for (std::size_t i = 0; i < nc; ++i) {
             accumulate_coupled_jfnk_block_scale(scales, 0, Ux(i));
             accumulate_coupled_jfnk_block_scale(scales, 1, Uy(i));
