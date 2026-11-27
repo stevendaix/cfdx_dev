@@ -458,3 +458,28 @@ lemma for a mesh proof, but the list abstraction does not encode mesh
 incidence, owner/neighbour uniqueness, boundary classification, or whether
 each geometric face is included exactly once. Those remain explicit proof
 obligations before calling this a mesh-global finite-volume theorem.
+
+
+## Mesh-level vector face-work specification
+
+The module `CFDX.FiniteVolume.MeshVectorWork` now builds on the existing
+`OwnerNeighbourTopology` and `ownerNeighbourIncidence`; it does not define
+a competing mesh representation. It defines one shared integrated vector
+traction per face, the owner/neighbour incidence-scattered cell force, and
+the corresponding cell-wise velocity/force work. The theorem
+`mesh_vector_work_eq_sum_incidence_face_work` exchanges the finite cell
+and face sums, expressing total cell work as a sum of per-face incidence work.
+
+The module also names the intended owner-minus-neighbour internal work and
+owner-only boundary work. **Important current limit:** the present theorem
+does not yet prove that each per-face incidence sum reduces to those named
+internal-jump and boundary-owner expressions. That reduction is the next
+Lean proof obligation; the definitions alone are not evidence of it. The
+module is an abstract finite-topology contract and is not yet a proof of
+runtime C++ mesh conformance.
+
+The existing C++ transpose-viscous traction path remains a candidate for a
+bounded implementation bridge, but it is a viscous stress operator, not a
+Reynolds-stress closure. A conformance test must exercise the production
+face scatter and compare integrated traction/work, including boundary faces,
+without duplicating the implementation formula in the test.
