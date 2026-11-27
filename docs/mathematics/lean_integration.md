@@ -315,6 +315,16 @@ skewed cell whenever the supplied face values are the exact affine values at
 the face centres. This remains a reference-cell result on one skewed simplex;
 arbitrary polyhedral cells and runtime CSR conformance are still open.
 
+## Unit-hexahedron generalization
+
+Beyond simplices, the module `CFDX.Geometry.UnitHexahedron` checks the same
+identities on the unit cube [0,1]^3 with its six quadrilateral faces: exact
+area closure (`unit_hexa_area_closure`), the nine first-moment components
+`sum_f C_{f,i} S_{f,j} = V delta_{ij}` with V = 1
+(`unit_hexa_first_moment`), and the affine Gauss numerator for exact
+face-centre values (`unit_hexa_affine_gauss_numerator_exact`). This is a
+non-simplex reference cell; runtime polyhedral conformance remains open.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
