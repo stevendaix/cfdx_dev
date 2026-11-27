@@ -412,3 +412,37 @@ vector traction, density-weighted kinetic energy, nonuniform cell volumes,
 boundary-face work, and the actual momentum residual including pressure,
 viscous stress, Rhie–Chow and temporal terms. It is not yet a theorem about
 the C++ `momentum_face_budget` implementation.
+
+
+## Vector-valued internal and boundary face work
+
+The module `CFDX.FiniteVolume.VectorFaceWork` generalizes the scalar face
+identity to three velocity components and an integrated vector traction.
+For one internal face, with owner receiving +T and neighbour receiving -T,
+`internal_face_vector_work_equals_velocity_jump` proves
+
+\[
+\mathbf U_P\cdot\mathbf T_f-\mathbf U_N\cdot\mathbf T_f
+=(\mathbf U_P-\mathbf U_N)\cdot\mathbf T_f.
+\]
+
+The theorem `internal_face_vector_scatter_is_conservative` checks the
+owner/neighbour cancellation component by component. Concrete examples show
+that the same scatter convention admits positive or negative work depending
+on the velocity orientation. Zero velocity gives zero work. This is
+intentional: conservation does not select the sign of energy transfer.
+
+Boundary work is represented separately as
+\[
+\mathbf U_P\cdot\mathbf T_{f,b},
+\]
+where the traction orientation carries the boundary sign convention. It is
+not paired with a fictitious neighbour velocity.
+
+**Scope:** these are face-local algebraic identities on a three-component
+vector. They do not yet sum over a mesh, define outward-normal conventions
+for every boundary patch, include density/time weights, or establish that
+CFDX's C++ stress and momentum assembly implements the same traction. In
+particular, the current C++ transpose-viscous traction must not be relabelled
+as a Reynolds-stress closure. The next step is a mesh-level incidence/scatter
+contract and a deterministic vector-valued C++ conformance test.
