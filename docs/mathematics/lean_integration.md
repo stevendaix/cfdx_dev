@@ -470,13 +470,11 @@ the corresponding cell-wise velocity/force work. The theorem
 `mesh_vector_work_eq_sum_incidence_face_work` exchanges the finite cell
 and face sums, expressing total cell work as a sum of per-face incidence work.
 
-The module also names the intended owner-minus-neighbour internal work and
-owner-only boundary work. **Important current limit:** the present theorem
-does not yet prove that each per-face incidence sum reduces to those named
-internal-jump and boundary-owner expressions. That reduction is the next
-Lean proof obligation; the definitions alone are not evidence of it. The
-module is an abstract finite-topology contract and is not yet a proof of
-runtime C++ mesh conformance.
+The module now proves that each per-face incidence sum reduces to the
+owner-minus-neighbour velocity-jump work for internal faces and to owner-only
+work for boundary faces. The global theorem combines these reductions with
+the finite cell/face sum interchange. This is an abstract finite-topology
+contract, not yet a proof of runtime C++ mesh conformance.
 
 The existing C++ transpose-viscous traction path remains a candidate for a
 bounded implementation bridge, but it is a viscous stress operator, not a
