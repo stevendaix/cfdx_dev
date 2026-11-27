@@ -92,6 +92,37 @@ int main() {
         const auto report=globalized_jfnk_v8(x,invalid,nullptr);
         EXPECT_TRUE(!report.converged);
     });
+    run_case("coupled_jfnk_builds_block_variable_scales", [] {
+        const std::vector<double> state{
+            1.0, -2.0, 0.0, 0.0, 0.0, 0.0,
+            1.0e5, 1.0e5, 0.25, 0.5, 3.0, 4.0};
+        const auto scales = coupled_jfnk_variable_scales(state, 2);
+        EXPECT_TRUE(scales.size() == state.size());
+        EXPECT_NEAR(scales[0], 2.0, 0.0);
+        EXPECT_NEAR(scales[1], 2.0, 0.0);
+        EXPECT_NEAR(scales[2], 1.0, 0.0);
+        EXPECT_NEAR(scales[6], 1.0e5, 0.0);
+        EXPECT_NEAR(scales[8], 0.5, 0.0);
+        EXPECT_THROW(coupled_jfnk_variable_scales(state, 3),
+                     std::invalid_argument);
+    });
+    run_case("coupled_jfnk_scaled_jv_is_not_set_by_pressure_offset", [] {
+        const std::vector<double> state{1.0, 1.0e5};
+        const std::vector<double> direction{1.0, 0.0};
+        const std::vector<double> scales{1.0, 1.0e5};
+        std::vector<double> perturbations;
+        const CoupledResidual identity = [&](const std::vector<double>& x) {
+            perturbations.push_back(std::abs(x[0] - state[0]));
+            return x;
+        };
+        const auto jv = coupled_newton_directional_jvp_scaled(
+            identity, state, direction, scales, 1e-6);
+        EXPECT_TRUE(perturbations.size() == 2);
+        EXPECT_TRUE(perturbations[0] < 3e-6);
+        EXPECT_TRUE(perturbations[1] < 3e-6);
+        EXPECT_NEAR(jv[0], 1.0, 1e-9);
+        EXPECT_NEAR(jv[1], 0.0, 1e-9);
+    });
     run_case("coupled_jfnk_does_not_commit_after_one_nonconverged_step", [] {
         CoupledNewtonKrylovResult step;
         step.accepted = true;
