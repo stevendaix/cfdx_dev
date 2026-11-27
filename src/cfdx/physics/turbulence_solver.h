@@ -271,6 +271,8 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         }
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
+           result.k_relative_residual<=tolerance &&
+           result.second_relative_residual<=tolerance &&
            std::max(dk,de)<=tolerance) {
             result.converged=true;
             break;
@@ -343,6 +345,8 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
         result.iterations=iter;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
+           result.k_relative_residual<=tolerance &&
+           result.second_relative_residual<=tolerance &&
            std::max(dk,de)<=tolerance){result.converged=true;break;}
     }
     return result;
@@ -597,7 +601,10 @@ inline TurbulenceTransportResult solve_komega_transport(
         result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
         result.second_relative_residual=turbulence_equation_relative_residual_inf(eqw,accepted_omega);
         result.iterations=iter;
-        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&
+           result.k_relative_residual<=tolerance &&
+           result.second_relative_residual<=tolerance &&
+           std::max(dk,dw)<=tolerance){result.converged=true;break;}
     }
     return result;
 }
