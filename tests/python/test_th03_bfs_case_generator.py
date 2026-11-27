@@ -53,6 +53,17 @@ def test_mesh_generation_rejects_nonmatching_step_height() -> None:
         bfs.make_mesh(n_up=4, n_down=12, ny=10, step_cells=5)
 
 
+
+def test_bfs_generators_reject_nonfinite_or_nonpositive_step_height() -> None:
+    import numpy as np
+
+    for height in (float("nan"), float("inf"), float("-inf"), 0.0, -0.0127):
+        with pytest.raises(ValueError, match="invalid step resolution"):
+            bfs.make_mesh(4, 12, 10, 2, height=height)
+        with pytest.raises(ValueError, match="step height must be finite and positive"):
+            bfs.make_setup(height, reynolds=36000.0, velocity=1.0)
+
+
 def test_tanh_wall_mesh_refines_both_sides_of_step_without_shifting_step() -> None:
     import numpy as np
 
