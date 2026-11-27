@@ -25,7 +25,6 @@
 #include "cfdx/physics/sst_wall_operator_v17.h"
 #include "cfdx/physics/sst_openfoam_wall_triplet_v15.h"
 #include "cfdx/physics/sst_coupled_pseudo_time_v30.h"
-#include "cfdx/core/linalg/six_field_block_preconditioner_v8.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -157,30 +156,11 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
         }
     }
 
-    // Right preconditioner: SixFieldBlockPreconditionerV8 set up on a
-    // diagonal 6N matrix (identity action per block). In matrix-free JFNK
-    // this provides the block structure; the true Jacobian action is matrix-free.
-    SparseMatrix A(n, n);
-    for (std::size_t i = 0; i < n; ++i) A.push_back(i, i, 1.0);
-    A.finalize();
-    IdentityPreconditioner up_prec, k_prec, omega_prec;
-    up_prec.setup(A);
-    k_prec.setup(A);
-    omega_prec.setup(A);
-    SixFieldBlockPreconditionerV8 block_prec(nc, up_prec, k_prec, omega_prec);
-    if (!block_prec.setup(A)) {
-        result.reason = "JFNK driver: block preconditioner setup failed";
-        return result;
-    }
-    const auto right_preconditioner = [&](const std::vector<double>& y) {
-        Vector r(n, 0.0), z(n, 0.0);
-        for (std::size_t i = 0; i < n; ++i) r(i) = y[i];
-        if (!block_prec.apply(r, z))
-            throw std::runtime_error("JFNK driver: block preconditioner apply failed");
-        std::vector<double> out(n);
-        for (std::size_t i = 0; i < n; ++i) out[i] = z(i);
-        return out;
-    };
+    // This experimental driver is deliberately unpreconditioned.
+    // Wrapping identity operators in SixFieldBlockPreconditionerV8 does not
+    // create a physical block preconditioner and would misrepresent the solver.
+    // A real block action must be derived from the coupled momentum/pressure
+    // and SST operators before this driver can be qualified for production.
 
     // Residual callback: unpack the trial state, assemble the full 6N
     // residual from scratch, return signed_raw.
@@ -228,7 +208,7 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
         ++result.newton_iterations;
         const auto step_result = coupled_newton_krylov_step(
             residual_cb, state, scales, jfnk_controls, admissible,
-            right_preconditioner);
+            CoupledRightPreconditioner{});
         result.residual_evaluations +=
             static_cast<int>(step_result.residual_evaluations);
         result.linear_relative_residual = step_result.linear_true_relative_residual;
