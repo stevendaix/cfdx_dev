@@ -217,4 +217,73 @@ theorem laplacian_definite_with_anchor
   exact (laplacian_kernel_eq_on_component topology α hα φ hzero c₀ c
     hreach).symm.trans hc₀
 
+/-- Strict positivity of the graph-Laplacian quadratic form on every
+nonzero field satisfying one zero anchor in each connected component.
+This is the energy-level definiteness statement, not merely injectivity
+of the operator kernel. -/
+theorem laplacian_quadratic_form_pos_of_anchor
+    (topology : OwnerNeighbourTopology Cell Face) (α : Face → ℝ)
+    (hα : ∀ f ∈ topology.internalFaces, 0 < α f)
+    (φ : Cell → ℝ)
+    (hanchor : ∀ c : Cell, ∃ c₀ : Cell,
+      φ c₀ = 0 ∧ EqvGen (cellAdjacent topology) c₀ c)
+    (hnonzero : ∃ c : Cell, φ c ≠ 0) :
+    0 < ∑ f ∈ topology.internalFaces,
+      α f * (φ (topology.owner f) - φ (someNeighbour topology f))^2 := by
+  classical
+  have hterms_nonneg : ∀ f ∈ topology.internalFaces,
+      (0 : ℝ) ≤
+        α f * (φ (topology.owner f) - φ (someNeighbour topology f))^2 :=
+    fun f hf => mul_nonneg (le_of_lt (hα f hf)) (sq_nonneg _)
+  by_contra hnot
+  have hsum_le : ∑ f ∈ topology.internalFaces,
+      α f * (φ (topology.owner f) - φ (someNeighbour topology f))^2 ≤ 0 :=
+    le_of_not_gt hnot
+  have hsum_ge : 0 ≤ ∑ f ∈ topology.internalFaces,
+      α f * (φ (topology.owner f) - φ (someNeighbour topology f))^2 :=
+    Finset.sum_nonneg hterms_nonneg
+  have hsum_zero : ∑ f ∈ topology.internalFaces,
+      α f * (φ (topology.owner f) - φ (someNeighbour topology f))^2 = 0 :=
+    le_antisymm hsum_le hsum_ge
+  have hface_eq : ∀ f ∈ topology.internalFaces,
+      φ (topology.owner f) = φ (someNeighbour topology f) := by
+    intro f hf
+    have hterm := (Finset.sum_eq_zero_iff_of_nonneg hterms_nonneg).mp
+      hsum_zero f hf
+    have hd2 :
+        (φ (topology.owner f) - φ (someNeighbour topology f))^2 = 0 := by
+      rcases mul_eq_zero.mp hterm with hzero | hsquare
+      · exact absurd hzero (ne_of_gt (hα f hf))
+      · exact hsquare
+    exact sub_eq_zero.mp (sq_eq_zero_iff.mp hd2)
+  have hadj_eq : ∀ u v : Cell, cellAdjacent topology u v → φ u = φ v := by
+    intro u v hadj
+    obtain ⟨f, hf, hcase⟩ := hadj
+    have hdiff := hface_eq f hf
+    rcases hcase with ⟨hou, hneigh⟩ | ⟨hov, hneigh⟩
+    · rw [hou] at hdiff
+      have hns := someNeighbour_eq topology hf
+      rw [hneigh] at hns
+      have hv : v = someNeighbour topology f := Option.some.inj hns
+      rw [hv]
+      exact hdiff
+    · rw [hov] at hdiff
+      have hns := someNeighbour_eq topology hf
+      rw [hneigh] at hns
+      have hu : u = someNeighbour topology f := Option.some.inj hns
+      rw [hu]
+      exact hdiff.symm
+  have hreach_eq : ∀ c₁ c₂ : Cell,
+      EqvGen (cellAdjacent topology) c₁ c₂ → φ c₁ = φ c₂ := by
+    intro c₁ c₂ hreach
+    induction hreach with
+    | rel u v h => exact hadj_eq u v h
+    | refl x => rfl
+    | symm y x _ ih => exact ih.symm
+    | trans x y z _ ih₁ ih₂ => exact ih₁.trans ih₂
+  obtain ⟨c, hc⟩ := hnonzero
+  obtain ⟨c₀, hc₀, hreach⟩ := hanchor c
+  have hc_eq_zero : φ c = 0 := (hreach_eq c₀ c hreach).symm.trans hc₀
+  exact hc hc_eq_zero
+
 end CFDX.FiniteVolume
