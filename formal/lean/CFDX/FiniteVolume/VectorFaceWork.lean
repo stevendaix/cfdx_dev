@@ -95,4 +95,33 @@ theorem boundary_face_work_is_not_an_internal_jump
       boundaryFaceWork3 ownerVelocity outwardTraction := by
   rfl
 
+
+/-- Data carried by one internal face in the abstract face-work contract. -/
+structure InternalFace3 where
+  ownerVelocity : Fin 3 → ℝ
+  neighbourVelocity : Fin 3 → ℝ
+  traction : Fin 3 → ℝ
+
+/-- Cell-wise work contributed by one internal face. -/
+def internalFaceCellWorkOf (face : InternalFace3) : ℝ :=
+  internalFaceCellWork3 face.ownerVelocity face.neighbourVelocity face.traction
+
+/-- Velocity-jump work contributed by one internal face. -/
+def internalFaceJumpWorkOf (face : InternalFace3) : ℝ :=
+  internalFaceJumpWork3 face.ownerVelocity face.neighbourVelocity face.traction
+
+/-- Summing the face-local identity over any finite list of internal faces
+preserves the equality. The list is an abstract face collection; mesh
+incidence and unique face ownership are not encoded yet. -/
+theorem sum_internal_face_work_equals_sum_velocity_jump_work
+    (faces : List InternalFace3) :
+    (faces.map internalFaceCellWorkOf).sum =
+      (faces.map internalFaceJumpWorkOf).sum := by
+  induction faces with
+  | nil => simp
+  | cons face rest ih =>
+      simp [internalFaceCellWorkOf, internalFaceJumpWorkOf,
+        internal_face_vector_work_equals_velocity_jump, ih]
+
+
 end CFDX.FiniteVolume
