@@ -141,16 +141,14 @@ def cellAdjacent (topology : OwnerNeighbourTopology Cell Face)
     (topology.owner f = u ∧ topology.neighbour f = some v) ∨
     (topology.owner f = v ∧ topology.neighbour f = some u)
 
-/-- Under strictly positive conductances and connectedness of the internal
-face adjacency, every element of the two-point Laplacian kernel is constant.
-This is the exact hypothesis under which a pressure/scalar reference (an
-anchor per connected component) makes the operator definite. -/
-theorem laplacian_kernel_eq_const
+/-- Under strictly positive conductances, a kernel element is constant
+within each connected component of the internal-face adjacency. -/
+theorem laplacian_kernel_eq_on_component
     (topology : OwnerNeighbourTopology Cell Face) (α : Face → ℝ)
     (hα : ∀ f ∈ topology.internalFaces, 0 < α f)
-    (hconn : ∀ c₁ c₂ : Cell, EqvGen (cellAdjacent topology) c₁ c₂)
     (φ : Cell → ℝ) (hzero : ∀ c, twoPointLaplacian topology α φ c = 0) :
-    ∀ c₁ c₂ : Cell, φ c₁ = φ c₂ := by
+    ∀ c₁ c₂ : Cell,
+      EqvGen (cellAdjacent topology) c₁ c₂ → φ c₁ = φ c₂ := by
   classical
   have hq : ∑ c : Cell, φ c * twoPointLaplacian topology α φ c = 0 := by
     refine Finset.sum_eq_zero fun c _ => ?_
@@ -185,23 +183,38 @@ theorem laplacian_kernel_eq_const
       have hu : u = someNeighbour topology f := Option.some.inj hns
       rw [hu]
       exact hdiff.symm
-  intro c₁ c₂
-  induction hconn with
+  intro c₁ c₂ hreach
+  induction hreach with
   | rel u v h => exact hface_eq u v h
   | refl x => rfl
   | symm y x _ ih => exact ih.symm
   | trans x y z _ ih₁ ih₂ => exact ih₁.trans ih₂
 
-/-- With one anchored cell per connected component, the kernel is trivial:
-the two-point operator is definite exactly under this anchoring hypothesis. -/
-theorem laplacian_definite_with_anchor
+/-- Under positive conductances and global connectedness, every kernel
+element is constant on the whole mesh. -/
+theorem laplacian_kernel_eq_const
     (topology : OwnerNeighbourTopology Cell Face) (α : Face → ℝ)
     (hα : ∀ f ∈ topology.internalFaces, 0 < α f)
     (hconn : ∀ c₁ c₂ : Cell, EqvGen (cellAdjacent topology) c₁ c₂)
+    (φ : Cell → ℝ) (hzero : ∀ c, twoPointLaplacian topology α φ c = 0) :
+    ∀ c₁ c₂ : Cell, φ c₁ = φ c₂ := by
+  intro c₁ c₂
+  exact laplacian_kernel_eq_on_component topology α hα φ hzero c₁ c₂
+    (hconn c₁ c₂)
+
+/-- One zero-valued anchor in each connected component makes the kernel
+trivial. The anchor hypothesis is componentwise: every cell is connected
+to at least one anchored cell; disconnected meshes are supported. -/
+theorem laplacian_definite_with_anchor
+    (topology : OwnerNeighbourTopology Cell Face) (α : Face → ℝ)
+    (hα : ∀ f ∈ topology.internalFaces, 0 < α f)
     (φ : Cell → ℝ) (hzero : ∀ c, twoPointLaplacian topology α φ c = 0)
-    (c₀ : Cell) (hanchor : φ c₀ = 0) (c : Cell) : φ c = 0 := by
-  have heq := laplacian_kernel_eq_const topology α hα hconn φ hzero c c₀
-  rw [heq]
-  exact hanchor
+    (hanchor : ∀ c : Cell, ∃ c₀ : Cell,
+      φ c₀ = 0 ∧ EqvGen (cellAdjacent topology) c₀ c) :
+    ∀ c : Cell, φ c = 0 := by
+  intro c
+  obtain ⟨c₀, hc₀, hreach⟩ := hanchor c
+  exact (laplacian_kernel_eq_on_component topology α hα φ hzero c₀ c
+    hreach).symm.trans hc₀
 
 end CFDX.FiniteVolume
