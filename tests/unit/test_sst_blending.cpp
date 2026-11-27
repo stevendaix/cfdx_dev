@@ -534,6 +534,44 @@ int main()
                     101325.0 + (2.0 / 3.0) * 1.2 * 0.3, 1e-12);
         EXPECT_NEAR(pressure_bcs.at("x0").value, 0.0, 0.0);
     });
+    run_case("sst_pressure_face_snapshot_is_rebuilt_from_restored_state", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.3);
+        ScalarBoundaryConditions pressure_bcs, k_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 101325.0, 0.0};
+        k_bcs["x1"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        ScalarBoundaryFaceValues shared;
+        update_sst_static_pressure_face_values(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared, 4);
+        const double accepted_pressure = 101325.0 + (2.0 / 3.0) * 1.2 * 0.3;
+        EXPECT_NEAR(shared.values.at("x1").at(5), accepted_pressure, 1e-12);
+
+        // A rejected SST candidate publishes a different trace.
+        state.k.fill(0.9);
+        update_sst_static_pressure_face_values(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared, 5);
+        EXPECT_NEAR(shared.values.at("x1").at(5),
+                    101325.0 + (2.0 / 3.0) * 1.2 * 0.9, 1e-12);
+
+        // Restore k, then rebuild the shared object with a fresh generation.
+        state.k.fill(0.3);
+        rebuild_sst_pressure_face_values_after_state_restore(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared);
+        EXPECT_TRUE(shared.generation == 6);
+        EXPECT_NEAR(shared.values.at("x1").at(5), accepted_pressure, 1e-12);
+
+        // Failed rebuild must not partially publish a new generation or map.
+        const auto before = shared;
+        state.k(0) = -1.0;
+        EXPECT_THROW(rebuild_sst_pressure_face_values_after_state_restore(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared), std::invalid_argument);
+        EXPECT_TRUE(shared.generation == before.generation);
+        EXPECT_NEAR(shared.values.at("x1").at(5),
+                    before.values.at("x1").at(5), 0.0);
+    });
     run_case("sst_initial_static_pressure_is_converted_cellwise_and_atomically", [] {
         using namespace cfdx::core;
         Field<double,Location::CELL> pressure(2,"p","Pa",1);
