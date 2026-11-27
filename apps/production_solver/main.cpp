@@ -2934,90 +2934,6 @@ int main(int argc, char** argv)
                     initialized_json.str());
             };
 
-        std::ofstream momentum_budget_output;
-        if (!options.momentum_budget_csv.empty()) {
-            const auto budget_path = options.output_dir / options.momentum_budget_csv;
-            if (std::filesystem::is_symlink(
-                    std::filesystem::symlink_status(budget_path)))
-                throw std::invalid_argument(
-                    "momentum budget output must not be a symbolic link");
-            momentum_budget_output.open(budget_path, std::ios::out | std::ios::trunc);
-            if (!momentum_budget_output)
-                throw std::runtime_error("cannot open momentum budget CSV");
-            momentum_budget_output << std::setprecision(17)
-                << "iteration,component,rank,cell,x,y,z,convection,viscous,"
-                   "transpose_viscous,pressure,body_force,bounded_divergence,"
-                   "mass_divergence,collocated_difference,physical_residual,"
-                   "bounded_operator_residual,worst_absolute_residual,temporal,"
-                   "algebraic_residual,matrix_face_difference,matrix_face_scale,"
-                   "matrix_closure_linf,matrix_closure_relative_linf,"
-                   "matrix_closure_worst_cell\n";
-            if (!momentum_budget_output)
-                throw std::runtime_error("cannot write momentum budget CSV header");
-            controls.momentum_face_budget_every = options.momentum_budget_every;
-            controls.momentum_face_budget_callback =
-                [&momentum_budget_output, &options](
-                    std::size_t iteration, std::size_t component,
-                    const MomentumFaceBudget& budget, const FvGeometry& geometry) {
-                    if (!budget.matrix_closure_checked ||
-                        !momentum_matrix_face_closure_consistent(budget))
-                        throw std::runtime_error(
-                            "production momentum budget requires a valid cellwise face/CSR certificate");
-                    if (budget.cells.size() != geometry.cell_centres.size())
-                        throw std::runtime_error(
-                            "production momentum budget cell/geometry size mismatch");
-                    std::vector<std::size_t> order(budget.cells.size());
-                    for (std::size_t cell = 0; cell < order.size(); ++cell)
-                        order[cell] = cell;
-                    const std::size_t count = options.momentum_budget_all_cells
-                        ? order.size()
-                        : std::min<std::size_t>(12, order.size());
-                    std::partial_sort(
-                        order.begin(),
-                        order.begin() + static_cast<std::ptrdiff_t>(count),
-                        order.end(),
-                        [&budget](std::size_t lhs, std::size_t rhs) {
-                            const double a = std::abs(budget.cells[lhs].physical_residual);
-                            const double b = std::abs(budget.cells[rhs].physical_residual);
-                            return a == b ? lhs < rhs : a > b;
-                        });
-                    for (std::size_t rank = 0; rank < count; ++rank) {
-                        const std::size_t cell = order[rank];
-                        const auto& centre = geometry.cell_centres[cell];
-                        const auto& term = budget.cells[cell];
-                        const double values[] = {
-                            centre.x, centre.y, centre.z, term.convection, term.viscous,
-                            term.transpose_viscous, term.pressure, term.body_force,
-                            term.bounded_divergence, term.mass_divergence,
-                            term.collocated_difference, term.physical_residual,
-                            term.bounded_operator_residual, budget.worst_absolute_residual,
-                            term.temporal, term.algebraic_residual,
-                            term.matrix_face_difference, term.matrix_face_scale,
-                            budget.matrix_closure_linf,
-                            budget.matrix_closure_relative_linf};
-                        for (const double value : values)
-                            if (!std::isfinite(value))
-                                throw std::runtime_error(
-                                    "production momentum budget contains a nonfinite value");
-                        momentum_budget_output
-                            << iteration << ',' << component << ',' << rank << ','
-                            << cell;
-                        for (const double value : values)
-                            momentum_budget_output << ',' << value;
-                        momentum_budget_output << ','
-                            << budget.matrix_closure_worst_cell << '\n';
-                    }
-                    momentum_budget_output.flush();
-                    if (!momentum_budget_output)
-                        throw std::runtime_error("cannot write momentum budget CSV");
-                };
-            std::cout << "MOMENTUM_FACE_BUDGET enabled file="
-                      << options.momentum_budget_csv.string()
-                      << " every=" << options.momentum_budget_every
-                      << " all_cells=" << (options.momentum_budget_all_cells ? 1 : 0)
-                      << " accepted_state=1\n";
-        }
-
         controls.iteration_output_callback =
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
                 const Field<double, Location::CELL>& state_u,
@@ -3240,6 +3156,90 @@ int main(int argc, char** argv)
                           << " alpha_u=" << controls.coupling.alpha_u
                           << " alpha_p=" << controls.coupling.alpha_p << "\n";
             }
+        std::ofstream momentum_budget_output;
+        if (!options.momentum_budget_csv.empty()) {
+            const auto budget_path = options.output_dir / options.momentum_budget_csv;
+            if (std::filesystem::is_symlink(
+                    std::filesystem::symlink_status(budget_path)))
+                throw std::invalid_argument(
+                    "momentum budget output must not be a symbolic link");
+            momentum_budget_output.open(budget_path, std::ios::out | std::ios::trunc);
+            if (!momentum_budget_output)
+                throw std::runtime_error("cannot open momentum budget CSV");
+            momentum_budget_output << std::setprecision(17)
+                << "iteration,component,rank,cell,x,y,z,convection,viscous,"
+                   "transpose_viscous,pressure,body_force,bounded_divergence,"
+                   "mass_divergence,collocated_difference,physical_residual,"
+                   "bounded_operator_residual,worst_absolute_residual,temporal,"
+                   "algebraic_residual,matrix_face_difference,matrix_face_scale,"
+                   "matrix_closure_linf,matrix_closure_relative_linf,"
+                   "matrix_closure_worst_cell\n";
+            if (!momentum_budget_output)
+                throw std::runtime_error("cannot write momentum budget CSV header");
+            controls.momentum_face_budget_every = options.momentum_budget_every;
+            controls.momentum_face_budget_callback =
+                [&momentum_budget_output, &options](
+                    std::size_t iteration, std::size_t component,
+                    const MomentumFaceBudget& budget, const FvGeometry& geometry) {
+                    if (!budget.matrix_closure_checked ||
+                        !momentum_matrix_face_closure_consistent(budget))
+                        throw std::runtime_error(
+                            "production momentum budget requires a valid cellwise face/CSR certificate");
+                    if (budget.cells.size() != geometry.cell_centres.size())
+                        throw std::runtime_error(
+                            "production momentum budget cell/geometry size mismatch");
+                    std::vector<std::size_t> order(budget.cells.size());
+                    for (std::size_t cell = 0; cell < order.size(); ++cell)
+                        order[cell] = cell;
+                    const std::size_t count = options.momentum_budget_all_cells
+                        ? order.size()
+                        : std::min<std::size_t>(12, order.size());
+                    std::partial_sort(
+                        order.begin(),
+                        order.begin() + static_cast<std::ptrdiff_t>(count),
+                        order.end(),
+                        [&budget](std::size_t lhs, std::size_t rhs) {
+                            const double a = std::abs(budget.cells[lhs].physical_residual);
+                            const double b = std::abs(budget.cells[rhs].physical_residual);
+                            return a == b ? lhs < rhs : a > b;
+                        });
+                    for (std::size_t rank = 0; rank < count; ++rank) {
+                        const std::size_t cell = order[rank];
+                        const auto& centre = geometry.cell_centres[cell];
+                        const auto& term = budget.cells[cell];
+                        const double values[] = {
+                            centre.x, centre.y, centre.z, term.convection, term.viscous,
+                            term.transpose_viscous, term.pressure, term.body_force,
+                            term.bounded_divergence, term.mass_divergence,
+                            term.collocated_difference, term.physical_residual,
+                            term.bounded_operator_residual, budget.worst_absolute_residual,
+                            term.temporal, term.algebraic_residual,
+                            term.matrix_face_difference, term.matrix_face_scale,
+                            budget.matrix_closure_linf,
+                            budget.matrix_closure_relative_linf};
+                        for (const double value : values)
+                            if (!std::isfinite(value))
+                                throw std::runtime_error(
+                                    "production momentum budget contains a nonfinite value");
+                        momentum_budget_output
+                            << iteration << ',' << component << ',' << rank << ','
+                            << cell;
+                        for (const double value : values)
+                            momentum_budget_output << ',' << value;
+                        momentum_budget_output << ','
+                            << budget.matrix_closure_worst_cell << '\n';
+                    }
+                    momentum_budget_output.flush();
+                    if (!momentum_budget_output)
+                        throw std::runtime_error("cannot write momentum budget CSV");
+                };
+            std::cout << "MOMENTUM_FACE_BUDGET enabled file="
+                      << options.momentum_budget_csv.string()
+                      << " every=" << options.momentum_budget_every
+                      << " all_cells=" << (options.momentum_budget_all_cells ? 1 : 0)
+                      << " accepted_state=1\n";
+        }
+
             result = solve_steady_incompressible(
                 mesh, U, p, ubc, pbc, controls, options.restart.string(),
                 solver_restart_fields);
