@@ -55,8 +55,7 @@ int main() {
         Mesh m = make_unit_cube();
         GeometryCache cache = make_geometry_cache(m);
         
-        EXPECT_TR
-UE(is_valid(cache, m));
+        EXPECT_TRUE(is_valid(cache, m));
         EXPECT_TRUE(cache.valid);
         EXPECT_TRUE(cache.face_centres.size() == 6);
         EXPECT_TRUE(cache.cell_centres.size() == 1);
@@ -112,8 +111,7 @@ UE(is_valid(cache, m));
         // Gauche (x=0) → normal = (-1,0,0)
         EXPECT_NEAR(cache.face_normals[4].x, -1.0, 1e-12);
         
-        // Droite (x=1
-) → normal = (+1,0,0)
+        // Droite (x=1) → normal = (+1,0,0)
         EXPECT_NEAR(cache.face_normals[5].x, 1.0, 1e-12);
     });
 
@@ -165,8 +163,7 @@ UE(is_valid(cache, m));
             {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
             {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
         for (std::size_t i = 0; i < 12; ++i)
-            m.points().set(i, p[i][0], p[i][1], p[
-i][2]);
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
 
         // Two unit cubes sharing x=1. The shared face is deliberately stored
         // with the wrong winding; GeometryCache must canonicalize owner->neighbour.
@@ -211,8 +208,7 @@ i][2]);
         EXPECT_NEAR(cache.surface_closure_error[0], 0.0, 1e-12);
         EXPECT_NEAR(cache.surface_closure_error[1], 0.0, 1e-12);
         EXPECT_NEAR(cache.global_surface_closure_error, 0.0, 1e-12);
-        EXPECT_NEAR(cach
-e.face_Sf[5].x, 1.0, 1e-12);
+        EXPECT_NEAR(cache.face_Sf[5].x, 1.0, 1e-12);
         EXPECT_NEAR(cache.face_Sf[5].y, 0.0, 1e-12);
         EXPECT_NEAR(cache.face_Sf[5].z, 0.0, 1e-12);
         EXPECT_NEAR(cache.face_non_orthogonality_deg[5], 0.0, 1e-12);
