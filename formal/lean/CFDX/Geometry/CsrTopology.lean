@@ -14,6 +14,8 @@ neighbour. This module formalizes those storage invariants on top of the
   neighbour (`internal_face_storing_count`);
 - a boundary face is stored by exactly one cell, its owner
   (`boundary_face_storing_count`);
+- the CSR-stored signed incidence of any face coincides with the abstract
+  owner/neighbour incidence (`csr_stored_incidence_eq_topology`);
 - the CSR-stored signed incidence of an internal face cancels over all
   cells (`csr_internal_face_incidence_cancels`), connecting the storage
   contract to the conservation theorem;
@@ -73,17 +75,19 @@ theorem storing_cells_internal_iff
   classical
   constructor
   · intro hmem
-    rcases storage.only_owner_neighbour_stores c f hmem with hco | ⟨_, hn', hc⟩
+    rcases storage.only_owner_neighbour_stores c f hmem with hco | hcase
     · exact Or.inl hco
-    · obtain ⟨n', hn'', hc'⟩ := hn'
+    · obtain ⟨_, hexists⟩ := hcase
+      obtain ⟨n', hn'', hc'⟩ := hexists
       have hnn : n = n' := Option.some.inj (hn.symm.trans hn'')
-      subst hnn
-      exact Or.inr hc'
+      refine Or.inr ?_
+      rw [hnn]
+      exact hc'
   · rintro (rfl | rfl)
     · exact storage.owner_stores f
     · obtain ⟨n', hn'', hc'⟩ := storage.neighbour_stores f hf
-      have hnn : n' = n := Option.some.inj (hn.symm.trans hn'')
-      subst hnn
+      have hnn : n = n' := Option.some.inj (hn.symm.trans hn'')
+      rw [hnn] at hc'
       exact hc'
 
 /-- Characterization of the cells storing a boundary face: only the owner. -/
@@ -96,9 +100,10 @@ theorem storing_cells_boundary_iff
   classical
   constructor
   · intro hmem
-    rcases storage.only_owner_neighbour_stores c f hmem with h | ⟨hint, _, _, _⟩
+    rcases storage.only_owner_neighbour_stores c f hmem with h | hcase
     · exact h
-    · exact absurd hint hf
+    · obtain ⟨hint, _, _⟩ := hcase
+      exact absurd hint hf
   · intro h
     rw [h]
     exact storage.owner_stores f
@@ -121,20 +126,19 @@ theorem internal_face_storing_count
     by_cases h : f ∈ storage.cellFaces c
     · rcases (storing_cells_internal_iff topology storage hf hn).mp h with hc | hc
       · have hcn : c ≠ n := fun h2 => hdistinct (hc.symm.trans h2)
-        rw [if_pos h, if_pos hc, if_neg hcn, if_pos h]
+        rw [if_pos h, if_pos hc, if_neg hcn]
         norm_num
-      · have hco : c ≠ topology.owner f := fun h2 => hdistinct (h2.trans hc.symm)
-        rw [if_pos h, if_neg hco, if_pos hc, if_pos h]
+      · have hco : c ≠ topology.owner f := fun h2 => hdistinct (h2.symm.trans hc)
+        rw [if_pos h, if_neg hco, if_pos hc]
         norm_num
     · have hco : c ≠ topology.owner f :=
-        fun h2 => h (by rw [← h2]; exact storage.owner_stores f)
+        fun h2 => h (by have hs := storage.owner_stores f; rw [← h2] at hs; exact hs)
       have hcn : c ≠ n := by
         intro h2
         obtain ⟨n', hn', hc'⟩ := storage.neighbour_stores f hf
-        have hnn : n' = n := Option.some.inj (hn.symm.trans hn')
-        subst hnn
+        have hnn : n = n' := Option.some.inj (hn.symm.trans hn')
         refine h ?_
-        rw [← h2]
+        rw [h2, hnn]
         exact hc'
       rw [if_neg h, if_neg hco, if_neg hcn]
       norm_num
@@ -189,17 +193,25 @@ theorem csr_stored_incidence_eq_topology
   · rw [if_pos h]
   · rw [if_neg h]
     have hco : topology.owner f ≠ c :=
-      fun h2 => h (by rw [← h2]; exact storage.owner_stores f)
-    have hnc : topology.neighbour f ≠ some c := by
-      intro h2
-      obtain ⟨n', hn', hc'⟩ := storage.neighbour_stores f hf
-      have hnn : c = n' := Option.some.inj (h2.symm.trans hn')
-      refine h ?_
-      rw [hnn]
-      exact hc'
-    simp only [ownerNeighbourIncidence]
-    rw [if_neg hco, if_neg hnc]
-    norm_num
+      fun h2 => h (by have hs := storage.owner_stores f; rw [h2] at hs; exact hs)
+    by_cases hint : f ∈ topology.internalFaces
+    · have hnc : topology.neighbour f ≠ some c := by
+        intro h2
+        obtain ⟨n', hn', hc'⟩ := storage.neighbour_stores f hint
+        have hnn : c = n' := Option.some.inj (h2.symm.trans hn')
+        refine h ?_
+        rw [hnn]
+        exact hc'
+      simp only [ownerNeighbourIncidence]
+      rw [if_neg hco, if_neg hnc]
+      norm_num
+    · have hnc : topology.neighbour f ≠ some c := by
+        intro h2
+        rw [topology.boundary_face_has_no_neighbour f hint] at h2
+        exact Option.noConfusion h2
+      simp only [ownerNeighbourIncidence]
+      rw [if_neg hco, if_neg hnc]
+      norm_num
 
 /-- The CSR-stored signed incidence of an internal face cancels over all
 cells. This derives the conservation balance from the storage contract
@@ -216,7 +228,8 @@ theorem csr_internal_face_incidence_cancels
           (if f ∈ storage.cellFaces c then
             ownerNeighbourIncidence topology c f else (0 : ℝ))
       = ∑ c : Cell, ownerNeighbourIncidence topology c f :=
-        Finset.sum_congr rfl (fun c _ => csr_stored_incidence_eq_topology topology storage f c)
+        Finset.sum_congr rfl
+          (fun c _ => csr_stored_incidence_eq_topology topology storage f c)
     _ = 0 := owner_neighbour_incidence_cancels topology hf
 
 /-- A boundary face contributes exactly its owner incidence (+1) through the
@@ -238,12 +251,23 @@ theorem csr_boundary_face_incidence_eq_one
     by_cases h : f ∈ storage.cellFaces c
     · have hco : c = topology.owner f :=
         (storing_cells_boundary_iff topology storage hf).mp h
-      rw [if_pos h, if_pos hco.symm]
+      rw [if_pos h]
       simp only [ownerNeighbourIncidence]
-      rw [if_pos rfl, if_neg (by rw [hnone]; simp)]
+      rw [if_pos hco.symm, if_neg (by rw [hnone]; simp), if_pos hco]
       norm_num
-    · rw [if_neg h,
-        if_neg (fun hc => h ((storing_cells_boundary_iff topology storage hf).mpr hc))]
+    · rw [if_neg h]
+      have hco : topology.owner f ≠ c := by
+        intro h2
+        have hs := storage.owner_stores f
+        rw [h2] at hs
+        exact h hs
+      have hnc : topology.neighbour f ≠ some c := by
+        intro h2
+        rw [hnone] at h2
+        exact Option.noConfusion h2
+      simp only [ownerNeighbourIncidence]
+      rw [if_neg hco, if_neg hnc]
+      norm_num
   calc ∑ c : Cell,
           (if f ∈ storage.cellFaces c then
             ownerNeighbourIncidence topology c f else (0 : ℝ))
