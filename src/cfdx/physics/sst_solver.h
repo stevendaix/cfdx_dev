@@ -1137,8 +1137,8 @@ inline TurbulenceTransportResult solve_sst_transport(
 
                     // Residuals at current state (source terms only)
                     const auto q00 = sst_cell_sources(ki, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                    const double Fk00 = q00.sk - q00.spk * ki;
-                    const double Fw00 = q00.sw - q00.spw * wi;
+                    const double Fk00 = q00.sk + q00.spk * ki;
+                    const double Fw00 = q00.sw + q00.spw * wi;
 
                     // Skip cells that are already converged (small residual)
                     if (std::abs(Fk00) < 1e-10 && std::abs(Fw00) < 1e-10) continue;
@@ -1150,14 +1150,14 @@ inline TurbulenceTransportResult solve_sst_transport(
                     // Perturb log k
                     const double ki_p = ki * (1.0 + eps);
                     const auto q10 = sst_cell_sources(ki_p, wi, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                    const double Fk10 = q10.sk - q10.spk * ki_p;
-                    const double Fw10 = q10.sw - q10.spw * wi;
+                    const double Fk10 = q10.sk + q10.spk * ki_p;
+                    const double Fw10 = q10.sw + q10.spw * wi;
 
                     // Perturb log omega
                     const double wi_p = wi * (1.0 + eps);
                     const auto q01 = sst_cell_sources(ki, wi_p, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                    const double Fk01 = q01.sk - q01.spk * ki;
-                    const double Fw01 = q01.sw - q01.spw * wi_p;
+                    const double Fk01 = q01.sk + q01.spk * ki;
+                    const double Fw01 = q01.sw + q01.spw * wi_p;
 
                     // Full 2x2 Jacobian on log variables:
                     // J = [dFk/dlogk, dFk/dlogomega; dFw/dlogk, dFw/dlogomega]
@@ -1203,8 +1203,8 @@ inline TurbulenceTransportResult solve_sst_transport(
                         const double wt = wi * std::exp(alpha * delta_w_local[i]);
                         if (!(kt > 0.) || !(wt > 0.)) { trial_valid = false; break; }
                         const auto qt = sst_cell_sources(kt, wt, strain_rate(i), F1(i), F2(i), cross[i], controls, wp_idx);
-                        const double Fk = qt.sk - qt.spk * kt;
-                        const double Fw = qt.sw - qt.spw * wt;
+                        const double Fk = qt.sk + qt.spk * kt;
+                        const double Fw = qt.sw + qt.spw * wt;
                         trial_max_res = std::max(trial_max_res, std::max(std::abs(Fk), std::abs(Fw)));
                     }
                     if (trial_valid && trial_max_res < baseline_max_res * 0.9) {
