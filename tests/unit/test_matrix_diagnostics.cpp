@@ -80,10 +80,13 @@ int main() {
     run_case("matrix_characteristics_reject_nonfinite_coefficients_before_spd_qualification", [] {
         SparseMatrix nan_matrix(2, 2);
         nan_matrix.push_back(0, 0, 2.0);
-        nan_matrix.push_back(0, 1, std::numeric_limits<double>::quiet_NaN());
-        nan_matrix.push_back(1, 0, std::numeric_limits<double>::quiet_NaN());
+        nan_matrix.push_back(0, 1, 0.0);
+        nan_matrix.push_back(1, 0, 0.0);
         nan_matrix.push_back(1, 1, 2.0);
         nan_matrix.finalize();
+        // Inject corruption only after successful assembly/finalization so
+        // this test exercises the diagnostics guard, not SparseMatrix::push_back.
+        nan_matrix.values_data()[1] = std::numeric_limits<double>::quiet_NaN();
 
         const auto nan_diagnostics = diagnose_matrix(nan_matrix, 1e-14, false);
         EXPECT_TRUE(!nan_diagnostics.finite);
@@ -91,10 +94,13 @@ int main() {
 
         SparseMatrix infinite_matrix(2, 2);
         infinite_matrix.push_back(0, 0, 2.0);
-        infinite_matrix.push_back(0, 1, std::numeric_limits<double>::infinity());
-        infinite_matrix.push_back(1, 0, std::numeric_limits<double>::infinity());
+        infinite_matrix.push_back(0, 1, 0.0);
+        infinite_matrix.push_back(1, 0, 0.0);
         infinite_matrix.push_back(1, 1, 2.0);
         infinite_matrix.finalize();
+        infinite_matrix.values_data()[1] = std::numeric_limits<double>::infinity();
+        const auto infinite_diagnostics = diagnose_matrix(infinite_matrix, 1e-14, false);
+        EXPECT_TRUE(!infinite_diagnostics.finite);
         EXPECT_THROW(measure_matrix_characteristics(infinite_matrix), std::invalid_argument);
     });
 
