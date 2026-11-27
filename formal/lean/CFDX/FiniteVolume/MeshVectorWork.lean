@@ -16,13 +16,6 @@ establish that arbitrary runtime C++ mesh storage satisfies this structure.
 
 namespace CFDX.FiniteVolume
 
-/-- Integrated vector traction stored once per face, in owner orientation. -/
-def meshVectorTraction
-    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
-    (_topology : OwnerNeighbourTopology Cell Face)
-    (traction : Face → Fin 3 → ℝ) : Face → Fin 3 → ℝ :=
-  traction
-
 /-- Integrated vector force assembled in a cell from the shared face
 traction and owner/neighbour incidence. -/
 def cellVectorFaceForce
@@ -66,6 +59,7 @@ theorem mesh_vector_work_eq_sum_incidence_face_work
   unfold meshCellVectorWork cellVectorFaceForce incidenceVectorFaceWork
   simp_rw [dot3]
   simp_rw [Finset.sum_add_distrib]
+  simp_rw [Finset.mul_sum]
   simp_rw [Finset.sum_comm]
 
 /-- Internal face work is the owner-minus-neighbour velocity jump dotted
