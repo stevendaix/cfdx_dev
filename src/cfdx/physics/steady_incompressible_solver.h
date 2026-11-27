@@ -6939,6 +6939,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 ? std::optional<SSTProductionState>(
                     snapshot_sst_production_state(*controls.sst_runtime->state))
                 : std::nullopt;
+            // The face-valued modified-pressure trace is shared by the
+            // pressure gradient, SIMPLE pressure assembly and Rhie-Chow flux.
+            // Restoring k without rebuilding this object would leave a retry
+            // coupled to the rejected candidate's pressure boundary data.
+            const auto restore_sst_and_pressure_face_snapshot = [&]() {
+                if (!controls.sst_runtime) return;
+                if (sst_attempt_snapshot)
+                    restore_sst_production_state(
+                        *controls.sst_runtime->state, *sst_attempt_snapshot);
+                if (controls.sst_runtime->state &&
+                    controls.sst_runtime->pressure_face_values) {
+                    rebuild_sst_pressure_face_values_after_state_restore(
+                        mesh, *controls.sst_runtime->state, controls.density,
+                        pressure_bcs, controls.sst_runtime->k_boundary_conditions,
+                        *controls.sst_runtime->pressure_face_values);
+                }
+            };
             // Visible to the exception handlers: pressure/linear failures may
             // occur before a candidate reaches the physical-residual gate.
             bool multisecant_trial_used = false;
@@ -10871,8 +10888,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 frozen_state_valid = false;
@@ -16504,8 +16520,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 if (controls.sst_runtime) {
@@ -16601,8 +16616,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 // V44: restore the cached momentum viscosity too. Without
@@ -16640,8 +16654,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (transaction.active()) transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 if (controls.sst_runtime)
