@@ -483,3 +483,22 @@ bounded implementation bridge, but it is a viscous stress operator, not a
 Reynolds-stress closure. A conformance test must exercise the production
 face scatter and compare integrated traction/work, including boundary faces,
 without duplicating the implementation formula in the test.
+
+
+### Owner/neighbour vector-work reduction
+
+The follow-up module now adds the reduction lemmas
+`internal_face_incidence_work_eq_velocity_jump` and
+`boundary_face_incidence_work_eq_owner_work`. These use the actual
+`OwnerNeighbourTopology` incidence definition: owner coefficient +1,
+neighbour coefficient -1, and no neighbour coefficient on boundary faces.
+The derived `incidence_face_work_eq_owner_neighbour_work` selects the
+neighbour only for faces classified as internal, and the global theorem
+`mesh_vector_work_eq_owner_neighbour_face_work` combines this reduction
+with the finite cell/face sum interchange.
+
+This is still an abstract algebraic theorem over finite types. It does not
+prove runtime mesh validity, face orientation of geometry vectors, density
+or time weighting, nor correspondence to the production C++ assembly. The
+exact-head CI must compile these new lemmas before they are treated as
+machine-checked results.
