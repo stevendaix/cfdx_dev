@@ -135,8 +135,11 @@ public:
                 const long double t =
                     (static_cast<long double>(s) - x_[i - 1]) /
                     (static_cast<long double>(x_[i]) - x_[i - 1]);
-                const double value = std::lerp(y_[i - 1], y_[i],
-                                               static_cast<double>(t));
+                const long double interpolated =
+                    static_cast<long double>(y_[i - 1]) +
+                    t * (static_cast<long double>(y_[i]) -
+                         static_cast<long double>(y_[i - 1]));
+                const double value = static_cast<double>(interpolated);
                 if (!std::isfinite(value))
                     throw std::overflow_error(
                         "TableOverSpaceValueProvider interpolation overflow");
