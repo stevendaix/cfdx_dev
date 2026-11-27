@@ -26,6 +26,64 @@
 
 namespace cfdx::physics {
 
+// Convert the three scalar velocity BC maps into the vector BC contract used
+// by mass-flux reconstruction. The current vector API supports only a single
+// FIXED_VALUE/ZERO_GRADIENT type per patch; unsupported scalar types and
+// component-wise mixed types must fail rather than be silently reinterpreted.
+inline VelocityBoundaryConditions make_jfnk_velocity_boundary_conditions(
+    const ScalarBoundaryConditions& ubc_x,
+    const ScalarBoundaryConditions& ubc_y,
+    const ScalarBoundaryConditions& ubc_z)
+{
+    VelocityBoundaryConditions velocity_bcs;
+    std::set<std::string> patch_names;
+    for (const auto& [name, _] : ubc_x) patch_names.insert(name);
+    for (const auto& [name, _] : ubc_y) patch_names.insert(name);
+    for (const auto& [name, _] : ubc_z) patch_names.insert(name);
+
+    const std::array<const ScalarBoundaryConditions*, 3> component_bcs{{
+        &ubc_x, &ubc_y, &ubc_z}};
+    for (const auto& name : patch_names) {
+        VelocityBoundaryCondition vbc;
+        vbc.type = VelocityBoundaryCondition::Type::ZERO_GRADIENT;
+        vbc.value = ::cfdx::core::Vec3{0.0, 0.0, 0.0};
+        std::array<bool, 3> has_fixed_value{};
+        std::array<double, 3> prescribed_values{};
+        for (std::size_t comp = 0; comp < component_bcs.size(); ++comp) {
+            const auto it = component_bcs[comp]->find(name);
+            if (it == component_bcs[comp]->end())
+                continue;
+            switch (it->second.type) {
+            case ScalarBoundaryType::FIXED_VALUE:
+                has_fixed_value[comp] = true;
+                prescribed_values[comp] = it->second.value;
+                if (!std::isfinite(prescribed_values[comp]))
+                    throw std::invalid_argument(
+                        "JFNK residual: nonfinite fixed velocity on patch '" + name + "'");
+                break;
+            case ScalarBoundaryType::ZERO_GRADIENT:
+                break;
+            default:
+                throw std::invalid_argument(
+                    "JFNK residual: scalar velocity BC type is not representable "
+                    "by VelocityBoundaryCondition on patch '" + name + "'");
+            }
+        }
+        if (has_fixed_value[0] != has_fixed_value[1] ||
+            has_fixed_value[1] != has_fixed_value[2]) {
+            throw std::invalid_argument(
+                "JFNK residual: mixed component velocity BCs on patch '" +
+                name + "' are not representable by VelocityBoundaryCondition");
+        }
+        if (has_fixed_value[0])
+            vbc.type = VelocityBoundaryCondition::Type::FIXED_VALUE;
+        vbc.value = ::cfdx::core::Vec3{
+            prescribed_values[0], prescribed_values[1], prescribed_values[2]};
+        velocity_bcs[name] = vbc;
+    }
+    return velocity_bcs;
+}
+
 struct CoupledJfnkResidualV6N {
     static PhysicalResidualV51 evaluate(
         const ::cfdx::core::Mesh& mesh,
@@ -127,44 +185,9 @@ struct CoupledJfnkResidualV6N {
                 throw std::domain_error("JFNK residual: invalid effective viscosity");
         }
 
-        // Merge component scalar BCs into velocity BCs.
-        VelocityBoundaryConditions velocity_bcs;
-        std::set<std::string> patch_names;
-        for (const auto& [name, _] : ubc_x) patch_names.insert(name);
-        for (const auto& [name, _] : ubc_y) patch_names.insert(name);
-        for (const auto& [name, _] : ubc_z) patch_names.insert(name);
-        for (const auto& name : patch_names) {
-            VelocityBoundaryCondition vbc;
-            vbc.type = VelocityBoundaryCondition::Type::ZERO_GRADIENT;
-            vbc.value = ::cfdx::core::Vec3{0.0, 0.0, 0.0};
-            const std::array<const ScalarBoundaryConditions*, 3> component_bcs{{
-                &ubc_x, &ubc_y, &ubc_z}};
-            std::array<bool, 3> has_fixed_value{};
-            std::array<double, 3> prescribed_values{};
-            for (std::size_t comp = 0; comp < component_bcs.size(); ++comp) {
-                const auto it = component_bcs[comp]->find(name);
-                if (it == component_bcs[comp]->end())
-                    continue;
-                has_fixed_value[comp] =
-                    it->second.type == ScalarBoundaryType::FIXED_VALUE;
-                prescribed_values[comp] = it->second.value;
-            }
-            // VelocityBoundaryCondition stores one type for the whole vector.
-            // Do not collapse component-wise mixed Dirichlet/Neumann data into
-            // a false all-components FIXED_VALUE condition used by mass-flux
-            // reconstruction. The current vector BC API cannot represent it.
-            if (has_fixed_value[0] != has_fixed_value[1] ||
-                has_fixed_value[1] != has_fixed_value[2]) {
-                throw std::invalid_argument(
-                    "JFNK residual: mixed component velocity BCs on patch '" +
-                    name + "' are not representable by VelocityBoundaryCondition");
-            }
-            if (has_fixed_value[0])
-                vbc.type = VelocityBoundaryCondition::Type::FIXED_VALUE;
-            vbc.value = ::cfdx::core::Vec3{
-                prescribed_values[0], prescribed_values[1], prescribed_values[2]};
-            velocity_bcs[name] = vbc;
-        }
+        // Convert component scalar BCs without losing their mathematical type.
+        const auto velocity_bcs = make_jfnk_velocity_boundary_conditions(
+            ubc_x, ubc_y, ubc_z);
 
         // Pressure gradient from the trial pressure field.
         const auto grad_p = gauss_gradient_with_boundary(
