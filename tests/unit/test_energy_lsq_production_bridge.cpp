@@ -1,4 +1,6 @@
 #include "cfdx/core/fvm/least_squares_gradient.h"
+#include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/mesh/mesh.h"
 
 #include <array>
 #include <cmath>
@@ -84,6 +86,46 @@ CellVector apply_matrix(const Matrix& matrix, const CellVector& values) {
     return result;
 }
 
+
+cfdx::core::Mesh make_unit_cube_mesh() {
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(8);
+    mesh.points().set(0, 0.0, 0.0, 0.0);
+    mesh.points().set(1, 1.0, 0.0, 0.0);
+    mesh.points().set(2, 1.0, 1.0, 0.0);
+    mesh.points().set(3, 0.0, 1.0, 0.0);
+    mesh.points().set(4, 0.0, 0.0, 1.0);
+    mesh.points().set(5, 1.0, 0.0, 1.0);
+    mesh.points().set(6, 1.0, 1.0, 1.0);
+    mesh.points().set(7, 0.0, 1.0, 1.0);
+    mesh.faces().push_face({0, 3, 2, 1});
+    mesh.faces().push_face({4, 5, 6, 7});
+    mesh.faces().push_face({0, 1, 5, 4});
+    mesh.faces().push_face({3, 7, 6, 2});
+    mesh.faces().push_face({0, 4, 7, 3});
+    mesh.faces().push_face({1, 2, 6, 5});
+    mesh.ownership().resize(6);
+    for (std::size_t face = 0; face < 6; ++face) {
+        mesh.ownership().set_owner(face, 0);
+        mesh.ownership().set_neighbour(face, FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0, 1, 2, 3, 4, 5});
+    return mesh;
+}
+
+Gradient evaluate_mesh_lsq(
+    const cfdx::core::Mesh& mesh,
+    double cell_value,
+    const std::vector<cfdx::core::BoundaryGradientCondition>& conditions) {
+    using namespace cfdx::core;
+    Field<double, Location::CELL> field(1, "phi", "1", 1);
+    field(0) = cell_value;
+    const auto result = compute_gradient_least_squares(
+        field, mesh, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &conditions);
+    return {result(0, 0), result(0, 1), result(0, 2)};
+}
+
 }  // namespace
 
 int main() {
@@ -166,5 +208,39 @@ int main() {
     const auto constant_action = apply_matrix(gram, ones);
     for (double value : constant_action)
         close(value, 0.0, "G^T M G must annihilate constants");
+
+    // Mesh-level affine boundary contract. The deliberately mixed boundary
+    // types avoid the degenerate all-Dirichlet symmetric one-cell case:
+    // face 4 is Dirichlet, face 5 Neumann, and the remaining faces are
+    // zero-gradient. Geometry, stencil membership and boundary types stay fixed.
+    {
+        using namespace cfdx::core;
+        const Mesh mesh = make_unit_cube_mesh();
+        std::vector<BoundaryGradientCondition> homogeneous(6);
+        homogeneous[4] = {BoundaryGradientConditionType::DIRICHLET, 0.0};
+        homogeneous[5] = {BoundaryGradientConditionType::NEUMANN, 0.0};
+        const Gradient linear_column = evaluate_mesh_lsq(mesh, 1.0, homogeneous);
+
+        std::vector<BoundaryGradientCondition> prescribed = homogeneous;
+        prescribed[4].value = 2.25;
+        prescribed[5].value = -0.75;
+        prescribed[0] = {BoundaryGradientConditionType::NEUMANN, 0.4};
+        const Gradient offset = evaluate_mesh_lsq(mesh, 0.0, prescribed);
+
+        for (double cell_value : {-2.0, 0.0, 0.5, 3.0}) {
+            const Gradient actual = evaluate_mesh_lsq(mesh, cell_value, prescribed);
+            for (std::size_t component = 0; component < 3; ++component) {
+                close(actual[component],
+                      offset[component] + cell_value * linear_column[component],
+                      "mesh LSQ with fixed nonhomogeneous BCs must be affine in cell values");
+            }
+        }
+
+        // The offset must vanish when all prescribed boundary data vanish.
+        const Gradient zero_offset = evaluate_mesh_lsq(mesh, 0.0, homogeneous);
+        for (double value : zero_offset)
+            close(value, 0.0, "homogeneous boundary data must have zero affine offset");
+    }
+
     return 0;
 }
