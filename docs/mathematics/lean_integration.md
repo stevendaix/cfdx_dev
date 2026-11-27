@@ -76,6 +76,83 @@ logical environment. Future work should add an explicit audit of theorem
 assumptions (for example with `#print axioms`) for designated critical
 results, with a documented allowlist.
 
+## First finite-volume conservation theorem
+
+`CFDX.FiniteVolume.OrientedMesh` represents a finite cell/face incidence
+relation using signed real coefficients. Its explicit
+`internal_face_balance` hypothesis states that, for each internal face, the
+sum of its signed incidence coefficients over all cells is zero.
+
+`CFDX.FiniteVolume.internal_face_fluxes_cancel` proves that summing the cell
+balances over all cells cancels the contribution of every internal face.
+The proof is exact and algebraic: it exchanges the finite cell/face sums,
+factors out the one shared face flux, and applies the incidence cancellation
+hypothesis.
+
+This theorem deliberately has a narrow scope:
+
+- The same scalar face flux is shared by every cell incident to a face.
+  Independently evaluated left/right fluxes need an additional equality
+  hypothesis or a conservative numerical flux construction.
+- Boundary faces are excluded. Their contribution is not zero; it belongs in
+  the global boundary-flux balance.
+- The theorem does not yet derive incidence cancellation from a concrete
+  mesh data structure, face orientation, or cell adjacency representation.
+- It does not prove consistency, accuracy, stability, positivity, pressure-
+  velocity coupling, or convergence of a CFDX discretization.
+
+The owner/neighbour model also proves
+`CFDX.FiniteVolume.global_cell_flux_balance_eq_boundary_flux`: summing the
+complete owner/neighbour face balances over all cells leaves exactly the
+outward owner-oriented boundary flux. Internal faces cancel; boundary faces
+are retained once. This is the discrete global balance identity corresponding
+to the C++ conservation audit, subject to the topology and shared-flux
+assumptions above.
+
+The next formal step is to derive the incidence hypothesis from the actual
+CFDX mesh topology and face ownership/orientation rules, then compare the
+formal cell-face balance with the C++ flux assembly on deterministic meshes.
+
+## Mapping to the current CFDX mesh and flux code
+
+A source audit of the current C++ implementation identifies a direct
+owner/neighbour representation:
+
+- `src/cfdx/core/mesh/ownership.h`: each face has one owner and either one
+  neighbour or the boundary sentinel `-1`. Validation rejects out-of-range
+  cells, unknown negative sentinels, and self-connected internal faces.
+- `src/cfdx/core/mesh/mesh.h`: topology validation checks owner/neighbour
+  consistency, the expected number of cell-face references, and that each
+  face is referenced by its owner and (for internal faces) its neighbour.
+- `src/cfdx/core/numerics/divergence.h`: cell divergence traverses the
+  cell-face CSR and adds the face field for the owner, subtracting it for the
+  neighbour, then divides by cell volume.
+- `src/cfdx/core/numerics/conservation.h`: the independent face-balance
+  reconstruction traverses each stored face once, adds one face flux to its
+  owner, subtracts that same value from its neighbour, and accumulates
+  boundary flux separately.
+
+The new `OwnerNeighbourTopology` Lean structure models the owner, optional
+neighbour, internal-face set, and distinct-owner/neighbour invariant. It also
+makes the internal/boundary classification explicit: every internal face has
+a neighbour, and every face outside the internal set has no neighbour. Its
+incidence coefficient is +1 for the owner and -1 for the neighbour; the
+boundary case has no neighbour contribution. The new theorem derives the
+zero-sum incidence condition from that representation, rather than taking
+the condition as an unexplained axiom.
+
+This is a mathematical correspondence at the level of the owner/neighbour
+data model, not yet a proof that the C++ validators and CSR traversal satisfy
+the Lean structure for every runtime mesh. An existing small-mesh numerical counterpart is
+`tests/unit/test_conservation_assembly.cpp`: its two-cell/one-internal-face
+case checks owner +flux, neighbour -flux, and a zero global sum; it also tests
+mismatched independently assembled contributions and the boundary-neighbour
+zero contribution. This is valuable implementation evidence, but it is not a
+machine-checked cross-language equivalence test. The remaining bridge must
+establish (and document the exact assumptions of) the mapping from validated
+C++ mesh storage to the finite Lean topology, including exactly-once cell-face
+references, boundary classification, and shared face-flux storage.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
