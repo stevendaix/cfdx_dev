@@ -161,7 +161,8 @@ int main()
         rc.absorption=1.0;rc.scattering=0.0;rc.max_iterations=100;
         rc.tolerance=1e-9;rc.linear_tolerance=1e-11;
         std::vector<Field<double,Location::CELL>> intensities;
-        for (std::size_t direction=0;direction<dirs.size();++direction) {
+        for (const auto& direction : dirs) {
+            (void)direction;
             intensities.emplace_back(1,"I","W/m2/sr",1);
             intensities.back()(0)=blackbody_intensity(1000.0);
         }
