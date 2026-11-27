@@ -4,6 +4,8 @@
 #include "common/test_harness.h"
 #include <cmath>
 #include <limits>
+#include <fstream>
+#include <cstdio>
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
@@ -47,6 +49,33 @@ int main() {
         EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
         context.y = 0.5;
         EXPECT_TRUE(std::abs(provider.evaluate(context) - 1.0) < 1e-14);
+    });
+    run_case("spatial_profile_csv_reader_rejects_malformed_records", [] {
+        const std::string path = "/tmp/cfdx_profile_csv_contract_test.csv";
+        const auto write = [&](const std::string& text) {
+            std::ofstream out(path, std::ios::trunc);
+            out << text;
+            out.close();
+        };
+        write("y,u\\n0.0,0.0\\n1.0,2.0\\n");
+        const auto provider = read_spatial_profile_csv(path, 1);
+        ValueContext context;
+        context.y = 0.5;
+        EXPECT_TRUE(std::abs(provider->evaluate(context) - 1.0) < 1e-14);
+
+        write("0.0,0.0\\n1.0garbage,2.0\\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0x,0.0\\n1.0,2.0\\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0,0.0,extra\\n1.0,2.0\\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0,0.0\\nnan,2.0\\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0,0.0\\n1.0,inf\\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("y,u\\n0.0,1.0\\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        std::remove(path.c_str());
     });
     run_case("device_lowering_is_value_based", [] {
         ValueProviderSpec spec = SpatialLinearProviderSpec{1.0, 2.0, 3.0, 4.0, DIMENSIONLESS};
