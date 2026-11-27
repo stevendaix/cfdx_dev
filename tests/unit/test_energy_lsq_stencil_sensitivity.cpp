@@ -1,16 +1,16 @@
 #include "cfdx/core/fvm/least_squares_gradient.h"
 
-#include <array>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
 
 using cfdx::core::StencilQuality;
 using cfdx::core::Vec3;
-using cfdx::core::GradientWeighting;
 
 struct StencilCase {
     const char* name;
@@ -25,12 +25,12 @@ double max_error(const Vec3& actual, const Vec3& expected) {
 }
 
 void check_case(const StencilCase& test) {
-    constexpr Vec3 centre{0.0, 0.0, 0.0};
-    constexpr Vec3 exact_gradient{2.0, -3.0, 0.5};
+    const Vec3 centre{0.0, 0.0, 0.0};
+    const Vec3 exact_gradient{2.0, -3.0, 0.5};
     std::vector<double> values;
     values.reserve(test.points.size());
     for (const Vec3& point : test.points)
-        values.push_back(exact_gradient.dot(point));
+        values.push_back(exact_gradient.x * point.x +\n                         exact_gradient.y * point.y +\n                         exact_gradient.z * point.z);
 
     StencilQuality quality;
     const Vec3 recovered = cfdx::core::least_squares_gradient(
