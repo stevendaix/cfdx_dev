@@ -234,6 +234,17 @@ int main() {
             {{0.0, -1.0, 1.0}},
             {{1.0, 0.0, -1.0}}
         }};
+        const auto Q_gram = multiply(transpose(Q), Q);
+        if (max_difference(Q_gram, identity<2>()) > 2.0e-15)
+            throw std::runtime_error("mean-zero pressure basis is not orthonormal");
+        const auto B_transpose_periodic = transpose(B_periodic);
+        for (std::size_t pressure_dof = 0; pressure_dof < 3; ++pressure_dof) {
+            double constant_mode_action = 0.0;
+            for (std::size_t cell = 0; cell < 3; ++cell)
+                constant_mode_action += B_transpose_periodic[pressure_dof][cell];
+            if (std::abs(constant_mode_action) > 1.0e-15)
+                throw std::runtime_error("periodic incidence does not annihilate constant pressure");
+        }
         const auto B_mean_zero = multiply(transpose(Q), B_periodic);
         check_schur_identity(A, B_mean_zero, identity<2>(), "mean_zero_pressure");
 
