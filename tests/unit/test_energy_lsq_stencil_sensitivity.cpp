@@ -30,7 +30,9 @@ void check_case(const StencilCase& test) {
     std::vector<double> values;
     values.reserve(test.points.size());
     for (const Vec3& point : test.points)
-        values.push_back(exact_gradient.x * point.x +\n                         exact_gradient.y * point.y +\n                         exact_gradient.z * point.z);
+        values.push_back(exact_gradient.x * point.x +
+                         exact_gradient.y * point.y +
+                         exact_gradient.z * point.z);
 
     StencilQuality quality;
     const Vec3 recovered = cfdx::core::least_squares_gradient(
