@@ -341,6 +341,7 @@ int main()
         // the integrated owner/neighbour face scatter. Independently contract
         // the same stored face traction with the cell velocities.
         double cell_work=0.0,face_work=0.0,work_scale=0.0;
+        std::size_t internal_faces=0,boundary_faces=0;
         for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
             const double integrated_work=geometry.cell_volumes[cell]*(
                 U(cell,0)*force(cell,0)+U(cell,1)*force(cell,1)+U(cell,2)*force(cell,2));
@@ -350,33 +351,24 @@ int main()
         for (std::size_t face=0; face<mesh.n_faces(); ++face) {
             const auto owner=mesh.ownership().owner(face);
             double contribution=0.0;
-            for (std::size_t component=0; component<3; ++component)
+            for (std::size_t component=0; component<3; ++component) {
+                EXPECT_TRUE(std::isfinite(traction(face,component)));
                 contribution+=U(owner,component)*traction(face,component);
+            }
             const auto neighbour=mesh.ownership().neighbour(face);
-            if (neighbour>=0)
+            if (neighbour>=0) {
+                ++internal_faces;
                 for (std::size_t component=0; component<3; ++component)
                     contribution-=U(static_cast<std::size_t>(neighbour),component)*
                                   traction(face,component);
+            } else {
+                ++boundary_faces;
+            }
             face_work+=contribution;
             work_scale+=std::abs(contribution);
         }
+        EXPECT_TRUE(internal_faces>0 && boundary_faces>0);
         EXPECT_NEAR(cell_work,face_work,2e-12*std::max(1.0,work_scale));
-
-        // Internal face scatter must cancel component-wise; boundary faces
-        // contribute only through their owner. This is a finite-precision
-        // implementation check, not a proof for arbitrary runtime meshes.
-        for (std::size_t face=0; face<mesh.n_faces(); ++face) {
-            const auto owner=mesh.ownership().owner(face);
-            const auto neighbour=mesh.ownership().neighbour(face);
-            for (std::size_t component=0; component<3; ++component) {
-                EXPECT_TRUE(std::isfinite(traction(face,component)));
-                if (neighbour>=0) {
-                    const double owner_force=traction(face,component);
-                    const double neighbour_force=-traction(face,component);
-                    EXPECT_NEAR(owner_force+neighbour_force,0.0,0.0);
-                }
-            }
-        }
     });
 
     run_case("variable_viscosity_production_predictor_consumes_transpose_stress", [] {
