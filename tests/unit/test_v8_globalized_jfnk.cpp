@@ -1,4 +1,5 @@
 #include "cfdx/core/linalg/globalized_jfnk_v8.h"
+#include "cfdx/physics/coupled_jfnk_driver.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "common/test_harness.h"
 #include <array>
@@ -86,6 +87,30 @@ int main() {
         auto invalid=[](const Vector&,Vector&){return false;};
         const auto report=globalized_jfnk_v8(x,invalid,nullptr);
         EXPECT_TRUE(!report.converged);
+    });
+    run_case("coupled_jfnk_block_scales_accumulate_global_maximum", [] {
+        std::vector<double> forward(6, 1.0);
+        accumulate_coupled_jfnk_block_scale(forward, 0, 0.5);
+        accumulate_coupled_jfnk_block_scale(forward, 0, 12.0);
+        accumulate_coupled_jfnk_block_scale(forward, 1, -8.0);
+        accumulate_coupled_jfnk_block_scale(forward, 2, 0.25);
+        accumulate_coupled_jfnk_block_scale(forward, 2, -3.0);
+        EXPECT_NEAR(forward[0], 12.0, 0.0);
+        EXPECT_NEAR(forward[1], 8.0, 0.0);
+        EXPECT_NEAR(forward[2], 3.0, 0.0);
+        EXPECT_NEAR(forward[3], 1.0, 0.0);
+        std::vector<double> reverse(6, 1.0);
+        accumulate_coupled_jfnk_block_scale(reverse, 0, 12.0);
+        accumulate_coupled_jfnk_block_scale(reverse, 0, 0.5);
+        accumulate_coupled_jfnk_block_scale(reverse, 1, -8.0);
+        accumulate_coupled_jfnk_block_scale(reverse, 2, -3.0);
+        accumulate_coupled_jfnk_block_scale(reverse, 2, 0.25);
+        EXPECT_TRUE(forward == reverse);
+        EXPECT_THROW(accumulate_coupled_jfnk_block_scale(forward, 6, 1.0),
+                     std::invalid_argument);
+        EXPECT_THROW(accumulate_coupled_jfnk_block_scale(
+                         forward, 0, std::numeric_limits<double>::quiet_NaN()),
+                     std::invalid_argument);
     });
     return run_all();
 }
