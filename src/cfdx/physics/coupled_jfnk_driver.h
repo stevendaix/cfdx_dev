@@ -37,9 +37,9 @@
 namespace cfdx::physics {
 
 inline void accumulate_coupled_jfnk_block_scale(
-    std::array<double, 6>& scales, std::size_t block, double value)
+    std::vector<double>& scales, std::size_t block, double value)
 {
-    if (block >= scales.size() || !std::isfinite(value))
+    if (scales.size() != 6 || block >= scales.size() || !std::isfinite(value))
         throw std::invalid_argument("JFNK block scale: invalid block or value");
     scales[block] = std::max(scales[block], std::abs(value));
 }
