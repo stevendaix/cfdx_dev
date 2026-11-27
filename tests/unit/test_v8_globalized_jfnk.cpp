@@ -115,5 +115,48 @@ int main() {
                          forward, 0, std::numeric_limits<double>::quiet_NaN()),
                      std::invalid_argument);
     });
+    run_case("coupled_jfnk_velocity_bc_rejects_mixed_component_types", [] {
+        ScalarBoundaryConditions ux, uy, uz;
+        ux["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        uy["inlet"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        uz["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        EXPECT_THROW(
+            make_jfnk_velocity_boundary_conditions(ux, uy, uz),
+            std::invalid_argument);
+    });
+    run_case("coupled_jfnk_velocity_bc_rejects_unrepresentable_scalar_type", [] {
+        ScalarBoundaryConditions ux, uy, uz;
+        ux["wall"] = {ScalarBoundaryType::FIXED_GRADIENT, 0.0, 0.25};
+        uy["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        uz["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        EXPECT_THROW(
+            make_jfnk_velocity_boundary_conditions(ux, uy, uz),
+            std::invalid_argument);
+    });
+    run_case("coupled_jfnk_velocity_bc_preserves_vector_fixed_values", [] {
+        ScalarBoundaryConditions ux, uy, uz;
+        ux["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.25, 0.0};
+        uy["inlet"] = {ScalarBoundaryType::FIXED_VALUE, -0.5, 0.0};
+        uz["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.75, 0.0};
+        const auto velocity_bcs =
+            make_jfnk_velocity_boundary_conditions(ux, uy, uz);
+        const auto it = velocity_bcs.find("inlet");
+        EXPECT_TRUE(it != velocity_bcs.end());
+        EXPECT_TRUE(it->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE);
+        EXPECT_NEAR(it->second.value.x, 1.25, 0.0);
+        EXPECT_NEAR(it->second.value.y, -0.5, 0.0);
+        EXPECT_NEAR(it->second.value.z, 0.75, 0.0);
+    });
+    run_case("coupled_jfnk_velocity_bc_rejects_nonfinite_fixed_value", [] {
+        ScalarBoundaryConditions ux, uy, uz;
+        ux["inlet"] = {
+            ScalarBoundaryType::FIXED_VALUE,
+            std::numeric_limits<double>::quiet_NaN(), 0.0};
+        uy["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        uz["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        EXPECT_THROW(
+            make_jfnk_velocity_boundary_conditions(ux, uy, uz),
+            std::invalid_argument);
+    });
     return run_all();
 }
