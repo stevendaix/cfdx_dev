@@ -6,18 +6,10 @@
 // #1207. A future production integration requires exact operator equivalence,
 // pressure gauge handling, wall/SST traces, and a physical block preconditioner.
 //
-// V33: the monolithic residual now consumes the SAME OpenFOAM-style wall
-// operator (omega face values + Spalding nut + owner omega constraint) used
-// by the SIMPLE path when one is staged on the trial state. Without this the
-// JFNK operator differed from the SIMPLE operator at the wall: the SIMPLE
-// path replaces owner omega rows with the wall function target, while the
-// JFNK residual passed nullptr for both omega_face_values and
-// wall_production, so its omega rows were the raw PDE. A Newton step that
-// minimizes the wrong operator cannot certify the physical state.
-//
-// V33 also adds pseudo-transient continuation (V30) to the coupled carrier
-// momentum rows. This is a diagonal globalization aid only: the accepted
-// state is still required to satisfy the ORIGINAL steady FV residual.
+// The wall-operator and pseudo-transient arguments are retained for API
+// compatibility but are NOT consumed by this prototype. Passing either
+// feature is rejected below; silently ignoring them would solve a different
+// discrete problem from the production SIMPLE path.
 #include "cfdx/physics/coupled_jfnk_residual_v6n.h"
 #include "cfdx/physics/coupled_newton_krylov.h"
 #include "cfdx/physics/sst_production_coupling.h"
@@ -62,10 +54,23 @@ struct CoupledJfnkDriverResult {
 // the SIMPLE operator agree at the wall. nullptr leaves the legacy
 // wall-free behaviour unchanged.
 struct CoupledJfnkWallOperator {
+    // Reserved API fields. The current residual does not consume these.
     const ScalarBoundaryFaceValues* omega_face_values = nullptr;
     const SSTWallProductionV17* wall_production = nullptr;
     const std::vector<double>* momentum_face_mu = nullptr;
 };
+
+inline bool coupled_jfnk_has_unsupported_extensions(
+    const CoupledJfnkWallOperator& wall_op,
+    const SSTV30ContinuationState* ptc_state,
+    double ptc_max_diagonal_fraction)
+{
+    return wall_op.omega_face_values != nullptr ||
+        wall_op.wall_production != nullptr ||
+        wall_op.momentum_face_mu != nullptr ||
+        ptc_state != nullptr ||
+        ptc_max_diagonal_fraction != std::numeric_limits<double>::infinity();
+}
 
 inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
     const cfdx::core::Mesh& mesh,
@@ -98,6 +103,12 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
     const std::size_t nc = mesh.n_cells();
     if (nc == 0) {
         result.reason = "JFNK driver: empty mesh";
+        return result;
+    }
+    if (coupled_jfnk_has_unsupported_extensions(
+            wall_op, ptc_state, ptc_max_diagonal_fraction)) {
+        result.reason =
+            "JFNK prototype does not implement wall operators or pseudo-transient continuation";
         return result;
     }
     const std::size_t n = 6 * nc;
