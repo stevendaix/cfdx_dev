@@ -92,28 +92,19 @@ int main() {
         const auto report=globalized_jfnk_v8(x,invalid,nullptr);
         EXPECT_TRUE(!report.converged);
     });
-    run_case("coupled_jfnk_block_scales_accumulate_global_maximum", [] {
-        std::vector<double> forward(6, 1.0);
-        accumulate_coupled_jfnk_block_scale(forward, 0, 0.5);
-        accumulate_coupled_jfnk_block_scale(forward, 0, 12.0);
-        accumulate_coupled_jfnk_block_scale(forward, 1, -8.0);
-        accumulate_coupled_jfnk_block_scale(forward, 2, 0.25);
-        accumulate_coupled_jfnk_block_scale(forward, 2, -3.0);
-        EXPECT_NEAR(forward[0], 12.0, 0.0);
-        EXPECT_NEAR(forward[1], 8.0, 0.0);
-        EXPECT_NEAR(forward[2], 3.0, 0.0);
-        EXPECT_NEAR(forward[3], 1.0, 0.0);
-        std::vector<double> reverse(6, 1.0);
-        accumulate_coupled_jfnk_block_scale(reverse, 0, 12.0);
-        accumulate_coupled_jfnk_block_scale(reverse, 0, 0.5);
-        accumulate_coupled_jfnk_block_scale(reverse, 1, -8.0);
-        accumulate_coupled_jfnk_block_scale(reverse, 2, -3.0);
-        accumulate_coupled_jfnk_block_scale(reverse, 2, 0.25);
-        EXPECT_TRUE(forward == reverse);
-        EXPECT_THROW(accumulate_coupled_jfnk_block_scale(forward, 6, 1.0),
+    run_case("coupled_jfnk_uses_equation_specific_fixed_residual_scales", [] {
+        PhysicalResidualV51 initial;
+        initial.signed_raw.assign(12, 0.0);
+        initial.normalized.assign(12, 0.0);
+        initial.normalization_scales = {
+            2.0, 3.0, 2.5, 4.0, 3.5, 4.5,
+            5.0, 6.0, 5.5, 7.0, 6.5, 7.5};
+        const auto scales = coupled_jfnk_fixed_scales(initial, 2);
+        EXPECT_TRUE(scales == initial.normalization_scales);
+        EXPECT_THROW(coupled_jfnk_fixed_scales(initial, 3),
                      std::invalid_argument);
-        EXPECT_THROW(accumulate_coupled_jfnk_block_scale(
-                         forward, 0, std::numeric_limits<double>::quiet_NaN()),
+        initial.normalization_scales[4] = 0.0;
+        EXPECT_THROW(coupled_jfnk_fixed_scales(initial, 2),
                      std::invalid_argument);
     });
     run_case("coupled_jfnk_requires_pressure_reference", [] {
@@ -142,20 +133,6 @@ int main() {
         EXPECT_TRUE(coupled_jfnk_has_unsupported_extensions(
             no_wall_operator, nullptr,
             std::numeric_limits<double>::quiet_NaN()));
-    });
-    run_case("coupled_jfnk_expands_block_scales_to_state_dimension", [] {
-        const std::vector<double> block_scales{2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
-        const auto scales = expand_coupled_jfnk_block_scales(block_scales, 3);
-        EXPECT_TRUE(scales.size() == 18);
-        for (std::size_t block = 0; block < 6; ++block)
-            for (std::size_t cell = 0; cell < 3; ++cell)
-                EXPECT_NEAR(scales[block * 3 + cell], block_scales[block], 0.0);
-        EXPECT_THROW(expand_coupled_jfnk_block_scales(block_scales, 0),
-                     std::invalid_argument);
-        auto invalid = block_scales;
-        invalid[4] = std::numeric_limits<double>::infinity();
-        EXPECT_THROW(expand_coupled_jfnk_block_scales(invalid, 3),
-                     std::invalid_argument);
     });
     run_case("coupled_jfnk_velocity_bc_rejects_mixed_component_types", [] {
         ScalarBoundaryConditions ux, uy, uz;
