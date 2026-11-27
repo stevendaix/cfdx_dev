@@ -36,6 +36,23 @@ inline void accumulate_coupled_jfnk_block_scale(
     scales[block] = std::max(scales[block], std::abs(value));
 }
 
+inline std::vector<double> expand_coupled_jfnk_block_scales(
+    const std::vector<double>& block_scales, std::size_t cell_count)
+{
+    if (block_scales.size() != 6 || cell_count == 0 ||
+        cell_count > std::numeric_limits<std::size_t>::max() / 6)
+        throw std::invalid_argument("JFNK block scales: invalid block count or cell count");
+    for (double scale : block_scales)
+        if (!(scale > 0.0) || !std::isfinite(scale))
+            throw std::invalid_argument("JFNK block scales: nonpositive or nonfinite scale");
+    std::vector<double> scales(6 * cell_count);
+    for (std::size_t block = 0; block < 6; ++block)
+        std::fill(scales.begin() + static_cast<std::ptrdiff_t>(block * cell_count),
+                  scales.begin() + static_cast<std::ptrdiff_t>((block + 1) * cell_count),
+                  block_scales[block]);
+    return scales;
+}
+
 struct CoupledJfnkDriverResult {
     bool accepted = false;
     bool production_committed = false;
@@ -153,18 +170,18 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
         return U;
     };
 
-    // Fixed physical scales: max magnitude per block, floored at 1.0.
-    std::vector<double> scales(6, 1.0);
-    {
-        for (std::size_t i = 0; i < nc; ++i) {
-            accumulate_coupled_jfnk_block_scale(scales, 0, Ux(i));
-            accumulate_coupled_jfnk_block_scale(scales, 1, Uy(i));
-            accumulate_coupled_jfnk_block_scale(scales, 2, Uz(i));
-            accumulate_coupled_jfnk_block_scale(scales, 3, p(i));
-            accumulate_coupled_jfnk_block_scale(scales, 4, k(i));
-            accumulate_coupled_jfnk_block_scale(scales, 5, omega(i));
-        }
+    // Build one scale per equation unknown: the Newton kernel requires a
+    // 6N vector, while the initial reduction is shared by each field block.
+    std::vector<double> block_scales(6, 1.0);
+    for (std::size_t i = 0; i < nc; ++i) {
+        accumulate_coupled_jfnk_block_scale(block_scales, 0, Ux(i));
+        accumulate_coupled_jfnk_block_scale(block_scales, 1, Uy(i));
+        accumulate_coupled_jfnk_block_scale(block_scales, 2, Uz(i));
+        accumulate_coupled_jfnk_block_scale(block_scales, 3, p(i));
+        accumulate_coupled_jfnk_block_scale(block_scales, 4, k(i));
+        accumulate_coupled_jfnk_block_scale(block_scales, 5, omega(i));
     }
+    const auto scales = expand_coupled_jfnk_block_scales(block_scales, nc);
 
     // This experimental driver is deliberately unpreconditioned.
     // Wrapping identity operators in SixFieldBlockPreconditionerV8 does not
