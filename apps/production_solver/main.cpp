@@ -4,6 +4,7 @@
 #include "cfdx/physics/coupled_matrix_capture_v16.h"
 #include "cfdx/physics/coupled_fingerprint_v40.h"
 #include "cfdx/physics/production_boundary_contract.h"
+#include "cfdx/core/boundary/profile_csv.h"
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
@@ -864,33 +865,7 @@ Options parse(int argc, char** argv)
 // ---------------------------------------------------------------------------
 static std::shared_ptr<const cfdx::core::ValueProvider>
 read_inlet_profile(const std::string& path, int axis) {
-    std::ifstream in(path);
-    if (!in.is_open())
-        throw std::invalid_argument("inlet profile: cannot open CSV '" + path + "'");
-    std::vector<double> coords, values;
-    std::string line;
-    bool header = true;
-    while (std::getline(in, line)) {
-        if (line.empty()) continue;
-        std::istringstream iss(line);
-        double a = 0.0, b = 0.0;
-        std::string ta, tb;
-        if (!(std::getline(iss, ta, ',') && std::getline(iss, tb, ','))) continue;
-        try {
-            a = std::stod(ta);
-            b = std::stod(tb);
-            header = false;
-        } catch (...) {
-            if (header) { header = false; continue; }  // skip header line
-            continue;
-        }
-        coords.push_back(a);
-        values.push_back(b);
-    }
-    if (coords.size() < 2)
-        throw std::invalid_argument("inlet profile: CSV '" + path + "' needs at least two rows");
-    return std::make_shared<const cfdx::core::TableOverSpaceValueProvider>(
-        std::move(coords), std::move(values), axis);
+    return cfdx::core::read_spatial_profile_csv(path, axis);
 }
 
 int main(int argc, char** argv)
