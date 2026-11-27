@@ -25,7 +25,7 @@ void close(double actual, double expected, const char* message) {
         throw std::runtime_error(message);
 }
 
-cfdx::core::Vec3 evaluate_production_lsq(const CellVector& values) {
+Gradient evaluate_production_lsq(const CellVector& values) {
     using cfdx::core::Vec3;
     const Vec3 centre{0.0, 0.0, 0.0};
     const std::vector<Vec3> neighbours{
@@ -42,7 +42,7 @@ cfdx::core::Vec3 evaluate_production_lsq(const CellVector& values) {
             "production LSQ stencil must remain full rank");
     require(quality.finite && std::isfinite(quality.condition_estimate),
             "production LSQ stencil quality must be finite");
-    return gradient;
+    return {gradient.x, gradient.y, gradient.z};
 }
 
 Gradient apply_reconstruction(
