@@ -3,6 +3,7 @@
 #include "cfdx/core/boundary/flow_boundary_conditions.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
@@ -28,6 +29,24 @@ int main() {
     });
     run_case("table_provider_rejects_bad_grid", [] {
         EXPECT_THROW(TableValueProvider({0.0, 0.0}, {1.0, 2.0}), std::invalid_argument);
+    });
+    run_case("spatial_table_provider_rejects_nonfinite_data_and_coordinates", [] {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        EXPECT_THROW(TableOverSpaceValueProvider({nan}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({inf}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({0.0}, {nan}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({0.0}, {inf}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({0.0, 1.0}, {0.0, nan}),
+                     std::invalid_argument);
+        TableOverSpaceValueProvider provider({0.0, 1.0}, {0.0, 2.0});
+        ValueContext context;
+        context.y = nan;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.y = inf;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.y = 0.5;
+        EXPECT_TRUE(std::abs(provider.evaluate(context) - 1.0) < 1e-14);
     });
     run_case("device_lowering_is_value_based", [] {
         ValueProviderSpec spec = SpatialLinearProviderSpec{1.0, 2.0, 3.0, 4.0, DIMENSIONLESS};
