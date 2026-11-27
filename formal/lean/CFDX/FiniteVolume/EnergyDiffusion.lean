@@ -135,13 +135,18 @@ theorem energyDiffusion_bilinear_identity
           reconstruct G x i * metricApply M (reconstruct G y) i := by
   classical
   unfold energyDiffusionOperator metricApply reconstruct
-  simp only [Finset.mul_sum]
+  -- Expand both products of finite sums to the same four-index sum.
+  simp only [Finset.mul_sum, Finset.sum_mul]
+  -- The only difference is the order of the outer cell/gradient sums.
   rw [Finset.sum_comm]
   apply Finset.sum_congr rfl
   intro i hi
-  rw [← Finset.sum_mul]
   apply Finset.sum_congr rfl
   intro c hc
+  apply Finset.sum_congr rfl
+  intro j hj
+  apply Finset.sum_congr rfl
+  intro d hd
   ring
 
 /-- Symmetry of the metric pairing follows from symmetry of its coefficient
@@ -154,23 +159,19 @@ theorem metric_pairing_symmetric
   unfold metricApply
   calc
     (∑ i : Grad, x i * ∑ j : Grad, M.coeff i j * y j)
-        = ∑ i : Grad, ∑ j : Grad, y j * (M.coeff j i * x i) := by
-          apply Finset.sum_congr rfl
-          intro i hi
-          rw [Finset.mul_sum]
+        = ∑ i : Grad, ∑ j : Grad, x i * (M.coeff i j * y j) := by
+          simp only [Finset.mul_sum]
+    _ = ∑ j : Grad, ∑ i : Grad, y j * (M.coeff j i * x i) := by
+          rw [Finset.sum_comm]
           apply Finset.sum_congr rfl
           intro j hj
+          apply Finset.sum_congr rfl
+          intro i hi
           rw [M.symmetric i j]
           ring
     _ = ∑ i : Grad, y i * ∑ j : Grad, M.coeff i j * x j := by
+          simp only [Finset.mul_sum]
           rw [Finset.sum_comm]
-          apply Finset.sum_congr rfl
-          intro i hi
-          rw [Finset.sum_mul]
-          apply Finset.sum_congr rfl
-          intro j hj
-          rw [M.symmetric j i]
-          ring
 
 /-- The induced cell-space bilinear form is symmetric. This is the
 operator-level symmetry contract for the fixed reconstruction model. -/
