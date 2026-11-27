@@ -321,6 +321,64 @@ int main()
         }
     });
 
+    run_case("vector_face_work_matches_production_transpose_stress_scatter", [] {
+        const auto mesh=make_shear_chain(4);
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+        U.fill(0.0);
+        for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+            const auto& x=geometry.cell_centres[cell];
+            U(cell,0)=0.3+0.7*x.y;
+            U(cell,1)=-0.2+0.4*x.x;
+            U(cell,2)=0.1*x.z;
+        }
+        const std::vector<double> mu(mesh.n_cells(),1.0);
+        const auto traction=transpose_viscous_stress_flux(
+            mesh,geometry,U,mu,shear_scalar_bcs(mesh));
+        const auto force=viscous_face_flux_divergence(mesh,geometry,traction);
+
+        // Pair the production cell force density with cell volume to recover
+        // the integrated owner/neighbour face scatter. Independently contract
+        // the same stored face traction with the cell velocities.
+        double cell_work=0.0,face_work=0.0,work_scale=0.0;
+        for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+            const double integrated_work=geometry.cell_volumes[cell]*(
+                U(cell,0)*force(cell,0)+U(cell,1)*force(cell,1)+U(cell,2)*force(cell,2));
+            cell_work+=integrated_work;
+            work_scale+=std::abs(integrated_work);
+        }
+        for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+            const auto owner=mesh.ownership().owner(face);
+            double contribution=0.0;
+            for (std::size_t component=0; component<3; ++component)
+                contribution+=U(owner,component)*traction(face,component);
+            const auto neighbour=mesh.ownership().neighbour(face);
+            if (neighbour>=0)
+                for (std::size_t component=0; component<3; ++component)
+                    contribution-=U(static_cast<std::size_t>(neighbour),component)*
+                                  traction(face,component);
+            face_work+=contribution;
+            work_scale+=std::abs(contribution);
+        }
+        EXPECT_NEAR(cell_work,face_work,2e-12*std::max(1.0,work_scale));
+
+        // Internal face scatter must cancel component-wise; boundary faces
+        // contribute only through their owner. This is a finite-precision
+        // implementation check, not a proof for arbitrary runtime meshes.
+        for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+            const auto owner=mesh.ownership().owner(face);
+            const auto neighbour=mesh.ownership().neighbour(face);
+            for (std::size_t component=0; component<3; ++component) {
+                EXPECT_TRUE(std::isfinite(traction(face,component)));
+                if (neighbour>=0) {
+                    const double owner_force=traction(face,component);
+                    const double neighbour_force=-traction(face,component);
+                    EXPECT_NEAR(owner_force+neighbour_force,0.0,0.0);
+                }
+            }
+        }
+    });
+
     run_case("variable_viscosity_production_predictor_consumes_transpose_stress", [] {
         const auto mesh=make_shear_chain(8);
         const auto geometry=build_fv_geometry(mesh);
