@@ -92,6 +92,19 @@ int main() {
         const auto report=globalized_jfnk_v8(x,invalid,nullptr);
         EXPECT_TRUE(!report.converged);
     });
+    run_case("coupled_jfnk_does_not_commit_after_one_nonconverged_step", [] {
+        CoupledNewtonKrylovResult step;
+        step.accepted = true;
+        step.physical_merit_after = 2e-3;
+        EXPECT_TRUE(!coupled_jfnk_nonlinear_converged(step, 1e-8));
+        step.physical_merit_after = 5e-9;
+        EXPECT_TRUE(coupled_jfnk_nonlinear_converged(step, 1e-8));
+        step.accepted = false;
+        EXPECT_TRUE(!coupled_jfnk_nonlinear_converged(step, 1e-8));
+        step.accepted = true;
+        step.physical_merit_after = std::numeric_limits<double>::quiet_NaN();
+        EXPECT_TRUE(!coupled_jfnk_nonlinear_converged(step, 1e-8));
+    });
     run_case("coupled_jfnk_uses_equation_specific_fixed_residual_scales", [] {
         PhysicalResidualV51 initial;
         initial.signed_raw.assign(12, 0.0);
