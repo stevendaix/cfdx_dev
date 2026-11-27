@@ -84,6 +84,19 @@ inline VelocityBoundaryConditions make_jfnk_velocity_boundary_conditions(
     return velocity_bcs;
 }
 
+// A face-valued pressure trace can depend on the trial SST state (for
+// modified pressure p*=p+2 rho k/3). The current JFNK callback does not
+// rebuild that trace for each trial vector, so using one here would freeze a
+// state-dependent boundary term and produce an inconsistent matrix-free Jv.
+inline bool jfnk_has_face_valued_pressure_snapshot(
+    const ScalarBoundaryConditions& pressure_bcs)
+{
+    for (const auto& [_, bc] : pressure_bcs)
+        if (bc.face_values != nullptr)
+            return true;
+    return false;
+}
+
 struct CoupledJfnkResidualV6N {
     static PhysicalResidualV51 evaluate(
         const ::cfdx::core::Mesh& mesh,
@@ -118,6 +131,9 @@ struct CoupledJfnkResidualV6N {
         };
         check_field(Ux, "Ux"); check_field(Uy, "Uy"); check_field(Uz, "Uz");
         check_field(p, "p"); check_field(k, "k"); check_field(omega, "omega");
+        if (jfnk_has_face_valued_pressure_snapshot(pbc))
+            throw std::invalid_argument(
+                "JFNK residual: state-dependent face-valued pressure traces are not implemented");
         if (!(density > 0.0) || !std::isfinite(density))
             throw std::invalid_argument("JFNK residual: invalid density");
         if (!(kinematic_viscosity > 0.0) || !std::isfinite(kinematic_viscosity))
