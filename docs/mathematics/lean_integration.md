@@ -350,8 +350,8 @@ make a formal or numerical check pass.
 ## Discrete energy transfer: conservation is not stability
 
 The module `CFDX.FiniteVolume.EnergyTransfer` is included in the root
-`CFDX.lean` build. It defines a two-cell discrete velocity and three
-equal-and-opposite force examples. The kernel-checked results establish:
+`CFDX.lean` build. It defines a two-cell discrete velocity, two equal-and-opposite force
+patterns, and three velocity-force pairings. The kernel-checked results establish:
 
 - a conservative internal force can have positive discrete power (+2);
 - another conservative force can have negative discrete power (-2);
