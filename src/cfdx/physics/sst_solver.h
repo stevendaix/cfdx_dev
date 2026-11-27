@@ -889,9 +889,13 @@ inline TurbulenceTransportResult solve_sst_transport(
         if (inv_dt > 0.0) {
             for (std::size_t i = 0; i < n; ++i) {
                 sk(i) += inv_dt * oldk(i);
-                spk(i) += inv_dt;
+                // Scalar FV sources use S = Su + Sp*phi with the implicit
+                // coefficient assembled as -Sp on the matrix diagonal.
+                // The transient term (phi - phi_old)/dt therefore requires
+                // Sp = -1/dt, not +1/dt.
+                spk(i) -= inv_dt;
                 sw(i) += inv_dt * oldw(i);
-                spw(i) += inv_dt;
+                spw(i) -= inv_dt;
             }
         }
 
