@@ -68,8 +68,7 @@ theorem mesh_volume_weighted_work_eq_integrated_face_work
     meshVolumeWeightedVectorWork topology velocity traction volume =
       meshCellVectorWork topology velocity traction := by
   classical
-  unfold meshVolumeWeightedVectorWork meshCellVectorForceDensity
-    meshCellVectorForceDensity cellVectorFaceForceDensity
+  unfold meshVolumeWeightedVectorWork cellVectorFaceForceDensity
   unfold meshCellVectorWork cellVectorFaceForce
   apply Finset.sum_congr rfl
   intro cell hcell
