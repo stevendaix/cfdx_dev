@@ -118,6 +118,51 @@ inline std::vector<double> coupled_newton_directional_jvp(
     return jv;
 }
 
+// Dimensionally scaled central difference. The scalar perturbation is
+// selected in the dimensionless variable space, not from a global maximum
+// across velocity, pressure and turbulence fields with different units.
+inline std::vector<double> coupled_newton_directional_jvp_scaled(
+    const CoupledResidual& residual, const std::vector<double>& state,
+    const std::vector<double>& direction,
+    const std::vector<double>& state_scales, double step = 1e-6) {
+    if (!residual || state.empty() || state.size() != direction.size() ||
+        state.size() != state_scales.size() ||
+        !std::isfinite(step) || step <= 0.0)
+        throw std::invalid_argument("coupled JFNK: invalid scaled residual or direction");
+    double max_scaled_state = 0.0;
+    double max_scaled_direction = 0.0;
+    for (std::size_t i = 0; i < state.size(); ++i) {
+        if (!std::isfinite(state[i]) || !std::isfinite(direction[i]) ||
+            !(state_scales[i] > 0.0) || !std::isfinite(state_scales[i]))
+            throw std::invalid_argument("coupled JFNK: invalid variable scale or state");
+        max_scaled_state = std::max(
+            max_scaled_state, std::abs(state[i]) / state_scales[i]);
+        max_scaled_direction = std::max(
+            max_scaled_direction, std::abs(direction[i]) / state_scales[i]);
+    }
+    if (!(max_scaled_direction > 0.0) ||
+        !std::isfinite(max_scaled_state) ||
+        !std::isfinite(max_scaled_direction))
+        throw std::invalid_argument("coupled JFNK: zero or invalid scaled direction");
+    const double h = step * (1.0 + max_scaled_state) / max_scaled_direction;
+    if (!(h > 0.0) || !std::isfinite(h))
+        throw std::overflow_error("coupled JFNK: scaled finite-difference step overflow");
+    auto plus = state, minus = state;
+    for (std::size_t i = 0; i < state.size(); ++i) {
+        plus[i] += h * direction[i];
+        minus[i] -= h * direction[i];
+    }
+    const auto rp = residual(plus);
+    const auto rm = residual(minus);
+    if (rp.size() != state.size() || rm.size() != state.size())
+        throw std::invalid_argument("coupled JFNK: residual dimension changed");
+    std::vector<double> jv(state.size());
+    for (std::size_t i = 0; i < state.size(); ++i)
+        jv[i] = (rp[i] - rm[i]) / (2.0 * h);
+    (void)coupled_newton_norm2(jv);
+    return jv;
+}
+
 // A single GMRES (Arnoldi + Givens) linearization at a fixed physical state.
 // The independently evaluated true Jv residual, NOT the Hessenberg estimate,
 // is returned. Krylov budgets are explicit and failures cannot be promoted.
@@ -195,11 +240,16 @@ inline CoupledNewtonKrylovResult coupled_newton_krylov_step(
     const std::vector<double>& fixed_physical_scales,
     const CoupledNewtonKrylovControls& controls = {},
     const CoupledStateAdmissible& admissible = {},
-    const CoupledRightPreconditioner& right_preconditioner = {}) {
+    const CoupledRightPreconditioner& right_preconditioner = {},
+    const std::vector<double>& state_scales = {}) {
     validate_coupled_newton_controls(controls);
     if (!full_residual || accepted_state.empty() ||
-        accepted_state.size()!=fixed_physical_scales.size())
+        accepted_state.size()!=fixed_physical_scales.size() ||
+        (!state_scales.empty() && state_scales.size() != accepted_state.size()))
         throw std::invalid_argument("coupled JFNK: missing complete coupled operator");
+    for (double scale : state_scales)
+        if (!(scale > 0.0) || !std::isfinite(scale))
+            throw std::invalid_argument("coupled JFNK: invalid variable scale");
     CoupledNewtonKrylovResult result;
     result.state=accepted_state; // transactional: never mutate caller's last accepted state
     const auto eval=[&](const std::vector<double>& x) {
@@ -232,8 +282,14 @@ inline CoupledNewtonKrylovResult coupled_newton_krylov_step(
         return value;
     };
     const auto apply=[&](const std::vector<double>& y) {
-        return coupled_newton_directional_jvp(eval,accepted_state,recover(y),
-                                              controls.finite_difference_step);
+        const auto physical_direction = recover(y);
+        if (!state_scales.empty())
+            return coupled_newton_directional_jvp_scaled(
+                eval, accepted_state, physical_direction, state_scales,
+                controls.finite_difference_step);
+        return coupled_newton_directional_jvp(
+            eval, accepted_state, physical_direction,
+            controls.finite_difference_step);
     };
     std::vector<double> preconditioned_direction;
     if (!coupled_newton_gmres(apply,rhs,controls.krylov_dimension,
