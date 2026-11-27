@@ -1,4 +1,5 @@
 #include "cfdx/core/boundary/value_provider.h"
+#include "cfdx/core/boundary/profile_csv.h"
 #include "cfdx/core/boundary/legacy_patch_field_adapter.h"
 #include "cfdx/core/boundary/flow_boundary_conditions.h"
 #include "common/test_harness.h"
@@ -57,23 +58,23 @@ int main() {
             out << text;
             out.close();
         };
-        write("y,u\\n0.0,0.0\\n1.0,2.0\\n");
+        write("y,u\n0.0,0.0\n1.0,2.0\n");
         const auto provider = read_spatial_profile_csv(path, 1);
         ValueContext context;
         context.y = 0.5;
         EXPECT_TRUE(std::abs(provider->evaluate(context) - 1.0) < 1e-14);
 
-        write("0.0,0.0\\n1.0garbage,2.0\\n");
+        write("0.0,0.0\n1.0garbage,2.0\n");
         EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
-        write("0.0x,0.0\\n1.0,2.0\\n");
+        write("0.0x,0.0\n1.0,2.0\n");
         EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
-        write("0.0,0.0,extra\\n1.0,2.0\\n");
+        write("0.0,0.0,extra\n1.0,2.0\n");
         EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
-        write("0.0,0.0\\nnan,2.0\\n");
+        write("0.0,0.0\nnan,2.0\n");
         EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
-        write("0.0,0.0\\n1.0,inf\\n");
+        write("0.0,0.0\n1.0,inf\n");
         EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
-        write("y,u\\n0.0,1.0\\n");
+        write("y,u\n0.0,1.0\n");
         EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
         std::remove(path.c_str());
     });
