@@ -136,15 +136,33 @@ struct CoupledJfnkResidualV6N {
         for (const auto& name : patch_names) {
             VelocityBoundaryCondition vbc;
             vbc.type = VelocityBoundaryCondition::Type::ZERO_GRADIENT;
-            vbc.value = {0.0, 0.0, 0.0};
-            auto load = [&](const ScalarBoundaryConditions& bcs, std::size_t comp) {
-                auto it = bcs.find(name);
-                if (it == bcs.end()) return;
-                if (it->second.type == ScalarBoundaryType::FIXED_VALUE)
-                    vbc.type = VelocityBoundaryCondition::Type::FIXED_VALUE;
-                vbc.value[comp] = it->second.value;
-            };
-            load(ubc_x, 0); load(ubc_y, 1); load(ubc_z, 2);
+            vbc.value = ::cfdx::core::Vec3{0.0, 0.0, 0.0};
+            const std::array<const ScalarBoundaryConditions*, 3> component_bcs{{
+                &ubc_x, &ubc_y, &ubc_z}};
+            std::array<bool, 3> has_fixed_value{};
+            std::array<double, 3> prescribed_values{};
+            for (std::size_t comp = 0; comp < component_bcs.size(); ++comp) {
+                const auto it = component_bcs[comp]->find(name);
+                if (it == component_bcs[comp]->end())
+                    continue;
+                has_fixed_value[comp] =
+                    it->second.type == ScalarBoundaryType::FIXED_VALUE;
+                prescribed_values[comp] = it->second.value;
+            }
+            // VelocityBoundaryCondition stores one type for the whole vector.
+            // Do not collapse component-wise mixed Dirichlet/Neumann data into
+            // a false all-components FIXED_VALUE condition used by mass-flux
+            // reconstruction. The current vector BC API cannot represent it.
+            if (has_fixed_value[0] != has_fixed_value[1] ||
+                has_fixed_value[1] != has_fixed_value[2]) {
+                throw std::invalid_argument(
+                    "JFNK residual: mixed component velocity BCs on patch '" +
+                    name + "' are not representable by VelocityBoundaryCondition");
+            }
+            if (has_fixed_value[0])
+                vbc.type = VelocityBoundaryCondition::Type::FIXED_VALUE;
+            vbc.value = ::cfdx::core::Vec3{
+                prescribed_values[0], prescribed_values[1], prescribed_values[2]};
             velocity_bcs[name] = vbc;
         }
 
@@ -187,14 +205,13 @@ struct CoupledJfnkResidualV6N {
         // assemble the momentum scalar equation.
         const auto momentum_equation = [&](
             const Field<double, Location::FACE>& flux, std::size_t d) -> ScalarEquation {
-            const auto dynamic_bcs = mixed_velocity_faces(flux);
             return assemble_momentum_component(
                 mesh, geometry, flux, grad_p, forces[d], mu,
                 *bcs[d], d, /*bounded=*/false,
                 ConvectionScheme::UPWIND, &comps[d], nullptr,
                 density * kinematic_viscosity,
                 /*high_order_fraction=*/1.0,
-                dynamic_bcs ? &(*dynamic_bcs)[d] : nullptr,
+                /*face_conditions=*/nullptr,
                 /*wall_face_mu_override=*/nullptr);
         };
 
