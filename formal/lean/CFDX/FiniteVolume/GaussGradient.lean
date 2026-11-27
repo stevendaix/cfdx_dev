@@ -194,4 +194,79 @@ theorem affine_gauss_numerator_exact
           rw [← Finset.mul_sum, area_closure, first_moment]
     _ = volume c * g d := by ring
 
+
+/-! ## A concrete tetrahedral geometric moment identity
+
+The conditional affine-exactness theorem above is useful only when its
+geometric first-moment hypothesis is established. This section verifies that
+identity exactly for the reference tetrahedron with vertices
+(0,0,0), (1,0,0), (0,1,0), and (0,0,1). Face area vectors are outward
+oriented and face centres are triangle centroids. This is a mathematical
+reference-cell result; it is not yet a conformance proof for CFDX's runtime
+geometry cache on arbitrary polyhedra.
+-/
+
+/-- Centroid of each face of the unit reference tetrahedron. -/
+def referenceTetraFaceCentre (f : Fin 4) : Vec3 :=
+  fun d =>
+    if f.val = 0 then 1 / 3
+    else if f.val = 1 then (if d.val = 0 then 0 else 1 / 3)
+    else if f.val = 2 then (if d.val = 1 then 0 else 1 / 3)
+    else (if d.val = 2 then 0 else 1 / 3)
+
+/-- Outward-oriented area vector of each reference tetrahedron face. -/
+def referenceTetraOrientedArea (f : Fin 4) : Vec3 :=
+  fun d =>
+    if f.val = 0 then 1 / 2
+    else if f.val = 1 then (if d.val = 0 then -(1 / 2) else 0)
+    else if f.val = 2 then (if d.val = 1 then -(1 / 2) else 0)
+    else (if d.val = 2 then -(1 / 2) else 0)
+
+/-- The reference tetrahedron has volume 1/6. -/
+def referenceTetraVolume : ℝ := 1 / 6
+
+/-- Exact closure of the four outward face-area vectors. -/
+theorem reference_tetra_area_closure (d : Fin 3) :
+    (∑ f : Fin 4, referenceTetraOrientedArea f d) = 0 := by
+  fin_cases d <;>
+    norm_num [referenceTetraOrientedArea, Fin.sum_univ_succ]
+
+/-- The first geometric moment tensor of the reference tetrahedron is
+exactly V times the identity: sum_f C_f,i * S_f,j = V δ_ij. -/
+theorem reference_tetra_first_moment (i j : Fin 3) :
+    (∑ f : Fin 4,
+      referenceTetraFaceCentre f i * referenceTetraOrientedArea f j) =
+      if i = j then referenceTetraVolume else 0 := by
+  fin_cases i <;> fin_cases j <;>
+    norm_num [referenceTetraFaceCentre, referenceTetraOrientedArea,
+      referenceTetraVolume, Fin.sum_univ_succ]
+
+
+/-- The generic conditional affine Gauss theorem instantiated on the
+reference tetrahedron: its exact face-centre values produce the exact
+constant gradient for every affine field. -/
+theorem reference_tetra_affine_gauss_numerator_exact
+    (a : ℝ) (g : Vec3) (d : Fin 3) :
+    affineGaussNumeratorComponent
+      referenceTetraFaceCentre
+      (fun _ f => referenceTetraOrientedArea f)
+      a g () d =
+      referenceTetraVolume * g d := by
+  have hmoment :
+      (∑ f : Fin 4,
+        dot3 g (referenceTetraFaceCentre f) *
+          referenceTetraOrientedArea f d) =
+        referenceTetraVolume * g d := by
+    fin_cases d <;>
+      norm_num [dot3, referenceTetraFaceCentre,
+        referenceTetraOrientedArea, referenceTetraVolume,
+        Fin.sum_univ_succ] <;> ring
+  exact affine_gauss_numerator_exact
+    (faceCentre := referenceTetraFaceCentre)
+    (orientedArea := fun _ f => referenceTetraOrientedArea f)
+    (volume := fun _ => referenceTetraVolume)
+    a g () d
+    (reference_tetra_area_closure d)
+    hmoment
+
 end CFDX.FiniteVolume
