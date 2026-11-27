@@ -135,6 +135,20 @@ int main() {
             no_wall_operator, nullptr,
             std::numeric_limits<double>::quiet_NaN()));
     });
+    run_case("coupled_jfnk_expands_block_scales_to_state_dimension", [] {
+        const std::vector<double> block_scales{2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+        const auto scales = expand_coupled_jfnk_block_scales(block_scales, 3);
+        EXPECT_TRUE(scales.size() == 18);
+        for (std::size_t block = 0; block < 6; ++block)
+            for (std::size_t cell = 0; cell < 3; ++cell)
+                EXPECT_NEAR(scales[block * 3 + cell], block_scales[block], 0.0);
+        EXPECT_THROW(expand_coupled_jfnk_block_scales(block_scales, 0),
+                     std::invalid_argument);
+        auto invalid = block_scales;
+        invalid[4] = std::numeric_limits<double>::infinity();
+        EXPECT_THROW(expand_coupled_jfnk_block_scales(invalid, 3),
+                     std::invalid_argument);
+    });
     run_case("coupled_jfnk_velocity_bc_rejects_mixed_component_types", [] {
         ScalarBoundaryConditions ux, uy, uz;
         ux["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
