@@ -241,5 +241,86 @@ int main() {
         }
     });
 
+
+    run_case("csr_cell_face_storing_counts_match_topology", []() {
+        // Mirror of the Lean CsrTopology theorems:
+        //   internal_face_storing_count  : an internal face is stored by
+        //     exactly two cells, its owner and its neighbour;
+        //   boundary_face_storing_count  : a boundary face is stored by
+        //     exactly one cell, its owner.
+        // The mesh must be topologically valid before the counts are checked.
+        Mesh m;
+        m.points().resize(12);
+        const double p[12][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
+        for (std::size_t i = 0; i < 12; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        m.faces().push_face({0,6,9,3});       // left
+        m.faces().push_face({0,1,7,6});       // bottom 0
+        m.faces().push_face({3,9,10,4});      // top 0
+        m.faces().push_face({0,3,4,1});       // front 0
+        m.faces().push_face({6,7,10,9});      // back 0
+        m.faces().push_face({1,7,10,4});      // shared x=1
+        m.faces().push_face({2,5,11,8});      // right
+        m.faces().push_face({1,2,8,7});       // bottom 1
+        m.faces().push_face({4,10,11,5});     // top 1
+        m.faces().push_face({1,4,5,2});       // front 1
+        m.faces().push_face({7,8,11,10});     // back 1
+
+        m.ownership().resize(11);
+        for (std::size_t f = 0; f < 5; ++f) {
+            m.ownership().set_owner(f, 0);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        m.ownership().set_owner(5, 0);
+        m.ownership().set_neighbour(5, 1);
+        for (std::size_t f = 6; f < 11; ++f) {
+            m.ownership().set_owner(f, 1);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        m.cells().push_cell({0,1,2,3,4,5});
+        m.cells().push_cell({5,6,7,8,9,10});
+
+        BoundaryPatches bp;
+        Patch wall;
+        wall.name = "walls";
+        wall.type = PatchType::WALL;
+        wall.face_ids = {0,1,2,3,4,6,7,8,9,10};
+        bp.add_patch(wall);
+        m.set_boundary(bp);
+
+        const TopoValidation topo = m.topo_validate();
+        EXPECT_TRUE(topo.ok);
+
+        const auto* cell_faces = m.cells().faces_data();
+        const auto* cell_offsets = m.cells().offsets_data();
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            std::vector<CellIndex> storing;
+            for (std::size_t c = 0; c < m.n_cells(); ++c) {
+                for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                    if (cell_faces[k] == static_cast<FaceIndex>(f)) {
+                        storing.push_back(static_cast<CellIndex>(c));
+                        break;
+                    }
+                }
+            }
+            const bool internal = m.ownership().neighbour(f) >= 0;
+            if (internal) {
+                EXPECT_TRUE(storing.size() == 2);
+                EXPECT_TRUE(storing[0] != storing[1]);
+                const CellIndex owner = m.ownership().owner(f);
+                const CellIndex nb =
+                    static_cast<CellIndex>(m.ownership().neighbour(f));
+                EXPECT_TRUE((storing[0] == owner && storing[1] == nb) ||
+                            (storing[0] == nb && storing[1] == owner));
+            } else {
+                EXPECT_TRUE(storing.size() == 1);
+                EXPECT_TRUE(storing[0] == m.ownership().owner(f));
+            }
+        }
+    });
+
     return run_all();
 }

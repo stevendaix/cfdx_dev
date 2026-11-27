@@ -263,6 +263,68 @@ path is the interpolation loop in `compute_gradient_gauss`, followed by the
 cell-face CSR accumulation with owner-positive and neighbour-negative
 `face_Sf`, and division by the positive cell volume.
 
+## CSR cell-face storage invariants
+
+The Lean module `CFDX.Geometry.CsrTopology` formalizes the storage contract
+of the CSR cell-face structure on top of the owner/neighbour topology:
+
+- a cell never stores the same face twice (`CsrCellFaceStorage.nodup`);
+- every face is stored by its owner, and every internal face is also stored
+  by its neighbour (`owner_stores`, `neighbour_stores`);
+- no third cell ever stores a face (`only_owner_neighbour_stores`).
+
+Derived results: an internal face is stored by exactly two cells
+(`internal_face_storing_count`), a boundary face by exactly one
+(`boundary_face_storing_count`), and the CSR-stored signed incidence of an
+internal face cancels over all cells
+(`csr_internal_face_incidence_cancels`), which connects the storage
+contract directly to the conservation theorem. This is an abstract storage
+contract over finite types, not yet a proof that every runtime mesh imported
+by CFDX satisfies it; the C++ conformance tests on deterministic meshes
+remain the bridge.
+
+## Skew-tetrahedron generalization
+
+The geometric moment identities were so far checked only on the axis-aligned
+reference tetrahedron. The new module `CFDX.Geometry.SkewTetrahedron`
+repeats the verification on a genuinely skewed cell with vertices
+(0,0,0), (1,0,0), (0,2,0) and (1,1,1), whose edge directions `p1 - p0` and
+`p3 - p0` (respectively `p2 - p0` and `p3 - p0`) have nonzero dot
+products, kernel-checked by `skew_tetra_edges_p1_p3_not_orthogonal` and
+`skew_tetra_edges_p2_p3_not_orthogonal`. Lean proves exactly:
+
+- the edge-determinant volume relation `6 V = 2`, i.e. `V = 1/3`
+  (`skew_tetra_volume_edge_determinant`);
+- exact closure of the four outward-oriented face-area vectors
+  (`skew_tetra_area_closure`);
+- the nine first-moment components
+  `sum_f C_{f,i} S_{f,j} = V delta_{ij}`
+  (`skew_tetra_first_moment`);
+- exact affine Gauss numerators for exact face-centre values
+  (`skew_tetra_affine_gauss_numerator_exact`).
+
+The C++ counterpart in `tests/unit/test_oriented_numerics.cpp` builds the
+same tetrahedron in the production `Mesh`/`GeometryCache` structures and
+checks the volume, the four oriented face-area vectors, oriented surface
+closure, and all nine first-moment components through the runtime cache.
+
+Together with the two-point interpolation counterexample, this isolates the
+source of the affine defect: skewness breaks the clamped two-point face
+interpolation, while the Gauss operator itself remains affine-exact on the
+skewed cell whenever the supplied face values are the exact affine values at
+the face centres. This remains a reference-cell result on one skewed simplex;
+arbitrary polyhedral cells and runtime CSR conformance are still open.
+
+## Unit-hexahedron generalization
+
+Beyond simplices, the module `CFDX.Geometry.UnitHexahedron` checks the same
+identities on the unit cube [0,1]^3 with its six quadrilateral faces: exact
+area closure (`unit_hexa_area_closure`), the nine first-moment components
+`sum_f C_{f,i} S_{f,j} = V delta_{ij}` with V = 1
+(`unit_hexa_first_moment`), and the affine Gauss numerator for exact
+face-centre values (`unit_hexa_affine_gauss_numerator_exact`). This is a
+non-simplex reference cell; runtime polyhedral conformance remains open.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
