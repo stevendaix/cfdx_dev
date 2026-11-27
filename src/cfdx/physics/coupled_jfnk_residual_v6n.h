@@ -84,6 +84,17 @@ inline VelocityBoundaryConditions make_jfnk_velocity_boundary_conditions(
     return velocity_bcs;
 }
 
+// The 6N residual contains continuity but no explicit pressure-gauge row.
+// A pure-Neumann pressure system therefore retains its constant null mode.
+inline bool jfnk_pressure_has_dirichlet_reference(
+    const ScalarBoundaryConditions& pressure_bcs)
+{
+    for (const auto& [_, bc] : pressure_bcs)
+        if (bc.type == ScalarBoundaryType::FIXED_VALUE)
+            return true;
+    return false;
+}
+
 // A face-valued pressure trace can depend on the trial SST state (for
 // modified pressure p*=p+2 rho k/3). The current JFNK callback does not
 // rebuild that trace for each trial vector, so using one here would freeze a
@@ -134,6 +145,9 @@ struct CoupledJfnkResidualV6N {
         if (jfnk_has_face_valued_pressure_snapshot(pbc))
             throw std::invalid_argument(
                 "JFNK residual: state-dependent face-valued pressure traces are not implemented");
+        if (!jfnk_pressure_has_dirichlet_reference(pbc))
+            throw std::invalid_argument(
+                "JFNK residual: pure-Neumann pressure requires an explicit gauge, not implemented");
         if (!(density > 0.0) || !std::isfinite(density))
             throw std::invalid_argument("JFNK residual: invalid density");
         if (!(kinematic_viscosity > 0.0) || !std::isfinite(kinematic_viscosity))
