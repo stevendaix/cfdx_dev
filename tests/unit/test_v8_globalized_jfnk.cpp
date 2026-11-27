@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -114,6 +115,14 @@ int main() {
         EXPECT_THROW(accumulate_coupled_jfnk_block_scale(
                          forward, 0, std::numeric_limits<double>::quiet_NaN()),
                      std::invalid_argument);
+    });
+    run_case("coupled_jfnk_detects_frozen_face_valued_pressure_snapshot", [] {
+        ScalarBoundaryConditions pressure_bcs;
+        EXPECT_TRUE(!jfnk_has_face_valued_pressure_snapshot(pressure_bcs));
+        auto snapshot = std::make_shared<ScalarBoundaryFaceValues>();
+        snapshot->generation = 7;
+        pressure_bcs["outlet"].face_values = snapshot;
+        EXPECT_TRUE(jfnk_has_face_valued_pressure_snapshot(pressure_bcs));
     });
     run_case("coupled_jfnk_rejects_unimplemented_wall_and_ptc_options", [] {
         const CoupledJfnkWallOperator no_wall_operator{};
