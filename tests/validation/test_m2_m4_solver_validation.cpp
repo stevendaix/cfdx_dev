@@ -160,6 +160,29 @@ int main()
         RadiationTransportControls rc;
         rc.absorption=1.0;rc.scattering=0.0;rc.max_iterations=100;
         rc.tolerance=1e-9;rc.linear_tolerance=1e-11;
+        std::vector<Field<double,Location::CELL>> intensities;
+        for (std::size_t direction=0;direction<dirs.size();++direction) {
+            Field<double,Location::CELL> I(1,"I","W/m2/sr",1);
+            I(0)=blackbody_intensity(1000.0);
+            intensities.push_back(std::move(I));
+        }
+        const auto initial_wall_trace=build_dom_diffuse_gray_face_values(
+            m,g,dirs,intensities,walls,0);
+        for (std::size_t patch=0;patch<m.boundary().n_patches();++patch) {
+            const auto& boundary=m.boundary().patch(patch);
+            const auto& trace=initial_wall_trace.values.at(boundary.name);
+            for (const auto face:boundary.face_ids) {
+                EXPECT_TRUE(std::isfinite(trace.at(face)));
+                const auto Sf=g.face_area_vectors[face];
+                const double area=Sf.mag();
+                const auto& direction=dirs[0];
+                const double mu=(direction.dx*Sf.x+direction.dy*Sf.y+
+                                 direction.dz*Sf.z)/area;
+                if (mu>=0.0)
+                    EXPECT_NEAR(trace.at(face),
+                                intensities[0](m.ownership().owner(face)),0.0);
+            }
+        }
         const auto r=solve_participating_radiation_diffuse_gray_walls(
             m,g,T,G,q,dirs,rc,walls);
         EXPECT_TRUE(r.converged);
