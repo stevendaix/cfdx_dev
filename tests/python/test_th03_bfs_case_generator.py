@@ -64,6 +64,29 @@ def test_bfs_generators_reject_nonfinite_or_nonpositive_step_height() -> None:
             bfs.make_setup(height, reynolds=36000.0, velocity=1.0)
 
 
+
+def test_synthetic_bfs_inlet_profile_matches_two_wall_channel(tmp_path: Path) -> None:
+    import numpy as np
+
+    height = 0.0127
+    velocity = 12.0
+    path = tmp_path / "inlet.csv"
+    bfs.make_bl_profile_csv(path, height, velocity)
+    values = np.loadtxt(path, delimiter=",", skiprows=1)
+    y, u = values[:, 0], values[:, 1]
+    assert y[0] == pytest.approx(height)
+    assert y[-1] == pytest.approx(8.0 * height)
+    assert u[0] == pytest.approx(0.0, abs=1e-12)
+    assert u[-1] == pytest.approx(0.0, abs=1e-12)
+    assert u[len(u) // 2] == pytest.approx(velocity)
+    assert np.all(np.diff(u[: len(u) // 2 + 1]) >= 0.0)
+    assert np.all(np.diff(u[len(u) // 2 :]) <= 0.0)
+    assert np.all(np.isfinite(values))
+    assert np.allclose(u, u[::-1], rtol=0.0, atol=1e-10)
+    with pytest.raises(ValueError, match="profile height"):
+        bfs.make_bl_profile_csv(path, float("inf"), velocity)
+
+
 def test_tanh_wall_mesh_refines_both_sides_of_step_without_shifting_step() -> None:
     import numpy as np
 
