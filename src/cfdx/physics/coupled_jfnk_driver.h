@@ -28,29 +28,21 @@
 
 namespace cfdx::physics {
 
-inline void accumulate_coupled_jfnk_block_scale(
-    std::vector<double>& scales, std::size_t block, double value)
+inline std::vector<double> coupled_jfnk_fixed_scales(
+    const PhysicalResidualV51& initial_residual, std::size_t cell_count)
 {
-    if (scales.size() != 6 || block >= scales.size() || !std::isfinite(value))
-        throw std::invalid_argument("JFNK block scale: invalid block or value");
-    scales[block] = std::max(scales[block], std::abs(value));
-}
-
-inline std::vector<double> expand_coupled_jfnk_block_scales(
-    const std::vector<double>& block_scales, std::size_t cell_count)
-{
-    if (block_scales.size() != 6 || cell_count == 0 ||
-        cell_count > std::numeric_limits<std::size_t>::max() / 6)
-        throw std::invalid_argument("JFNK block scales: invalid block count or cell count");
-    for (double scale : block_scales)
+    if (cell_count == 0 ||
+        cell_count > std::numeric_limits<std::size_t>::max() / 6 ||
+        initial_residual.signed_raw.size() != 6 * cell_count ||
+        initial_residual.normalized.size() != 6 * cell_count ||
+        initial_residual.normalization_scales.size() != 6 * cell_count)
+        throw std::invalid_argument(
+            "JFNK residual scales: incomplete initial physical residual");
+    for (double scale : initial_residual.normalization_scales)
         if (!(scale > 0.0) || !std::isfinite(scale))
-            throw std::invalid_argument("JFNK block scales: nonpositive or nonfinite scale");
-    std::vector<double> scales(6 * cell_count);
-    for (std::size_t block = 0; block < 6; ++block)
-        std::fill(scales.begin() + static_cast<std::ptrdiff_t>(block * cell_count),
-                  scales.begin() + static_cast<std::ptrdiff_t>((block + 1) * cell_count),
-                  block_scales[block]);
-    return scales;
+            throw std::invalid_argument(
+                "JFNK residual scales: nonpositive or nonfinite equation scale");
+    return initial_residual.normalization_scales;
 }
 
 struct CoupledJfnkDriverResult {
@@ -170,18 +162,14 @@ inline CoupledJfnkDriverResult solve_coupled_jfnk_6n(
         return U;
     };
 
-    // Build one scale per equation unknown: the Newton kernel requires a
-    // 6N vector, while the initial reduction is shared by each field block.
-    std::vector<double> block_scales(6, 1.0);
-    for (std::size_t i = 0; i < nc; ++i) {
-        accumulate_coupled_jfnk_block_scale(block_scales, 0, Ux(i));
-        accumulate_coupled_jfnk_block_scale(block_scales, 1, Uy(i));
-        accumulate_coupled_jfnk_block_scale(block_scales, 2, Uz(i));
-        accumulate_coupled_jfnk_block_scale(block_scales, 3, p(i));
-        accumulate_coupled_jfnk_block_scale(block_scales, 4, k(i));
-        accumulate_coupled_jfnk_block_scale(block_scales, 5, omega(i));
-    }
-    const auto scales = expand_coupled_jfnk_block_scales(block_scales, nc);
+    // Freeze equation-specific residual scales from the initial accepted
+    // physical state. The same divisors are used by Jv and every line-search
+    // candidate; no state-dependent renormalization enters the Newton merit.
+    const auto initial_physics = CoupledJfnkResidualV6N::evaluate(
+        mesh, geometry, Ux, Uy, Uz, p, k, omega,
+        sst_controls, ubc_x, ubc_y, ubc_z, pbc, k_bc, omega_bc,
+        fixed_velocity_values, wall_patch_names, density, kinematic_viscosity);
+    const auto scales = coupled_jfnk_fixed_scales(initial_physics, nc);
 
     // This experimental driver is deliberately unpreconditioned.
     // Wrapping identity operators in SixFieldBlockPreconditionerV8 does not
