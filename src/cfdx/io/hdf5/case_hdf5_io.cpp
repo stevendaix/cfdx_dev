@@ -780,21 +780,59 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             bc.source_type_name = json_get_string(bc_v, "source_type_name");
 
             const mini_json::value* ip_v = mini_json::find(bc_v, "inlet_profile");
-            if (ip_v && ip_v->is_object()) {
+            if (ip_v) {
+                if (!ip_v->is_object())
+                    throw std::invalid_argument("case HDF5: inlet_profile must be an object");
                 BoundarySpec::InletProfileSpec ip;
-                ip.enabled = json_get_bool(*ip_v, "enabled");
-                ip.axis = static_cast<int>(json_get_number(*ip_v, "axis"));
+                if (const auto* enabled = mini_json::find(*ip_v, "enabled")) {
+                    if (!enabled->is_boolean())
+                        throw std::invalid_argument(
+                            "case HDF5: inlet_profile.enabled must be a JSON boolean");
+                    ip.enabled = enabled->boolean;
+                }
+                if (const auto* axis = mini_json::find(*ip_v, "axis")) {
+                    if (!axis->is_number() || !std::isfinite(axis->number) ||
+                        std::floor(axis->number) != axis->number ||
+                        axis->number < 0.0 || axis->number > 2.0)
+                        throw std::invalid_argument(
+                            "case HDF5: inlet_profile.axis must be 0, 1 or 2");
+                    ip.axis = static_cast<int>(axis->number);
+                }
                 ip.profile_file = json_get_string(*ip_v, "profile_file");
                 const mini_json::value* coords = mini_json::find(*ip_v, "coords");
-                if (coords && coords->is_array()) {
-                    for (const auto& c : coords->array)
-                        if (c.is_number()) ip.coords.push_back(c.number);
-                }
                 const mini_json::value* vals = mini_json::find(*ip_v, "values");
-                if (vals && vals->is_array()) {
-                    for (const auto& v : vals->array)
-                        if (v.is_number()) ip.values.push_back(v.number);
+                if (coords && !coords->is_array())
+                    throw std::invalid_argument("case HDF5: inlet_profile.coords must be an array");
+                if (vals && !vals->is_array())
+                    throw std::invalid_argument("case HDF5: inlet_profile.values must be an array");
+                if (coords) {
+                    for (const auto& value : coords->array) {
+                        if (!value.is_number() || !std::isfinite(value.number))
+                            throw std::invalid_argument(
+                                "case HDF5: inlet_profile.coords contains a non-finite/non-numeric sample");
+                        ip.coords.push_back(value.number);
+                    }
                 }
+                if (vals) {
+                    for (const auto& value : vals->array) {
+                        if (!value.is_number() || !std::isfinite(value.number))
+                            throw std::invalid_argument(
+                                "case HDF5: inlet_profile.values contains a non-finite/non-numeric sample");
+                        ip.values.push_back(value.number);
+                    }
+                }
+                if (ip.coords.empty() != ip.values.empty() ||
+                    (!ip.coords.empty() &&
+                     (ip.coords.size() < 2 || ip.coords.size() != ip.values.size())))
+                    throw std::invalid_argument(
+                        "case HDF5: inline inlet profile requires equal arrays with at least two samples");
+                for (std::size_t sample = 1; sample < ip.coords.size(); ++sample)
+                    if (!(ip.coords[sample] > ip.coords[sample - 1]))
+                        throw std::invalid_argument(
+                            "case HDF5: inlet_profile.coords must be strictly increasing");
+                if (ip.enabled && ip.profile_file.empty() && ip.coords.empty())
+                    throw std::invalid_argument(
+                        "case HDF5: enabled inlet profile has neither CSV file nor inline samples");
                 bc.inlet_profile = std::move(ip);
             }
 
