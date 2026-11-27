@@ -2236,7 +2236,7 @@ int main()
         state.k(0)=0.2;
         state.k(1)=0.8;
         ScalarBoundaryConditions pressure_bcs, k_bcs;
-        pressure_bcs["outlet"]={ScalarBoundaryType::FIXED_VALUE,100000.0,0.0};
+        pressure_bcs["outlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
         k_bcs["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         auto face_values=std::make_shared<ScalarBoundaryFaceValues>();
         update_sst_static_pressure_face_values(
@@ -2244,19 +2244,19 @@ int main()
         pressure_bcs["outlet"].face_values=face_values;
         const auto& outlet_values=face_values->values.at("outlet");
         const double old_right_value=outlet_values[6];
-        EXPECT_NEAR(outlet_values[3],100000.2,1e-12);
-        EXPECT_NEAR(outlet_values[6],100000.8,1e-12);
+        EXPECT_NEAR(outlet_values[3],0.2,1e-12);
+        EXPECT_NEAR(outlet_values[6],0.8,1e-12);
         EXPECT_TRUE(face_values->generation==1);
         const auto bc_left=resolve_scalar_boundary_condition(
             mesh,geometry,3,pressure_bcs);
         const auto bc_right=resolve_scalar_boundary_condition(
             mesh,geometry,6,pressure_bcs);
-        EXPECT_NEAR(bc_left.value,100000.2,1e-12);
-        EXPECT_NEAR(bc_right.value,100000.8,1e-12);
+        EXPECT_NEAR(bc_left.value,0.2,1e-12);
+        EXPECT_NEAR(bc_right.value,0.8,1e-12);
 
         Field<double,Location::CELL> pressure(mesh.n_cells(),"p_star","Pa",1);
-        pressure(0)=100000.2;
-        pressure(1)=100000.8;
+        pressure(0)=0.2;
+        pressure(1)=0.8;
         Field<double,Location::CELL> velocity(mesh.n_cells(),"U","m/s",3);
         velocity.fill(0.0);
         const std::array<std::vector<double>,3> rAU{{{1.0,1.0},{1.0,1.0},{1.0,1.0}}};
@@ -2270,12 +2270,12 @@ int main()
         update_sst_static_pressure_face_values(
             mesh,state,1.5,pressure_bcs,k_bcs,*face_values,2);
         EXPECT_TRUE(face_values->generation==2);
-        EXPECT_NEAR(face_values->values.at("outlet")[3],100000.2,1e-12);
-        EXPECT_NEAR(face_values->values.at("outlet")[6],100001.1,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[3],0.2,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[6],1.1,1e-12);
         EXPECT_NEAR(face_values->values.at("outlet")[6]-old_right_value,0.3,1e-12);
         const auto bc_updated=resolve_scalar_boundary_condition(
             mesh,geometry,6,pressure_bcs);
-        EXPECT_NEAR(bc_updated.value,100001.1,1e-12);
+        EXPECT_NEAR(bc_updated.value,1.1,1e-12);
         const auto flux_after=make_rhie_chow_flux_from_hbya(
             mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
         EXPECT_NEAR(flux_after(3),0.0,1e-12);
