@@ -78,18 +78,33 @@ public:
         : x_(std::move(abscissa)), y_(std::move(values)), dimension_(dimension) {
         if (x_.empty() || x_.size() != y_.size())
             throw std::invalid_argument("TableValueProvider requires equally-sized non-empty data");
-        for (std::size_t i = 1; i < x_.size(); ++i)
-            if (!(x_[i] > x_[i - 1]))
-                throw std::invalid_argument("TableValueProvider abscissa must be strictly increasing");
+        for (std::size_t i = 0; i < x_.size(); ++i) {
+            if (!std::isfinite(x_[i]) || !std::isfinite(y_[i]))
+                throw std::invalid_argument("TableValueProvider data must be finite");
+            if (i > 0 && !(x_[i] > x_[i - 1]))
+                throw std::invalid_argument(
+                    "TableValueProvider abscissa must be strictly increasing");
+        }
     }
 
     double evaluate(const ValueContext& context) const override {
+        if (!std::isfinite(context.time))
+            throw std::invalid_argument("TableValueProvider time coordinate must be finite");
         if (context.time <= x_.front()) return y_.front();
         if (context.time >= x_.back()) return y_.back();
         for (std::size_t i = 1; i < x_.size(); ++i) {
             if (context.time <= x_[i]) {
-                const double t = (context.time - x_[i - 1]) / (x_[i] - x_[i - 1]);
-                return y_[i - 1] + t * (y_[i] - y_[i - 1]);
+                const long double t =
+                    (static_cast<long double>(context.time) - x_[i - 1]) /
+                    (static_cast<long double>(x_[i]) - x_[i - 1]);
+                const long double interpolated =
+                    static_cast<long double>(y_[i - 1]) +
+                    t * (static_cast<long double>(y_[i]) -
+                         static_cast<long double>(y_[i - 1]));
+                const double value = static_cast<double>(interpolated);
+                if (!std::isfinite(value))
+                    throw std::overflow_error("TableValueProvider interpolation overflow");
+                return value;
             }
         }
         return y_.back();
