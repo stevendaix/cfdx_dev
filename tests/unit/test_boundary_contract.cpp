@@ -33,6 +33,24 @@ int main() {
     run_case("table_provider_rejects_bad_grid", [] {
         EXPECT_THROW(TableValueProvider({0.0, 0.0}, {1.0, 2.0}), std::invalid_argument);
     });
+    run_case("time_table_provider_rejects_nonfinite_data_and_time", [] {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        EXPECT_THROW(TableValueProvider({nan}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({inf}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({0.0}, {nan}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({0.0}, {inf}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({0.0, nan}, {0.0, 1.0}),
+                     std::invalid_argument);
+        TableValueProvider provider({0.0, 1.0}, {0.0, 2.0});
+        ValueContext context;
+        context.time = nan;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.time = inf;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.time = 0.5;
+        EXPECT_TRUE(std::abs(provider.evaluate(context) - 1.0) < 1e-14);
+    });
     run_case("spatial_table_provider_rejects_nonfinite_data_and_coordinates", [] {
         const double nan = std::numeric_limits<double>::quiet_NaN();
         const double inf = std::numeric_limits<double>::infinity();
