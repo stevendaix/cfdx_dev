@@ -62,6 +62,84 @@ theorem mesh_vector_work_eq_sum_incidence_face_work
   simp_rw [Finset.mul_sum]
   simp_rw [Finset.sum_comm]
 
+/-- For an internal face, incidence work is exactly the owner-minus-neighbour
+velocity jump dotted with the shared traction. -/
+theorem internal_face_incidence_work_eq_velocity_jump
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ) (face : Face) (neighbour : Cell)
+    (hneighbour : topology.neighbour face = some neighbour) :
+    incidenceVectorFaceWork topology velocity traction face =
+      dot3 (velocity (topology.owner face) - velocity neighbour) (traction face) := by
+  classical
+  unfold incidenceVectorFaceWork ownerNeighbourIncidence
+  simp [dot3, hneighbour, Finset.sum_add_distrib, Finset.sum_ite_eq']
+
+/-- For a boundary face, incidence work is owner work only. -/
+theorem boundary_face_incidence_work_eq_owner_work
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ) (face : Face)
+    (hneighbour : topology.neighbour face = none) :
+    incidenceVectorFaceWork topology velocity traction face =
+      dot3 (velocity (topology.owner face)) (traction face) := by
+  classical
+  unfold incidenceVectorFaceWork ownerNeighbourIncidence
+  simp [dot3, hneighbour, Finset.sum_add_distrib, Finset.sum_ite_eq']
+
+/-- The canonical work contribution of a face, using the topology's
+internal/boundary partition. The neighbour is selected only for internal
+faces, whose existence is part of OwnerNeighbourTopology. -/
+def ownerNeighbourFaceWork
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ) (face : Face) : ℝ :=
+  if h : face ∈ topology.internalFaces then
+    let neighbour := Classical.choose (topology.internal_face_has_neighbour face h)
+    dot3 (velocity (topology.owner face) - velocity neighbour) (traction face)
+  else
+    dot3 (velocity (topology.owner face)) (traction face)
+
+/-- Every face's incidence work reduces to its physical owner/neighbour
+velocity-jump or owner-only boundary work. -/
+theorem incidence_face_work_eq_owner_neighbour_work
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ) (face : Face) :
+    incidenceVectorFaceWork topology velocity traction face =
+      ownerNeighbourFaceWork topology velocity traction face := by
+  classical
+  unfold ownerNeighbourFaceWork
+  split_ifs with h
+  · let neighbour := Classical.choose (topology.internal_face_has_neighbour face h)
+    have hneighbour : topology.neighbour face = some neighbour :=
+      Classical.choose_spec (topology.internal_face_has_neighbour face h)
+    rw [internal_face_incidence_work_eq_velocity_jump
+      topology velocity traction face neighbour hneighbour]
+    rfl
+  · have hneighbour : topology.neighbour face = none :=
+      topology.boundary_face_has_no_neighbour face h
+    exact boundary_face_incidence_work_eq_owner_work
+      topology velocity traction face hneighbour
+
+/-- Mesh work is the sum of physical face work: internal faces contribute
+the owner-minus-neighbour velocity jump, while boundary faces contribute
+owner velocity dotted with the outward-oriented traction. -/
+theorem mesh_vector_work_eq_owner_neighbour_face_work
+    {Cell Face : Type*} [Fintype Cell] [Fintype Face]
+    (topology : OwnerNeighbourTopology Cell Face)
+    (velocity : Cell → Fin 3 → ℝ)
+    (traction : Face → Fin 3 → ℝ) :
+    meshCellVectorWork topology velocity traction =
+      ∑ face : Face, ownerNeighbourFaceWork topology velocity traction face := by
+  rw [mesh_vector_work_eq_sum_incidence_face_work]
+  exact Finset.sum_congr rfl (fun face _ =>
+    incidence_face_work_eq_owner_neighbour_work topology velocity traction face)
+
 /-- Internal face work is the owner-minus-neighbour velocity jump dotted
 with the one shared integrated traction. -/
 def ownerNeighbourInternalVectorWork
@@ -70,8 +148,7 @@ def ownerNeighbourInternalVectorWork
     (velocity : Cell → Fin 3 → ℝ)
     (traction : Face → Fin 3 → ℝ) (face : Face)
     (neighbour : Cell) : ℝ :=
-  dot3 (velocity (topology.owner face)) (traction face) -
-    dot3 (velocity neighbour) (traction face)
+  dot3 (velocity (topology.owner face) - velocity neighbour) (traction face)
 
 /-- Boundary face work is retained on its sole owner cell. -/
 def ownerBoundaryVectorWork
