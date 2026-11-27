@@ -1059,7 +1059,10 @@ inline TurbulenceTransportResult solve_sst_transport(
             if (inv_dt > 0.0) {
                 for (std::size_t cell=0;cell<n;++cell) {
                     sk(cell) += inv_dt * oldk(cell);
-                    spk(cell) += inv_dt;
+                    // Match the source convention used by the initial k/omega
+                    // systems: the implicit pseudo-time mass is -Sp on the
+                    // diagonal, so Sp must be negative.
+                    spk(cell) -= inv_dt;
                 }
             }
             const auto updated_k_wall_gamma = controls.sst_molecular_wall_diffusion
