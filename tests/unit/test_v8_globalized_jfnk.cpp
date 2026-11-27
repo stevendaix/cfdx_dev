@@ -136,6 +136,17 @@ int main() {
         step.physical_merit_after = std::numeric_limits<double>::quiet_NaN();
         EXPECT_TRUE(!coupled_jfnk_nonlinear_converged(step, 1e-8));
     });
+    run_case("coupled_jfnk_residual_scale_handles_exact_zero_without_tiny_floor", [] {
+        EXPECT_NEAR(jfnk_residual_scale_or_exact_zero(0.0, 0.0, "momentum"), 1.0, 0.0);
+        EXPECT_NEAR(jfnk_residual_scale_or_exact_zero(2.0, 5.0, "momentum"), 5.0, 0.0);
+        EXPECT_THROW(jfnk_residual_scale_or_exact_zero(1e-30, 0.0, "continuity"),
+                     std::runtime_error);
+        EXPECT_THROW(jfnk_residual_scale_or_exact_zero(0.0, -1.0, "SST"),
+                     std::runtime_error);
+        EXPECT_THROW(jfnk_residual_scale_or_exact_zero(
+                         std::numeric_limits<double>::quiet_NaN(), 1.0, "momentum"),
+                     std::runtime_error);
+    });
     run_case("coupled_jfnk_uses_equation_specific_fixed_residual_scales", [] {
         PhysicalResidualV51 initial;
         initial.signed_raw.assign(12, 0.0);
