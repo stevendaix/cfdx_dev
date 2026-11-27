@@ -596,6 +596,16 @@ if(CFDX_BUILD_TESTS)
     add_test(NAME test_energy_lsq_gram COMMAND test_energy_lsq_gram)
     set_tests_properties(test_energy_lsq_gram PROPERTIES
         LABELS "lean;energy;gram;research;fail_closed" TIMEOUT 20)
+
+    add_executable(test_energy_lsq_production_bridge
+        tests/unit/test_energy_lsq_production_bridge.cpp)
+    target_include_directories(test_energy_lsq_production_bridge PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+    target_compile_features(test_energy_lsq_production_bridge PRIVATE cxx_std_17)
+    add_test(NAME test_energy_lsq_production_bridge
+        COMMAND test_energy_lsq_production_bridge)
+    set_tests_properties(test_energy_lsq_production_bridge PROPERTIES
+        LABELS "lean;energy;lsq;production-bridge;fail_closed" TIMEOUT 20)
     add_cfdx_test(test_scalar_transport_gradient_skew tests/unit/test_scalar_transport_gradient_skew.cpp)
     add_cfdx_test(test_pressure_velocity_system tests/unit/test_pressure_velocity_system.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
