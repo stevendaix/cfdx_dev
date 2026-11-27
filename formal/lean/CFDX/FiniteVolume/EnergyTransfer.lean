@@ -29,8 +29,8 @@ def positiveWorkForce (i : Fin 2) : ℝ :=
 def negativeWorkForce (i : Fin 2) : ℝ :=
   if i.val = 0 then -1 else 1
 
-/-- A conservative force orthogonal to the selected velocity: (1, 1). -/
-def zeroWorkForce (i : Fin 2) : ℝ := 1
+/-- Uniform two-cell velocity: (1, 1). -/
+def uniformVelocity (_i : Fin 2) : ℝ := 1
 
 /-- Discrete global force balance over the two cells. -/
 def globalForce (force : Fin 2 → ℝ) : ℝ :=
@@ -56,13 +56,13 @@ theorem negative_work_force_removes_energy :
     discretePower twoCellVelocity negativeWorkForce = -2 := by
   norm_num [discretePower, twoCellVelocity, negativeWorkForce]
 
-theorem zero_work_force_is_conservative :
-    globalForce zeroWorkForce = 2 := by
-  norm_num [globalForce, zeroWorkForce]
+theorem conservative_force_is_conservative_for_uniform_velocity :
+    globalForce positiveWorkForce = 0 := by
+  exact positive_work_force_is_conservative
 
-theorem zero_work_force_has_zero_power :
-    discretePower twoCellVelocity zeroWorkForce = 0 := by
-  norm_num [discretePower, twoCellVelocity, zeroWorkForce]
+theorem conservative_force_can_have_zero_power :
+    discretePower uniformVelocity positiveWorkForce = 0 := by
+  norm_num [discretePower, uniformVelocity, positiveWorkForce]
 
 /-- A single counterexample disproves the implication
 "zero global force balance implies non-positive discrete power". -/
