@@ -17,6 +17,9 @@ using CellVector = std::array<double, cell_count>;
 using Matrix = std::array<std::array<double, cell_count>, cell_count>;
 using Gradient = std::array<double, 3>;
 using Reconstruction = std::array<Gradient, cell_count>;
+using TwoCellField = std::array<double, 2>;
+using TwoCellGradients = std::array<Gradient, 2>;
+using TwoCellGradientColumns = std::array<TwoCellGradients, 2>;
 
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -124,6 +127,65 @@ Gradient evaluate_mesh_lsq(
     const auto result = compute_gradient_least_squares(
         field, mesh, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &conditions);
     return {result(0, 0), result(0, 1), result(0, 2)};
+}
+
+
+cfdx::core::Mesh make_two_cell_hex_mesh() {
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(12);
+    mesh.points().set(0, 0.0, 0.0, 0.0);
+    mesh.points().set(1, 1.0, 0.0, 0.0);
+    mesh.points().set(2, 1.0, 1.0, 0.0);
+    mesh.points().set(3, 0.0, 1.0, 0.0);
+    mesh.points().set(4, 0.0, 0.0, 1.0);
+    mesh.points().set(5, 1.0, 0.0, 1.0);
+    mesh.points().set(6, 1.0, 1.0, 1.0);
+    mesh.points().set(7, 0.0, 1.0, 1.0);
+    mesh.points().set(8, 2.0, 0.0, 0.0);
+    mesh.points().set(9, 2.0, 1.0, 0.0);
+    mesh.points().set(10, 2.0, 0.0, 1.0);
+    mesh.points().set(11, 2.0, 1.0, 1.0);
+
+    mesh.faces().push_face({0, 4, 7, 3});   // x = 0
+    mesh.faces().push_face({8, 10, 11, 9}); // x = 2
+    mesh.faces().push_face({1, 2, 6, 5});  // shared x = 1
+    mesh.faces().push_face({0, 3, 2, 1});  // z = 0, cell 0
+    mesh.faces().push_face({1, 2, 9, 8});  // z = 0, cell 1
+    mesh.faces().push_face({4, 5, 6, 7});  // z = 1, cell 0
+    mesh.faces().push_face({5, 10, 11, 6}); // z = 1, cell 1
+    mesh.faces().push_face({0, 1, 5, 4});  // y = 0, cell 0
+    mesh.faces().push_face({1, 8, 10, 5}); // y = 0, cell 1
+    mesh.faces().push_face({3, 7, 6, 2});  // y = 1, cell 0
+    mesh.faces().push_face({2, 6, 11, 9}); // y = 1, cell 1
+
+    mesh.ownership().resize(11);
+    for (std::size_t face = 0; face < 11; ++face) {
+        const std::size_t owner = face == 1 || face == 4 || face == 6 ||
+                                  face == 8 || face == 10 ? 1 : 0;
+        mesh.ownership().set_owner(face, owner);
+        mesh.ownership().set_neighbour(
+            face, face == 2 ? 1 : FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0, 2, 3, 5, 7, 9});
+    mesh.cells().push_cell({2, 1, 4, 6, 8, 10});
+    return mesh;
+}
+
+TwoCellGradients evaluate_two_cell_mesh_lsq(
+    const cfdx::core::Mesh& mesh,
+    const TwoCellField& cell_values,
+    const std::vector<cfdx::core::BoundaryGradientCondition>& conditions) {
+    using namespace cfdx::core;
+    Field<double, Location::CELL> field(2, "phi", "1", 1);
+    field(0) = cell_values[0];
+    field(1) = cell_values[1];
+    const auto result = compute_gradient_least_squares(
+        field, mesh, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &conditions);
+    return TwoCellGradients{{
+        Gradient{result(0, 0), result(0, 1), result(0, 2)},
+        Gradient{result(1, 0), result(1, 1), result(1, 2)}
+    }};
 }
 
 }  // namespace
@@ -240,6 +302,75 @@ int main() {
         const Gradient zero_offset = evaluate_mesh_lsq(mesh, 0.0, homogeneous);
         for (double value : zero_offset)
             close(value, 0.0, "homogeneous boundary data must have zero affine offset");
+    }
+
+
+    // Two-cell mesh-level affine decomposition. Unlike the preceding
+    // one-cell fixture, this recovers a genuine 6x2 global cell-to-gradient
+    // map from the production mesh wrapper. Boundary types and geometry are
+    // frozen while nonhomogeneous data are represented by a separate offset.
+    {
+        using namespace cfdx::core;
+        const Mesh mesh = make_two_cell_hex_mesh();
+        std::vector<BoundaryGradientCondition> prescribed(11);
+        for (auto& bc : prescribed)
+            bc = {BoundaryGradientConditionType::ZERO_GRADIENT, 0.0};
+        prescribed[0] = {BoundaryGradientConditionType::DIRICHLET, 1.25};
+        prescribed[1] = {BoundaryGradientConditionType::NEUMANN, -0.5};
+        prescribed[3] = {BoundaryGradientConditionType::NEUMANN, 0.4};
+
+        auto homogeneous = prescribed;
+        for (auto& bc : homogeneous) bc.value = 0.0;
+
+        TwoCellGradientColumns columns{};
+        for (std::size_t basis = 0; basis < 2; ++basis) {
+            TwoCellField e{};
+            e[basis] = 1.0;
+            const auto gradient = evaluate_two_cell_mesh_lsq(mesh, e, homogeneous);
+            for (std::size_t cell = 0; cell < 2; ++cell)
+                columns[basis][cell] = gradient[cell];
+        }
+
+        const TwoCellField zero_field{};
+        const auto boundary_offset =
+            evaluate_two_cell_mesh_lsq(mesh, zero_field, prescribed);
+        bool has_nonzero_offset = false;
+        for (const auto& cell_gradient : boundary_offset)
+            for (double value : cell_gradient)
+                has_nonzero_offset |= std::abs(value) > tolerance;
+        require(has_nonzero_offset,
+                "nonhomogeneous boundary data must produce a nonzero affine offset");
+
+        for (const TwoCellField values : {
+                 TwoCellField{{-2.0, 0.5}},
+                 TwoCellField{{0.0, 0.0}},
+                 TwoCellField{{1.25, -3.0}},
+                 TwoCellField{{4.0, 2.0}}}) {
+            const auto actual =
+                evaluate_two_cell_mesh_lsq(mesh, values, prescribed);
+            for (std::size_t cell = 0; cell < 2; ++cell) {
+                for (std::size_t component = 0; component < 3; ++component) {
+                    const double homogeneous_action =
+                        columns[0][cell][component] * values[0] +
+                        columns[1][cell][component] * values[1];
+                    close(actual[cell][component],
+                          boundary_offset[cell][component] + homogeneous_action,
+                          "two-cell production LSQ must equal G*phi + H(b)");
+                }
+            }
+        }
+
+        // Boundary-source superposition is checked independently of the cell
+        // field: doubling all prescribed data doubles H and leaves G unchanged.
+        auto doubled_boundary = prescribed;
+        for (auto& bc : doubled_boundary) bc.value *= 2.0;
+        const auto doubled_offset =
+            evaluate_two_cell_mesh_lsq(mesh, zero_field, doubled_boundary);
+        for (std::size_t cell = 0; cell < 2; ++cell)
+            for (std::size_t component = 0; component < 3; ++component)
+                close(doubled_offset[cell][component],
+                      2.0 * boundary_offset[cell][component],
+                      "boundary offset must be linear in prescribed BC data");
     }
 
     return 0;
