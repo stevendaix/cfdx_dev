@@ -452,6 +452,11 @@ int main()
         EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
                      std::invalid_argument);
         storage[0].cells[0].bounded_operator_residual -= 1.0;
+        // A fixed absolute tolerance would hide this tiny but material mismatch.
+        storage[1].cells[1].physical_residual = 1e-20;
+        EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
+                     std::invalid_argument);
+        storage[1].cells[1].physical_residual = 0.0;
 
         // A missing component cell or a nonfinite accepted velocity is fatal.
         storage[2].cells.pop_back();
