@@ -50,6 +50,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="cfdx-v36-cells-") as root:
         root = Path(root)
         off, on, budget = root / "off", root / "on", root / "budget"
+        budget_top = root / "budget_top"
         baseline = run(solver, mesh, off)
         recorded = run(
             solver,
@@ -70,9 +71,19 @@ def main() -> None:
             "1",
             "--momentum-budget-all-cells",
         )
+        budgeted_top = run(
+            solver,
+            mesh,
+            budget_top,
+            "--momentum-budget-csv",
+            "momentum_face_budget.csv",
+            "--momentum-budget-every",
+            "1",
+        )
         assert baseline.returncode == 0, baseline.stderr[-4000:]
         assert recorded.returncode == 0, recorded.stderr[-4000:]
         assert budgeted.returncode == 0, budgeted.stderr[-4000:]
+        assert budgeted_top.returncode == 0, budgeted_top.stderr[-4000:]
         assert not (off / "cell_convergence.jsonl").exists()
         assert not (off / "cell_convergence_map.bin").exists()
         trace = read_cell_trace(on / "cell_convergence.jsonl")
@@ -87,8 +98,9 @@ def main() -> None:
         a = json.loads((off / "convergence.json").read_text())
         b = json.loads((on / "convergence.json").read_text())
         c = json.loads((budget / "convergence.json").read_text())
+        d = json.loads((budget_top / "convergence.json").read_text())
         # Neither diagnostic may change the nonlinear history, gate, or plan.
-        assert a == b == c, (
+        assert a == b == c == d, (
             "diagnostic output changed the underlying FV solution or convergence evidence"
         )
         assert json.loads((off / "execution.json").read_text())["converged"] is True
@@ -150,6 +162,33 @@ def main() -> None:
             (iteration, component) for iteration in (1, 2) for component in (0, 1, 2)
         }
         assert all(cells == set(range(trace.n_cells)) for cells in groups.values())
+
+        # Compact mode must retain the largest physical residual cells AND
+        # the independently selected worst face/CSR closure cell.
+        top_path = budget_top / "momentum_face_budget.csv"
+        with top_path.open(newline="") as stream:
+            top_rows = list(csv.DictReader(stream))
+        top_groups: dict[tuple[int, int], list[dict[str, str]]] = {}
+        for row in top_rows:
+            key = (int(row["iteration"]), int(row["component"]))
+            top_groups.setdefault(key, []).append(row)
+        assert set(top_groups) == set(groups)
+        for selected_rows in top_groups.values():
+            assert 1 <= len(selected_rows) <= 13
+            worst_closure_cell = int(selected_rows[0]["matrix_closure_worst_cell"])
+            selected_cells = {int(row["cell"]) for row in selected_rows}
+            assert worst_closure_cell in selected_cells
+            assert all(
+                row["selection_reason"]
+                in {"physical_residual_top12", "matrix_closure_worst"}
+                for row in selected_rows
+            )
+            assert all(
+                row["cell"] == row["matrix_closure_worst_cell"]
+                for row in selected_rows
+                if row["selection_reason"] == "matrix_closure_worst"
+            )
+
         invalid = run(solver, mesh, root / "bad", "--cell-hotspots-every", "0")
         assert invalid.returncode == 2
         assert "--cell-hotspots-every" in invalid.stderr
