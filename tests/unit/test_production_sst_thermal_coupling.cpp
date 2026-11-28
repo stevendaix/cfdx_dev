@@ -38,11 +38,20 @@ static SSTProductionState state() {
 int main() {
     run_case("eddy_diffusion_uses_kinematic_nut_and_explicit_Prt",[] {
         const auto setup=case_setup();
-        const auto effective=build_production_sst_thermal_conductivity(
-            setup,state(),2,require_production_sst_turbulent_prandtl(setup));
-        // lambda_eff = 3 + rho Cp nu_t / Pr_t
-        EXPECT_NEAR(effective[0],4.0,1e-14);
-        EXPECT_NEAR(effective[1],5.0,1e-14);
+        const auto turbulent_state = state();
+        const auto low_prt=build_production_sst_thermal_conductivity(
+            setup,turbulent_state,2,0.8);
+        const auto high_prt=build_production_sst_thermal_conductivity(
+            setup,turbulent_state,2,1.8);
+        // lambda_eff = lambda + rho Cp nu_t / Pr_t. Check the actual
+        // constitutive values at two Pr_t values, not an arbitrary minimum
+        // percentage on a coarse wall heat-flux response.
+        EXPECT_NEAR(low_prt[0],4.0,1e-14);
+        EXPECT_NEAR(low_prt[1],5.0,1e-14);
+        EXPECT_NEAR(high_prt[0],3.4444444444444446,1e-14);
+        EXPECT_NEAR(high_prt[1],3.888888888888889,1e-14);
+        EXPECT_TRUE(low_prt[0] > high_prt[0]);
+        EXPECT_TRUE(low_prt[1] > high_prt[1]);
     });
     run_case("missing_or_malformed_Prt_fails_closed",[] {
         auto setup=case_setup();
