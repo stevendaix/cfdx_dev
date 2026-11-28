@@ -6814,6 +6814,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t last_committed_cell_iteration = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        // Per-iteration diagnostic snapshots are published only after
+        // this iteration's nonlinear transaction commits.
+        std::vector<std::pair<std::size_t, MomentumFaceBudget>>
+            pending_momentum_face_budgets;
         if (controls.sst_runtime && controls.sst_runtime->state &&
             controls.sst_runtime->pressure_face_values) {
             const auto next_generation =
@@ -15882,11 +15886,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime
                     ? controls.density * controls.kinematic_viscosity : -1.0,
                     post_wall_face_mu_v17);
-            // Keep the diagnostic snapshots local until the nonlinear
-            // transaction commits. A rejected trial must never be published
-            // as an accepted-state momentum budget.
-            std::vector<std::pair<std::size_t, MomentumFaceBudget>>
-                pending_momentum_face_budgets;
             for (std::size_t d = 0; d < 3; ++d) {
                 cfdx::core::Field<double, cfdx::core::Location::CELL> component(
                     mesh.n_cells(), "U_reconstructed", "m/s", 1);
