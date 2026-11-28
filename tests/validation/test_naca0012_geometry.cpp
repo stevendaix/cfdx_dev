@@ -47,6 +47,7 @@ static Forces run(const std::string& path,std::size_t level,
         "CFDX_NACA_FACE_TRACTION_RAW_CSV",
         "CFDX_NACA_PHYSICAL_HISTORY_CSV",
         "CFDX_NACA_MOMENTUM_BUDGET_CSV",
+        "CFDX_NACA_MOMENTUM_POWER_CSV",
         "CFDX_NACA_SAME_STATE_FACE_CSV",
         "CFDX_NACA_PICARD_TVD_FACE_CSV",
         "CFDX_NACA_LINEAR_AUDIT_CSV"};
@@ -834,6 +835,49 @@ static Forces run(const std::string& path,std::size_t level,
             if (!face_budget_output)
                 throw std::runtime_error("cannot write NACA momentum budget");
         };
+    }
+    // Independent vector face-power audit. This opt-in output is written
+    // only after the solver has reconciled raw face work against the cell
+    // scatter for every operator and all three velocity components.
+    std::ofstream raw_power_output;
+    if (const char* power_path = std::getenv("CFDX_NACA_MOMENTUM_POWER_CSV")) {
+        if (!*power_path)
+            throw std::invalid_argument("NACA momentum power path is empty");
+        raw_power_output.open(power_path);
+        if (!raw_power_output)
+            throw std::runtime_error("cannot open NACA momentum power output");
+        raw_power_output << std::setprecision(17);
+        raw_power_output
+            << "iteration,convection_internal,convection_boundary,convection_face,"
+               "convection_cell,viscous_internal,viscous_boundary,viscous_face,"
+               "viscous_cell,transpose_internal,transpose_boundary,transpose_face,"
+               "transpose_cell,pressure_face,pressure_cell,body_force_face,"
+               "body_force_cell,temporal_face,temporal_cell,physical_residual_face,"
+               "physical_residual_cell,qualified\n";
+        c.momentum_raw_face_power_callback =
+            [&raw_power_output](std::size_t iteration,
+                const cfdx::physics::MomentumRawFacePower& raw,
+                const cfdx::physics::MomentumVectorPowerBudget& cell,
+                const cfdx::physics::FvGeometry&) {
+                raw_power_output
+                    << iteration << ','
+                    << raw.convection_internal << ',' << raw.convection_boundary << ','
+                    << raw.convection << ',' << cell.total.convection << ','
+                    << raw.viscous_internal << ',' << raw.viscous_boundary << ','
+                    << raw.viscous << ',' << cell.total.viscous << ','
+                    << raw.transpose_viscous_internal << ','
+                    << raw.transpose_viscous_boundary << ','
+                    << raw.transpose_viscous << ','
+                    << cell.total.transpose_viscous << ','
+                    << raw.pressure << ',' << cell.total.pressure << ','
+                    << raw.body_force << ',' << cell.total.body_force << ','
+                    << raw.temporal << ',' << cell.total.temporal << ','
+                    << raw.physical_residual << ','
+                    << cell.total.physical_residual << ",0\n";
+                raw_power_output.flush();
+                if (!raw_power_output)
+                    throw std::runtime_error("cannot write NACA momentum power output");
+            };
     }
     cfdx::validation::NacaMomentumTrace naca_trace(mesh);
     if (const char* forensic = std::getenv("CFDX_NACA_FORENSICS");
