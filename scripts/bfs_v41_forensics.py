@@ -94,8 +94,8 @@ def audit_post_sst_operator_cycle(
         "interpretation": (
             "diagnostic_candidate_only_no_solver_action"
             if candidate_four
-            else "no_period_four_candidate_detected",
-        )[0],
+            else "no_period_four_candidate_detected"
+        ),
     }
 
 
