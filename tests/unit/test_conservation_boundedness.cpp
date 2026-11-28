@@ -409,15 +409,15 @@ int main()
         auto& x = storage[0].cells[0];
         x.convection = 1.0; x.viscous = 2.0; x.transpose_viscous = 3.0;
         x.pressure = 4.0; x.body_force = 5.0; x.temporal = 6.0;
-        x.physical_residual = 21.0; x.bounded_divergence = -7.0;
+        x.physical_residual = 21.0; x.bounded_divergence = -7.0;\n        x.bounded_operator_residual = 14.0;
         auto& y = storage[1].cells[0];
         y.convection = 2.0; y.viscous = 0.0; y.transpose_viscous = -1.0;
         y.pressure = 1.0; y.body_force = -2.0; y.temporal = 0.0;
-        y.physical_residual = 0.0; y.bounded_divergence = 4.0;
+        y.physical_residual = 0.0; y.bounded_divergence = 4.0;\n        y.bounded_operator_residual = 4.0;
         auto& z = storage[2].cells[0];
         z.convection = -1.0; z.viscous = 1.0; z.transpose_viscous = 0.0;
         z.pressure = 2.0; z.body_force = 1.0; z.temporal = -1.0;
-        z.physical_residual = 2.0; z.bounded_divergence = -0.5;
+        z.physical_residual = 2.0; z.bounded_divergence = -0.5;\n        z.bounded_operator_residual = 1.5;
         for (std::size_t d = 0; d < 3; ++d) {
             storage[d].matrix_closure_linf = static_cast<double>(d + 1);
             storage[d].matrix_closure_relative_linf = 0.1 * static_cast<double>(d + 1);
@@ -442,6 +442,16 @@ int main()
                     power.matrix_closure_checked[2]);
         EXPECT_NEAR(power.matrix_closure_linf[2], 3.0, 0.0);
         EXPECT_NEAR(power.matrix_closure_relative_linf[1], 0.2, 1e-15);
+
+        // Stored residuals must agree with the signed term decomposition.
+        storage[0].cells[0].physical_residual += 1.0;
+        EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
+                     std::invalid_argument);
+        storage[0].cells[0].physical_residual -= 1.0;
+        storage[0].cells[0].bounded_operator_residual += 1.0;
+        EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
+                     std::invalid_argument);
+        storage[0].cells[0].bounded_operator_residual -= 1.0;
 
         // A missing component cell or a nonfinite accepted velocity is fatal.
         storage[2].cells.pop_back();
