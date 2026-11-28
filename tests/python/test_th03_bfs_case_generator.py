@@ -107,6 +107,7 @@ def test_wall_mesh_rejects_inadmissible_grading() -> None:
     with pytest.raises(ValueError, match="invalid"):
         bfs.make_mesh(4, 16, 40, 16, wall_stretch=100)
 
+
 def test_sst_v41_two_cycle_rescue_is_explicit_bfs_variant(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline.cfdx.h5"
     rescued = tmp_path / "rescued.cfdx.h5"
@@ -131,4 +132,3 @@ def test_sst_v41_two_cycle_rescue_is_explicit_bfs_variant(tmp_path: Path) -> Non
     with h5py.File(baseline) as base_h5, h5py.File(rescued) as rescued_h5:
         assert base_h5.attrs["topology_hash"] == rescued_h5.attrs["topology_hash"]
         assert base_h5.attrs["geometry_hash"] == rescued_h5.attrs["geometry_hash"]
-
