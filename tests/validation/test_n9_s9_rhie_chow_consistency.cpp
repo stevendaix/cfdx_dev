@@ -589,6 +589,86 @@ int main()
             n_capture,n_capture);
         const BlockOperator production_blocks(M,G,D,C);
         EXPECT_TRUE(production_blocks.is_valid());
+
+        // C2.3 diagnostic: on this fixed-pressure production capture, test
+        // whether the actual pressure block factors through the actual G.
+        // This is a dense least-squares left factor, not a proposed sparse
+        // production operator. Its fill is reported, never assumed small.
+        const std::size_t nu_factor = G.n_rows();
+        const std::size_t np_factor = G.n_cols();
+        std::vector<double> gram_values(np_factor*np_factor,0.0);
+        for (std::size_t row=0; row<nu_factor; ++row) {
+            for (std::size_t k=G.row_offsets_data()[row];
+                 k<G.row_offsets_data()[row+1]; ++k) {
+                for (std::size_t q=G.row_offsets_data()[row];
+                     q<G.row_offsets_data()[row+1]; ++q) {
+                    gram_values[G.columns_data()[k]*np_factor+
+                                G.columns_data()[q]] +=
+                        G.values_data()[k]*G.values_data()[q];
+                }
+            }
+        }
+        SparseMatrix gram(np_factor,np_factor);
+        for (std::size_t i=0; i<np_factor; ++i)
+            for (std::size_t j=0; j<np_factor; ++j)
+                if (gram_values[i*np_factor+j] != 0.0)
+                    gram.push_back(i,j,gram_values[i*np_factor+j]);
+        gram.finalize();
+        SmallDenseCertifiedLU gram_lu(np_factor);
+        EXPECT_TRUE(gram_lu.setup(gram));
+        std::vector<double> left_factor(np_factor*nu_factor,0.0);
+        for (std::size_t pressure_row=0; pressure_row<np_factor; ++pressure_row) {
+            Vector c_row(np_factor,0.0), coefficient(np_factor,0.0);
+            for (std::size_t k=C.row_offsets_data()[pressure_row];
+                 k<C.row_offsets_data()[pressure_row+1]; ++k)
+                c_row(C.columns_data()[k]) += C.values_data()[k];
+            EXPECT_TRUE(gram_lu.solve(c_row,coefficient));
+            for (std::size_t velocity_row=0; velocity_row<nu_factor; ++velocity_row)
+                for (std::size_t k=G.row_offsets_data()[velocity_row];
+                     k<G.row_offsets_data()[velocity_row+1]; ++k)
+                    left_factor[pressure_row*nu_factor+velocity_row] +=
+                        coefficient(G.columns_data()[k])*G.values_data()[k];
+        }
+        double factor_residual=0.0, c_scale=0.0, l_scale=0.0;
+        std::size_t left_nnz=0;
+        for (std::size_t row=0; row<np_factor; ++row) {
+            for (std::size_t col=0; col<np_factor; ++col) {
+                double reconstructed=0.0;
+                for (std::size_t velocity_row=0; velocity_row<nu_factor; ++velocity_row)
+                    for (std::size_t k=G.row_offsets_data()[velocity_row];
+                         k<G.row_offsets_data()[velocity_row+1]; ++k)
+                        if (G.columns_data()[k]==col)
+                            reconstructed += left_factor[row*nu_factor+velocity_row]*
+                                             G.values_data()[k];
+                double actual=0.0;
+                for (std::size_t k=C.row_offsets_data()[row];
+                     k<C.row_offsets_data()[row+1]; ++k)
+                    if (C.columns_data()[k]==col) actual += C.values_data()[k];
+                factor_residual=std::max(factor_residual,
+                                         std::abs(reconstructed-actual));
+                c_scale=std::max(c_scale,std::abs(actual));
+            }
+            for (std::size_t velocity_row=0; velocity_row<nu_factor; ++velocity_row) {
+                const double value=left_factor[row*nu_factor+velocity_row];
+                l_scale=std::max(l_scale,std::abs(value));
+            }
+        }
+        const double left_threshold=1e-12*std::max(1.0,l_scale);
+        for (double value:left_factor)
+            if (std::abs(value)>left_threshold) ++left_nnz;
+        std::cerr << "N9_SCHUR_C_FACTOR_PRODUCTION"
+                  << " pressure_dofs=" << np_factor
+                  << " velocity_dofs=" << nu_factor
+                  << " G_nnz=" << G.nnz()
+                  << " C_nnz=" << C.nnz()
+                  << " L_nnz_thresholded=" << left_nnz
+                  << " L_dense_entries=" << left_factor.size()
+                  << " max_abs_L=" << l_scale
+                  << " max_abs_C=" << c_scale
+                  << " max_abs_C_minus_LG=" << factor_residual
+                  << '\\n';
+        EXPECT_TRUE(factor_residual <= 1e-10 + 1e-10*c_scale);
+
         SmallDenseExactSchurInverse schur_oracle(64);
         EXPECT_TRUE(schur_oracle.setup(production_blocks));
         const auto probes = schur_inverse_quality_basis(n_capture);
