@@ -21,14 +21,25 @@ linear-solver layer may rely on, each under explicit hypotheses:
 - positive semidefiniteness under nonnegative conductances
   (`laplacian_psd`);
 - constants are in the kernel (`twoPointLaplacian_const`);
-- under positive conductances and an explicit connectedness assumption on
-  the internal-face adjacency, every kernel element is constant
-  (`laplacian_kernel_eq_const`), so an anchor in each component makes the
-  operator definite (`laplacian_definite_with_anchor`).
+- under strictly positive conductances, kernel fields are constant on each
+  connected component (`laplacian_kernel_eq_on_component`);
+- one zero-valued anchor in every connected component makes the kernel
+  trivial (`laplacian_definite_with_anchor`);
+- under the same componentwise anchor and positivity hypotheses, every
+  nonzero field has strictly positive graph energy
+  (`laplacian_quadratic_form_pos_of_anchor`).
 
-Non-goals (faithful to the implementation audit): the corrected/limited
-non-orthogonal variants are not covered; no adjointness claim between the
-Gauss gradient and this operator is made; no convergence claim is made.
+The Lean operator uses owner-positive/neighbour-negative incidence and
+returns the positive graph form BᵀWB. The production C++ routine returns
+the opposite-sign Laplacian divided cellwise by volume for
+`ORTHOGONAL`/`UNCORRECTED`; the correspondence therefore includes a
+sign change and volume weighting. Its implicit coefficient is
+`(Sf · d)/|d|²`, which is not guaranteed positive on arbitrary meshes.
+
+Non-goals (faithful to the implementation audit): the corrected, limited,
+and over-relaxed variants are not covered by this two-point theorem; no
+adjointness claim between the Gauss gradient and this operator is made; no
+convergence claim is made.
 -/
 
 namespace CFDX.FiniteVolume
