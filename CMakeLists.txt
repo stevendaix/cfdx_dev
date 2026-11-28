@@ -609,6 +609,12 @@ if(CFDX_BUILD_TESTS)
     add_executable(test_energy_lsq_stencil_sensitivity
         tests/unit/test_energy_lsq_stencil_sensitivity.cpp)
     target_include_directories(test_energy_lsq_stencil_sensitivity PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+    target_compile_features(test_energy_lsq_stencil_sensitivity PRIVATE cxx_std_17)
+    add_test(NAME test_energy_lsq_stencil_sensitivity
+        COMMAND test_energy_lsq_stencil_sensitivity)
+    set_tests_properties(test_energy_lsq_stencil_sensitivity PROPERTIES
+        LABELS "lean;energy;lsq;stencil;research;fail_closed" TIMEOUT 20)
     add_cfdx_test(test_scalar_transport_gradient_skew tests/unit/test_scalar_transport_gradient_skew.cpp)
     add_cfdx_test(test_pressure_velocity_system tests/unit/test_pressure_velocity_system.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
@@ -3021,4 +3027,3 @@ if(BUILD_TESTING)
     set_tests_properties(test_bfs_selective_retry_v89 PROPERTIES
         LABELS "bfs;v89;pressure;transverse;retry;fail-closed" TIMEOUT 20)
 endif()
-
