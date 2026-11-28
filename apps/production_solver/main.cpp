@@ -3171,7 +3171,8 @@ int main(int argc, char** argv)
                 << "iteration,component,rank,selection_reason,cell,x,y,z,convection,viscous,"
                    "transpose_viscous,pressure,body_force,bounded_divergence,"
                    "mass_divergence,collocated_difference,physical_residual,"
-                   "bounded_operator_residual,worst_absolute_residual,temporal,"
+                   "bounded_operator_residual,worst_absolute_residual,"
+                   "independent_face_residual_linf,independent_face_residual_difference,temporal,"
                    "algebraic_residual,matrix_face_difference,matrix_face_scale,"
                    "matrix_closure_linf,matrix_closure_relative_linf,"
                    "matrix_closure_checked,matrix_closure_consistent,"
@@ -3233,6 +3234,8 @@ int main(int argc, char** argv)
                             term.bounded_divergence, term.mass_divergence,
                             term.collocated_difference, term.physical_residual,
                             term.bounded_operator_residual, budget.worst_absolute_residual,
+                            budget.independent_face_residual_linf,
+                            budget.independent_face_residual_difference,
                             term.temporal, term.algebraic_residual,
                             term.matrix_face_difference, term.matrix_face_scale,
                             budget.matrix_closure_linf,
