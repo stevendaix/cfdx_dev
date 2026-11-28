@@ -4,6 +4,7 @@
 #include "../validation/naca_qualification_state_io.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
+#include <cmath>
 #include <limits>
 #include <vector>
 
