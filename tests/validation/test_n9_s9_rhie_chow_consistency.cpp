@@ -615,12 +615,16 @@ int main()
         std::vector<std::size_t> basis_velocity_rows;
         for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
             auto candidate = original_rows[velocity_row];
-            for (const auto& basis : orthonormal_rows) {
-                double projection = 0.0;
-                for (std::size_t j = 0; j < np_factor; ++j)
-                    projection += candidate[j] * basis[j];
-                for (std::size_t j = 0; j < np_factor; ++j)
-                    candidate[j] -= projection * basis[j];
+            // Two-pass modified Gram-Schmidt (reorthogonalization) limits
+            // loss of orthogonality when selected rows are nearly dependent.
+            for (int pass = 0; pass < 2; ++pass) {
+                for (const auto& basis : orthonormal_rows) {
+                    double projection = 0.0;
+                    for (std::size_t j = 0; j < np_factor; ++j)
+                        projection += candidate[j] * basis[j];
+                    for (std::size_t j = 0; j < np_factor; ++j)
+                        candidate[j] -= projection * basis[j];
+                }
             }
             double residual_norm_sq = 0.0;
             for (double value : candidate) residual_norm_sq += value * value;
@@ -634,6 +638,45 @@ int main()
         }
         const std::size_t rank_G = basis_rows.size();
         EXPECT_TRUE(rank_G > 0);
+
+        // Report rank sensitivity without changing the production diagnostic
+        // threshold. Each count uses the same two-pass orthogonalization.
+        const auto rank_at_relative_threshold = [&](double relative_threshold) {
+            std::vector<std::vector<double>> q_rows;
+            for (const auto& source_row : original_rows) {
+                auto candidate = source_row;
+                for (int pass = 0; pass < 2; ++pass) {
+                    for (const auto& basis : q_rows) {
+                        double projection = 0.0;
+                        for (std::size_t j = 0; j < np_factor; ++j)
+                            projection += candidate[j] * basis[j];
+                        for (std::size_t j = 0; j < np_factor; ++j)
+                            candidate[j] -= projection * basis[j];
+                    }
+                }
+                double norm_sq = 0.0;
+                for (double value : candidate) norm_sq += value * value;
+                const double residual_norm = std::sqrt(norm_sq);
+                if (residual_norm > relative_threshold * max_row_norm) {
+                    for (double& value : candidate) value /= residual_norm;
+                    q_rows.push_back(std::move(candidate));
+                }
+            }
+            return q_rows.size();
+        };
+        const std::size_t rank_rel_1e_10 = rank_at_relative_threshold(1e-10);
+        const std::size_t rank_rel_1e_12 = rank_at_relative_threshold(1e-12);
+        const std::size_t rank_rel_1e_14 = rank_at_relative_threshold(1e-14);
+        double orthogonality_defect = 0.0;
+        for (std::size_t i = 0; i < orthonormal_rows.size(); ++i)
+            for (std::size_t j = 0; j < orthonormal_rows.size(); ++j) {
+                double product = 0.0;
+                for (std::size_t k = 0; k < np_factor; ++k)
+                    product += orthonormal_rows[i][k] * orthonormal_rows[j][k];
+                orthogonality_defect = std::max(
+                    orthogonality_defect,
+                    std::abs(product - (i == j ? 1.0 : 0.0)));
+            }
         SparseMatrix basis_gram(rank_G, rank_G);
         for (std::size_t i = 0; i < rank_G; ++i)
             for (std::size_t j = 0; j < rank_G; ++j) {
@@ -691,6 +734,11 @@ int main()
                   << " velocity_dofs=" << nu_factor
                   << " G_nnz=" << G.nnz()
                   << " C_nnz=" << C.nnz()
+                  << " rank_G=" << rank_G
+                  << " rank_G_rel_1e-10=" << rank_rel_1e_10
+                  << " rank_G_rel_1e-12=" << rank_rel_1e_12
+                  << " rank_G_rel_1e-14=" << rank_rel_1e_14
+                  << " MGS_orthogonality_defect=" << orthogonality_defect
                   << " L_nnz_thresholded=" << left_nnz
                   << " L_dense_entries=" << left_factor.size()
                   << " max_abs_L=" << l_scale
