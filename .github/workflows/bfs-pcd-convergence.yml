@@ -1,4 +1,4 @@
-name: BFS PCD convergence experiment (SIMPLE vs COUPLED+PCD)
+name: BFS/SST convergence experiment (SIMPLE, V41, COUPLED+PCD)
 
 on:
   push:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   bfs-pcd-ab:
-    name: Same-mesh BFS/SST A-B — SIMPLE vs COUPLED+PCD
+    name: Same-mesh BFS/SST — SIMPLE baseline, V41 rescue, COUPLED+PCD
     runs-on: ubuntu-24.04
     timeout-minutes: 110
     env:
