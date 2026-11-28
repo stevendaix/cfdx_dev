@@ -47,6 +47,14 @@ struct MomentumFaceBudget {
     double matrix_closure_linf = std::numeric_limits<double>::infinity();
     double matrix_closure_relative_linf = std::numeric_limits<double>::infinity();
     std::size_t matrix_closure_worst_cell = 0;
+    // Optional raw accepted-state integrated forces [N], captured before
+    // cell scatter. Empty unless capture_raw_forces was requested.
+    std::vector<double> raw_convection_face_force;
+    std::vector<double> raw_viscous_face_force;
+    std::vector<double> raw_transpose_viscous_face_force;
+    std::vector<double> raw_pressure_cell_force;
+    std::vector<double> raw_body_force_cell_force;
+    std::vector<double> raw_temporal_cell_force;
 };
 
 // Inputs represent the ACCEPTED iterate; the mass flux must be the same
@@ -68,7 +76,8 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
     const cfdx::core::Field<double, cfdx::core::Location::FACE>* transpose_stress_flux = nullptr,
     const std::vector<double>* wall_face_viscosity = nullptr,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* negative_accumulation = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr,
+    bool capture_raw_forces = false)
 {
     using cfdx::core::Field;
     using cfdx::core::Location;
@@ -112,6 +121,14 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
 
     MomentumFaceBudget out;
     out.cells.resize(nc);
+    if (capture_raw_forces) {
+        out.raw_convection_face_force.resize(nf);
+        out.raw_viscous_face_force.resize(nf);
+        out.raw_transpose_viscous_face_force.resize(nf);
+        out.raw_pressure_cell_force.resize(nc);
+        out.raw_body_force_cell_force.resize(nc);
+        out.raw_temporal_cell_force.resize(nc);
+    }
     for (std::size_t cell = 0; cell < nc; ++cell) {
         const auto volume = geometry.cell_volumes[cell];
         if (!std::isfinite(volume) || !(volume > 0.0) ||
@@ -120,6 +137,10 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
             throw std::invalid_argument("momentum face budget: invalid cell state");
         out.cells[cell].pressure = pressure_gradient(cell) * volume;
         out.cells[cell].body_force = -body_force(cell) * volume;
+        if (capture_raw_forces) {
+            out.raw_pressure_cell_force[cell] = out.cells[cell].pressure;
+            out.raw_body_force_cell_force[cell] = out.cells[cell].body_force;
+        }
     }
     const auto& ownership = mesh.ownership();
     for (std::size_t face = 0; face < nf; ++face) {
@@ -130,6 +151,11 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
             ? -(*transpose_stress_flux)(face) : 0.0;
         const double collocated_delta = collocated_mass_flux
             ? adv - collocated_convection(face) : 0.0;
+        if (capture_raw_forces) {
+            out.raw_convection_face_force[face] = adv;
+            out.raw_viscous_face_force[face] = visc;
+            out.raw_transpose_viscous_face_force[face] = trans;
+        }
         if (!std::isfinite(F) || !std::isfinite(adv) ||
             !std::isfinite(visc) || !std::isfinite(trans) ||
             !std::isfinite(collocated_delta))
@@ -162,6 +188,8 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
         if (!std::isfinite(temporal))
             throw std::invalid_argument("momentum face budget: nonfinite accumulation");
         b.temporal = -temporal;
+        if (capture_raw_forces)
+            out.raw_temporal_cell_force[cell] = b.temporal;
         b.physical_residual = b.convection + b.viscous + b.transpose_viscous +
                               b.pressure + b.body_force + b.temporal;
         b.bounded_operator_residual = b.physical_residual + b.bounded_divergence;
