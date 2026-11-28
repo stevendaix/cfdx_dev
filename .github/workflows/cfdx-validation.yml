@@ -254,7 +254,7 @@ jobs:
           regex_file="$BUILD_DIR/ci-shards/long-shard-${{ matrix.shard }}.regex"
           test -s "$regex_file"
           CFDX_NACA_FORENSICS=1 \
-          CFDX_NACA_MOMENTUM_POWER_CSV="$BUILD_DIR/naca-momentum-power-${{ matrix.shard }}.csv" \
+          CFDX_NACA_MOMENTUM_POWER_CSV="$PWD/$BUILD_DIR/naca-momentum-power-${{ matrix.shard }}.csv" \
             ctest --test-dir "$BUILD_DIR" \
             -R "$(cat "$regex_file")" \
             --no-tests=error \
