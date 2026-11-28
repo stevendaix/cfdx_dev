@@ -75,7 +75,9 @@ Le solveur calcule alors l'oracle indépendant face-jump puis compare, canal par
 
 Le test de validation NACA expose également `CFDX_NACA_MOMENTUM_POWER_CSV`. Le fichier contient les puissances internes/frontières des canaux face et les comparaisons face/scatter cellulaire. Les sources pression, force extérieure et accumulation sont explicitement nommées `*_source` / `*_cell` ; elles ne doivent pas être interprétées comme des puissances de face. La sortie n'est écrite qu'après la réconciliation fail-closed du solveur.
 
-Exécution N64 : reprendre exactement la commande NACA de la fiche méthode 34, ajouter dans le même bloc `env` :
+Pour la campagne trois maillages (N64/N128/N256), le même processus appelle le solveur trois fois. Le CSV est donc ouvert en remplacement au premier maillage puis en ajout pour les suivants ; la colonne `mesh_cells` identifie chaque résolution. Cela évite de perdre les lignes N64/N128 en tronquant le fichier au démarrage des appels suivants. Le workflow de validation totale active maintenant ce callback sur le test `test_naca0012_qualification`, vérifie la présence de trois tailles de maillage distinctes, le schéma, la finitude des valeurs et la fermeture du total brut, puis conserve le CSV comme artefact. Le callback C++ effectue en amont les comparaisons face/scatter canal par canal avec l'échelle absolue issue des travaux élémentaires.
+
+Exécution N64 isolée : reprendre exactement la commande NACA de la fiche méthode 34, ajouter dans le même bloc `env` :
 
 ```bash
 CFDX_NACA_MOMENTUM_POWER_CSV="$CASE/momentum_power.csv"
