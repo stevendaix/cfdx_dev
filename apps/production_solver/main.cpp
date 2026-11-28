@@ -3195,7 +3195,7 @@ int main(int argc, char** argv)
                             << " linf=" << budget.matrix_closure_linf
                             << " relative_linf=" << budget.matrix_closure_relative_linf
                             << " worst_cell=" << budget.matrix_closure_worst_cell
-                            << " (diagnostic exported; solver state unchanged)\\n";
+                            << " (diagnostic exported; solver state unchanged)\n";
                     if (budget.cells.size() != geometry.cell_centres.size())
                         throw std::runtime_error(
                             "production momentum budget cell/geometry size mismatch");
