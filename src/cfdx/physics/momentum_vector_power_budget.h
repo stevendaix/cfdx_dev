@@ -98,11 +98,13 @@ inline MomentumVectorPowerBudget aggregate_momentum_vector_power(
             const double reconstructed_bounded =
                 reconstructed_physical + residual.bounded_divergence;
             const double physical_scale = std::max(
-                1.0, std::abs(reconstructed_physical) +
-                     std::abs(residual.physical_residual));
+                std::abs(residual.convection) + std::abs(residual.viscous) +
+                std::abs(residual.transpose_viscous) + std::abs(residual.pressure) +
+                std::abs(residual.body_force) + std::abs(residual.temporal),
+                std::numeric_limits<double>::min());
             const double bounded_scale = std::max(
-                1.0, std::abs(reconstructed_bounded) +
-                     std::abs(residual.bounded_operator_residual));
+                physical_scale + std::abs(residual.bounded_divergence),
+                std::numeric_limits<double>::min());
             constexpr double consistency_factor = 64.0;
             const double arithmetic_tolerance =
                 consistency_factor * std::numeric_limits<double>::epsilon();
