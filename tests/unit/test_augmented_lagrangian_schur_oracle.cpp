@@ -250,7 +250,7 @@ void check_general_cross_augmentation() {
             throw std::runtime_error(
                 "general cross-augmentation Schur identity mismatch");
         std::cout << "general_cross gamma=" << gamma
-                  << " max_abs_error=" << error << '\\n';
+                  << " max_abs_error=" << error << '\n';
 
         if (gamma == 0.7 &&
             max_difference(A_gamma, transpose(A_gamma)) < 1.0e-6)
