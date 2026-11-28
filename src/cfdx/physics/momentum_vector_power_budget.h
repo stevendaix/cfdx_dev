@@ -185,6 +185,54 @@ struct MomentumRawFacePower {
     double physical_residual = 0.0;
 };
 
+// Compose three scalar raw-force captures into the vector oracle input. The
+// captures must originate from the same accepted state and mesh ordering.
+inline MomentumRawFacePowerInput make_momentum_raw_face_power_input(
+    const std::array<const MomentumFaceBudget*, 3>& component_budgets,
+    std::size_t n_faces,
+    std::size_t n_cells)
+{
+    for (const auto* budget : component_budgets) {
+        if (budget == nullptr ||
+            budget->raw_convection_face_force.size() != n_faces ||
+            budget->raw_viscous_face_force.size() != n_faces ||
+            budget->raw_transpose_viscous_face_force.size() != n_faces ||
+            budget->raw_pressure_cell_force.size() != n_cells ||
+            budget->raw_body_force_cell_force.size() != n_cells ||
+            budget->raw_temporal_cell_force.size() != n_cells)
+            throw std::invalid_argument(
+                "raw momentum power: incomplete component force capture");
+    }
+
+    MomentumRawFacePowerInput input;
+    input.convection_face_forces.resize(n_faces);
+    input.viscous_face_forces.resize(n_faces);
+    input.transpose_viscous_face_forces.resize(n_faces);
+    input.pressure_cell_forces.resize(n_cells);
+    input.body_force_cell_forces.resize(n_cells);
+    input.temporal_cell_forces.resize(n_cells);
+    for (std::size_t d = 0; d < 3; ++d) {
+        const auto& budget = *component_budgets[d];
+        for (std::size_t face = 0; face < n_faces; ++face) {
+            input.convection_face_forces[face][d] =
+                budget.raw_convection_face_force[face];
+            input.viscous_face_forces[face][d] =
+                budget.raw_viscous_face_force[face];
+            input.transpose_viscous_face_forces[face][d] =
+                budget.raw_transpose_viscous_face_force[face];
+        }
+        for (std::size_t cell = 0; cell < n_cells; ++cell) {
+            input.pressure_cell_forces[cell][d] =
+                budget.raw_pressure_cell_force[cell];
+            input.body_force_cell_forces[cell][d] =
+                budget.raw_body_force_cell_force[cell];
+            input.temporal_cell_forces[cell][d] =
+                budget.raw_temporal_cell_force[cell];
+        }
+    }
+    return input;
+}
+
 // Evaluate the finite-volume work identity directly from one shared force
 // vector per face and integrated cell sources. This path does not consume
 // MomentumFaceBudget and is intended as an independent audit oracle.
