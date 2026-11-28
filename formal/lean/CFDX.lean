@@ -5,6 +5,7 @@ import CFDX.FiniteVolume.BackwardEulerEnergy
 import CFDX.FiniteVolume.EnergyTransfer
 import CFDX.FiniteVolume.VectorFaceWork
 import CFDX.FiniteVolume.MeshVectorWork
+import CFDX.FiniteVolume.MomentumPower
 import CFDX.FiniteVolume.GaussGradient
 import CFDX.Geometry.SkewTetrahedron
 import CFDX.Geometry.CsrTopology
