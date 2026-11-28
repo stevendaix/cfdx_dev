@@ -81,6 +81,7 @@ def test_six_schur_plus_block_preconditioners_have_real_bfs_commands(tmp_path):
                     tuple((e["family"], e["configuration_key"]) for e in entries),
                     setup["numerics"].get("under_relaxation_momentum"),
                     setup["numerics"].get("under_relaxation_pressure"),
+                    tuple(sorted(setup["numerics"].get("raw_settings", {}).items())),
                 )
             )
     assert len(fingerprints) == 1  # identical geometry, not just same cell count
