@@ -360,8 +360,25 @@ int main() {
             }
         }
 
-        // Boundary-source superposition is checked independently of the cell
-        // field: doubling all prescribed data doubles H and leaves G unchanged.
+        // Verify additivity across independent physical boundary sources,
+        // not merely homogeneity along one combined data vector.
+        auto dirichlet_only = homogeneous;
+        dirichlet_only[0].value = prescribed[0].value;
+        auto neumann_only = homogeneous;
+        neumann_only[1].value = prescribed[1].value;
+        neumann_only[3].value = prescribed[3].value;
+        const auto dirichlet_offset =
+            evaluate_two_cell_mesh_lsq(mesh, zero_field, dirichlet_only);
+        const auto neumann_offset =
+            evaluate_two_cell_mesh_lsq(mesh, zero_field, neumann_only);
+        for (std::size_t cell = 0; cell < 2; ++cell)
+            for (std::size_t component = 0; component < 3; ++component)
+                close(boundary_offset[cell][component],
+                      dirichlet_offset[cell][component] +
+                          neumann_offset[cell][component],
+                      "Dirichlet and Neumann affine offsets must superpose");
+
+        // Also verify homogeneity by doubling the complete boundary vector.
         auto doubled_boundary = prescribed;
         for (auto& bc : doubled_boundary) bc.value *= 2.0;
         const auto doubled_offset =
@@ -370,7 +387,7 @@ int main() {
             for (std::size_t component = 0; component < 3; ++component)
                 close(doubled_offset[cell][component],
                       2.0 * boundary_offset[cell][component],
-                      "boundary offset must be linear in prescribed BC data");
+                      "boundary offset must be homogeneous in prescribed BC data");
     }
 
     return 0;
