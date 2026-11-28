@@ -102,11 +102,10 @@ def write_sst_thermal_case(
                     ]
             elif name == "upstream_open":
                 if driven:
-                    # Match the canonical N9/T2 channel: an inlet with no
-                    # imposed velocity (zero-gradient U), driven by the
-                    # declared body force. The mesh patch type is changed to
-                    # INLET above so the physical and topological contracts
-                    # agree.
+                    # Impose a reproducible inlet velocity while retaining
+                    # the declared body force as a volumetric momentum source.
+                    # The mesh patch type is changed to INLET above so the
+                    # physical and topological contracts agree.
                     patch["type"] = "inlet"
                     patch["value_type"] = "fixed"
                     patch["velocity_vector"] = [0.1, 0.0, 0.0]
