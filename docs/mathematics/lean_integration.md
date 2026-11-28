@@ -497,3 +497,147 @@ lemma for a mesh proof, but the list abstraction does not encode mesh
 incidence, owner/neighbour uniqueness, boundary classification, or whether
 each geometric face is included exactly once. Those remain explicit proof
 obligations before calling this a mesh-global finite-volume theorem.
+
+
+## Mesh-level vector face-work specification
+
+The module `CFDX.FiniteVolume.MeshVectorWork` now builds on the existing
+`OwnerNeighbourTopology` and `ownerNeighbourIncidence`; it does not define
+a competing mesh representation. It defines one shared integrated vector
+traction per face, the owner/neighbour incidence-scattered cell force, and
+the corresponding cell-wise velocity/force work. The theorem
+`mesh_vector_work_eq_sum_incidence_face_work` exchanges the finite cell
+and face sums, expressing total cell work as a sum of per-face incidence work.
+
+The module now proves that each per-face incidence sum reduces to the
+owner-minus-neighbour velocity-jump work for internal faces and to owner-only
+work for boundary faces. The global theorem combines these reductions with
+the finite cell/face sum interchange. This is an abstract finite-topology
+contract, not yet a proof of runtime C++ mesh conformance.
+
+The existing C++ transpose-viscous traction path remains a candidate for a
+bounded implementation bridge, but it is a viscous stress operator, not a
+Reynolds-stress closure. A conformance test must exercise the production
+face scatter and compare integrated traction/work, including boundary faces,
+without duplicating the implementation formula in the test.
+
+
+### Owner/neighbour vector-work reduction
+
+The follow-up module now adds the reduction lemmas
+`internal_face_incidence_work_eq_velocity_jump` and
+`boundary_face_incidence_work_eq_owner_work`. These use the actual
+`OwnerNeighbourTopology` incidence definition: owner coefficient +1,
+neighbour coefficient -1, and no neighbour coefficient on boundary faces.
+The derived `incidence_face_work_eq_owner_neighbour_work` selects the
+neighbour only for faces classified as internal, and the global theorem
+`mesh_vector_work_eq_owner_neighbour_face_work` combines this reduction
+with the finite cell/face sum interchange.
+
+This is still an abstract algebraic theorem over finite types. It does not
+prove runtime mesh validity, face orientation of geometry vectors, density
+or time weighting, nor correspondence to the production C++ assembly. The
+exact-head CI must compile these new lemmas before they are treated as
+machine-checked results.
+
+
+### Volume-weighted vector power
+
+The mesh vector-work contract now also defines
+`cellVectorFaceForceDensity` as integrated face force divided by cell volume,
+and `meshVolumeWeightedVectorWork` as the cell-volume-weighted velocity
+pairing. The theorem
+`mesh_volume_weighted_work_eq_integrated_face_work` states that, for
+strictly positive cell volumes, this power pairing is exactly the integrated
+face-work sum. This keeps the dimensions distinct: traction integrated over
+a face is a force (N), its cell divergence is a force density (N/m^3), and
+multiplication by cell volume recovers force before taking velocity work (W).
+
+This theorem does not insert density automatically. The correct density
+factor depends on whether the transported momentum equation and closure
+traction are expressed in dynamic or kinematic form. That convention must be
+fixed explicitly when the Reynolds-stress traction interface is designed.
+
+
+## Backward-Euler kinetic-energy work identity
+
+The new module `CFDX.FiniteVolume.BackwardEulerEnergy` formalizes the
+physical backward-Euler momentum increment paired with the new velocity.
+For density \\(\\rho>0\\), time step \\(\\Delta t>0\\), and
+\\(\\delta\\mathbf U=\\mathbf U^{n+1}-\\mathbf U^n\\), it proves
+
+\\[
+\\rho\\,\\mathbf U^{n+1}\\cdot
+\\frac{\\mathbf U^{n+1}-\\mathbf U^n}{\\Delta t}
+=
+\\frac{\\rho}{\\Delta t}
+\\left[
+K(\\mathbf U^{n+1})-K(\\mathbf U^n)
++\\frac12\\lVert\\delta\\mathbf U\\rVert^2
+\\right],
+\\qquad K(\\mathbf U)=\\frac12\\lVert\\mathbf U\\rVert^2.
+\\]
+
+The quadratic defect is non-negative for positive density and time step.
+This identifies the implicit time-discretization contribution to the
+kinetic-energy balance. It does **not** prove stability of the complete
+pressure-velocity algorithm, nor does it justify treating pseudo-time,
+under-relaxation, or nonlinear globalization terms as physical time work.
+The next bridge is to map the exact accepted transient accumulation in
+`steady_incompressible_solver.h` to this identity, including variable
+cell volumes, density, BDF2 history and boundary/source work.
+
+
+### Constant-step BDF2 G-stability identity
+
+The same module now adds `constant_step_bdf2_g_stability_identity`. For
+constant \\(\\Delta t\\), it expresses the BDF2 time derivative paired
+with \\(\\mathbf U^{n+1}\\) as the difference of a two-level G-energy
+plus the non-negative second-difference defect. The G-energy is the sum
+\\[
+\\lVert\\mathbf U^{n+1}\\rVert^2+
+\\lVert 2\\mathbf U^{n+1}-\\mathbf U^n\\rVert^2.
+\\]
+The defect is proportional to
+\\(
+\\lVert\\mathbf U^{n+1}-2\\mathbf U^n+\\mathbf U^{n-1}\\rVert^2
+\\).
+
+**Critical limitation:** CFDX's production BDF2 path calls
+`bdf2_coefficients(dt_previous, dt, ...)` and therefore supports
+variable-step coefficients. The new theorem is only the constant-step
+identity; it must not be used to claim G-stability for arbitrary step ratios.
+A variable-step energy estimate with its precise admissible step-ratio
+condition is a separate open task. The first-step backward-Euler fallback
+and constant-step BDF2 are now covered by separate abstract contracts;
+neither yet proves the complete C++ temporal assembly.
+
+
+#### Variable-step BDF2: prior-art correction and exact scope
+
+The literature audit rejects the simplistic statement that variable-step BDF2
+is either unconditionally energy-stable or requires one universal ratio cap.
+The answer depends on the stability notion and operator class:
+
+- Akrivis, Chen, Han, Yu & Zhang (2024), *The variable two-step BDF method
+  for parabolic equations*, BIT Numerical Mathematics 64:14,
+  DOI [10.1007/s10543-024-01007-y](https://doi.org/10.1007/s10543-024-01007-y),
+  prove a parabolic stability estimate for a self-adjoint positive elliptic
+  operator under adjacent step ratios \\(r_n\\le 1.9398\\), using a
+  two-multiplier energy technique. The estimate includes a mesh-variation
+  factor; it is not a universal CFL-like limit for every BDF2 application.
+- Li & Liao (2022), *Stability of Variable-Step BDF2 and BDF3 Methods*,
+  SIAM Journal on Numerical Analysis 60(4), 2253–2272,
+  DOI [10.1137/21M1462398](https://doi.org/10.1137/21M1462398),
+  establish BDF2 stability on arbitrary time grids using discrete
+  orthogonal convolution kernels and an elliptic-type matrix norm. This is
+  a different global stability framework, not the same local G-energy
+  identity as the constant-step formula above.
+
+Therefore the research target is **not** to invent a blanket step-ratio cap.
+It is to specify which estimate CFDX needs (local G-energy telescoping,
+global DOC-kernel stability, or a solver-specific energy bound), then check
+the actual variable-step coefficients and operator hypotheses. Neither
+published result automatically transfers to CFDX's coupled, nonlinear,
+convection-dominated, pressure-constrained momentum operator. The constant-
+step Lean theorem remains a verified algebraic identity only.
