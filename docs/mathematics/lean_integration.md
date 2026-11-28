@@ -415,15 +415,12 @@ interpolation, non-orthogonal corrections and boundary work. It must also
 allow physically legitimate backscatter. Therefore no blanket
 non-positive-power requirement is imposed on every turbulence closure.
 
-The mesh-level vector-work identity and positive-volume weighting have
-since been formalized in `CFDX.FiniteVolume.MeshVectorWork`. A bounded C++
-audit fixture now compares the volume-weighted work from the production
-transpose-viscous force divergence with the corresponding owner/neighbour
-face work on a deterministic mesh containing internal and boundary faces.
-The remaining implementation bridge is broader: compare the full accepted
-momentum residual, including pressure, convection, Rhie–Chow coupling,
-non-orthogonal diffusion and temporal terms. Neither full residual
-correspondence nor solver stability is claimed yet.
+The next formal step is a mesh-weighted discrete power identity tied to the
+actual momentum residual and an explicit decomposition into internal,
+boundary, pressure, viscous and closure contributions. The next implementation
+step is a deterministic C++ counterpart on two cells that compares the
+owner/neighbour face scatter with the Lean examples. Neither correspondence
+nor solver stability is claimed yet.
 
 
 ### Face-jump work identity (two-cell prototype)
