@@ -31,6 +31,7 @@ Ne pas réimplémenter ces mécanismes avant d'avoir exploité leurs sorties :
 |---|---|---|
 | Historique physique | CFDX_NACA_PHYSICAL_HISTORY_CSV | Momentum x/y/z, continuité, résidus de faces par axe, pression linéaire, variations U/p, alpha, pseudo-CFL |
 | Budget momentum cellwise | CFDX_NACA_MOMENTUM_BUDGET_CSV | Convection, viscosité, contrainte transpose, pression, force, divergence bornée, divergence masse, écart de flux collocated, résidu local |
+| Puissance momentum vectorielle | CFDX_NACA_MOMENTUM_POWER_CSV | Puissance face interne/frontière et comparaison canal par canal avec le scatter cellulaire, pour convection, viscosité, contrainte transpose, pression, force et accumulation |
 | Budget toutes cellules | CFDX_NACA_MOMENTUM_BUDGET_ALL_CELLS=1 | Toutes les cellules au lieu des 12 pires par composante |
 | Trace des champs avant assemblage | CFDX_NACA_FORENSICS=1 | Extrema de p, grad(p), U, flux, divergence, viscosité effective et non-finis |
 | Trace de l'équation momentum | CFDX_NACA_FORENSICS=1 | RHS, diagonale, hors-diagonale, sommes de lignes, cellules extrêmes, forces pression/corps |
