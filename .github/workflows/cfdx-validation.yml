@@ -279,7 +279,7 @@ jobs:
 
           path = sys.argv[1]
           expected = {
-              "iteration",
+              "mesh_cells", "iteration",
               "convection_internal", "convection_boundary", "convection_face", "convection_cell",
               "viscous_internal", "viscous_boundary", "viscous_face", "viscous_cell",
               "transpose_internal", "transpose_boundary", "transpose_face", "transpose_cell",
@@ -294,13 +294,14 @@ jobs:
               rows = list(reader)
           if not rows:
               raise SystemExit("NACA raw momentum power callback produced no rows")
-          previous = 0
+          mesh_levels = set()
           for index, row in enumerate(rows, start=1):
               iteration = int(row["iteration"])
-              if iteration <= previous:
-                  raise SystemExit(f"non-increasing iteration at CSV row {index}")
-              previous = iteration
-              for key in expected - {"iteration", "qualified"}:
+              mesh_cells = int(row["mesh_cells"])
+              if iteration < 1 or mesh_cells < 1:
+                  raise SystemExit(f"invalid mesh/iteration index at CSV row {index}")
+              mesh_levels.add(mesh_cells)
+              for key in expected - {"mesh_cells", "iteration", "qualified"}:
                   value = float(row[key])
                   if not math.isfinite(value):
                       raise SystemExit(f"non-finite {key} at CSV row {index}")
@@ -315,7 +316,9 @@ jobs:
               scale = sum(abs(float(row[key])) for key in channels)
               if abs(total - reported) > 512.0 * sys.float_info.epsilon * scale:
                   raise SystemExit(f"raw power total does not close at CSV row {index}")
-          print(f"Validated {len(rows)} accepted-state raw momentum power records: {path}")
+          if len(mesh_levels) != 3:
+              raise SystemExit(f"expected three NACA mesh levels, found {sorted(mesh_levels)}")
+          print(f"Validated {len(rows)} accepted-state raw momentum power records across mesh cell counts {sorted(mesh_levels)}: {path}")
           PY
       - name: Verify each planned long test executed exactly once
         id: coverage
