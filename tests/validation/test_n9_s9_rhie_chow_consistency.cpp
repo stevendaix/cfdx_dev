@@ -627,7 +627,6 @@ int main()
             const double residual_norm = std::sqrt(residual_norm_sq);
             if (residual_norm > 1e-12 * max_row_norm) {
                 for (double& value : candidate) value /= residual_norm;
-                for (double& value : candidate) value /= residual_norm;
                 orthonormal_rows.push_back(std::move(candidate));
                 basis_rows.push_back(original_rows[velocity_row]);
                 basis_velocity_rows.push_back(velocity_row);
