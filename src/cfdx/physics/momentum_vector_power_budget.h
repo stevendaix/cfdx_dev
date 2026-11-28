@@ -176,8 +176,16 @@ struct MomentumRawFacePowerInput {
 };
 
 struct MomentumRawFacePower {
+    // Internal-face and boundary-face work are reported separately. Their
+    // sum is the corresponding face-operator power.
+    double convection_internal = 0.0;
+    double convection_boundary = 0.0;
     double convection = 0.0;
+    double viscous_internal = 0.0;
+    double viscous_boundary = 0.0;
     double viscous = 0.0;
+    double transpose_viscous_internal = 0.0;
+    double transpose_viscous_boundary = 0.0;
     double transpose_viscous = 0.0;
     double pressure = 0.0;
     double body_force = 0.0;
@@ -196,6 +204,7 @@ inline MomentumRawFacePower evaluate_momentum_raw_face_power(
     const std::size_t nc = mesh.n_cells();
     const std::size_t nf = mesh.n_faces();
     if (nc == 0 || velocity.size() != nc || velocity.dimension() != 3 ||
+        mesh.ownership().size() != nf || !mesh.ownership().is_consistent(nc) ||
         input.convection_face_forces.size() != nf ||
         input.viscous_face_forces.size() != nf ||
         input.transpose_viscous_face_forces.size() != nf ||
@@ -219,7 +228,7 @@ inline MomentumRawFacePower evaluate_momentum_raw_face_power(
         return value;
     };
     const auto face_work = [&](const std::vector<MomentumVector3>& forces) {
-        double work = 0.0;
+        std::array<double, 2> work{}; // [internal, boundary]
         const auto& ownership = mesh.ownership();
         for (std::size_t face = 0; face < nf; ++face) {
             const auto& force = forces[face];
@@ -239,11 +248,11 @@ inline MomentumRawFacePower evaluate_momentum_raw_face_power(
                     owner_velocity[0] - neighbour_velocity[0],
                     owner_velocity[1] - neighbour_velocity[1],
                     owner_velocity[2] - neighbour_velocity[2]};
-                work += dot(jump, force);
+                work[0] += dot(jump, force);
             } else {
-                work += dot(owner_velocity, force);
+                work[1] += dot(owner_velocity, force);
             }
-            if (!std::isfinite(work))
+            if (!std::isfinite(work[0]) || !std::isfinite(work[1]))
                 throw std::invalid_argument("raw momentum face power: nonfinite accumulated work");
         }
         return work;
@@ -261,9 +270,21 @@ inline MomentumRawFacePower evaluate_momentum_raw_face_power(
     };
 
     MomentumRawFacePower out;
-    out.convection = face_work(input.convection_face_forces);
-    out.viscous = face_work(input.viscous_face_forces);
-    out.transpose_viscous = face_work(input.transpose_viscous_face_forces);
+    const auto convection = face_work(input.convection_face_forces);
+    out.convection_internal = convection[0];
+    out.convection_boundary = convection[1];
+    out.convection = convection[0] + convection[1];
+    const auto viscous = face_work(input.viscous_face_forces);
+    out.viscous_internal = viscous[0];
+    out.viscous_boundary = viscous[1];
+    out.viscous = viscous[0] + viscous[1];
+    const auto transpose = face_work(input.transpose_viscous_face_forces);
+    out.transpose_viscous_internal = transpose[0];
+    out.transpose_viscous_boundary = transpose[1];
+    out.transpose_viscous = transpose[0] + transpose[1];
+    if (!std::isfinite(out.convection) || !std::isfinite(out.viscous) ||
+        !std::isfinite(out.transpose_viscous))
+        throw std::invalid_argument("raw momentum face power: nonfinite face-work total");
     out.pressure = source_work(input.pressure_cell_forces);
     out.body_force = source_work(input.body_force_cell_forces);
     out.temporal = source_work(input.temporal_cell_forces);
