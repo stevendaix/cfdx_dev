@@ -384,3 +384,70 @@ Each stage must state its hypotheses and distinguish proved properties,
 tested properties, assumptions, and open questions. No solver tolerance,
 physical model, convergence gate, or qualification result may be weakened to
 make a formal or numerical check pass.
+
+
+## Discrete energy transfer: conservation is not stability
+
+The module `CFDX.FiniteVolume.EnergyTransfer` is included in the root
+`CFDX.lean` build. It defines a two-cell discrete velocity, two equal-and-opposite force
+patterns, and three velocity-force pairings. The kernel-checked results establish:
+
+- a conservative internal force can have positive discrete power (+2);
+- another conservative force can have negative discrete power (-2);
+- the same conservative force can have zero power when paired with a
+  uniform velocity.
+
+The theorem `conservation_does_not_imply_nonpositive_power` is a constructive
+counterexample to the implication from zero global force balance to
+non-positive discrete power. The theorem
+`conservative_power_can_have_either_sign` makes the sign-indefiniteness
+explicit.
+
+This is a finite-dimensional logical counterexample, not a discretization
+of the CFDX Navier–Stokes operator and not a turbulence closure. Its purpose
+is to prevent an invalid inference: pairwise conservation of internal face
+forces does not establish kinetic-energy stability.
+
+The Euclidean inner product is used only in this minimal example. A production
+energy contract must use CFDX's actual cell volumes, density convention,
+time-discrete kinetic-energy definition, pressure/velocity coupling,
+interpolation, non-orthogonal corrections and boundary work. It must also
+allow physically legitimate backscatter. Therefore no blanket
+non-positive-power requirement is imposed on every turbulence closure.
+
+The next formal step is a mesh-weighted discrete power identity tied to the
+actual momentum residual and an explicit decomposition into internal,
+boundary, pressure, viscous and closure contributions. The next implementation
+step is a deterministic C++ counterpart on two cells that compares the
+owner/neighbour face scatter with the Lean examples. Neither correspondence
+nor solver stability is claimed yet.
+
+
+### Face-jump work identity (two-cell prototype)
+
+The same Lean module now defines `twoCellInternalFaceForce q`: the owner
+receives the integrated face force (+q), and the neighbour receives
+(-q). The theorem `two_cell_power_equals_face_jump_work` proves exactly
+[
+  sum_{c\in\{P,N\}} U_c f_c
+  = (U_P-U_N)q.
+]
+This is the discrete face-jump work identity for one internal face. It is
+the simplest prototype of the summation-by-parts identity needed for a
+finite-volume stress divergence: internal face work depends on the jump of
+the cell velocity and the shared face traction, not on the global force sum.
+
+The `volumeWeightedPower` definition was refined to distinguish an
+integrated face-force residual from a per-volume force density:
+[
+  \sum_c V_c U_c (F_c/V_c).
+]
+For strictly positive cell volumes, the same conservative two-cell example
+still gives positive power. This removes the dimensional ambiguity of
+multiplying an integrated face force directly by a cell volume.
+
+This remains a two-cell scalar prototype. The next extension must handle
+vector traction, density-weighted kinetic energy, nonuniform cell volumes,
+boundary-face work, and the actual momentum residual including pressure,
+viscous stress, Rhie–Chow and temporal terms. It is not yet a theorem about
+the C++ `momentum_face_budget` implementation.
