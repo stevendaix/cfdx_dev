@@ -461,6 +461,15 @@ int main()
                      std::invalid_argument);
         storage[1].cells[1].physical_residual = 0.0;
 
+        // Finite operands whose sum overflows must not pass through an
+        // infinite scale/tolerance comparison.
+        storage[0].cells[1].convection = std::numeric_limits<double>::max();
+        storage[0].cells[1].viscous = std::numeric_limits<double>::max();
+        EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
+                     std::invalid_argument);
+        storage[0].cells[1].convection = 0.0;
+        storage[0].cells[1].viscous = 0.0;
+
         // A missing component cell or a nonfinite accepted velocity is fatal.
         storage[2].cells.pop_back();
         EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
