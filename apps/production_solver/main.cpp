@@ -3168,7 +3168,7 @@ int main(int argc, char** argv)
             if (!momentum_budget_output)
                 throw std::runtime_error("cannot open momentum budget CSV");
             momentum_budget_output << std::setprecision(17)
-                << "iteration,component,rank,cell,x,y,z,convection,viscous,"
+                << "iteration,component,rank,selection_reason,cell,x,y,z,convection,viscous,"
                    "transpose_viscous,pressure,body_force,bounded_divergence,"
                    "mass_divergence,collocated_difference,physical_residual,"
                    "bounded_operator_residual,worst_absolute_residual,temporal,"
@@ -3202,18 +3202,27 @@ int main(int argc, char** argv)
                     std::vector<std::size_t> order(budget.cells.size());
                     for (std::size_t cell = 0; cell < order.size(); ++cell)
                         order[cell] = cell;
-                    const std::size_t count = options.momentum_budget_all_cells
+                    const std::size_t ranked_count = options.momentum_budget_all_cells
                         ? order.size()
                         : std::min<std::size_t>(12, order.size());
                     std::partial_sort(
                         order.begin(),
-                        order.begin() + static_cast<std::ptrdiff_t>(count),
+                        order.begin() + static_cast<std::ptrdiff_t>(ranked_count),
                         order.end(),
                         [&budget](std::size_t lhs, std::size_t rhs) {
                             const double a = std::abs(budget.cells[lhs].physical_residual);
                             const double b = std::abs(budget.cells[rhs].physical_residual);
                             return a == b ? lhs < rhs : a > b;
                         });
+                    std::size_t count = ranked_count;
+                    if (!options.momentum_budget_all_cells &&
+                        budget.matrix_closure_worst_cell < order.size() &&
+                        std::find(
+                            order.begin(),
+                            order.begin() + static_cast<std::ptrdiff_t>(ranked_count),
+                            budget.matrix_closure_worst_cell) ==
+                            order.begin() + static_cast<std::ptrdiff_t>(ranked_count))
+                        order[count++] = budget.matrix_closure_worst_cell;
                     for (std::size_t rank = 0; rank < count; ++rank) {
                         const std::size_t cell = order[rank];
                         const auto& centre = geometry.cell_centres[cell];
@@ -3232,9 +3241,13 @@ int main(int argc, char** argv)
                             if (!std::isfinite(value))
                                 throw std::runtime_error(
                                     "production momentum budget contains a nonfinite value");
+                        const char* selection_reason =
+                            options.momentum_budget_all_cells ? "all_cells" :
+                            (rank < ranked_count ? "physical_residual_top12" :
+                                                   "matrix_closure_worst");
                         momentum_budget_output
                             << iteration << ',' << component << ',' << rank << ','
-                            << cell;
+                            << selection_reason << ',' << cell;
                         for (const double value : values)
                             momentum_budget_output << ',' << value;
                         momentum_budget_output << ','
