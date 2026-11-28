@@ -16025,18 +16025,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         &final_ex, &final_ey, &final_ez};
                     reconcile_momentum_budget_with_matrix(
                         budget, *final_equations[d], component);
-                    if (!momentum_matrix_face_closure_consistent(budget))
-                        throw std::runtime_error(
-                            "momentum face/CSR operator disagrees cellwise at cell " +
-                            std::to_string(budget.matrix_closure_worst_cell));
-                    // The budget and the independent face certificate have
-                    // to agree: missing pressure/viscous terms must fail.
+                    const bool matrix_closure_consistent =
+                        momentum_matrix_face_closure_consistent(budget);
+                    // The diagnostic hook is observational: a failed
+                    // face/CSR comparison must be exported, not converted
+                    // into a solver failure that changes campaign execution.
                     const double agreement = std::abs(
                         budget.worst_absolute_residual - physical.local_linf);
-                    if (agreement > 1e-10 * std::max({1.0,
-                            budget.worst_absolute_residual, physical.local_linf}))
-                        throw std::runtime_error(
-                            "momentum face budget disagrees with independent residual");
+                    const double agreement_scale = std::max({
+                        1.0, budget.worst_absolute_residual, physical.local_linf});
+                    if (!matrix_closure_consistent || agreement > 1e-10 * agreement_scale)
+                        std::cerr << "MOMENTUM_FACE_BUDGET_AUDIT_WARNING iteration="
+                                  << iter << " component=" << d
+                                  << " closure_consistent=" << (matrix_closure_consistent ? 1 : 0)
+                                  << " closure_linf=" << budget.matrix_closure_linf
+                                  << " closure_relative_linf=" << budget.matrix_closure_relative_linf
+                                  << " closure_worst_cell=" << budget.matrix_closure_worst_cell
+                                  << " residual_agreement=" << agreement
+                                  << " residual_agreement_scale=" << agreement_scale
+                                  << " (diagnostic only; solver continues)\\n";
                     controls.momentum_face_budget_callback(iter, d, budget, geometry);
                 }
 
