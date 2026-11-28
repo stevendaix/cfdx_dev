@@ -75,9 +75,10 @@ def audit_post_sst_operator_cycle(
             values[index] - values[index - period]
             for index in range(period, len(values))
         ]
-        error = math.sqrt(
-            sum(value * value for value in differences) / len(differences)
-        ) / scale
+        error = (
+            math.sqrt(sum(value * value for value in differences) / len(differences))
+            / scale
+        )
         errors[str(period)] = error
 
     best_period = min(errors, key=errors.get)
