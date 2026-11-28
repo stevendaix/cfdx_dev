@@ -181,6 +181,21 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
         case = tmp_path / f"Prt_{prt}.cfdx.h5"
         out = tmp_path / f"Prt_{prt}"
         write_sst_thermal_case(case, prt=prt, driven=True)
+        with h5py.File(case, "r") as case_file:
+            setup = json.loads(case_file.attrs["case_setup_json"])
+            axial = {
+                patch["patch_name"]: (patch["type"], patch["value_type"])
+                for patch in setup["boundary_conditions"]
+                if patch["patch_name"] in {"upstream_open", "downstream_open"}
+            }
+            assert setup["body_force"] == [0.01, 0.0, 0.0]
+            assert axial == {
+                "upstream_open": ("inlet", "zero_gradient"),
+                "downstream_open": ("outlet", "zero_gradient"),
+            }
+            patch_types = case_file.attrs["boundary_patches"].split(";")
+            assert any(item.startswith("upstream_open:") and item.endswith(":1") for item in patch_types)
+            assert any(item.startswith("downstream_open:") and item.endswith(":2") for item in patch_types)
         run = execute(solver, case, out, iterations=3000, timeout_seconds=600)
         assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
         execution = json.loads((out / "execution.json").read_text())
