@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -70,16 +71,46 @@ inline MomentumVectorPowerBudget aggregate_momentum_vector_power(
         for (std::size_t d = 0; d < 3; ++d) {
             const double u = velocity(cell, d);
             const auto& residual = component_budgets[d]->cells[cell];
-            const std::array<double, 9> inputs{
+            const std::array<double, 11> inputs{
                 u, residual.convection, residual.viscous,
                 residual.transpose_viscous, residual.pressure,
                 residual.body_force, residual.temporal,
-                residual.physical_residual, residual.bounded_divergence
+                residual.physical_residual, residual.bounded_divergence,
+                residual.bounded_operator_residual,
+                component_budgets[d]->matrix_closure_checked
+                    ? component_budgets[d]->matrix_closure_linf : 0.0
             };
             for (const double value : inputs) {
                 if (!std::isfinite(value))
                     throw std::invalid_argument("momentum vector power: nonfinite velocity or residual contribution");
             }
+            if (component_budgets[d]->matrix_closure_checked &&
+                (!std::isfinite(component_budgets[d]->matrix_closure_relative_linf) ||
+                 component_budgets[d]->matrix_closure_linf < 0.0 ||
+                 component_budgets[d]->matrix_closure_relative_linf < 0.0))
+                throw std::invalid_argument("momentum vector power: invalid checked CSR closure diagnostics");
+
+            const double reconstructed_physical =
+                residual.convection + residual.viscous +
+                residual.transpose_viscous + residual.pressure +
+                residual.body_force + residual.temporal;
+            const double reconstructed_bounded =
+                reconstructed_physical + residual.bounded_divergence;
+            const double physical_scale = std::max(
+                1.0, std::abs(reconstructed_physical) +
+                     std::abs(residual.physical_residual));
+            const double bounded_scale = std::max(
+                1.0, std::abs(reconstructed_bounded) +
+                     std::abs(residual.bounded_operator_residual));
+            constexpr double consistency_factor = 64.0;
+            const double arithmetic_tolerance =
+                consistency_factor * std::numeric_limits<double>::epsilon();
+            if (std::abs(reconstructed_physical - residual.physical_residual) >
+                    arithmetic_tolerance * physical_scale ||
+                std::abs(reconstructed_bounded - residual.bounded_operator_residual) >
+                    arithmetic_tolerance * bounded_scale)
+                throw std::invalid_argument("momentum vector power: inconsistent physical/bounded residual decomposition");
+
             add(power.convection, u * residual.convection);
             add(power.viscous, u * residual.viscous);
             add(power.transpose_viscous, u * residual.transpose_viscous);
