@@ -575,3 +575,33 @@ A variable-step energy estimate with its precise admissible step-ratio
 condition is a separate open task. The first-step backward-Euler fallback
 and constant-step BDF2 are now covered by separate abstract contracts;
 neither yet proves the complete C++ temporal assembly.
+
+
+#### Variable-step BDF2: prior-art correction and exact scope
+
+The literature audit rejects the simplistic statement that variable-step BDF2
+is either unconditionally energy-stable or requires one universal ratio cap.
+The answer depends on the stability notion and operator class:
+
+- Akrivis, Chen, Han, Yu & Zhang (2024), *The variable two-step BDF method
+  for parabolic equations*, BIT Numerical Mathematics 64:14,
+  DOI [10.1007/s10543-024-01007-y](https://doi.org/10.1007/s10543-024-01007-y),
+  prove a parabolic stability estimate for a self-adjoint positive elliptic
+  operator under adjacent step ratios \\(r_n\\le 1.9398\\), using a
+  two-multiplier energy technique. The estimate includes a mesh-variation
+  factor; it is not a universal CFL-like limit for every BDF2 application.
+- Li & Liao (2022), *Stability of Variable-Step BDF2 and BDF3 Methods*,
+  SIAM Journal on Numerical Analysis 60(4), 2253–2272,
+  DOI [10.1137/21M1462398](https://doi.org/10.1137/21M1462398),
+  establish BDF2 stability on arbitrary time grids using discrete
+  orthogonal convolution kernels and an elliptic-type matrix norm. This is
+  a different global stability framework, not the same local G-energy
+  identity as the constant-step formula above.
+
+Therefore the research target is **not** to invent a blanket step-ratio cap.
+It is to specify which estimate CFDX needs (local G-energy telescoping,
+global DOC-kernel stability, or a solver-specific energy bound), then check
+the actual variable-step coefficients and operator hypotheses. Neither
+published result automatically transfers to CFDX's coupled, nonlinear,
+convection-dominated, pressure-constrained momentum operator. The constant-
+step Lean theorem remains a verified algebraic identity only.
