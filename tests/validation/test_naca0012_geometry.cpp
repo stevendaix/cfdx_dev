@@ -37,6 +37,11 @@ static Forces run(const std::string& path,std::size_t level,
     // Fail closed on every output that could be mistaken for physical
     // qualification after an early mesh/load/restart error. Validate *all*
     // destinations before deleting anything, and never truncate inputs.
+    static std::string initialized_raw_power_output_path;
+    const char* raw_power_path_env = std::getenv("CFDX_NACA_MOMENTUM_POWER_CSV");
+    const bool append_raw_power_output =
+        raw_power_path_env != nullptr &&
+        initialized_raw_power_output_path == raw_power_path_env;
     const char* output_names[] = {
         "CFDX_NACA_CONVERGED_FORCE_CSV",
         "CFDX_NACA_CONVERGED_FACE_FLUX_CSV",
@@ -68,11 +73,21 @@ static Forces run(const std::string& path,std::size_t level,
         }
         outputs.push_back(output);
     }
-    for (const auto& output : outputs)
+    for (const auto& output : outputs) {
         if (std::getenv("CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST") &&
-            output == std::getenv("CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST")) continue;
-        else if (std::remove(output.c_str()) != 0 && errno != ENOENT)
+            output == std::getenv("CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST"))
+            continue;
+        // The three-grid qualification calls run() once per mesh in one
+        // process. Preserve the shared power CSV after its first mesh so all
+        // mesh levels are recorded instead of silently truncating to N256.
+        if (append_raw_power_output && raw_power_path_env != nullptr &&
+            output == raw_power_path_env)
+            continue;
+        if (std::remove(output.c_str()) != 0 && errno != ENOENT)
             throw std::runtime_error("cannot clear stale NACA diagnostic/certificate");
+    }
+    if (raw_power_path_env != nullptr)
+        initialized_raw_power_output_path = raw_power_path_env;
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
         throw std::runtime_error("cannot read NACA0012 mesh: "+path);
@@ -843,24 +858,29 @@ static Forces run(const std::string& path,std::size_t level,
     if (const char* power_path = std::getenv("CFDX_NACA_MOMENTUM_POWER_CSV")) {
         if (!*power_path)
             throw std::invalid_argument("NACA momentum power path is empty");
-        raw_power_output.open(power_path);
+        raw_power_output.open(
+            power_path, append_raw_power_output ? std::ios::out | std::ios::app
+                                                : std::ios::out | std::ios::trunc);
         if (!raw_power_output)
             throw std::runtime_error("cannot open NACA momentum power output");
         raw_power_output << std::setprecision(17);
-        raw_power_output
-            << "iteration,convection_internal,convection_boundary,convection_face,"
-               "convection_cell,viscous_internal,viscous_boundary,viscous_face,"
-               "viscous_cell,transpose_internal,transpose_boundary,transpose_face,"
-               "transpose_cell,pressure_source,pressure_cell,body_force_source,"
-               "body_force_cell,temporal_source,temporal_cell,physical_residual_raw,"
-               "physical_residual_cell,qualified\n";
+        if (!append_raw_power_output) {
+            raw_power_output
+                << "mesh_cells,iteration,convection_internal,convection_boundary,convection_face,"
+                   "convection_cell,viscous_internal,viscous_boundary,viscous_face,"
+                   "viscous_cell,transpose_internal,transpose_boundary,transpose_face,"
+                   "transpose_cell,pressure_source,pressure_cell,body_force_source,"
+                   "body_force_cell,temporal_source,temporal_cell,physical_residual_raw,"
+                   "physical_residual_cell,qualified\n";
+        }
+        raw_power_output.flush();
         c.momentum_raw_face_power_callback =
-            [&raw_power_output](std::size_t iteration,
+            [&raw_power_output, mesh_cells = mesh.n_cells()](std::size_t iteration,
                 const cfdx::physics::MomentumRawFacePower& raw,
                 const cfdx::physics::MomentumVectorPowerBudget& cell,
                 const cfdx::physics::FvGeometry&) {
                 raw_power_output
-                    << iteration << ','
+                    << mesh_cells << ',' << iteration << ','
                     << raw.convection_internal << ',' << raw.convection_boundary << ','
                     << raw.convection << ',' << cell.total.convection << ','
                     << raw.viscous_internal << ',' << raw.viscous_boundary << ','
