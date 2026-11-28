@@ -117,13 +117,11 @@ def write_sst_thermal_case(
                     ]
                     patch["turbulence_intensity"] = 0.05
                     patch["turbulence_length_scale"] = 0.1
-            else:
-                if driven:
-                    # A zero-gradient outlet must not be assigned fixed
-                    # turbulence values: those are inlet data, not a
-                    # downstream Dirichlet condition.
-                    patch["type"] = "outlet"
-                    patch["value_type"] = "zero_gradient"
+            elif name == "downstream_open":
+                # Preserve the pressure-outlet contract from the N9 channel
+                # fixture. Replacing it with a velocity zero-gradient outlet
+                # removes the pressure anchor and leaves a finite continuity
+                # defect even when momentum and pressure linear solves settle.
                 if sst:
                     patch["sst_scalar_conditions"] = [
                         {"field": "k", "type": "zero_gradient", "value": 0.0},
@@ -189,9 +187,15 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
                 if patch["patch_name"] in {"upstream_open", "downstream_open"}
             }
             assert setup["body_force"] == [0.01, 0.0, 0.0]
+            downstream = next(
+                patch
+                for patch in setup["boundary_conditions"]
+                if patch["patch_name"] == "downstream_open"
+            )
+            assert downstream["pressure"] == 0.0
             assert axial == {
                 "upstream_open": ("inlet", "fixed"),
-                "downstream_open": ("outlet", "zero_gradient"),
+                "downstream_open": ("pressure_outlet", "outlet_pressure"),
             }
             patch_types = case_file.attrs["boundary_patches"].split(";")
             assert any(
