@@ -1,9 +1,11 @@
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
 #include "cfdx/physics/momentum_face_budget.h"
+#include "cfdx/physics/momentum_vector_power_budget.h"
 #include "../validation/naca_qualification_state_io.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
+#include <array>
 #include <limits>
 #include <vector>
 
@@ -391,6 +393,64 @@ int main()
         EXPECT_TRUE(!d.finite());
         EXPECT_TRUE(!d.antisymmetric());
         EXPECT_TRUE(d.nonfinite_faces == 1);
+    });
+
+    run_case("vector_momentum_power_aggregates_integrated_component_budgets", [] {
+        using cfdx::physics::MomentumFaceBudget;
+        std::array<MomentumFaceBudget, 3> storage;
+        const std::array<const MomentumFaceBudget*, 3> budgets{
+            &storage[0], &storage[1], &storage[2]};
+        for (auto& budget : storage) {
+            budget.cells.resize(2);
+            budget.matrix_closure_checked = true;
+        }
+
+        // Cell 0: all physical momentum terms are nonzero across components.
+        auto& x = storage[0].cells[0];
+        x.convection = 1.0; x.viscous = 2.0; x.transpose_viscous = 3.0;
+        x.pressure = 4.0; x.body_force = 5.0; x.temporal = 6.0;
+        x.physical_residual = 21.0; x.bounded_divergence = -7.0;
+        auto& y = storage[1].cells[0];
+        y.convection = 2.0; y.viscous = 0.0; y.transpose_viscous = -1.0;
+        y.pressure = 1.0; y.body_force = -2.0; y.temporal = 0.0;
+        y.physical_residual = 0.0; y.bounded_divergence = 4.0;
+        auto& z = storage[2].cells[0];
+        z.convection = -1.0; z.viscous = 1.0; z.transpose_viscous = 0.0;
+        z.pressure = 2.0; z.body_force = 1.0; z.temporal = -1.0;
+        z.physical_residual = 2.0; z.bounded_divergence = -0.5;
+        for (std::size_t d = 0; d < 3; ++d) {
+            storage[d].matrix_closure_linf = static_cast<double>(d + 1);
+            storage[d].matrix_closure_relative_linf = 0.1 * static_cast<double>(d + 1);
+        }
+
+        Field<double, Location::CELL> velocity(2, "U", "m/s", 3);
+        velocity(0,0) = 2.0; velocity(0,1) = 3.0; velocity(0,2) = 4.0;
+        velocity(1,0) = 0.0; velocity(1,1) = 0.0; velocity(1,2) = 0.0;
+
+        const auto power = cfdx::physics::aggregate_momentum_vector_power(budgets, velocity);
+        EXPECT_NEAR(power.total.convection, 4.0, 1e-14);
+        EXPECT_NEAR(power.total.viscous, 8.0, 1e-14);
+        EXPECT_NEAR(power.total.transpose_viscous, 3.0, 1e-14);
+        EXPECT_NEAR(power.total.pressure, 19.0, 1e-14);
+        EXPECT_NEAR(power.total.body_force, 8.0, 1e-14);
+        EXPECT_NEAR(power.total.temporal, 8.0, 1e-14);
+        EXPECT_NEAR(power.total.physical_residual, 50.0, 1e-14);
+        EXPECT_NEAR(power.total.bounded_divergence, -4.0, 1e-14);
+        EXPECT_NEAR(power.total.bounded_operator_residual, 46.0, 1e-14);
+        EXPECT_TRUE(power.matrix_closure_checked[0] &&
+                    power.matrix_closure_checked[1] &&
+                    power.matrix_closure_checked[2]);
+        EXPECT_NEAR(power.matrix_closure_linf[2], 3.0, 0.0);
+        EXPECT_NEAR(power.matrix_closure_relative_linf[1], 0.2, 1e-15);
+
+        // A missing component cell or a nonfinite accepted velocity is fatal.
+        storage[2].cells.pop_back();
+        EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
+                     std::invalid_argument);
+        storage[2].cells.resize(2);
+        velocity(0,1) = std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(cfdx::physics::aggregate_momentum_vector_power(budgets, velocity),
+                     std::invalid_argument);
     });
 
     return run_all();
