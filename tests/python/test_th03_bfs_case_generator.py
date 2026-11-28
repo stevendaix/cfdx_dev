@@ -12,6 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts import generate_th03_bfs_case as bfs
+from scripts import run_cfdx_coupled_campaign as coupled_campaign
 from scripts import run_thermohydraulic_cases as campaign
 
 
@@ -53,6 +54,36 @@ def test_mesh_generation_rejects_nonmatching_step_height() -> None:
         bfs.make_mesh(n_up=4, n_down=12, ny=10, step_cells=5)
 
 
+def test_bfs_generators_reject_nonfinite_or_nonpositive_step_height() -> None:
+    for height in (float("nan"), float("inf"), float("-inf"), 0.0, -0.0127):
+        with pytest.raises(ValueError, match="invalid step resolution"):
+            bfs.make_mesh(4, 12, 10, 2, height=height)
+        with pytest.raises(ValueError, match="step height must be finite and positive"):
+            bfs.make_setup(height, reynolds=36000.0, velocity=1.0)
+
+
+def test_synthetic_bfs_inlet_profile_matches_two_wall_channel(tmp_path: Path) -> None:
+    import numpy as np
+
+    height = 0.0127
+    velocity = 12.0
+    path = tmp_path / "inlet.csv"
+    bfs.make_bl_profile_csv(path, height, velocity)
+    values = np.loadtxt(path, delimiter=",", skiprows=1)
+    y, u = values[:, 0], values[:, 1]
+    assert y[0] == pytest.approx(height)
+    assert y[-1] == pytest.approx(8.0 * height)
+    assert u[0] == pytest.approx(0.0, abs=1e-12)
+    assert u[-1] == pytest.approx(0.0, abs=1e-12)
+    assert u[len(u) // 2] == pytest.approx(velocity)
+    assert np.all(np.diff(u[: len(u) // 2 + 1]) >= 0.0)
+    assert np.all(np.diff(u[len(u) // 2 :]) <= 0.0)
+    assert np.all(np.isfinite(values))
+    assert np.allclose(u, u[::-1], rtol=0.0, atol=1e-10)
+    with pytest.raises(ValueError, match="profile height"):
+        bfs.make_bl_profile_csv(path, float("inf"), velocity)
+
+
 def test_tanh_wall_mesh_refines_both_sides_of_step_without_shifting_step() -> None:
     import numpy as np
 
@@ -75,3 +106,29 @@ def test_wall_mesh_rejects_inadmissible_grading() -> None:
         bfs.make_mesh(4, 16, 10, 2, wall_stretch=4)
     with pytest.raises(ValueError, match="invalid"):
         bfs.make_mesh(4, 16, 40, 16, wall_stretch=100)
+
+
+def test_sst_v41_two_cycle_rescue_is_explicit_bfs_variant(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.cfdx.h5"
+    rescued = tmp_path / "rescued.cfdx.h5"
+    bfs.write_case(baseline, n_up=4, n_down=12, ny=10, step_cells=2)
+    bfs.write_case(rescued, n_up=4, n_down=12, ny=10, step_cells=2)
+
+    coupled_campaign.apply_bfs_variant_settings(baseline, "simple")
+    coupled_campaign.apply_bfs_variant_settings(rescued, "simple_v41_two_cycle")
+
+    with h5py.File(baseline) as h5:
+        baseline_setup = json.loads(h5.attrs["case_setup_json"])
+        assert (
+            "sst_two_cycle_rescue_v41_experimental"
+            not in baseline_setup["numerics"]["raw_settings"]
+        )
+    with h5py.File(rescued) as h5:
+        setup = json.loads(h5.attrs["case_setup_json"])
+        assert (
+            setup["numerics"]["raw_settings"]["sst_two_cycle_rescue_v41_experimental"]
+            == "true"
+        )
+    with h5py.File(baseline) as base_h5, h5py.File(rescued) as rescued_h5:
+        assert base_h5.attrs["topology_hash"] == rescued_h5.attrs["topology_hash"]
+        assert base_h5.attrs["geometry_hash"] == rescued_h5.attrs["geometry_hash"]

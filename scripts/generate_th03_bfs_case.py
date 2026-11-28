@@ -26,6 +26,7 @@ from cfdx.io.schema import (
     BoundarySpec,
     CaseSetup,
     InitialCondition,
+    InletProfileSpec,
     MaterialSpec,
     NumericalSelection,
     NumericalSelectionConfig,
@@ -67,6 +68,7 @@ def make_mesh(
         and 4 <= n_down <= 1500
         and 4 <= ny <= 500
         and 1 <= step_cells < ny // 2
+        and np.isfinite(height)
         and height > 0
         and np.isfinite(wall_stretch)
         and 0 <= wall_stretch <= 5.0
@@ -105,6 +107,8 @@ def make_mesh(
         for i, x in enumerate(xs):
             points[pid(i, j, 0)] = (x, y, 0.0)
             points[pid(i, j, 1)] = (x, y, height)
+    if not np.all(np.isfinite(points)):
+        raise ValueError("generated BFS mesh coordinates must be finite")
     faces: list[list[int]] = []
     owners: list[int] = []
     neighbours: list[int] = []
@@ -250,6 +254,32 @@ def validate_solver_selection(
         raise ValueError("Braess-Sarazin requires block_local Schur")
 
 
+def make_bl_profile_csv(path: str | Path, height: float, velocity: float) -> str:
+    """Write a symmetric 1/7-power channel profile on the actual BFS inlet.
+
+    The debug mesh inlet spans y in [h, 8h] and both ends are walls. The
+    synthetic profile therefore satisfies no-slip at y=h and y=8h, with its
+    maximum at the channel centreline. It is a numerical stand-in, not
+    Driver–Seegmiller experimental inlet data.
+    """
+    if not np.isfinite(height) or height <= 0:
+        raise ValueError("BFS inlet profile height must be finite and positive")
+    if not np.isfinite(velocity) or velocity <= 0:
+        raise ValueError("BFS inlet profile velocity must be finite and positive")
+    n = 65
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w") as f:
+        f.write("y,u\n")
+        for i in range(n):
+            eta = i / (n - 1)
+            y = height * (1.0 + 7.0 * eta)
+            shape = 1.0 - abs(2.0 * eta - 1.0)
+            u = velocity * shape ** (1.0 / 7.0)
+            f.write(f"{y:.10f},{u:.10f}\n")
+    return str(p)
+
+
 def make_setup(
     height: float,
     reynolds: float,
@@ -259,8 +289,12 @@ def make_setup(
     schur: str | None = None,
     preconditioner: str | None = None,
     iterations: int = 250,
+    inlet_profile_csv: str | None = None,
+    wall_resolved: bool = False,
 ) -> str:
     validate_solver_selection(algorithm, schur, preconditioner)
+    if not np.isfinite(height) or height <= 0:
+        raise ValueError("BFS step height must be finite and positive")
     if iterations < 1 or iterations > 100000:
         raise ValueError("BFS iteration budget must be in [1,100000]")
     density = 1.2
@@ -292,6 +326,13 @@ def make_setup(
     bc = []
     for name in names:
         if name == "inlet":
+            ip = InletProfileSpec()
+            if inlet_profile_csv is not None:
+                ip = InletProfileSpec(
+                    enabled=True,
+                    axis=1,
+                    profile_file=inlet_profile_csv,
+                )
             spec = BoundarySpec(
                 patch_name=name,
                 type=BCType.INLET,
@@ -300,6 +341,7 @@ def make_setup(
                 velocity_magnitude=velocity,
                 turbulence_intensity=0.05,
                 turbulence_length_scale=height,
+                inlet_profile=ip,
                 sst_scalar_conditions=[
                     SSTScalarBoundarySpec(
                         field="k", type=SSTScalarBoundaryType.FIXED_VALUE, value=k
@@ -364,9 +406,20 @@ def make_setup(
         scalar_fields={"k": k, "omega": omega},
     )
     setup.numerics.max_iterations = iterations
-    setup.numerics.raw_settings["sst_transport_max_iterations"] = "600"
+    # The inner SST transport must be able to converge at the unchanged 1e-8
+    # tolerance: with the 0.7 linear relaxation a feasible budget is well
+    # above 10 iterations. A starved budget makes every certification step
+    # stop UNCONVERGED and no physical evidence can ever be proven. The
+    # bootstrap schedule already prevents stalling on the first outer
+    # iterations; this is the full-certification budget.
+    setup.numerics.raw_settings["sst_transport_max_iterations"] = "100"
     setup.numerics.raw_settings["v8_global_nonlinear_residual"] = "true"
     setup.numerics.raw_settings["v7_post_sst_momentum_gate"] = "true"
+    setup.numerics.raw_settings["sst_outer_provisional"] = "enabled"
+    setup.numerics.raw_settings["skip_transactional_save"] = "disabled"
+    setup.numerics.raw_settings["sst_adaptive_relaxation"] = "true"
+    if wall_resolved:
+        setup.numerics.raw_settings["mesh_wall_resolved"] = "true"
     selections = [
         NumericalSelection(
             family="gradient", configuration_key="numerics.gradient.gauss"
@@ -415,8 +468,21 @@ def write_case(
     schur: str | None = None,
     preconditioner: str | None = None,
     iterations: int = 250,
+    inlet_profile: bool = False,
+    wall_resolved: bool = False,
 ) -> dict:
     validate_solver_selection(algorithm, schur, preconditioner)
+    if wall_resolved:
+        # Wall-resolved configuration: strong tanh clustering toward y=0, y=h,
+        # and y=8h, with enough streamwise resolution to develop the upstream
+        # boundary layer and resolve the recirculation bubble. Targets y+ ~ 1
+        # at the wall so k-omega SST can integrate to the wall without wall
+        # functions (the dominant lever for matching x_r/h = 6.26).
+        n_up = max(n_up, 80)
+        n_down = max(n_down, 240)
+        ny = max(ny, 96)
+        step_cells = max(step_cells, min(ny // 3, 32))
+        wall_stretch = max(wall_stretch, 3.5)
     if not (
         np.isfinite(reynolds)
         and reynolds > 0
@@ -426,6 +492,12 @@ def write_case(
         raise ValueError("invalid Reynolds or velocity")
     mesh = make_mesh(n_up, n_down, ny, step_cells, height, wall_stretch)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    inlet_profile_csv = None
+    if inlet_profile:
+        inlet_profile_csv = str(path.with_suffix(".inlet_bl.csv"))
+        make_bl_profile_csv(inlet_profile_csv, height, velocity)
+
     with h5py.File(path, "w") as h5:
         for key, value in {
             "format": "CFDX-HDF5-mesh-v1",
@@ -453,6 +525,8 @@ def write_case(
                 schur=schur,
                 preconditioner=preconditioner,
                 iterations=iterations,
+                inlet_profile_csv=inlet_profile_csv,
+                wall_resolved=wall_resolved,
             ),
         }.items():
             h5.attrs[key] = value
@@ -615,6 +689,16 @@ def main():
     parser.add_argument("--schur", choices=SCHUR_MODELS)
     parser.add_argument("--preconditioner", choices=COUPLED_PRECONDITIONERS)
     parser.add_argument("--iterations", type=int, default=250)
+    parser.add_argument(
+        "--inlet-profile",
+        action="store_true",
+        help="use a 1/7 power-law inlet boundary-layer profile (CSV) instead of a uniform inlet",
+    )
+    parser.add_argument(
+        "--wall-resolved",
+        action="store_true",
+        help="wall-resolved mesh: strong tanh clustering toward walls (y+ ~ 1), more cells in y and streamwise",
+    )
     args = parser.parse_args()
     if not str(args.output).endswith(".cfdx.h5"):
         parser.error(
@@ -633,6 +717,8 @@ def main():
                 schur=args.schur,
                 preconditioner=args.preconditioner,
                 iterations=args.iterations,
+                inlet_profile=args.inlet_profile,
+                wall_resolved=args.wall_resolved,
             ),
             indent=2,
         )

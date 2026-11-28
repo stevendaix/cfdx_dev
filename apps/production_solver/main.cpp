@@ -1,8 +1,10 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/bfs_convergence_accelerator.h"
 #include "cfdx/physics/coupled_matrix_capture_v16.h"
 #include "cfdx/physics/coupled_fingerprint_v40.h"
 #include "cfdx/physics/production_boundary_contract.h"
+#include "cfdx/core/boundary/profile_csv.h"
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
@@ -25,6 +27,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
@@ -78,6 +81,10 @@ struct Options {
     std::filesystem::path output_dir;
     std::filesystem::path restart;
     std::size_t iterations = 2;
+    // When --iterations is given explicitly it is authoritative and must be
+    // able to raise the iteration budget above the case-level cap; the cap
+    // only applies to the implicit default.
+    bool iterations_set = false;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
     bool initial_pressure_field = false;
@@ -87,17 +94,36 @@ struct Options {
     bool wall_forces_quadratic = false;
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
+    bool sst_implicit_production = false;
+    bool sst_provisional = false;
+    bool sst_coupled_2x2 = false;
+    bool sst_pseudo_transient = false;
+    bool v17_pseudo_momentum = false;
+    double v17_pseudo_initial_cfl = 0.0;
+    double v17_pseudo_min_cfl = 0.0;
+    double v17_pseudo_max_cfl = 0.0;
+    double v17_pseudo_growth = 0.0;
+    double v17_pseudo_shrink = 0.0;
+    // Explicit opt-in only; simpler k-epsilon alternative to SST with wall functions.
+    bool experimental_kepsilon = false;
     bool benchmark_export = false;
     bool preflight_numerics = false;
     std::string high_low_checkpoint_prefix;
     // Opt-in exact pressure CSR capture for production BFS and other cases.
     std::string pressure_replay_prefix;
     std::vector<std::size_t> pressure_replay_iterations;
+    // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
+    bool bfs_converged = false;
+    bool bfs_fieldsplit = false;
+    bool bfs_pimple = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
     bool probe_stream = false;    bool cell_hotspots = false;
     bool cell_map_full = false;
     std::size_t cell_hotspots_every = 5;
+    std::filesystem::path momentum_budget_csv;
+    std::size_t momentum_budget_every = 5;
+    bool momentum_budget_all_cells = false;
 
 };
 
@@ -707,7 +733,10 @@ Options parse(int argc, char** argv)
         if (arg == "--mesh") o.mesh = value("--mesh");
         else if (arg == "--output-dir") o.output_dir = value("--output-dir");
         else if (arg == "--restart") o.restart = value("--restart");
-        else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
+        else if (arg == "--iterations") {
+            o.iterations = std::stoull(value("--iterations"));
+            o.iterations_set = true;
+        }
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
         else if (arg == "--initial-pressure-field") o.initial_pressure_field = true;
@@ -717,6 +746,37 @@ Options parse(int argc, char** argv)
             o.experimental_momentum_first_continuation = true;
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
+        else if (arg == "--sst-implicit-production") o.sst_implicit_production = true;
+        else if (arg == "--sst-provisional") o.sst_provisional = true;
+        else if (arg == "--sst-coupled-2x2") o.sst_coupled_2x2 = true;
+        else if (arg == "--sst-pseudo-transient") o.sst_pseudo_transient = true;
+        else if (arg == "--v17-pseudo-momentum") o.v17_pseudo_momentum = true;
+        else if (arg == "--v17-pseudo-initial-cfl") {
+            std::size_t used = 0;
+            try { o.v17_pseudo_initial_cfl = std::stod(value("--v17-pseudo-initial-cfl"), &used); }
+            catch (const std::exception&) { throw std::invalid_argument("--v17-pseudo-initial-cfl must be a number"); }
+        }
+        else if (arg == "--v17-pseudo-min-cfl") {
+            std::size_t used = 0;
+            try { o.v17_pseudo_min_cfl = std::stod(value("--v17-pseudo-min-cfl"), &used); }
+            catch (const std::exception&) { throw std::invalid_argument("--v17-pseudo-min-cfl must be a number"); }
+        }
+        else if (arg == "--v17-pseudo-max-cfl") {
+            std::size_t used = 0;
+            try { o.v17_pseudo_max_cfl = std::stod(value("--v17-pseudo-max-cfl"), &used); }
+            catch (const std::exception&) { throw std::invalid_argument("--v17-pseudo-max-cfl must be a number"); }
+        }
+        else if (arg == "--v17-pseudo-growth") {
+            std::size_t used = 0;
+            try { o.v17_pseudo_growth = std::stod(value("--v17-pseudo-growth"), &used); }
+            catch (const std::exception&) { throw std::invalid_argument("--v17-pseudo-growth must be a number"); }
+        }
+        else if (arg == "--v17-pseudo-shrink") {
+            std::size_t used = 0;
+            try { o.v17_pseudo_shrink = std::stod(value("--v17-pseudo-shrink"), &used); }
+            catch (const std::exception&) { throw std::invalid_argument("--v17-pseudo-shrink must be a number"); }
+        }
+        else if (arg == "--experimental-kepsilon") o.experimental_kepsilon = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
         else if (arg == "--preflight-numerics") o.preflight_numerics = true;
         else if (arg == "--high-low-checkpoint-prefix")
@@ -726,6 +786,9 @@ Options parse(int argc, char** argv)
         else if (arg == "--pressure-replay-iterations")
             o.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
                 value("--pressure-replay-iterations"));
+        else if (arg == "--bfs-converged") o.bfs_converged = true;
+        else if (arg == "--bfs-fieldsplit") o.bfs_fieldsplit = true;
+        else if (arg == "--bfs-pimple") o.bfs_pimple = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--probe-stream") o.probe_stream = true;
@@ -741,6 +804,21 @@ Options parse(int argc, char** argv)
             if (used != raw.size() || o.cell_hotspots_every < 1 || o.cell_hotspots_every > 100000)
                 throw std::invalid_argument("--cell-hotspots-every must be in [1,100000]");
         }
+        else if (arg == "--momentum-budget-csv")
+            o.momentum_budget_csv = value("--momentum-budget-csv");
+        else if (arg == "--momentum-budget-every") {
+            const auto raw = value("--momentum-budget-every");
+            std::size_t used = 0;
+            try { o.momentum_budget_every = std::stoull(raw, &used); }
+            catch (const std::exception&) {
+                throw std::invalid_argument("invalid --momentum-budget-every");
+            }
+            if (used != raw.size() || o.momentum_budget_every < 1 ||
+                o.momentum_budget_every > 100000)
+                throw std::invalid_argument("--momentum-budget-every must be in [1,100000]");
+        }
+        else if (arg == "--momentum-budget-all-cells")
+            o.momentum_budget_all_cells = true;
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -751,16 +829,32 @@ Options parse(int argc, char** argv)
                          "  [--experimental-momentum-first-continuation] (momentum-only then strict SST; NOT qualified)\n"
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
+                         "  [--sst-implicit-production] (linearize production P_k implicitly; opt-in)\n"
+                         "  [--sst-provisional] (loose coupling: SST progresses per outer step)\n"
+                         "  [--sst-coupled-2x2] (coupled 2x2 k/omega Newton solver with cross terms)\n"
+                         "  [--sst-pseudo-transient] (pseudo-time stepping on k/omega; relaxed tolerance)\n"
+                         "  [--v17-pseudo-momentum] (pseudo-time stepping on momentum; stabilizes pressure-velocity)\n"
+                         "  [--v17-pseudo-initial-cfl VAL] (initial pseudo-CFL for momentum, default 0.3)\n"
+                         "  [--v17-pseudo-min-cfl VAL] (minimum pseudo-CFL, default 0.03)\n"
+                         "  [--v17-pseudo-max-cfl VAL] (maximum pseudo-CFL, default 3.0)\n"
+                         "  [--experimental-kepsilon] (explicit experimental k-epsilon with wall functions; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
                          "  [--preflight-numerics] (resolve case numerical methods without solving)\n"
                          "  [--high-low-checkpoint-prefix PATH] (DAT6 per committed high/low iteration)\n"
                          "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
                          "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
-                         "  probe field: p | u_x | u_y | u_z | u_mag\n";
+                         "  probe field: p | u_x | u_y | u_z | u_mag\n"
+                         "  [--bfs-converged] (PETSc/OpenFOAM-inspired converged BFS settings)\n"
+                         "  [--bfs-fieldsplit] (PETSc PCFIELDSPLIT Full Schur for coupled U-p)\n"
+                          "  [--bfs-pimple] (OpenFOAM-style PIMPLE multiple pressure correctors)\n"
+                          ;
             std::cout << "  --cell-hotspots [--cell-hotspots-every N] (accepted-state residual trace)\n"
-                         "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
+                          "  --cell-map-full (opt-in bounded binary per-cell residual maps)\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
+            std::cout << "  --momentum-budget-csv FILE [--momentum-budget-every N]\n"
+                         "    (accepted-state signed face/CSR momentum budget; top 12 cells by default)\n"
+                         "  --momentum-budget-all-cells (export every cell; requires --momentum-budget-csv)\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
@@ -772,6 +866,14 @@ Options parse(int argc, char** argv)
     // empty file, or worse a file with a header and no data.
     if (!o.probe_csv.empty() && o.probes.empty())
         throw std::invalid_argument("--probe-csv requires at least one --probe");
+    if (o.momentum_budget_all_cells && o.momentum_budget_csv.empty())
+        throw std::invalid_argument("--momentum-budget-all-cells requires --momentum-budget-csv");
+    if (!o.momentum_budget_csv.empty() &&
+        (o.momentum_budget_csv.is_absolute() ||
+         o.momentum_budget_csv.has_parent_path() ||
+         o.momentum_budget_csv.filename() != o.momentum_budget_csv))
+        throw std::invalid_argument(
+            "--momentum-budget-csv must be a filename inside --output-dir");
     if (o.probe_stream && o.probes.empty())
         throw std::invalid_argument("--probe-stream requires at least one --probe");
     if (o.pressure_replay_prefix.empty() != o.pressure_replay_iterations.empty())
@@ -784,6 +886,16 @@ Options parse(int argc, char** argv)
     std::filesystem::create_directories(o.output_dir);
     return o;
 }
+}
+
+// ---------------------------------------------------------------------------
+// Read a two-column CSV (coord,value) for an inlet spatial profile.
+// First line is treated as a header if it does not parse as two doubles.
+// Returns a TableOverSpaceValueProvider over axis (default y).
+// ---------------------------------------------------------------------------
+static std::shared_ptr<const cfdx::core::ValueProvider>
+read_inlet_profile(const std::string& path, int axis) {
+    return cfdx::core::read_spatial_profile_csv(path, axis);
 }
 
 int main(int argc, char** argv)
@@ -826,6 +938,8 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+        if (is_case_hdf5)
+            resolve_production_mesh_patch_types(mesh, case_setup);
         if (options.experimental_sst && !is_case_hdf5)
             throw std::invalid_argument(
                 "production solver: --experimental-sst requires a .cfdx.h5 case");
@@ -842,7 +956,7 @@ int main(int argc, char** argv)
         if (is_case_hdf5) {
             validate_production_steady_time_selection(case_setup, "production solver");
             validate_production_turbulence_selection(
-                case_setup, options.experimental_sst);
+                case_setup, options.experimental_sst, options.experimental_kepsilon);
             validate_production_energy_model(case_setup);
             validate_production_radiation_selection(case_setup);
             validate_production_buoyancy_model(case_setup);
@@ -1048,21 +1162,47 @@ int main(int argc, char** argv)
             } else if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
-                cfdx::core::Vec3 value{0.0, 0.0, 0.0};
-                if (!bc->velocity_vector.empty()) {
-                    if (bc->velocity_vector.size() != 3)
+                // Non-uniform inlet profile (e.g. Driver-Seegmiller BL u(y) from CSV)
+                if (bc->inlet_profile.has_value() && bc->inlet_profile->enabled) {
+                    const auto& profile = *bc->inlet_profile;
+                    std::shared_ptr<const cfdx::core::ValueProvider> ux_provider;
+                    if (!profile.profile_file.empty()) {
+                        ux_provider = read_inlet_profile(profile.profile_file, profile.axis);
+                    } else if (profile.coords.size() >= 2 &&
+                               profile.coords.size() == profile.values.size()) {
+                        ux_provider = std::make_shared<
+                            const cfdx::core::TableOverSpaceValueProvider>(
+                                profile.coords, profile.values, profile.axis);
+                    } else {
                         throw std::invalid_argument(
-                            "production solver: velocity_vector must have 3 components for patch '" +
-                            patch.name + "'");
-                    value = cfdx::core::Vec3{
-                        bc->velocity_vector[0],
-                        bc->velocity_vector[1],
-                        bc->velocity_vector[2]};
-                } else if (bc->velocity_magnitude != 0.0) {
-                    value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                            "production solver: enabled inlet profile on patch '" +
+                            patch.name + "' requires a CSV file or at least two inline samples");
+                    }
+                    auto zero_provider =
+                        std::make_shared<const cfdx::core::ConstantValueProvider>(0.0);
+                    VelocityBoundaryCondition prof_bc;
+                    prof_bc.type = VelocityBoundaryCondition::Type::PROFILE;
+                    prof_bc.ux_provider = std::move(ux_provider);
+                    prof_bc.uy_provider = zero_provider;
+                    prof_bc.uz_provider = zero_provider;
+                    ubc[patch.name] = prof_bc;
+                } else {
+                    cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+                    if (!bc->velocity_vector.empty()) {
+                        if (bc->velocity_vector.size() != 3)
+                            throw std::invalid_argument(
+                                "production solver: velocity_vector must have 3 components for patch '" +
+                                patch.name + "'");
+                        value = cfdx::core::Vec3{
+                            bc->velocity_vector[0],
+                            bc->velocity_vector[1],
+                            bc->velocity_vector[2]};
+                    } else if (bc->velocity_magnitude != 0.0) {
+                        value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                    }
+                    ubc[patch.name] = {
+                        VelocityBoundaryCondition::Type::FIXED_VALUE, value};
                 }
-                ubc[patch.name] = {
-                    VelocityBoundaryCondition::Type::FIXED_VALUE, value};
             } else if (bc->value_type == BCValueType::ZERO_GRADIENT ||
                        bc->value_type == BCValueType::WALL_SLIP ||
                        bc->type == BCType::OUTLET ||
@@ -1121,7 +1261,10 @@ int main(int argc, char** argv)
                       << " alpha_p=" << requested_alpha_p << '\n';
             std::cout << "Resolved numerical selections:\n"
                       << cfdx::core::format_numerics_report(case_setup.numerical_report);
-            if (case_setup.numerics.max_iterations > 0)
+            // The case-level max_iterations is a default cap; an explicit
+            // --iterations flag is authoritative and overrides it (so a
+            // continuation run can exceed the case budget).
+            if (!options.iterations_set && case_setup.numerics.max_iterations > 0)
                 controls.convergence.max_iterations =
                     std::min<std::size_t>(
                         controls.convergence.max_iterations,
@@ -1329,6 +1472,18 @@ int main(int argc, char** argv)
                 controls.coupling.coupled_max_iterations = value;
                 std::cout << "COUPLED_LINEAR_DIAGNOSTIC_BUDGET_V16 iterations=" << value
                           << " tolerance_unchanged=1 physical_qualification=0\n";
+            }
+            if (const char* tol = std::getenv("CFDX_COUPLED_LINEAR_TOL")) {
+                try {
+                    std::size_t used = 0;
+                    const double v = std::stod(tol, &used);
+                    if (used != std::string(tol).size() || !(v > 0.0) || !std::isfinite(v))
+                        throw std::invalid_argument("invalid CFDX_COUPLED_LINEAR_TOL");
+                    controls.coupling.coupled_linear_tolerance = v;
+                    std::cout << "COUPLED_LINEAR_TOL_OVERRIDE tolerance=" << v << "\n";
+                } catch (const std::exception&) {
+                    throw std::invalid_argument("invalid CFDX_COUPLED_LINEAR_TOL");
+                }
             }
             // The same lightweight fingerprint can be enabled on 712 and
             // 20,540 cells, unlike the bounded V16 MatrixMarket export.
@@ -1669,6 +1824,24 @@ int main(int argc, char** argv)
                 std::cout << "V17 experimental steady pseudo-momentum: initial CFL="
                           << pseudo.initial_cfl << " range=[" << pseudo.minimum_cfl
                           << "," << pseudo.maximum_cfl << "] (not a physical transient)\n";
+            // CLI overrides for --v17-pseudo-momentum and CFL settings.
+            // Case-file raw_settings take effect first; CLI flags override.
+            if (options.v17_pseudo_momentum) {
+                pseudo.enabled = true;
+                std::cout << "V17 experimental steady pseudo-momentum: CLI-enabled\n";
+            }
+            if (options.v17_pseudo_initial_cfl > 0.0)
+                pseudo.initial_cfl = options.v17_pseudo_initial_cfl;
+            if (options.v17_pseudo_min_cfl > 0.0)
+                pseudo.minimum_cfl = options.v17_pseudo_min_cfl;
+            if (options.v17_pseudo_max_cfl > 0.0)
+                pseudo.maximum_cfl = options.v17_pseudo_max_cfl;
+            if (options.v17_pseudo_growth > 0.0)
+                pseudo.growth = options.v17_pseudo_growth;
+            if (options.v17_pseudo_shrink > 0.0)
+                pseudo.shrink = options.v17_pseudo_shrink;
+            if (options.v17_pseudo_momentum || pseudo.enabled)
+                validate_v17_pseudo_momentum_controls(pseudo);
             if (controls.diagnostics.flux_patch_audit)
                 std::cout << "V17 authoritative Rhie-Chow patch flux audit enabled\n";
         }
@@ -1749,6 +1922,8 @@ int main(int argc, char** argv)
         // only be entered through the explicit --experimental-sst opt-in.
         std::optional<SSTProductionState> experimental_sst_state;
         SSTProductionRuntime experimental_sst_runtime;
+        std::optional<KEpsilonProductionState> experimental_kepsilon_state;
+        KEpsilonProductionRuntime experimental_kepsilon_runtime;
         DatRestartFields solver_restart_fields{};
         // The restored Rhie-Chow face mass flux is part of the iteration
         // state: it is read from the DAT into this caller-owned field and
@@ -1854,8 +2029,6 @@ int main(int argc, char** argv)
                     throw std::invalid_argument("sst_transport_linear_relaxation must be in (0,1]");
                 sst_controls.sst_linear_relaxation=alpha;
             }
-            std::cout << "SST scalar post-solve relaxation: "
-                      << sst_controls.sst_linear_relaxation << " (default 0.7)\n";
             for (const auto& setting : {std::pair<const char*,bool*>{
                      "sst_compensated_residual_gate", &sst_controls.sst_compensated_residual_gate},
                      {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search},
@@ -1865,6 +2038,8 @@ int main(int argc, char** argv)
                      {"sst_jfnk_v22_experimental", &sst_controls.sst_jfnk_v22_experimental},
                      {"sst_implicit_spatial_rescue_v82_experimental",
                       &sst_controls.sst_implicit_spatial_rescue_v82_experimental},
+                     {"sst_implicit_production_experimental",
+                      &sst_controls.sst_implicit_production_experimental},
                      {"sst_block_preconditioner_v23_experimental",
                       &sst_controls.sst_block_preconditioner_v23_experimental},
                      {"sst_branch_preconditioner_v34_experimental",
@@ -1886,7 +2061,9 @@ int main(int argc, char** argv)
                      {"sst_weighted_wall_matrix_v29_experimental",
                       &sst_controls.sst_weighted_wall_matrix_v29_experimental},
                      {"sst_owner_consistent_projection_v21_experimental",
-                      &sst_controls.sst_owner_consistent_projection_v21}}) {
+                      &sst_controls.sst_owner_consistent_projection_v21},
+                     {"sst_coupled_2x2_komega", &sst_controls.sst_coupled_2x2_komega},
+                     {"sst_adaptive_relaxation", &sst_controls.sst_adaptive_relaxation}}) {
                 const auto found=case_setup.numerics.raw_settings.find(setting.first);
                 if (found != case_setup.numerics.raw_settings.end()) {
                     if (found->second != "true" && found->second != "false")
@@ -1895,6 +2072,11 @@ int main(int argc, char** argv)
                     std::cout << "Experimental " << setting.first << "=" << found->second
                               << " (global physical gates unchanged)\n";
                 }
+            }
+            // CLI override for implicit production (takes precedence over raw_settings)
+            if (options.sst_implicit_production) {
+                sst_controls.sst_implicit_production_experimental = true;
+                std::cout << "SST implicit production: enabled (CLI override)\n";
             }
             const auto molecular_wall_diffusion = case_setup.numerics.raw_settings.find(
                 "sst_molecular_wall_diffusion");
@@ -2015,9 +2197,40 @@ int main(int argc, char** argv)
                 }
             }
 
+            // A case/HDF5 initial pressure is physical static pressure, but
+            // the SST momentum unknown is p* = p_static + 2/3 rho k. The
+            // imported/declared U and p fields are now made explicit so the
+            // solver's generic uniform initializer cannot overwrite this
+            // cell-wise modified-pressure state. DAT restart pressure is
+            // already p* and deliberately bypasses this conversion.
+            if (options.restart.empty()) {
+                if (!options.initial_velocity_field) {
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                        U.set(cell, initialization.uniform_velocity.x,
+                              initialization.uniform_velocity.y,
+                              initialization.uniform_velocity.z);
+                }
+                if (!options.initial_pressure_field)
+                    p.fill(case_setup.initial_condition.pressure);
+                convert_sst_static_pressure_initial_field(
+                    p, *experimental_sst_state, sst_controls.density);
+                initialization.mode = InitializationMode::Provided;
+            }
+
+            // Keep pressure BCs as physical static pressure. Build a face-wise
+            // modified-pressure snapshot; ZERO_GRADIENT k uses each face owner.
             experimental_sst_runtime.state = &*experimental_sst_state;
             experimental_sst_runtime.transport = sst_controls;
             experimental_sst_runtime.k_boundary_conditions = boundary_contract.k;
+            update_sst_static_pressure_face_values(
+                mesh, *experimental_sst_state, sst_controls.density,
+                pbc, experimental_sst_runtime.k_boundary_conditions,
+                *experimental_sst_runtime.pressure_face_values, 1);
+            for (auto& [patch_name, pressure_bc] : pbc) {
+                (void)patch_name;
+                if (pressure_bc.type == ScalarBoundaryType::FIXED_VALUE)
+                    pressure_bc.face_values = experimental_sst_runtime.pressure_face_values;
+            }
             experimental_sst_runtime.omega_boundary_conditions = boundary_contract.omega;
             experimental_sst_runtime.wall_patch_names = wall_patch_names;
             experimental_sst_runtime.wall_omega_sst_patches =
@@ -2038,13 +2251,100 @@ int main(int argc, char** argv)
                     throw std::invalid_argument(
                         "SST transport budget must be a decimal integer in [10, 2000]");
                 }
-                if (end != declared.size() || parsed < 10 || parsed > 2000)
+                if (end != declared.size() || parsed < 1 || parsed > 2000)
                     throw std::invalid_argument(
-                        "SST transport budget must be a decimal integer in [10, 2000]");
+                        "SST transport budget must be a decimal integer in [1, 2000]");
                 sst_inner_budget = static_cast<std::size_t>(parsed);
             }
             experimental_sst_runtime.max_transport_iterations = sst_inner_budget;
-            experimental_sst_runtime.transport_tolerance = 1e-8;
+            // Pseudo-transient mode uses a relaxed transport tolerance so the
+            // turbulence only PROGRESSES at each outer step; full convergence
+            // is deferred to certification.
+            if (options.sst_pseudo_transient) {
+                experimental_sst_runtime.transport_tolerance =
+                    case_setup.numerics.raw_settings.count("sst_transport_tolerance_relaxed")
+                        ? 0.0 // will be read below
+                        : 1e-4;
+            } else {
+                experimental_sst_runtime.transport_tolerance = 1e-8;
+            }
+            // Loose-coupling SST inner budget: after bootstrap, SST only
+            // progresses at each outer step; full convergence is deferred to
+            // certification. Default 20 iterations per outer step.
+            const auto loose_it = case_setup.numerics.raw_settings.find(
+                "sst_transport_loose_iterations");
+            if (loose_it != case_setup.numerics.raw_settings.end()) {
+                const auto& declared = loose_it->second;
+                std::size_t end = 0;
+                unsigned long parsed = 0;
+                try {
+                    parsed = std::stoul(declared, &end, 10);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument(
+                        "SST transport loose iterations must be a decimal integer in [1, 200]");
+                }
+                if (end != declared.size() || parsed < 1 || parsed > 200)
+                    throw std::invalid_argument(
+                        "SST transport loose iterations must be a decimal integer in [1, 200]");
+                experimental_sst_runtime.loose_transport_iterations =
+                    static_cast<std::size_t>(parsed);
+            }
+            {
+                const auto tol_it = case_setup.numerics.raw_settings.find(
+                    "sst_transport_tolerance");
+                if (tol_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t parsed = 0;
+                    double tol = 0.0;
+                    try { tol = std::stod(tol_it->second, &parsed); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_transport_tolerance");
+                    }
+                    if (parsed != tol_it->second.size() ||
+                        !std::isfinite(tol) || tol <= 0.0)
+                        throw std::invalid_argument(
+                            "sst_transport_tolerance must be finite and positive");
+                    experimental_sst_runtime.transport_tolerance = tol;
+                }
+            }
+            // Relaxed transport tolerance for pseudo-transient mode.
+            {
+                const auto tol_it = case_setup.numerics.raw_settings.find(
+                    "sst_transport_tolerance_relaxed");
+                if (tol_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t parsed = 0;
+                    double tol = 0.0;
+                    try { tol = std::stod(tol_it->second, &parsed); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_transport_tolerance_relaxed");
+                    }
+                    if (parsed != tol_it->second.size() ||
+                        !std::isfinite(tol) || tol <= 0.0 || tol > 1e-2)
+                        throw std::invalid_argument(
+                            "sst_transport_tolerance_relaxed must be finite, positive, and <= 1e-2");
+                    experimental_sst_runtime.transport_tolerance = tol;
+                    if (options.sst_pseudo_transient)
+                        std::cout << "SST relaxed transport tolerance: " << tol << "\n";
+                }
+            }
+            {
+                const auto kf_it = case_setup.numerics.raw_settings.find(
+                    "sst_max_k_floor_events");
+                if (kf_it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t end = 0;
+                    unsigned long parsed = 0;
+                    try { parsed = std::stoul(kf_it->second, &end, 10); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument("invalid sst_max_k_floor_events");
+                    }
+                    if (end != kf_it->second.size() || parsed > 100000)
+                        throw std::invalid_argument(
+                            "sst_max_k_floor_events must be a non-negative integer");
+                    sst_controls.sst_max_k_floor_events =
+                        static_cast<std::size_t>(parsed);
+                    experimental_sst_runtime.transport.sst_max_k_floor_events =
+                        sst_controls.sst_max_k_floor_events;
+                }
+            }
             const auto provisional = case_setup.numerics.raw_settings.find(
                 "sst_outer_provisional");
             if (provisional != case_setup.numerics.raw_settings.end()) {
@@ -2056,6 +2356,41 @@ int main(int argc, char** argv)
                 std::cout << "SST bounded provisional outer coupling: "
                           << provisional->second
                           << " (final SST and conservation gates UNCHANGED)\n";
+            }
+            // CLI override for provisional outer coupling (loose coupling:
+            // SST progresses at each outer step, full convergence deferred
+            // to certification).
+            if (options.sst_provisional) {
+                experimental_sst_runtime.allow_bounded_provisional_transport = true;
+                std::cout << "SST bounded provisional outer coupling: enabled (CLI override)\n";
+            }
+            // CLI override for coupled 2x2 k/omega solver (full Jacobian with
+            // cross terms, applied at every transport iteration).
+            if (options.sst_coupled_2x2) {
+                sst_controls.sst_coupled_2x2_komega = true;
+                std::cout << "SST coupled 2x2 k/omega solver: enabled (CLI override)\n";
+            }
+            // CLI override for pseudo-transient k/omega transport: adds an
+            // artificial mass term (k - k_old)/dt to damp the stiff source
+            // coupling on wall-resolved meshes, and relaxes the transport
+            // tolerance to sst_transport_tolerance_relaxed.
+            if (options.sst_pseudo_transient) {
+                sst_controls.sst_pseudo_transient_experimental = true;
+                std::cout << "SST pseudo-transient k/omega transport: enabled (CLI override)\n";
+            }
+            // Read pseudo-transient dt from raw_settings (default 0.05).
+            const auto dt_it = case_setup.numerics.raw_settings.find(
+                "sst_pseudo_transient_dt");
+            if (dt_it != case_setup.numerics.raw_settings.end()) {
+                const auto& declared = dt_it->second;
+                char* end = nullptr;
+                const double parsed = std::strtod(declared.c_str(), &end);
+                if (end != declared.c_str() + declared.size() || parsed < 0.0)
+                    throw std::invalid_argument(
+                        "sst_pseudo_transient_dt must be a non-negative floating-point number");
+                sst_controls.sst_pseudo_transient_dt = parsed;
+                if (parsed > 0.0)
+                    std::cout << "SST pseudo-transient dt: " << parsed << "\n";
             }
             const auto v83_progress = case_setup.numerics.raw_settings.find(
                 "v83_provisional_outer_merit_progress");
@@ -2073,6 +2408,18 @@ int main(int argc, char** argv)
                     std::cout << "V83 bounded inexact outer progress: EXPERIMENTAL, "
                                  "physical U/p/flux/SST merit required; final SST gate UNCHANGED\n";
                 }
+            }
+            const auto skip_save = case_setup.numerics.raw_settings.find(
+                "skip_transactional_save");
+            if (skip_save != case_setup.numerics.raw_settings.end()) {
+                if (skip_save->second == "enabled")
+                    experimental_sst_runtime.skip_transactional_save = true;
+                else if (skip_save->second != "disabled")
+                    throw std::invalid_argument(
+                        "skip_transactional_save must be enabled or disabled");
+                std::cout << "SST transactional save/restore: "
+                          << skip_save->second
+                          << " (benchmarking only, rollback disabled)\n";
             }
             const auto v84_window = case_setup.numerics.raw_settings.find(
                 "v84_bounded_nonmonotone_outer_progress");
@@ -2262,9 +2609,6 @@ int main(int argc, char** argv)
                     throw std::invalid_argument(
                         "v18_omega_wall_owner_constraints_experimental must be enabled or disabled");
                 if (owner_wall_v18->second=="enabled") {
-                    if (!experimental_sst_runtime.active_openfoam_wall_operator_v17)
-                        throw std::invalid_argument(
-                            "V18 owner omega constraints require V17 atomic wall operator");
                     experimental_sst_runtime.omega_wall_owner_constraints_v18=true;
                     std::cout << "V18 experimental omega OWNER constraint active; "
                                  "area-weighted corner targets, equation rows and "
@@ -2293,6 +2637,234 @@ int main(int argc, char** argv)
             solver_restart_fields.omega = &experimental_sst_state->omega;
             std::cerr
                 << "WARNING: experimental SST runtime explicitly enabled. "
+                    "This path is not physically qualified and does not enable "
+                    "the general RANS selector.\n";
+        }
+
+        if (options.experimental_kepsilon && !options.experimental_sst) {
+            if (production_s2s_radiation_requested(case_setup))
+                throw std::invalid_argument(
+                    "production solver: experimental KEpsilon-radiation coupling is "
+                    "not implemented");
+            TurbulenceTransportControls ke_controls;
+            ke_controls.model = TurbulenceModel::KEPSILON;
+            ke_controls.density = controls.density;
+            ke_controls.molecular_viscosity = controls.kinematic_viscosity;
+            // Default k-epsilon constants.
+            ke_controls.C_mu = 0.09;
+            ke_controls.C1 = 1.44;
+            ke_controls.C2 = 1.92;
+            ke_controls.sigma_k = 1.0;
+            ke_controls.sigma_epsilon = 1.3;
+            // Read from case raw_settings if provided.
+            const auto read_double = [&](const char* key, double& out) {
+                auto it = case_setup.numerics.raw_settings.find(key);
+                if (it != case_setup.numerics.raw_settings.end()) {
+                    std::size_t used = 0;
+                    double value = 0.0;
+                    try { value = std::stod(it->second, &used); }
+                    catch (const std::exception&) {
+                        throw std::invalid_argument(std::string("invalid ") + key);
+                    }
+                    if (used != it->second.size() || !std::isfinite(value))
+                        throw std::invalid_argument(std::string("invalid ") + key);
+                    out = value;
+                }
+            };
+            read_double("ke_C_mu", ke_controls.C_mu);
+            read_double("ke_C1", ke_controls.C1);
+            read_double("ke_C2", ke_controls.C2);
+            read_double("ke_sigma_k", ke_controls.sigma_k);
+            read_double("ke_sigma_epsilon", ke_controls.sigma_epsilon);
+            read_double("ke_transport_linear_relaxation", ke_controls.sst_linear_relaxation);
+            read_double("ke_simple_relaxation", ke_controls.ke_simple_relaxation);
+            read_double("ke_k_min", ke_controls.k_min);
+            read_double("ke_epsilon_min", ke_controls.epsilon_min);
+            read_double("ke_nu_t_limit_factor", ke_controls.ke_nu_t_limit_factor);
+            // Read k-epsilon convection scheme from raw_settings.
+            // UPWIND (default, first-order) causes excessive numerical diffusion
+            // in separated shear layers → premature reattachment on BFS.
+            // SECOND_ORDER_UPWIND or TVD_VANLEER reduce numerical diffusion.
+            const auto ke_conv_scheme_it = case_setup.numerics.raw_settings.find(
+                "ke_convection_scheme");
+            if (ke_conv_scheme_it != case_setup.numerics.raw_settings.end()) {
+                const std::string& conv_str = ke_conv_scheme_it->second;
+                if (conv_str == "UPWIND" || conv_str == "upwind") {
+                    ke_controls.ke_convection_scheme = ConvectionScheme::UPWIND;
+                } else if (conv_str == "SECOND_ORDER_UPWIND" ||
+                           conv_str == "second_order_upwind" ||
+                           conv_str == "SOU") {
+                    ke_controls.ke_convection_scheme = ConvectionScheme::SECOND_ORDER_UPWIND;
+                } else if (conv_str == "TVD_VANLEER" || conv_str == "tvd_vanleer" ||
+                           conv_str == "VANLEER") {
+                    ke_controls.ke_convection_scheme = ConvectionScheme::TVD_VANLEER;
+                } else if (conv_str == "TVD" || conv_str == "tvd") {
+                    ke_controls.ke_convection_scheme = ConvectionScheme::TVD;
+                } else if (conv_str == "MUSCL_CELL_LIMITED" ||
+                           conv_str == "muscl_cell_limited") {
+                    ke_controls.ke_convection_scheme = ConvectionScheme::MUSCL_CELL_LIMITED;
+                } else {
+                    throw std::invalid_argument(
+                        "invalid ke_convection_scheme: must be UPWIND, SECOND_ORDER_UPWIND, "
+                        "TVD_VANLEER, TVD, or MUSCL_CELL_LIMITED");
+                }
+                std::cout << "KEpsilon convection scheme: " << conv_str << "\n";
+            }
+            // Read k-epsilon model variant from raw_settings (kepsilon or realizable_kepsilon).
+            const auto ke_model_it = case_setup.numerics.raw_settings.find("ke_model");
+            if (ke_model_it != case_setup.numerics.raw_settings.end()) {
+                const std::string& model_str = ke_model_it->second;
+                if (model_str == "kepsilon" || model_str == "ke" || model_str == "k-epsilon") {
+                    ke_controls.model = TurbulenceModel::KEPSILON;
+                } else if (model_str == "realizable_kepsilon" || model_str == "realizable-ke" ||
+                           model_str == "realizable_ke" || model_str == "realizable") {
+                    ke_controls.model = TurbulenceModel::REALIZABLE_KEPSILON;
+                    // Realizable defaults (OpenFOAM realizableKE).
+                    ke_controls.C_mu = 0.09;
+                    ke_controls.C1 = 1.44;
+                    ke_controls.C2 = 1.9;
+                    ke_controls.sigma_k = 1.0;
+                    ke_controls.sigma_epsilon = 1.2;
+                    ke_controls.realizable_A0 = 4.0;
+                } else {
+                    throw std::invalid_argument(
+                        "invalid ke_model: must be 'kepsilon' or 'realizable_kepsilon'");
+                }
+                std::cout << "KEpsilon model variant: " << model_str << "\n";
+            }
+            const auto ke_max_iter = case_setup.numerics.raw_settings.find(
+                "ke_transport_max_iterations");
+            if (ke_max_iter != case_setup.numerics.raw_settings.end()) {
+                std::size_t used = 0;
+                std::size_t value = std::stoul(ke_max_iter->second, &used);
+                if (used != ke_max_iter->second.size() || value == 0)
+                    throw std::invalid_argument("ke_transport_max_iterations must be >0");
+                experimental_kepsilon_runtime.max_transport_iterations = value;
+            }
+            const auto ke_tol = case_setup.numerics.raw_settings.find(
+                "ke_transport_tolerance");
+            if (ke_tol != case_setup.numerics.raw_settings.end()) {
+                std::size_t used = 0;
+                double value = std::stod(ke_tol->second, &used);
+                if (used != ke_tol->second.size() || !std::isfinite(value) || value <= 0.0)
+                    throw std::invalid_argument("ke_transport_tolerance must be >0");
+                experimental_kepsilon_runtime.transport_tolerance = value;
+            }
+            // Boundary conditions: reuse k conditions from case, create epsilon conditions.
+            // First pass: collect k and omega fixed values by patch so epsilon
+            // can be derived consistently: epsilon = beta_star * k * omega.
+            std::map<std::string, double> omega_fixed_by_patch;
+            for (const auto& patch : case_setup.boundary_conditions) {
+                for (const auto& cond : patch.sst_scalar_conditions) {
+                    if (cond.field == "omega" &&
+                        cond.type == cfdx::io::SSTScalarBoundaryType::FIXED_VALUE) {
+                        omega_fixed_by_patch[patch.patch_name] = cond.value;
+                    }
+                }
+            }
+            // beta_star: epsilon = beta_star * k * omega (consistent with SST).
+            const double beta_star = 0.09;
+            for (const auto& patch : case_setup.boundary_conditions) {
+                for (const auto& cond : patch.sst_scalar_conditions) {
+                    if (cond.field == "k") {
+                        ScalarBoundaryCondition bc;
+                        switch (cond.type) {
+                            case cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO:
+                                bc.type = ScalarBoundaryType::FIXED_VALUE;
+                                bc.value = 0.0;
+                                break;
+                            case cfdx::io::SSTScalarBoundaryType::FIXED_VALUE:
+                                bc.type = ScalarBoundaryType::FIXED_VALUE;
+                                bc.value = cond.value;
+                                break;
+                            case cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT:
+                                bc.type = ScalarBoundaryType::ZERO_GRADIENT;
+                                bc.value = 0.0;
+                                break;
+                            default:
+                                bc.type = ScalarBoundaryType::ZERO_GRADIENT;
+                                bc.value = 0.0;
+                                break;
+                        }
+                        experimental_kepsilon_runtime.k_boundary_conditions.emplace(
+                            patch.patch_name, bc);
+                        // Epsilon: derive from k*omega when both are FIXED_VALUE
+                        // (physically consistent), otherwise rough fallback.
+                        ScalarBoundaryCondition eps_bc;
+                        if (cond.type == cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO) {
+                            eps_bc.type = ScalarBoundaryType::ZERO_GRADIENT;
+                            eps_bc.value = 0.0;
+                        } else if (cond.type == cfdx::io::SSTScalarBoundaryType::FIXED_VALUE) {
+                            eps_bc.type = ScalarBoundaryType::FIXED_VALUE;
+                            auto omega_it = omega_fixed_by_patch.find(patch.patch_name);
+                            if (omega_it != omega_fixed_by_patch.end()) {
+                                eps_bc.value = beta_star * cond.value * omega_it->second;
+                                std::cout << "KEpsilon inlet epsilon from k*omega: "
+                                          << eps_bc.value
+                                          << " (k=" << cond.value
+                                          << ", omega=" << omega_it->second << ")\n";
+                            } else {
+                                eps_bc.value = cond.value * 0.1;
+                                std::cout << "KEpsilon epsilon fallback k*0.1: "
+                                          << eps_bc.value << " (no omega on patch "
+                                          << patch.patch_name << ")\n";
+                            }
+                        } else {
+                            eps_bc.type = ScalarBoundaryType::ZERO_GRADIENT;
+                            eps_bc.value = 0.0;
+                        }
+                        experimental_kepsilon_runtime.epsilon_boundary_conditions.emplace(
+                            patch.patch_name, eps_bc);
+                    }
+                }
+            }
+            // Collect wall patches for wall functions.
+            for (const auto& patch : case_setup.boundary_conditions) {
+                bool is_wall = (patch.type == BCType::WALL ||
+                                patch.value_type == BCValueType::WALL_NO_SLIP ||
+                                patch.value_type == BCValueType::WALL_SLIP ||
+                                patch.value_type == BCValueType::WALL_THERMAL);
+                if (is_wall)
+                    experimental_kepsilon_runtime.wall_patch_names.push_back(patch.patch_name);
+            }
+            // Initialize state.
+            experimental_kepsilon_state.emplace(mesh.n_cells());
+            // Wall distance and strain rate are refreshed in the solver loop;
+            // initialize k/epsilon from case initial_condition if available,
+            // otherwise use physically-motivated defaults.
+            double init_k = 1e-3;
+            double init_eps = 1e-4;
+            if (case_setup.has_initial_condition) {
+                auto it_k = case_setup.initial_condition.scalar_fields.find("k");
+                if (it_k != case_setup.initial_condition.scalar_fields.end())
+                    init_k = std::max(it_k->second, 1e-6);
+                auto it_eps = case_setup.initial_condition.scalar_fields.find("epsilon");
+                if (it_eps != case_setup.initial_condition.scalar_fields.end())
+                    init_eps = std::max(it_eps->second, 1e-10);
+                else {
+                    // Initial epsilon: use rough k*0.1 estimate (not stiff).
+                    // The correct value (beta* * k * omega) is applied via the
+                    // inlet boundary condition and diffuses into the interior
+                    // over outer iterations. Using beta* * k * omega directly
+                    // as the initial field makes the destruction source term
+                    // epsilon/k ~ 700 s^-1 too stiff for the scalar linear solver.
+                    init_eps = std::max(init_k * 0.1, 1e-10);
+                }
+            }
+            // Compute wall distance and strain rate from mesh/geometry if available,
+            // otherwise default values that will be refreshed in the solver loop.
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                experimental_kepsilon_state->k(c) = init_k;
+                experimental_kepsilon_state->epsilon(c) = init_eps;
+                experimental_kepsilon_state->nu_t(c) = ke_controls.C_mu * init_k * init_k / init_eps;
+                experimental_kepsilon_state->wall_distance(c) = 1e-3;
+                experimental_kepsilon_state->strain_rate(c) = 0.0;
+            }
+            experimental_kepsilon_runtime.state = &*experimental_kepsilon_state;
+            experimental_kepsilon_runtime.transport = ke_controls;
+            controls.kepsilon_runtime = &experimental_kepsilon_runtime;
+            std::cerr
+                << "WARNING: experimental KEpsilon runtime explicitly enabled. "
                    "This path is not physically qualified and does not enable "
                    "the general RANS selector.\n";
         }
@@ -2435,6 +3007,15 @@ int main(int argc, char** argv)
                     cell_fields.emplace("wall_distance", ScalarCellField(experimental_sst_state->wall_distance));
                     cell_fields.emplace("sst_strain_rate", ScalarCellField(experimental_sst_state->strain_rate));
                 }
+                if (experimental_kepsilon_state) {
+                    validate_kepsilon_production_state(*experimental_kepsilon_state,
+                                                       state_mesh.n_cells());
+                    cell_fields.emplace("ke_k", ScalarCellField(experimental_kepsilon_state->k));
+                    cell_fields.emplace("ke_epsilon", ScalarCellField(experimental_kepsilon_state->epsilon));
+                    cell_fields.emplace("ke_nu_t", ScalarCellField(experimental_kepsilon_state->nu_t));
+                    cell_fields.emplace("ke_wall_distance", ScalarCellField(experimental_kepsilon_state->wall_distance));
+                    cell_fields.emplace("ke_strain_rate", ScalarCellField(experimental_kepsilon_state->strain_rate));
+                }
                 VtuWriter writer;
                 if (!writer.write(path.string(), state_mesh,
                                   cell_fields, {}, {}, time, iteration, true))
@@ -2524,6 +3105,170 @@ int main(int argc, char** argv)
             if (!staged.converged || staged.final_parameter != 1.0)
                 result.converged = false;
         } else {
+            // BFS convergence accelerator: PETSc/OpenFOAM-inspired settings.
+            // --bfs-converged enables COUPLED with PCD, adaptive relaxation,
+            // post-SST momentum reassembly and the V8 certificate.
+            // --bfs-fieldsplit replaces PCD with NativeFieldSplit / Full Schur.
+            // --bfs-pimple selects OpenFOAM-style PIMPLE with multiple pressure
+            // correctors per outer iteration.
+            if (options.bfs_converged) {
+                if (!options.experimental_sst || controls.sst_runtime == nullptr)
+                    throw std::invalid_argument(
+                        "--bfs-converged requires --experimental-sst (post-SST momentum "
+                        "reassembly and V8 certificate need an SST production runtime)");
+                auto* sst_rt = controls.sst_runtime;
+                const double saved_density = controls.density;
+                const double saved_kinematic_viscosity = controls.kinematic_viscosity;
+                const auto saved_convergence = controls.convergence;
+                controls = bfs_converged_controls(
+                    controls.coupling.alpha_u, controls.coupling.alpha_p,
+                    saved_convergence.max_iterations, controls.linear_tolerance);
+                controls.sst_runtime = sst_rt;
+                controls.density = saved_density;
+                controls.kinematic_viscosity = saved_kinematic_viscosity;
+                // The accelerator changes the solver strategy, not the
+                // caller's physical stopping criteria. Restore every
+                // convergence tolerance after constructing its defaults.
+                controls.convergence.absolute_tolerance =
+                    saved_convergence.absolute_tolerance;
+                controls.convergence.relative_tolerance =
+                    saved_convergence.relative_tolerance;
+                controls.convergence.continuity_tolerance =
+                    saved_convergence.continuity_tolerance;
+                controls.convergence.energy_tolerance =
+                    saved_convergence.energy_tolerance;
+                controls.convergence.stagnation_relative_improvement =
+                    saved_convergence.stagnation_relative_improvement;
+                std::cout << "BFS converged settings: COUPLED+PCD, "
+                          << "alpha_u=" << controls.coupling.alpha_u
+                          << " alpha_p=" << controls.coupling.alpha_p
+                          << " post-SST-momentum=1 V8-certificate=1\n";
+            }
+            if (options.bfs_fieldsplit) {
+                controls.coupled_linear_solver.krylov = KrylovModel::FGMRES;
+                controls.coupled_linear_solver.preconditioner = PreconditionerModel::NativeFieldSplit;
+                controls.coupled_linear_solver.gmres_restart = 512;
+                std::cout << "BFS fieldsplit: PETSc PCFIELDSPLIT Full Schur\n";
+            }
+            if (options.bfs_pimple) {
+                bfs_pimple_settings(controls);
+                std::cout << "BFS PIMPLE: n_pressure_correctors="
+                          << controls.coupling.n_pressure_correctors
+                          << " alpha_u=" << controls.coupling.alpha_u
+                          << " alpha_p=" << controls.coupling.alpha_p << "\n";
+            }
+        std::ofstream momentum_budget_output;
+        if (!options.momentum_budget_csv.empty()) {
+            const auto budget_path = options.output_dir / options.momentum_budget_csv;
+            if (std::filesystem::is_symlink(
+                    std::filesystem::symlink_status(budget_path)))
+                throw std::invalid_argument(
+                    "momentum budget output must not be a symbolic link");
+            momentum_budget_output.open(budget_path, std::ios::out | std::ios::trunc);
+            if (!momentum_budget_output)
+                throw std::runtime_error("cannot open momentum budget CSV");
+            momentum_budget_output << std::setprecision(17)
+                << "iteration,component,rank,selection_reason,cell,x,y,z,convection,viscous,"
+                   "transpose_viscous,pressure,body_force,bounded_divergence,"
+                   "mass_divergence,collocated_difference,physical_residual,"
+                   "bounded_operator_residual,worst_absolute_residual,"
+                   "independent_face_residual_linf,independent_face_residual_difference,temporal,"
+                   "algebraic_residual,matrix_face_difference,matrix_face_scale,"
+                   "matrix_closure_linf,matrix_closure_relative_linf,"
+                   "matrix_closure_checked,matrix_closure_consistent,"
+                   "matrix_closure_worst_cell\n";
+            if (!momentum_budget_output)
+                throw std::runtime_error("cannot write momentum budget CSV header");
+            controls.momentum_face_budget_every = options.momentum_budget_every;
+            controls.momentum_face_budget_callback =
+                [&momentum_budget_output, &options](
+                    std::size_t iteration, std::size_t component,
+                    const MomentumFaceBudget& budget, const FvGeometry& geometry) {
+                    if (!budget.matrix_closure_checked)
+                        throw std::runtime_error(
+                            "production momentum budget requires the face/CSR comparison to be evaluated");
+                    const bool matrix_closure_consistent =
+                        momentum_matrix_face_closure_consistent(budget);
+                    if (!matrix_closure_consistent)
+                        std::cerr
+                            << "MOMENTUM_FACE_BUDGET_CLOSURE_WARNING iteration="
+                            << iteration << " component=" << component
+                            << " linf=" << budget.matrix_closure_linf
+                            << " relative_linf=" << budget.matrix_closure_relative_linf
+                            << " worst_cell=" << budget.matrix_closure_worst_cell
+                            << " (diagnostic exported; solver state unchanged)\n";
+                    if (budget.cells.size() != geometry.cell_centres.size())
+                        throw std::runtime_error(
+                            "production momentum budget cell/geometry size mismatch");
+                    std::vector<std::size_t> order(budget.cells.size());
+                    for (std::size_t cell = 0; cell < order.size(); ++cell)
+                        order[cell] = cell;
+                    const std::size_t ranked_count = options.momentum_budget_all_cells
+                        ? order.size()
+                        : std::min<std::size_t>(12, order.size());
+                    std::partial_sort(
+                        order.begin(),
+                        order.begin() + static_cast<std::ptrdiff_t>(ranked_count),
+                        order.end(),
+                        [&budget](std::size_t lhs, std::size_t rhs) {
+                            const double a = std::abs(budget.cells[lhs].physical_residual);
+                            const double b = std::abs(budget.cells[rhs].physical_residual);
+                            return a == b ? lhs < rhs : a > b;
+                        });
+                    std::size_t count = ranked_count;
+                    if (!options.momentum_budget_all_cells &&
+                        budget.matrix_closure_worst_cell < order.size() &&
+                        std::find(
+                            order.begin(),
+                            order.begin() + static_cast<std::ptrdiff_t>(ranked_count),
+                            budget.matrix_closure_worst_cell) ==
+                            order.begin() + static_cast<std::ptrdiff_t>(ranked_count))
+                        order[count++] = budget.matrix_closure_worst_cell;
+                    for (std::size_t rank = 0; rank < count; ++rank) {
+                        const std::size_t cell = order[rank];
+                        const auto& centre = geometry.cell_centres[cell];
+                        const auto& term = budget.cells[cell];
+                        const double values[] = {
+                            centre.x, centre.y, centre.z, term.convection, term.viscous,
+                            term.transpose_viscous, term.pressure, term.body_force,
+                            term.bounded_divergence, term.mass_divergence,
+                            term.collocated_difference, term.physical_residual,
+                            term.bounded_operator_residual, budget.worst_absolute_residual,
+                            budget.independent_face_residual_linf,
+                            budget.independent_face_residual_difference,
+                            term.temporal, term.algebraic_residual,
+                            term.matrix_face_difference, term.matrix_face_scale,
+                            budget.matrix_closure_linf,
+                            budget.matrix_closure_relative_linf};
+                        for (const double value : values)
+                            if (!std::isfinite(value))
+                                throw std::runtime_error(
+                                    "production momentum budget contains a nonfinite value");
+                        const char* selection_reason =
+                            options.momentum_budget_all_cells ? "all_cells" :
+                            (rank < ranked_count ? "physical_residual_top12" :
+                                                   "matrix_closure_worst");
+                        momentum_budget_output
+                            << iteration << ',' << component << ',' << rank << ','
+                            << selection_reason << ',' << cell;
+                        for (const double value : values)
+                            momentum_budget_output << ',' << value;
+                        momentum_budget_output << ','
+                            << (budget.matrix_closure_checked ? 1 : 0) << ','
+                            << (matrix_closure_consistent ? 1 : 0) << ','
+                            << budget.matrix_closure_worst_cell << '\n';
+                    }
+                    momentum_budget_output.flush();
+                    if (!momentum_budget_output)
+                        throw std::runtime_error("cannot write momentum budget CSV");
+                };
+            std::cout << "MOMENTUM_FACE_BUDGET enabled file="
+                      << options.momentum_budget_csv.string()
+                      << " every=" << options.momentum_budget_every
+                      << " all_cells=" << (options.momentum_budget_all_cells ? 1 : 0)
+                      << " accepted_state=1\n";
+        }
+
             result = solve_steady_incompressible(
                 mesh, U, p, ubc, pbc, controls, options.restart.string(),
                 solver_restart_fields);

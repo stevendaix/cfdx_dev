@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -77,18 +78,33 @@ public:
         : x_(std::move(abscissa)), y_(std::move(values)), dimension_(dimension) {
         if (x_.empty() || x_.size() != y_.size())
             throw std::invalid_argument("TableValueProvider requires equally-sized non-empty data");
-        for (std::size_t i = 1; i < x_.size(); ++i)
-            if (!(x_[i] > x_[i - 1]))
-                throw std::invalid_argument("TableValueProvider abscissa must be strictly increasing");
+        for (std::size_t i = 0; i < x_.size(); ++i) {
+            if (!std::isfinite(x_[i]) || !std::isfinite(y_[i]))
+                throw std::invalid_argument("TableValueProvider data must be finite");
+            if (i > 0 && !(x_[i] > x_[i - 1]))
+                throw std::invalid_argument(
+                    "TableValueProvider abscissa must be strictly increasing");
+        }
     }
 
     double evaluate(const ValueContext& context) const override {
+        if (!std::isfinite(context.time))
+            throw std::invalid_argument("TableValueProvider time coordinate must be finite");
         if (context.time <= x_.front()) return y_.front();
         if (context.time >= x_.back()) return y_.back();
         for (std::size_t i = 1; i < x_.size(); ++i) {
             if (context.time <= x_[i]) {
-                const double t = (context.time - x_[i - 1]) / (x_[i] - x_[i - 1]);
-                return y_[i - 1] + t * (y_[i] - y_[i - 1]);
+                const long double t =
+                    (static_cast<long double>(context.time) - x_[i - 1]) /
+                    (static_cast<long double>(x_[i]) - x_[i - 1]);
+                const long double interpolated =
+                    static_cast<long double>(y_[i - 1]) +
+                    t * (static_cast<long double>(y_[i]) -
+                         static_cast<long double>(y_[i - 1]));
+                const double value = static_cast<double>(interpolated);
+                if (!std::isfinite(value))
+                    throw std::overflow_error("TableValueProvider interpolation overflow");
+                return value;
             }
         }
         return y_.back();
@@ -98,6 +114,61 @@ public:
 private:
     std::vector<double> x_;
     std::vector<double> y_;
+    Dimension dimension_;
+};
+
+// Table over a spatial coordinate (e.g. wall-normal y for an inlet BL profile).
+// evaluate() reads context.x/context.y/context.z selected by axis (0=x,1=y,2=z).
+class TableOverSpaceValueProvider final : public ValueProvider {
+public:
+    TableOverSpaceValueProvider(std::vector<double> abscissa, std::vector<double> values,
+                                int axis = 1, Dimension dimension = DIMENSIONLESS)
+        : x_(std::move(abscissa)), y_(std::move(values)), axis_(axis), dimension_(dimension) {
+        if (x_.empty() || x_.size() != y_.size())
+            throw std::invalid_argument("TableOverSpaceValueProvider requires equally-sized non-empty data");
+        for (std::size_t i = 0; i < x_.size(); ++i) {
+            if (!std::isfinite(x_[i]) || !std::isfinite(y_[i]))
+                throw std::invalid_argument(
+                    "TableOverSpaceValueProvider data must be finite");
+            if (i > 0 && !(x_[i] > x_[i - 1]))
+                throw std::invalid_argument(
+                    "TableOverSpaceValueProvider abscissa must be strictly increasing");
+        }
+        if (axis_ < 0 || axis_ > 2)
+            throw std::invalid_argument("TableOverSpaceValueProvider axis must be 0 (x), 1 (y) or 2 (z)");
+    }
+
+    double evaluate(const ValueContext& context) const override {
+        const double s = (axis_ == 0) ? context.x : (axis_ == 1 ? context.y : context.z);
+        if (!std::isfinite(s))
+            throw std::invalid_argument(
+                "TableOverSpaceValueProvider coordinate must be finite");
+        if (s <= x_.front()) return y_.front();
+        if (s >= x_.back()) return y_.back();
+        for (std::size_t i = 1; i < x_.size(); ++i) {
+            if (s <= x_[i]) {
+                const long double t =
+                    (static_cast<long double>(s) - x_[i - 1]) /
+                    (static_cast<long double>(x_[i]) - x_[i - 1]);
+                const long double interpolated =
+                    static_cast<long double>(y_[i - 1]) +
+                    t * (static_cast<long double>(y_[i]) -
+                         static_cast<long double>(y_[i - 1]));
+                const double value = static_cast<double>(interpolated);
+                if (!std::isfinite(value))
+                    throw std::overflow_error(
+                        "TableOverSpaceValueProvider interpolation overflow");
+                return value;
+            }
+        }
+        return y_.back();
+    }
+
+    Dimension dimension() const noexcept override { return dimension_; }
+private:
+    std::vector<double> x_;
+    std::vector<double> y_;
+    int axis_;
     Dimension dimension_;
 };
 

@@ -10,10 +10,12 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cfdx::physics {
@@ -37,6 +39,228 @@ struct SSTProductionState {
             throw std::invalid_argument("SST production state requires at least one cell");
     }
 };
+
+// Build the face-wise modified-pressure trace from the accepted SST k field.
+// Input pressure BCs remain physical static pressure and are never mutated.
+// FIXED_VALUE k uses its prescribed trace; ZERO_GRADIENT k uses the owner value
+// independently on each face. Publish only after every face validates.
+inline void update_sst_static_pressure_face_values(
+    const cfdx::core::Mesh& mesh,
+    const SSTProductionState& state,
+    double density,
+    const ScalarBoundaryConditions& static_pressure_bcs,
+    const ScalarBoundaryConditions& k_bcs,
+    ScalarBoundaryFaceValues& output,
+    std::uint64_t generation)
+{
+    if (!(density > 0.0) || !std::isfinite(density) ||
+        state.k.dimension() != 1 || state.k.size() != mesh.n_cells() ||
+        generation == 0)
+        throw std::invalid_argument(
+            "SST pressure face snapshot: invalid density, state, or generation");
+    ScalarBoundaryFaceValues candidate;
+    candidate.generation = generation;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (const auto& [patch_name, pressure_bc] : static_pressure_bcs) {
+        if (pressure_bc.type != ScalarBoundaryType::FIXED_VALUE) continue;
+        if (!std::isfinite(pressure_bc.value))
+            throw std::invalid_argument(
+                "SST pressure face snapshot: non-finite static pressure on " + patch_name);
+        const std::size_t patch_id = mesh.boundary().find(patch_name);
+        if (patch_id >= mesh.boundary().n_patches())
+            throw std::invalid_argument(
+                "SST pressure face snapshot: unknown pressure patch " + patch_name);
+        const auto& patch = mesh.boundary().patch(patch_id);
+        if (patch.face_ids.empty())
+            throw std::invalid_argument(
+                "SST pressure face snapshot: empty pressure patch " + patch_name);
+        const auto k_it = k_bcs.find(patch_name);
+        if (k_it == k_bcs.end())
+            throw std::invalid_argument(
+                "SST pressure face snapshot: missing k boundary condition on " + patch_name);
+        std::vector<double> face_values(mesh.n_faces(), nan);
+        for (const std::size_t face : patch.face_ids) {
+            if (face >= mesh.n_faces() || mesh.ownership().neighbour(face) >= 0)
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: invalid boundary face on " + patch_name);
+            const std::size_t owner = mesh.ownership().owner(face);
+            if (owner >= mesh.n_cells())
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: invalid owner on " + patch_name);
+            double k_face = 0.0;
+            if (k_it->second.type == ScalarBoundaryType::FIXED_VALUE)
+                k_face = k_it->second.value;
+            else if (k_it->second.type == ScalarBoundaryType::ZERO_GRADIENT)
+                k_face = state.k(owner);
+            else
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: unsupported k boundary type on " + patch_name);
+            if (!std::isfinite(k_face) || k_face < 0.0)
+                throw std::invalid_argument(
+                    "SST pressure face snapshot: invalid k trace on " + patch_name);
+            const double p_star = pressure_bc.value + (2.0 / 3.0) * density * k_face;
+            if (!std::isfinite(p_star))
+                throw std::overflow_error(
+                    "SST pressure face snapshot: non-finite modified pressure on " + patch_name);
+            face_values[face] = p_star;
+        }
+        candidate.values.emplace(patch_name, std::move(face_values));
+    }
+    output = std::move(candidate);
+}
+
+// Rebuild the shared modified-pressure trace after the carrier/SST
+// transaction restores its accepted k field. Build into a temporary object
+// first, then publish in one assignment so a failed rebuild cannot expose a
+// partially updated face map. A fresh generation invalidates consumers of the
+// rejected candidate's snapshot.
+inline void rebuild_sst_pressure_face_values_after_state_restore(
+    const cfdx::core::Mesh& mesh,
+    const SSTProductionState& restored_state,
+    double density,
+    const ScalarBoundaryConditions& static_pressure_bcs,
+    const ScalarBoundaryConditions& k_bcs,
+    ScalarBoundaryFaceValues& shared_snapshot)
+{
+    if (shared_snapshot.generation == std::numeric_limits<std::uint64_t>::max())
+        throw std::overflow_error(
+            "SST pressure face snapshot: generation counter exhausted on rollback");
+    ScalarBoundaryFaceValues restored_snapshot;
+    update_sst_static_pressure_face_values(
+        mesh, restored_state, density, static_pressure_bcs, k_bcs,
+        restored_snapshot, shared_snapshot.generation + 1);
+    shared_snapshot = std::move(restored_snapshot);
+}
+
+// Case pressure values are static pressure. The incompressible SST
+// momentum equation solves modified pressure p* = p_static + 2/3 rho k.
+// The current pressure FV adapter stores one scalar value per patch. Only a
+// fixed-value k condition gives a prescribed, iteration-invariant offset on
+// that patch. Zero-gradient k is rejected because its owner-cell trace evolves
+// during the SST iteration and cannot be frozen into one patch scalar.
+inline void apply_sst_static_pressure_boundary_contract(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::io::CaseSetup& setup,
+    const SSTProductionState& state,
+    double density,
+    ScalarBoundaryConditions& pressure_bcs)
+{
+    if (!std::isfinite(density) || density <= 0.0 ||
+        state.k.size() != mesh.n_cells() || state.k.dimension() != 1)
+        throw std::invalid_argument(
+            "SST pressure boundary conversion requires positive density and a valid k field");
+
+    for (std::size_t patch_index = 0;
+         patch_index < mesh.boundary().n_patches(); ++patch_index) {
+        const auto& patch = mesh.boundary().patch(patch_index);
+        const auto* boundary = setup.find_boundary(patch.name);
+        if (boundary == nullptr || boundary->type != cfdx::io::BCType::PRESSURE_OUTLET)
+            continue;
+
+        const auto pressure_it = pressure_bcs.find(patch.name);
+        if (pressure_it == pressure_bcs.end() ||
+            pressure_it->second.type != ScalarBoundaryType::FIXED_VALUE ||
+            !std::isfinite(pressure_it->second.value))
+            throw std::invalid_argument(
+                "SST pressure outlet '" + patch.name +
+                "' requires a finite fixed static-pressure value");
+
+        const cfdx::io::SSTScalarBoundarySpec* k_condition = nullptr;
+        for (const auto& condition : boundary->sst_scalar_conditions) {
+            if (condition.field != "k") continue;
+            if (k_condition != nullptr)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' has duplicate k boundary conditions");
+            k_condition = &condition;
+        }
+        if (k_condition == nullptr)
+            throw std::invalid_argument(
+                "SST pressure outlet '" + patch.name +
+                "' has no explicit k boundary condition");
+
+        if (patch.face_ids.empty())
+            throw std::invalid_argument(
+                "SST pressure outlet '" + patch.name + "' has no boundary faces");
+
+        double k_trace = 0.0;
+        bool first_face = true;
+        double trace_scale = 0.0;
+        std::vector<double> face_k;
+        face_k.reserve(patch.face_ids.size());
+        for (const auto face : patch.face_ids) {
+            if (face >= mesh.n_faces())
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name + "' contains an invalid face");
+            double value = 0.0;
+            if (k_condition->type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' requires fixed-value k: zero-gradient k evolves with the owner "
+                    "cell and cannot be represented by the patch-constant pressure adapter");
+            value = k_condition->value;
+            if (!std::isfinite(value) || value < 0.0)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' has a non-finite or negative k boundary trace");
+            face_k.push_back(value);
+            trace_scale = std::max(trace_scale, std::abs(value));
+            if (first_face) {
+                k_trace = value;
+                first_face = false;
+            }
+        }
+
+        const double uniformity_tolerance =
+            64.0 * std::numeric_limits<double>::epsilon() *
+            std::max(trace_scale, std::numeric_limits<double>::min());
+        for (const double value : face_k) {
+            if (std::abs(value - k_trace) > uniformity_tolerance)
+                throw std::invalid_argument(
+                    "SST pressure outlet '" + patch.name +
+                    "' has nonuniform k; face-valued modified-pressure BC is required");
+        }
+
+        const double modified_pressure =
+            pressure_it->second.value + (2.0 / 3.0) * density * k_trace;
+        if (!std::isfinite(modified_pressure))
+            throw std::overflow_error(
+                "SST modified pressure boundary value is non-finite on patch '" +
+                patch.name + "'");
+        pressure_it->second.value = modified_pressure;
+    }
+}
+
+// Case-file and imported initial pressure values are physical static pressure,
+// while the SST momentum operator stores modified pressure p* = p_static +
+// 2/3 rho k. Convert the cell field exactly once before the first solve. DAT
+// restarts already store the solver's p* state and must not call this helper.
+inline void convert_sst_static_pressure_initial_field(
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
+    const SSTProductionState& state,
+    double density)
+{
+    if (!std::isfinite(density) || density <= 0.0 ||
+        pressure.dimension() != 1 || pressure.size() == 0 ||
+        pressure.size() != state.k.size() || state.k.dimension() != 1)
+        throw std::invalid_argument(
+            "SST initial pressure conversion requires positive density and matching scalar fields");
+
+    std::vector<double> modified_pressure(pressure.size());
+    for (std::size_t cell = 0; cell < pressure.size(); ++cell) {
+        const double p_static = pressure(cell);
+        const double k = state.k(cell);
+        if (!std::isfinite(p_static) || !std::isfinite(k) || k < 0.0)
+            throw std::invalid_argument(
+                "SST initial pressure conversion received a non-finite pressure or invalid k");
+        modified_pressure[cell] = p_static + (2.0 / 3.0) * density * k;
+        if (!std::isfinite(modified_pressure[cell]))
+            throw std::overflow_error(
+                "SST initial modified pressure is non-finite");
+    }
+    for (std::size_t cell = 0; cell < pressure.size(); ++cell)
+        pressure(cell) = modified_pressure[cell];
+}
 
 // Validate the production-owned fields before a state is used by transport or
 // momentum assembly. Model conventions are governed by docs/audits/09-turbulence-rans.md.
@@ -296,7 +520,7 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
         // Opt-in only. Never permit an iterate with clipping or nonfinite data.
         const bool finite_undistorted =
             step.transport.nonfinite_bound_events == 0 &&
-            step.transport.k_floor_events == 0 &&
+            step.transport.k_floor_events <= controls.sst_max_k_floor_events &&
             step.transport.second_floor_events == 0 &&
             std::isfinite(step.transport.k_residual) &&
             std::isfinite(step.transport.second_residual);
@@ -422,6 +646,126 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     state = candidate;
     return metadata;
 }
+
+// ============================================================================
+// K-epsilon production state and runtime (simpler alternative to SST)
+// ============================================================================
+
+struct KEpsilonProductionState {
+    cfdx::core::Field<double, cfdx::core::Location::CELL> k;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> epsilon;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> nu_t;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> wall_distance;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> strain_rate;
+
+    explicit KEpsilonProductionState(std::size_t n_cells)
+        : k(n_cells, "k", "m2/s2", 1),
+          epsilon(n_cells, "epsilon", "m2/s3", 1),
+          nu_t(n_cells, "nu_t", "m2/s", 1),
+          wall_distance(n_cells, "wall_distance", "m", 1),
+          strain_rate(n_cells, "kepsilon_strain_rate", "1/s", 1)
+    {
+        if (n_cells == 0)
+            throw std::invalid_argument("KEpsilon production state requires at least one cell");
+    }
+};
+
+inline void validate_kepsilon_production_state(const KEpsilonProductionState& state,
+                                               std::size_t expected_cells)
+{
+    const auto valid_shape = [expected_cells](const auto& field) {
+        return field.size() == expected_cells && field.dimension() == 1;
+    };
+    if (expected_cells == 0 ||
+        !valid_shape(state.k) || !valid_shape(state.epsilon) ||
+        !valid_shape(state.nu_t) || !valid_shape(state.wall_distance) ||
+        !valid_shape(state.strain_rate))
+        throw std::invalid_argument("KEpsilon production state has an invalid field shape");
+
+    for (std::size_t cell = 0; cell < expected_cells; ++cell) {
+        if (!std::isfinite(state.k(cell)) || state.k(cell) < 0.0 ||
+            !std::isfinite(state.epsilon(cell)) || state.epsilon(cell) <= 0.0 ||
+            !std::isfinite(state.nu_t(cell)) || state.nu_t(cell) < 0.0 ||
+            !std::isfinite(state.wall_distance(cell)) || state.wall_distance(cell) <= 0.0 ||
+            !std::isfinite(state.strain_rate(cell)) || state.strain_rate(cell) < 0.0)
+            throw std::invalid_argument(
+                "KEpsilon production state contains a non-finite or physically invalid cell value");
+    }
+}
+
+struct KEpsilonProductionRuntime {
+    KEpsilonProductionState* state = nullptr;
+    TurbulenceTransportControls transport;
+    ScalarBoundaryConditions k_boundary_conditions;
+    ScalarBoundaryConditions epsilon_boundary_conditions;
+    std::vector<std::string> wall_patch_names;
+    std::size_t max_transport_iterations = 100;
+    double transport_tolerance = 1e-8;
+    bool allow_bounded_provisional_transport = false;
+};
+
+struct KEpsilonProductionStepResult {
+    bool committed = false;
+    bool converged = false;
+    bool provisional = false;
+    std::string reason;
+    TurbulenceTransportResult transport;
+};
+
+// Compute k-epsilon eddy viscosity: nu_t = C_mu * k^2 / epsilon
+inline void refresh_kepsilon_production_eddy_viscosity(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& k,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& epsilon,
+    const TurbulenceTransportControls& controls,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& nu_t)
+{
+    const std::size_t n = k.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const double ki = std::max(k(i), controls.k_min);
+        const double ei = std::max(epsilon(i), controls.epsilon_min);
+        nu_t(i) = controls.C_mu * ki * ki / ei;
+    }
+}
+
+// Standard k-epsilon wall function for epsilon at wall-adjacent cells.
+// epsilon_wall = C_mu^(3/4) * sqrt(k) * C_mu^(1/4) ... -> C_mu^0.75 * k^1.5 / (kappa * y)
+inline double kepsilon_wall_epsilon(double k, double y, double C_mu, double kappa)
+{
+    if (k <= 0.0 || y <= 0.0 || C_mu <= 0.0 || kappa <= 0.0)
+        return 0.0;
+    const double c_mu_075 = std::pow(C_mu, 0.75);
+    return c_mu_075 * std::pow(k, 1.5) / (kappa * y);
+}
+
+// Construct the initial production-owned KEpsilon state from explicit case data.
+inline KEpsilonProductionState initialize_kepsilon_production_state(
+    const cfdx::core::Mesh& mesh,
+    const TurbulenceTransportControls& controls,
+    const std::vector<double>& wall_distance,
+    const std::vector<double>& strain_rate,
+    const double initial_k,
+    const double initial_epsilon)
+{
+    const std::size_t n = mesh.n_cells();
+    if (n == 0 || wall_distance.size() != n || strain_rate.size() != n)
+        throw std::invalid_argument(
+            "KEpsilon production initialization requires mesh-sized wall-distance and strain-rate fields");
+
+    KEpsilonProductionState state(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        state.k(i) = initial_k;
+        state.epsilon(i) = initial_epsilon;
+        state.wall_distance(i) = wall_distance[i];
+        state.strain_rate(i) = strain_rate[i];
+    }
+    // Compute initial nu_t
+    std::vector<double> F2(n, 1.0); // not used for k-epsilon
+    refresh_kepsilon_production_eddy_viscosity(state.k, state.epsilon, controls, state.nu_t);
+    validate_kepsilon_production_state(state, n);
+    return state;
+}
+
+// ============================================================================
 
 // Construct the initial production-owned SST state from explicit case data.
 // Wall distance and strain rate are required inputs from the production mesh and

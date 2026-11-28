@@ -41,6 +41,9 @@ struct CandidatePhysicalStagesV57 {
 struct PhysicalResidualV51 {
     std::vector<double> signed_raw; // [momentum x3, divergence, SST x2]
     std::vector<double> normalized; // separate, NOT differenced by J*v
+    // Fixed-equation residual scales used by JFNK globalization. Populated
+    // only by operators that can provide dimensionally consistent row scales.
+    std::vector<double> normalization_scales; // 6*N, same block-major layout
     std::vector<double> face_flux;
     // V65 read-only coefficients of the SAME candidate-owned RC fixed point.
     std::vector<double> inverse_momentum_diagonal; // 3*N; no history data

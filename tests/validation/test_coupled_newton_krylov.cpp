@@ -1,4 +1,4 @@
-#include "cfdx/physics/coupled_newton_krylov.h"
+#include "cfdx/physics/coupled_jfnk_driver.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include <algorithm>
 #include <array>
@@ -93,7 +93,35 @@ static Mesh skew_mesh() {
     return m;
 }
 
+static void test_jfnk_block_scales_are_order_independent() {
+    const std::array<std::array<double, 6>, 4> cell_values{{
+        {{0.2, -0.5, 0.1, 100.0, 0.3, 2.0}},
+        {{4.0, 0.1, -3.0, -250.0, 0.8, -7.0}},
+        {{-1.5, 2.5, 8.0, 50.0, -2.0, 1.0}},
+        {{0.7, -9.0, 0.4, 125.0, 5.0, 3.0}}
+    }};
+    const auto reduce = [&](const std::array<std::size_t, 4>& order) {
+        std::array<double, 6> scales{};
+        scales.fill(1.0);
+        for (const auto cell : order)
+            for (std::size_t block = 0; block < scales.size(); ++block)
+                accumulate_coupled_jfnk_block_scale(
+                    scales, block, cell_values[cell][block]);
+        return scales;
+    };
+    const auto forward = reduce({0, 1, 2, 3});
+    const auto reverse = reduce({3, 2, 1, 0});
+    const std::array<double, 6> expected{{4.0, 9.0, 8.0, 250.0, 5.0, 7.0}};
+    for (std::size_t block = 0; block < expected.size(); ++block) {
+        require(forward[block] == expected[block],
+                "JFNK block scale is not the maximum over all cells");
+        require(reverse[block] == expected[block],
+                "JFNK block scale depends on cell traversal order");
+    }
+}
+
 int main() {
+    test_jfnk_block_scales_are_order_independent();
     // Analytic Jv including the pressure gauge, longitudinal/transverse
     // momentum, mass balance, and Rhie-Chow H/A response on every face.
     const std::vector<double> x{0.17,0.25,-0.11,0.20,0.04,-0.08,0.0,0.06,

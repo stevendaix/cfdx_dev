@@ -95,6 +95,9 @@ NON_FICHE_REPORTS = {
     "62-bfs-sst-cauchy-subspace-v27.md",
     "63-bfs-sst-adaptive-trust-v28.md",
     "64-bfs-sst-branch-jacobian-v34.md",
+    # Complementary mathematical audit dossier for PR #1194; this is an
+    # evidence report, not a standalone seven-section method specification.
+    "57-audit-mathematique-sst-et-criteres-spd.md",
     "CFDX_BFS_V17_SST_WALL_AND_VALIDATION.md",
     "CFDX_BFS_V18_OMEGA_OWNER_AND_CONVERGENCE.md",
     "CFDX_V35_MERGE_AUDIT.md",

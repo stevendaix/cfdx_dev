@@ -18,6 +18,8 @@ struct TurbulenceTransportResult {
     std::size_t iterations=0;
     double k_residual=0.0;
     double second_residual=0.0;
+    double k_relative_residual=std::numeric_limits<double>::infinity();
+    double second_relative_residual=std::numeric_limits<double>::infinity();
     std::size_t k_floor_events=0;
     std::size_t second_floor_events=0;
     std::size_t nonfinite_bound_events=0;
@@ -36,7 +38,29 @@ struct TurbulenceTransportResult {
     double last_k_linear_after = std::numeric_limits<double>::quiet_NaN();
     double last_second_linear_before = std::numeric_limits<double>::quiet_NaN();
     double last_second_linear_after = std::numeric_limits<double>::quiet_NaN();
+    // Adaptive relaxation diagnostics (only meaningful when
+    // sst_adaptive_relaxation is enabled).
+    std::size_t relax_reductions=0;
+    std::size_t relax_increases=0;
+    double final_relaxation=0.0;
+    // Coupled 2x2 k/omega correction diagnostics (only meaningful when
+    // sst_coupled_2x2_komega is enabled).
+    std::size_t coupled_2x2_applied=0;
+    double coupled_2x2_max_delta=0.0;
 };
+
+inline double turbulence_equation_relative_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& accepted_solution)
+{
+    const double residual = scalar_equation_residual_inf(equation, accepted_solution);
+    double rhs_inf = 0.0;
+    for (std::size_t row = 0; row < equation.rhs.size(); ++row)
+        rhs_inf = std::max(rhs_inf, std::abs(equation.rhs(row)));
+    if (rhs_inf == 0.0)
+        return residual == 0.0 ? 0.0 : std::numeric_limits<double>::infinity();
+    return residual / rhs_inf;
+}
 
 inline void record_turbulence_bounds(
     TurbulenceTransportResult& result,
@@ -108,6 +132,38 @@ inline void compute_kepsilon_production_field(
     }
 }
 
+struct KEpsilonCellSources {
+    double sk = 0.0;
+    double spk = 0.0;
+    double se = 0.0;
+    double spe = 0.0;
+};
+
+// Source densities for the standard k-epsilon equations, with destruction
+// moved explicitly out of the implicit diagonal. Preserve the exact net
+// source S_u + S_p*phi of the original semi-implicit formulation.
+inline KEpsilonCellSources kepsilon_standard_cell_sources(
+    double k, double epsilon, double production,
+    const TurbulenceTransportControls& controls)
+{
+    if (!std::isfinite(k) || !std::isfinite(epsilon) ||
+        !std::isfinite(production) || !std::isfinite(controls.density) ||
+        !std::isfinite(controls.C1) || !std::isfinite(controls.C2) ||
+        !(controls.density > 0.0) || production < 0.0)
+        throw std::invalid_argument("standard k-epsilon: invalid source input");
+    const double ki = std::max(k, controls.k_min);
+    const double ei = std::max(epsilon, controls.epsilon_min);
+    if (!(ki > 0.0) || !(ei > 0.0))
+        throw std::invalid_argument("standard k-epsilon: invalid floored state");
+    KEpsilonCellSources q;
+    q.sk = production - controls.density * ei;
+    q.spk = 0.0;
+    q.se = controls.C1 * production * ei / ki -
+           controls.density * controls.C2 * ei * ei / ki;
+    q.spe = 0.0;
+    return q;
+}
+
 inline TurbulenceTransportResult solve_kepsilon_transport(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -153,12 +209,12 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             n,"Spe","kg/m3/s",1);
 
         for(std::size_t i=0;i<n;++i) {
-            const double ki=std::max(k(i),controls.k_min);
-            const double ei=std::max(epsilon(i),controls.epsilon_min);
-            sk(i)=P(i);
-            spk(i)=-controls.density*ei/ki;
-            se(i)=controls.C1*P(i)*ei/ki;
-            spe(i)=-controls.density*controls.C2*ei/ki;
+            const auto q = kepsilon_standard_cell_sources(
+                k(i), epsilon(i), P(i), controls);
+            sk(i)=q.sk;
+            spk(i)=q.spk;
+            se(i)=q.se;
+            spe(i)=q.spe;
         }
 
         std::vector<double> gamma_k(n), gamma_e(n);
@@ -174,10 +230,10 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
+            nullptr,nullptr,nullptr,&gamma_k, controls.ke_convection_scheme, &k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_e, ConvectionScheme::UPWIND, &epsilon);
+            nullptr,nullptr,nullptr,&gamma_e, controls.ke_convection_scheme, &epsilon);
 
         ScalarSolveControls sc;
         sc.max_iterations=2000;
@@ -197,8 +253,15 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         }
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
 
-        result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
-        result.second_residual=scalar_equation_residual_inf(eqe,epsilon_solution);
+        cfdx::core::Vector accepted_k(n,0.0), accepted_epsilon(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_epsilon(i)=epsilon(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqe,accepted_epsilon);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqe,accepted_epsilon);
         result.iterations=iter;
 
         double dk=0.0,de=0.0;
@@ -208,6 +271,8 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         }
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
+           result.k_relative_residual<=tolerance &&
+           result.second_relative_residual<=tolerance &&
            std::max(dk,de)<=tolerance) {
             result.converged=true;
             break;
@@ -268,11 +333,20 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
         double dk=0.0,de=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-oldk(i)));de=std::max(de,std::abs(epsilon(i)-olde(i)));}
-        result.k_residual=scalar_equation_residual_inf(eqk,ks);
-        result.second_residual=scalar_equation_residual_inf(eqe,es);
+        cfdx::core::Vector accepted_k(n,0.0), accepted_epsilon(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_epsilon(i)=epsilon(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqe,accepted_epsilon);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqe,accepted_epsilon);
         result.iterations=iter;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
+           result.k_relative_residual<=tolerance &&
+           result.second_relative_residual<=tolerance &&
            std::max(dk,de)<=tolerance){result.converged=true;break;}
     }
     return result;
@@ -340,11 +414,17 @@ inline RealizableKEpsilonCellSources realizable_kepsilon_cell_sources(
     const double production = c.density*q.nut*strain*strain;
     const double eta = strain*ki/ei;
     q.c1 = std::max(0.43, eta/(eta + 5.0));
-    q.sk = production;
-    q.spk = -c.density*ei/ki;
-    q.se = q.c1*c.density*strain*ei;
-    q.spe = -c.density*c.realizable_C2*ei /
+    const double destruction_k = c.density*ei;
+    const double destruction_e = c.density*c.realizable_C2*ei*ei /
         (ki + std::sqrt(c.molecular_viscosity*ei));
+    // Treat destruction explicitly (move to sk/se) rather than implicitly
+    // (sp/spe). The implicit destruction coefficient -rho*epsilon/k can be
+    // O(1e3) near the inlet, which makes the scalar linear system
+    // ill-conditioned.
+    q.sk = production - destruction_k;
+    q.spk = 0.0;
+    q.se = q.c1*c.density*strain*ei - destruction_e;
+    q.spe = 0.0;
     q.gamma_k = c.density*(
         c.molecular_viscosity + q.nut/c.realizable_sigma_k);
     q.gamma_epsilon = c.density*(
@@ -395,10 +475,10 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
+            nullptr,nullptr,nullptr,&gamma_k, controls.ke_convection_scheme, &k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_epsilon, ConvectionScheme::UPWIND, &epsilon);
+            nullptr,nullptr,nullptr,&gamma_epsilon, controls.ke_convection_scheme, &epsilon);
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector ks(n,0.0), es(n,0.0);
         for (std::size_t i=0; i<n; ++i) { ks(i)=k(i); es(i)=epsilon(i); }
@@ -412,11 +492,20 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
             dk=std::max(dk,std::abs(k(i)-oldk(i)));
             de=std::max(de,std::abs(epsilon(i)-olde(i)));
         }
-        result.k_residual=scalar_equation_residual_inf(eqk,ks);
-        result.second_residual=scalar_equation_residual_inf(eqe,es);
+        cfdx::core::Vector accepted_k(n,0.0), accepted_epsilon(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_epsilon(i)=epsilon(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqe,accepted_epsilon);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqe,accepted_epsilon);
         result.iterations=iter;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
             re.status==cfdx::core::SolverStatus::CONVERGED &&
+            result.k_relative_residual<=tolerance &&
+            result.second_relative_residual<=tolerance &&
             std::max(dk,de)<=tolerance) {
             result.converged=true;
             break;
@@ -502,8 +591,20 @@ inline TurbulenceTransportResult solve_komega_transport(
         for(std::size_t i=0;i<n;++i){k(i)=ks(i);omega(i)=ws(i);}
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
         double dk=0,dw=0; for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
-        result.k_residual=scalar_equation_residual_inf(eqk,ks); result.second_residual=scalar_equation_residual_inf(eqw,ws); result.iterations=iter;
-        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+        cfdx::core::Vector accepted_k(n,0.0), accepted_omega(n,0.0);
+        for (std::size_t i=0;i<n;++i) {
+            accepted_k(i)=k(i);
+            accepted_omega(i)=omega(i);
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,accepted_k);
+        result.second_residual=scalar_equation_residual_inf(eqw,accepted_omega);
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eqk,accepted_k);
+        result.second_relative_residual=turbulence_equation_relative_residual_inf(eqw,accepted_omega);
+        result.iterations=iter;
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&
+           result.k_relative_residual<=tolerance &&
+           result.second_relative_residual<=tolerance &&
+           std::max(dk,dw)<=tolerance){result.converged=true;break;}
     }
     return result;
 }
@@ -560,6 +661,13 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
     const std::size_t n=mesh.n_cells();
     if(nu_tilde.size()!=n||vorticity.size()!=n||wall_distance.size()!=n||mass_flux.size()!=mesh.n_faces())
         throw std::invalid_argument("Spalart-Allmaras field size mismatch");
+    for (std::size_t i=0;i<n;++i) {
+        if (!std::isfinite(nu_tilde(i)))
+            throw std::invalid_argument("Spalart-Allmaras transport: non-finite input");
+        if (controls.negative_nu_tilde_policy==NegativeNuTildePolicy::REJECT &&
+            nu_tilde(i)<0.0)
+            throw std::domain_error("Spalart-Allmaras transport: negative input rejected by policy");
+    }
     SpalartAllmarasModel sa; sa.cb1=controls.sa_cb1;sa.cb2=controls.sa_cb2;sa.sigma=controls.sa_sigma;sa.kappa=controls.sa_kappa;sa.cw2=controls.sa_cw2;sa.cw3=controls.sa_cw3;sa.cv1=controls.sa_cv1;sa.ct3=controls.sa_ct3;sa.ct4=controls.sa_ct4;
     sa.cw1=sa.cb1/(sa.kappa*sa.kappa)+(1.0+sa.cb2)/sa.sigma;
     TurbulenceTransportResult result;
@@ -583,10 +691,34 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
         }
         auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,nullptr,&gamma, ConvectionScheme::UPWIND, &nu_tilde);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector sol(n,0.0); for(std::size_t i=0;i<n;++i)sol(i)=nu_tilde(i);
-        const auto rr=solve_scalar_equation(eq,sol,sc); for(std::size_t i=0;i<n;++i)nu_tilde(i)=std::max(sol(i),0.0);
+        const auto rr=solve_scalar_equation(eq,sol,sc);
+        for (std::size_t i=0;i<n;++i) {
+            if (!std::isfinite(sol(i)))
+                throw std::domain_error("Spalart-Allmaras transport: non-finite candidate");
+            if (controls.negative_nu_tilde_policy==NegativeNuTildePolicy::REJECT &&
+                sol(i)<0.0)
+                throw std::domain_error("Spalart-Allmaras transport: negative candidate rejected by policy");
+        }
+        for (std::size_t i=0;i<n;++i) {
+            if (sol(i)<0.0) {
+                const double correction=-sol(i);
+                ++result.k_floor_events;
+                result.k_total_floor_correction+=correction;
+                result.k_max_floor_correction=std::max(result.k_max_floor_correction,correction);
+            }
+            nu_tilde(i)=controls.negative_nu_tilde_policy==NegativeNuTildePolicy::CLAMP_ZERO
+                ? std::max(sol(i),0.0) : sol(i);
+        }
         double du=0;for(std::size_t i=0;i<n;++i)du=std::max(du,std::abs(nu_tilde(i)-old(i)));
-        result.k_residual=scalar_equation_residual_inf(eq,sol);result.second_residual=result.k_residual;result.iterations=iter;
-        if(rr.status==cfdx::core::SolverStatus::CONVERGED&&du<=tolerance){result.converged=true;break;}
+        cfdx::core::Vector accepted(n,0.0);
+        for (std::size_t i=0;i<n;++i) accepted(i)=nu_tilde(i);
+        result.k_residual=scalar_equation_residual_inf(eq,accepted);
+        result.second_residual=result.k_residual;
+        result.k_relative_residual=turbulence_equation_relative_residual_inf(eq,accepted);
+        result.second_relative_residual=result.k_relative_residual;
+        result.iterations=iter;
+        if(rr.status==cfdx::core::SolverStatus::CONVERGED &&
+           result.k_relative_residual<=tolerance && du<=tolerance){result.converged=true;break;}
     }
     return result;
 }

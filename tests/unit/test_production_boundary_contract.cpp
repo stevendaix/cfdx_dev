@@ -83,8 +83,13 @@ int main() {
         downstream.type=BCType::OUTLET;
         downstream.value_type=BCValueType::ZERO_GRADIENT;
         validate_production_incompressible_boundary(downstream,PatchType::OUTLET);
+        // An open axial boundary with no prescribed velocity is the valid
+        // quiescent-inlet form (commit 950386aa8): the fully developed
+        // body-force channel is driven by the body force, not by an inlet
+        // velocity operator. A case-type/mesh-type contradiction is still
+        // rejected.
         upstream.type=BCType::INLET;
-        EXPECT_THROW(validate_production_incompressible_boundary(upstream,PatchType::INLET),std::invalid_argument);
+        validate_production_incompressible_boundary(upstream,PatchType::INLET);
         upstream.type=BCType::OUTLET;
         EXPECT_THROW(validate_production_incompressible_boundary(upstream,PatchType::INLET),std::invalid_argument);
     });

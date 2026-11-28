@@ -1,8 +1,12 @@
 #include "cfdx/core/boundary/value_provider.h"
+#include "cfdx/core/boundary/profile_csv.h"
 #include "cfdx/core/boundary/legacy_patch_field_adapter.h"
 #include "cfdx/core/boundary/flow_boundary_conditions.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
+#include <fstream>
+#include <cstdio>
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
@@ -28,6 +32,69 @@ int main() {
     });
     run_case("table_provider_rejects_bad_grid", [] {
         EXPECT_THROW(TableValueProvider({0.0, 0.0}, {1.0, 2.0}), std::invalid_argument);
+    });
+    run_case("time_table_provider_rejects_nonfinite_data_and_time", [] {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        EXPECT_THROW(TableValueProvider({nan}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({inf}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({0.0}, {nan}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({0.0}, {inf}), std::invalid_argument);
+        EXPECT_THROW(TableValueProvider({0.0, nan}, {0.0, 1.0}),
+                     std::invalid_argument);
+        TableValueProvider provider({0.0, 1.0}, {0.0, 2.0});
+        ValueContext context;
+        context.time = nan;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.time = inf;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.time = 0.5;
+        EXPECT_TRUE(std::abs(provider.evaluate(context) - 1.0) < 1e-14);
+    });
+    run_case("spatial_table_provider_rejects_nonfinite_data_and_coordinates", [] {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        EXPECT_THROW(TableOverSpaceValueProvider({nan}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({inf}, {1.0}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({0.0}, {nan}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({0.0}, {inf}), std::invalid_argument);
+        EXPECT_THROW(TableOverSpaceValueProvider({0.0, 1.0}, {0.0, nan}),
+                     std::invalid_argument);
+        TableOverSpaceValueProvider provider({0.0, 1.0}, {0.0, 2.0});
+        ValueContext context;
+        context.y = nan;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.y = inf;
+        EXPECT_THROW(provider.evaluate(context), std::invalid_argument);
+        context.y = 0.5;
+        EXPECT_TRUE(std::abs(provider.evaluate(context) - 1.0) < 1e-14);
+    });
+    run_case("spatial_profile_csv_reader_rejects_malformed_records", [] {
+        const std::string path = "/tmp/cfdx_profile_csv_contract_test.csv";
+        const auto write = [&](const std::string& text) {
+            std::ofstream out(path, std::ios::trunc);
+            out << text;
+            out.close();
+        };
+        write("y,u\n0.0,0.0\n1.0,2.0\n");
+        const auto provider = read_spatial_profile_csv(path, 1);
+        ValueContext context;
+        context.y = 0.5;
+        EXPECT_TRUE(std::abs(provider->evaluate(context) - 1.0) < 1e-14);
+
+        write("0.0,0.0\n1.0garbage,2.0\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0x,0.0\n1.0,2.0\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0,0.0,extra\n1.0,2.0\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0,0.0\nnan,2.0\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("0.0,0.0\n1.0,inf\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        write("y,u\n0.0,1.0\n");
+        EXPECT_THROW(read_spatial_profile_csv(path, 1), std::invalid_argument);
+        std::remove(path.c_str());
     });
     run_case("device_lowering_is_value_based", [] {
         ValueProviderSpec spec = SpatialLinearProviderSpec{1.0, 2.0, 3.0, 4.0, DIMENSIONLESS};

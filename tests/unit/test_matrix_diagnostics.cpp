@@ -64,6 +64,46 @@ int main() {
         EXPECT_TRUE(d.minimum_gershgorin_margin >= 0.0);
     });
 
+    run_case("symmetry_detection_is_relative_for_small_coefficient_matrices", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0e-20);
+        A.push_back(0, 1, 0.0);
+        A.push_back(1, 0, 1.0e-13);
+        A.push_back(1, 1, 1.0e-20);
+        A.finalize();
+        // The off-diagonal mismatch is seven orders larger than the matrix
+        // diagonal. A unit-scale absolute tolerance must not hide it.
+        const auto c = measure_matrix_characteristics(A);
+        EXPECT_TRUE(!c.numerically_symmetric);
+    });
+
+    run_case("matrix_characteristics_reject_nonfinite_coefficients_before_spd_qualification", [] {
+        SparseMatrix nan_matrix(2, 2);
+        nan_matrix.push_back(0, 0, 2.0);
+        nan_matrix.push_back(0, 1, 0.0);
+        nan_matrix.push_back(1, 0, 0.0);
+        nan_matrix.push_back(1, 1, 2.0);
+        nan_matrix.finalize();
+        // Inject corruption only after successful assembly/finalization so
+        // this test exercises the diagnostics guard, not SparseMatrix::push_back.
+        nan_matrix.values_data()[1] = std::numeric_limits<double>::quiet_NaN();
+
+        const auto nan_diagnostics = diagnose_matrix(nan_matrix, 1e-14, false);
+        EXPECT_TRUE(!nan_diagnostics.finite);
+        EXPECT_THROW(measure_matrix_characteristics(nan_matrix), std::invalid_argument);
+
+        SparseMatrix infinite_matrix(2, 2);
+        infinite_matrix.push_back(0, 0, 2.0);
+        infinite_matrix.push_back(0, 1, 0.0);
+        infinite_matrix.push_back(1, 0, 0.0);
+        infinite_matrix.push_back(1, 1, 2.0);
+        infinite_matrix.finalize();
+        infinite_matrix.values_data()[1] = std::numeric_limits<double>::infinity();
+        const auto infinite_diagnostics = diagnose_matrix(infinite_matrix, 1e-14, false);
+        EXPECT_TRUE(!infinite_diagnostics.finite);
+        EXPECT_THROW(measure_matrix_characteristics(infinite_matrix), std::invalid_argument);
+    });
+
     run_case("row_and_column_scaling_are_explicit", [] {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1e-6);
@@ -156,6 +196,65 @@ int main() {
             LinearProblemKind::PressurePoisson, characteristics);
         EXPECT_TRUE(plan.krylov == KrylovModel::CG);
         EXPECT_TRUE(plan.preconditioner == PreconditionerModel::NativeAMG);
+    });
+
+    run_case("generic_cg_and_amg_reject_symmetric_positive_diagonal_indefinite_matrix", [] {
+        SparseMatrix indefinite(2, 2);
+        indefinite.push_back(0, 0, 1.0);
+        indefinite.push_back(0, 1, 2.0);
+        indefinite.push_back(1, 0, 2.0);
+        indefinite.push_back(1, 1, 1.0);
+        indefinite.finalize();
+        // Eigenvalues are 3 and -1: symmetric with a positive diagonal,
+        // but indefinite. A positive diagonal is not an SPD certificate.
+        const auto c = measure_matrix_characteristics(indefinite);
+        EXPECT_TRUE(c.numerically_symmetric);
+        EXPECT_TRUE(c.positive_diagonal);
+        EXPECT_TRUE(!c.strictly_diagonally_dominant);
+
+        LinearSolverRequest cg;
+        cg.krylov = KrylovModel::CG;
+        cg.preconditioner = PreconditionerModel::Jacobi;
+        EXPECT_THROW(select_linear_solver(LinearProblemKind::General, c, cg),
+                     std::invalid_argument);
+
+        LinearSolverRequest amg;
+        amg.krylov = KrylovModel::FGMRES;
+        amg.preconditioner = PreconditionerModel::NativeAMG;
+        EXPECT_THROW(select_linear_solver(LinearProblemKind::General, c, amg),
+                     std::invalid_argument);
+    });
+
+    run_case("strict_gershgorin_certificate_is_invariant_to_uniform_matrix_scaling", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 3.0e-20);
+        A.push_back(0, 1, -1.0e-20);
+        A.push_back(1, 0, -1.0e-20);
+        A.push_back(1, 1, 3.0e-20);
+        A.finalize();
+        const auto c = measure_matrix_characteristics(A);
+        EXPECT_TRUE(c.numerically_symmetric);
+        EXPECT_TRUE(c.positive_diagonal);
+        EXPECT_TRUE(c.strictly_diagonally_dominant);
+    });
+
+    run_case("strict_gershgorin_margin_certifies_generic_symmetric_positive_definite_matrix", [] {
+        SparseMatrix spd(2, 2);
+        spd.push_back(0, 0, 3.0);
+        spd.push_back(0, 1, -1.0);
+        spd.push_back(1, 0, -1.0);
+        spd.push_back(1, 1, 3.0);
+        spd.finalize();
+        const auto c = measure_matrix_characteristics(spd);
+        EXPECT_TRUE(c.numerically_symmetric);
+        EXPECT_TRUE(c.positive_diagonal);
+        EXPECT_TRUE(c.strictly_diagonally_dominant);
+
+        LinearSolverRequest cg;
+        cg.krylov = KrylovModel::CG;
+        cg.preconditioner = PreconditionerModel::Jacobi;
+        const auto plan = select_linear_solver(LinearProblemKind::General, c, cg);
+        EXPECT_TRUE(plan.krylov == KrylovModel::CG);
     });
 
     return run_all();

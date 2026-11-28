@@ -292,6 +292,13 @@ inline MatrixCharacteristics measure_matrix_characteristics(
             "matrix symmetry relative tolerance must be finite and non-negative");
 
     const auto d = diagnose_matrix(matrix, 1e-14, false);
+    // Solver selection must never infer symmetry or an SPD Gershgorin
+    // certificate from a matrix whose coefficients could not be inspected.
+    // In particular, NaN comparisons are false and std::min can otherwise
+    // leave a positive/infinite Gershgorin margin after a NaN off-diagonal.
+    if (!d.structurally_consistent || !d.finite)
+        throw std::invalid_argument(
+            "matrix characteristics require a structurally consistent finite matrix");
     MatrixCharacteristics c;
     c.equations = d.rows;
     c.average_nnz_per_row =
@@ -301,10 +308,20 @@ inline MatrixCharacteristics measure_matrix_characteristics(
             ? 1.0
             : d.max_abs_value / d.min_nonzero_abs_value;
     c.square = d.rows == d.columns;
+    // Keep the Gershgorin certificate invariant under a uniform change
+    // of coefficient units. A unit lower bound would turn this into an
+    // absolute threshold and reject perfectly scaled small SPD operators.
+    const double gershgorin_scale = std::max(
+        d.max_abs_diagonal, std::numeric_limits<double>::min());
+    const double gershgorin_tolerance = 1e-14 * gershgorin_scale;
     c.diagonally_dominant =
         c.square && std::isfinite(d.minimum_gershgorin_margin) &&
-        d.minimum_gershgorin_margin >=
-            -1e-14 * std::max(1.0, d.max_abs_diagonal);
+        d.minimum_gershgorin_margin >= -gershgorin_tolerance;
+    // Strict Gershgorin positivity is a sufficient (not necessary) SPD
+    // certificate for a symmetric matrix. Weak diagonal dominance is not.
+    c.strictly_diagonally_dominant =
+        c.square && std::isfinite(d.minimum_gershgorin_margin) &&
+        d.minimum_gershgorin_margin > gershgorin_tolerance;
     c.strongly_scaled = std::isfinite(c.coefficient_range) &&
                         c.coefficient_range >= 1.0e8;
     c.large_diagonal_dynamic_range = std::isfinite(d.diagonal_dynamic_range) &&
@@ -341,7 +358,11 @@ inline MatrixCharacteristics measure_matrix_characteristics(
         const auto* row = matrix.row_offsets_data();
         const auto* col = matrix.columns_data();
         const auto* val = matrix.values_data();
-        const double scale = std::max(1.0, d.max_abs_value);
+        // symmetry_relative_tolerance is dimensionless: scaling by max(1,|A|)
+        // silently turns it into an absolute tolerance for small-unit systems
+        // and can certify a strongly nonsymmetric matrix as symmetric.
+        const double scale = std::max(
+            d.max_abs_value, std::numeric_limits<double>::min());
         c.numerically_symmetric = true;
         for (std::size_t i = 0; i < matrix.n_rows() && c.numerically_symmetric; ++i) {
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {

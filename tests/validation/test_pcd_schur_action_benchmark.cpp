@@ -73,9 +73,9 @@
 //   rc_diag   -diag(RC)^-1 with no nested solve (SIMPLE-style diagonal
 //              Schur). Reference point; nested Krylov counters stay at
 //              zero but Schur applications are counted and timed.
-//   pcd_full  -Kp^-1*Fp*Mp^-1, the classic literature PCD action (Kay,
+//   pcd_full  -Mp^-1*Fp*Kp^-1, the classic literature PCD action (Kay,
 //              Loghin & Wathen; Elman, Silvester & Wathen 2001,
-//              doi:10.1016/S0377-0427(00)00515-4). Composed inside the
+//              doi:10.1016/S0377-0427(00)00515-X). Composed inside the
 //              convection_diffusion slot: one nested Kp solve
 //              (GMRES(40)+NativeAMG, budget 100, tol 1e-8, mirroring
 //              kp_amg because that is how production would solve Kp)
@@ -632,12 +632,22 @@ int main()
                                  &action_stats](const Vector& rhs, Vector& x) {
                     const auto apply_start = std::chrono::steady_clock::now();
                     const std::size_t np = rhs.size();
-                    // z = Mp^-1 rhs (exact: Mp is diagonal, verified above)
+                    // Classical PCD inverse ordering:
+                    // z = Kp^-1 rhs (solve the pressure Laplacian FIRST).
                     Vector z(np, 0.0);
-                    for (std::size_t i = 0; i < np; ++i)
-                        z(i) = rhs(i) / mass_diag[i];
+                    SolverResult result;
+                    if (krylov == KrylovModel::GMRES)
+                        result = solve_gmres(stage.pcd_laplacian, rhs, z,
+                                             nested_restart, budget, tolerance,
+                                             nested_preconditioner.get(), {},
+                                             {}, false);
+                    else
+                        result = solve_fgmres(stage.pcd_laplacian, rhs, z,
+                                              nested_restart, budget, tolerance,
+                                              nested_preconditioner.get(), {},
+                                              {}, false);
                     // y = Fp z (forward product with the CAPTURED production
-                    // convection-diffusion operator)
+                    // convection-diffusion operator).
                     Vector y(np, 0.0);
                     for (std::size_t row = 0; row < np; ++row) {
                         double ax = 0.0;
@@ -650,23 +660,19 @@ int main()
                                 * z(stage.pcd_convection_diffusion.columns_data()[k]);
                         y(row) = ax;
                     }
-                    // x = Kp^-1 y (nested solve with the CAPTURED production
-                    // laplacian; production nested-usable policy applies)
-                    SolverResult result;
-                    if (krylov == KrylovModel::GMRES)
-                        result = solve_gmres(stage.pcd_laplacian, y, x,
-                                             nested_restart, budget, tolerance,
-                                             nested_preconditioner.get(), {},
-                                             {}, false);
-                    else
-                        result = solve_fgmres(stage.pcd_laplacian, y, x,
-                                              nested_restart, budget, tolerance,
-                                              nested_preconditioner.get(), {},
-                                              {}, false);
+                    // x = Mp^-1 y (exact: Mp is diagonal, verified above).
+                    // PcdSchurApproximation applies the global negative sign.
+                    Vector candidate(np, 0.0);
+                    for (std::size_t i = 0; i < np; ++i)
+                        candidate(i) = y(i) / mass_diag[i];
                     ++action_stats.applications;
                     action_stats.nested_iterations += result.iterations;
                     action_stats.action_wall_ms += elapsed_ms(apply_start);
-                    return nested_schur_pressure_solve_usable(result, x, np);
+                    if (!nested_schur_pressure_solve_usable(result, z, np) ||
+                        !candidate.is_valid())
+                        return false;
+                    x = std::move(candidate);
+                    return true;
                 };
             } else {
                 // The variant's nested operator: Fp (production baseline and

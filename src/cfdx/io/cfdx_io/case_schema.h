@@ -128,6 +128,19 @@ struct BoundarySpec {
     std::vector<SSTScalarBoundarySpec> sst_scalar_conditions;
     std::map<std::string, NativeFieldBoundary> field_conditions;
 
+    // Optional non-uniform inlet profile (e.g. Driver-Seegmiller BL u(y)).
+    // axis: 0=x, 1=y, 2=z coordinate used as the table abscissa.
+    // profile_file: path to a CSV with two columns (coord,value). If set, it
+    // takes precedence over the inline coords/values tables.
+    struct InletProfileSpec {
+        bool enabled = false;
+        int axis = 1;  // wall-normal y by default
+        std::string profile_file;  // CSV path: coord,value (header optional)
+        std::vector<double> coords;  // inline fallback abscissa
+        std::vector<double> values;  // inline fallback values
+    };
+    std::optional<InletProfileSpec> inlet_profile;
+
     const NativeFieldBoundary* find_field(const std::string& name) const {
         const auto it = field_conditions.find(name);
         return it == field_conditions.end() ? nullptr : &it->second;

@@ -10,8 +10,10 @@
 #include <filesystem>
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <map>
 #include <utility>
+#include <tuple>
 #include <vector>
 
 using namespace cfdx::testing;
@@ -97,6 +99,45 @@ static cfdx::core::Mesh make_sst_transaction_unit_cube()
     walls.name = "walls";
     walls.type = PatchType::WALL;
     walls.face_ids = {0,1,2,3};
+    mesh.boundary().add_patch(walls);
+    return mesh;
+}
+
+static cfdx::core::Mesh make_sst_two_cell_pressure_face_mesh()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(12);
+    const double points[12][3] = {
+        {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+        {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}
+    };
+    for (std::size_t i=0;i<12;++i)
+        mesh.points().set(i,points[i][0],points[i][1],points[i][2]);
+    const std::vector<std::vector<FaceIndex>> faces = {
+        {0,3,9,6}, {1,7,10,4}, {0,1,7,6}, {3,9,10,4},
+        {0,3,4,1}, {6,7,10,9}, {2,5,11,8}, {1,2,8,7},
+        {4,10,11,5}, {1,4,5,2}, {7,8,11,10}
+    };
+    for (const auto& face : faces) mesh.faces().push_face(face);
+    mesh.ownership().resize(faces.size());
+    for (std::size_t f=0;f<faces.size();++f) {
+        mesh.ownership().set_owner(f, f==6 || f>=7 ? 1 : 0);
+        mesh.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    mesh.ownership().set_owner(1,0);
+    mesh.ownership().set_neighbour(1,1);
+    mesh.cells().push_cell({0,1,2,3,4,5});
+    mesh.cells().push_cell({1,6,7,8,9,10});
+    Patch outlet;
+    outlet.name="outlet";
+    outlet.type=PatchType::WALL;
+    outlet.face_ids={3,6};
+    mesh.boundary().add_patch(outlet);
+    Patch walls;
+    walls.name="walls";
+    walls.type=PatchType::WALL;
+    walls.face_ids={0,2,4,5,7,8,9,10};
     mesh.boundary().add_patch(walls);
     return mesh;
 }
@@ -401,6 +442,250 @@ int main()
         EXPECT_TRUE(r.last_second_linear_after>=r.last_second_linear_before);
         EXPECT_TRUE(r.k_residual>0 || r.second_residual>0);
     });
+    run_case("sst_coupled_2x2_block_pivot_is_invariant_to_equation_scaling", [] {
+        using namespace cfdx::core;
+        const auto solve_at_scale = [](double scale) {
+            ScalarEquation eqk, eqw;
+            eqk.matrix = SparseMatrix(1,1);
+            eqk.matrix.push_back(0,0,2.0*scale);
+            eqk.matrix.finalize();
+            eqk.rhs = Vector(1,4.0*scale);
+            eqk.diagonal = {2.0*scale};
+            eqw.matrix = SparseMatrix(1,1);
+            eqw.matrix.push_back(0,0,3.0*scale);
+            eqw.matrix.finalize();
+            eqw.rhs = Vector(1,6.0*scale);
+            eqw.diagonal = {3.0*scale};
+            std::vector<double> k{1.0}, omega{1.0};
+            const std::vector<double> c_kw{1.8*scale}, c_wk{1.8*scale};
+            const auto result = solve_coupled_2x2_matrix(
+                eqk,eqw,k,omega,c_kw,c_wk,1.0,5,1e-10,1e-12,1e-12);
+            return std::tuple{result,k[0],omega[0]};
+        };
+        const auto ordinary = solve_at_scale(1.0);
+        const auto rescaled = solve_at_scale(1e-20);
+        EXPECT_TRUE(std::get<0>(ordinary).converged);
+        EXPECT_TRUE(std::get<0>(rescaled).converged);
+        EXPECT_TRUE(std::get<0>(ordinary).iterations == 1);
+        EXPECT_TRUE(std::get<0>(rescaled).iterations == 1);
+        EXPECT_NEAR(std::get<1>(ordinary),std::get<1>(rescaled),1e-12);
+        EXPECT_NEAR(std::get<2>(ordinary),std::get<2>(rescaled),1e-12);
+    });
+    run_case("sst_coupled_source_jacobian_uses_dimensional_derivative_and_cell_volume", [] {
+        // S(phi)=S0 + dS/dphi*(phi-phi0), so -dS/dphi*V is
+        // the cross-matrix coefficient for an integrated FV source.
+        const double c1 = sst_negative_source_derivative_coefficient(
+            10.0,8.0,0.1,4.0,2.0);
+        const double c2 = sst_negative_source_derivative_coefficient(
+            10.0,8.0,0.1,4.0,5.0);
+        EXPECT_NEAR(c1,10.0,1e-13);
+        EXPECT_NEAR(c2,25.0,1e-13);
+        EXPECT_NEAR(c2/c1,2.5,1e-13);
+        EXPECT_THROW(sst_negative_source_derivative_coefficient(
+            10.0,8.0,0.1,4.0,0.0),std::invalid_argument);
+    });
+    run_case("sst_coupled_2x2_tangent_preserves_assembled_scalar_fixed_point", [] {
+        using namespace cfdx::core;
+        ScalarEquation eqk, eqw;
+        eqk.matrix = SparseMatrix(1,1);
+        eqk.matrix.push_back(0,0,2.0);
+        eqk.matrix.finalize();
+        eqk.rhs = Vector(1,5.0);
+        eqk.diagonal = {2.0};
+        eqw.matrix = SparseMatrix(1,1);
+        eqw.matrix.push_back(0,0,3.0);
+        eqw.matrix.finalize();
+        eqw.rhs = Vector(1,7.0);
+        eqw.diagonal = {3.0};
+
+        // This is the exact solution of the two assembled scalar equations.
+        // Nonzero cross derivatives must not move their common fixed point.
+        std::vector<double> k{2.5}, omega{7.0/3.0};
+        const std::vector<double> c_kw{-0.4}, c_wk{0.25};
+        const auto result = solve_coupled_2x2_matrix(
+            eqk,eqw,k,omega,c_kw,c_wk,1.0,5,1e-12,1e-12,1e-12);
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(k[0],2.5,0.0);
+        EXPECT_NEAR(omega[0],7.0/3.0,0.0);
+    });
+    run_case("sst_static_pressure_outlet_is_converted_to_modified_pressure", [] {
+        using namespace cfdx::core;
+        auto mesh = make_sst_transaction_unit_cube();
+        mesh.boundary().patch(1).type = PatchType::OUTLET;
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec outlet;
+        outlet.patch_name = "x1";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
+        outlet.pressure = 101325.0;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.3},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}};
+        setup.boundary_conditions.push_back(outlet);
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.4);
+        ScalarBoundaryConditions pressure_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 101325.0, 0.0};
+        pressure_bcs["x0"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        apply_sst_static_pressure_boundary_contract(
+            mesh, setup, state, 1.2, pressure_bcs);
+        EXPECT_NEAR(pressure_bcs.at("x1").value,
+                    101325.0 + (2.0 / 3.0) * 1.2 * 0.3, 1e-12);
+        EXPECT_NEAR(pressure_bcs.at("x0").value, 0.0, 0.0);
+    });
+    run_case("sst_pressure_face_snapshot_is_rebuilt_from_restored_state", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.3);
+        ScalarBoundaryConditions pressure_bcs, k_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 101325.0, 0.0};
+        k_bcs["x1"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        ScalarBoundaryFaceValues shared;
+        update_sst_static_pressure_face_values(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared, 4);
+        const double accepted_pressure = 101325.0 + (2.0 / 3.0) * 1.2 * 0.3;
+        EXPECT_NEAR(shared.values.at("x1").at(5), accepted_pressure, 1e-12);
+
+        // A rejected SST candidate publishes a different trace.
+        state.k.fill(0.9);
+        update_sst_static_pressure_face_values(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared, 5);
+        EXPECT_NEAR(shared.values.at("x1").at(5),
+                    101325.0 + (2.0 / 3.0) * 1.2 * 0.9, 1e-12);
+
+        // Restore k, then rebuild the shared object with a fresh generation.
+        state.k.fill(0.3);
+        rebuild_sst_pressure_face_values_after_state_restore(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared);
+        EXPECT_TRUE(shared.generation == 6);
+        EXPECT_NEAR(shared.values.at("x1").at(5), accepted_pressure, 1e-12);
+
+        // Failed rebuild must not partially publish a new generation or map.
+        const auto before = shared;
+        state.k(0) = -1.0;
+        EXPECT_THROW(rebuild_sst_pressure_face_values_after_state_restore(
+            mesh, state, 1.2, pressure_bcs, k_bcs, shared), std::invalid_argument);
+        EXPECT_TRUE(shared.generation == before.generation);
+        EXPECT_NEAR(shared.values.at("x1").at(5),
+                    before.values.at("x1").at(5), 0.0);
+    });
+    run_case("sst_initial_static_pressure_is_converted_cellwise_and_atomically", [] {
+        using namespace cfdx::core;
+        Field<double,Location::CELL> pressure(2,"p","Pa",1);
+        pressure(0)=100000.0;
+        pressure(1)=100250.0;
+        SSTProductionState state(2);
+        state.k(0)=0.0;
+        state.k(1)=0.75;
+        convert_sst_static_pressure_initial_field(pressure,state,1.2);
+        EXPECT_NEAR(pressure(0),100000.0,0.0);
+        EXPECT_NEAR(pressure(1),100250.0+(2.0/3.0)*1.2*0.75,1e-12);
+
+        const double before0=pressure(0), before1=pressure(1);
+        state.k(1)=std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(convert_sst_static_pressure_initial_field(pressure,state,1.2),
+                     std::invalid_argument);
+        EXPECT_NEAR(pressure(0),before0,0.0);
+        EXPECT_NEAR(pressure(1),before1,0.0);
+    });
+    run_case("sst_static_pressure_outlet_rejects_evolving_zero_gradient_k_trace", [] {
+        using namespace cfdx::core;
+        auto mesh = make_sst_transaction_unit_cube();
+        mesh.boundary().patch(1).type = PatchType::OUTLET;
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec outlet;
+        outlet.patch_name = "x1";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}};
+        setup.boundary_conditions.push_back(outlet);
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.4); // Even a uniform initial trace evolves during SST iterations.
+        ScalarBoundaryConditions pressure_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 101325.0, 0.0};
+        EXPECT_THROW(apply_sst_static_pressure_boundary_contract(
+            mesh, setup, state, 1.2, pressure_bcs), std::invalid_argument);
+    });
+    run_case("sst_static_pressure_outlet_rejects_missing_k_boundary_contract", [] {
+        using namespace cfdx::core;
+        auto mesh = make_sst_transaction_unit_cube();
+        mesh.boundary().patch(1).type = PatchType::OUTLET;
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec outlet;
+        outlet.patch_name = "x1";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.value_type = cfdx::io::BCValueType::OUTLET_PRESSURE;
+        setup.boundary_conditions.push_back(outlet);
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.4);
+        ScalarBoundaryConditions pressure_bcs;
+        pressure_bcs["x1"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        EXPECT_THROW(apply_sst_static_pressure_boundary_contract(
+            mesh, setup, state, 1.2, pressure_bcs), std::invalid_argument);
+    });
+    run_case("sst_pseudo_time_does_not_enter_steady_residual_certificate", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double,Location::FACE> flux(mesh.n_faces(),"phi","kg/s",1);
+        flux.fill(0.0);
+        Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1),
+            omega(mesh.n_cells(),"omega","1/s",1),
+            strain(mesh.n_cells(),"strain","1/s",1),
+            F1(mesh.n_cells(),"F1","1",1), F2(mesh.n_cells(),"F2","1",1);
+        k.fill(0.4); omega.fill(20.0); strain.fill(10.0);
+        F1.fill(0.8); F2.fill(0.7);
+        ScalarBoundaryConditions kb, ob;
+        for (const char* patch : {"x0", "x1", "walls"}) {
+            kb[patch]={ScalarBoundaryType::FIXED_VALUE,0.03,0.0};
+            ob[patch]={ScalarBoundaryType::FIXED_VALUE,2.0,0.0};
+        }
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.sst_pseudo_transient_dt = 0.001;
+        controls.sst_sequential_omega_first = true;
+
+        const auto result = solve_sst_transport(
+            mesh,geometry,flux,k,omega,strain,F1,F2,controls,kb,ob,1,1e-12);
+
+        // Independent returned-state reassembly using the frozen outer F1/F2
+        // fields supplied to this transport solve, but no pseudo-time mass.
+        const auto cross = sst_boundary_gradient_dot(
+            k,omega,mesh,geometry,kb,ob,nullptr,
+            controls.sst_use_wls_boundary_gradients,controls.sst_gradient_dimension);
+        Field<double,Location::CELL> sk(mesh.n_cells(),"Sk","W/m3",1),
+            sw(mesh.n_cells(),"Sw","W/m3",1),
+            spk(mesh.n_cells(),"Spk","kg/m3/s",1),
+            spw(mesh.n_cells(),"Spw","kg/m3/s",1);
+        std::vector<double> gamma_k(mesh.n_cells()), gamma_w(mesh.n_cells());
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            const auto q=sst_cell_sources(
+                k(cell),omega(cell),strain(cell),F1(cell),F2(cell),cross[cell],controls,-1);
+            sk(cell)=q.sk; sw(cell)=q.sw; spk(cell)=q.spk; spw(cell)=q.spw;
+            gamma_k[cell]=q.gamma_k; gamma_w[cell]=q.gamma_w;
+        }
+        const auto physical_k=assemble_scalar_equation(
+            mesh,geometry,flux,0.0,sk,spk,kb,true,nullptr,nullptr,nullptr,
+            &gamma_k,ConvectionScheme::UPWIND,&k,nullptr,true,nullptr);
+        const auto physical_omega=assemble_scalar_equation(
+            mesh,geometry,flux,0.0,sw,spw,ob,true,nullptr,nullptr,nullptr,
+            &gamma_w,ConvectionScheme::UPWIND,&omega,nullptr,true,nullptr);
+        Vector returned_k(mesh.n_cells()), returned_omega(mesh.n_cells());
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            returned_k(cell)=k(cell);
+            returned_omega(cell)=omega(cell);
+        }
+        EXPECT_NEAR(result.k_residual,
+            scalar_equation_residual_inf(physical_k,returned_k),1e-10);
+        EXPECT_NEAR(result.second_residual,
+            scalar_equation_residual_inf(physical_omega,returned_omega),1e-10);
+        EXPECT_TRUE(!result.converged);
+    });
     run_case("v13_sst_newton_sink_preserves_the_exact_omega_source", [] {
         TurbulenceTransportControls old;
         old.model = TurbulenceModel::SST;
@@ -459,6 +744,9 @@ int main()
         TurbulenceTransportControls controls;
         controls.model = TurbulenceModel::SST;
         controls.sst_omega_newton_sink = true;
+        // Default is now Gauss-Seidel omega-first (OpenFOAM correct() order).
+        // The parallel (Jacobi) reference run must opt out explicitly.
+        controls.sst_sequential_omega_first = false;
         auto parallel_k=k,parallel_omega=omega;
         auto sequential_k=k,sequential_omega=omega;
         const auto parallel_result=solve_sst_transport(
@@ -1978,5 +2266,117 @@ int main()
             std::numeric_limits<double>::quiet_NaN(), 0.1, 0.0), std::invalid_argument);
     });
 
+    run_case("attached_face_boundary_provider_fails_closed_when_incomplete", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_two_cell_pressure_face_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        ScalarBoundaryConditions bcs;
+        bcs["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 12.0, 0.0};
+
+        auto missing_patch = std::make_shared<ScalarBoundaryFaceValues>();
+        bcs["outlet"].face_values = missing_patch;
+        EXPECT_THROW(resolve_scalar_boundary_condition(mesh, geometry, 3, bcs),
+                     std::invalid_argument);
+
+        auto too_short = std::make_shared<ScalarBoundaryFaceValues>();
+        too_short->values["outlet"] = {0.0, 0.0, 0.0};
+        bcs["outlet"].face_values = too_short;
+        EXPECT_THROW(resolve_scalar_boundary_condition(mesh, geometry, 3, bcs),
+                     std::out_of_range);
+
+        auto nonfinite = std::make_shared<ScalarBoundaryFaceValues>();
+        nonfinite->values["outlet"] = std::vector<double>(mesh.n_faces(), 0.0);
+        nonfinite->values["outlet"][3] = std::numeric_limits<double>::quiet_NaN();
+        bcs["outlet"].face_values = nonfinite;
+        EXPECT_THROW(resolve_scalar_boundary_condition(mesh, geometry, 3, bcs),
+                     std::invalid_argument);
+
+        auto valid = std::make_shared<ScalarBoundaryFaceValues>();
+        valid->values["outlet"] = std::vector<double>(mesh.n_faces(), 0.0);
+        valid->values["outlet"][3] = 15.0;
+        bcs["outlet"].face_values = valid;
+        const auto resolved = resolve_scalar_boundary_condition(mesh, geometry, 3, bcs);
+        EXPECT_TRUE(resolved.type == ScalarBoundaryType::FIXED_VALUE);
+        EXPECT_NEAR(resolved.value, 15.0, 0.0);
+    });
+    run_case("sst_modified_pressure_uses_face_owner_k_and_refreshes_transactionally", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_two_cell_pressure_face_mesh();
+        const auto geometry=build_fv_geometry(mesh);
+        SSTProductionState state(mesh.n_cells());
+        state.k(0)=0.2;
+        state.k(1)=0.8;
+        ScalarBoundaryConditions pressure_bcs, k_bcs;
+        pressure_bcs["outlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        k_bcs["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        auto face_values=std::make_shared<ScalarBoundaryFaceValues>();
+        update_sst_static_pressure_face_values(
+            mesh,state,1.5,pressure_bcs,k_bcs,*face_values,1);
+        pressure_bcs["outlet"].face_values=face_values;
+        const auto& outlet_values=face_values->values.at("outlet");
+        const double old_right_value=outlet_values[6];
+        EXPECT_NEAR(outlet_values[3],0.2,1e-12);
+        EXPECT_NEAR(outlet_values[6],0.8,1e-12);
+        EXPECT_TRUE(face_values->generation==1);
+        const auto bc_left=resolve_scalar_boundary_condition(
+            mesh,geometry,3,pressure_bcs);
+        const auto bc_right=resolve_scalar_boundary_condition(
+            mesh,geometry,6,pressure_bcs);
+        EXPECT_NEAR(bc_left.value,0.2,1e-12);
+        EXPECT_NEAR(bc_right.value,0.8,1e-12);
+
+        Field<double,Location::CELL> pressure(mesh.n_cells(),"p_star","Pa",1);
+        pressure(0)=0.2;
+        pressure(1)=0.8;
+        Field<double,Location::CELL> velocity(mesh.n_cells(),"U","m/s",3);
+        velocity.fill(0.0);
+        const std::array<std::vector<double>,3> rAU{{{1.0,1.0},{1.0,1.0},{1.0,1.0}}};
+        const VelocityBoundaryConditions velocity_bcs;
+        const auto flux_before=make_rhie_chow_flux_from_hbya(
+            mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
+        EXPECT_NEAR(flux_before(3),0.0,1e-12);
+        EXPECT_NEAR(flux_before(6),0.0,1e-12);
+
+        state.k(1)=1.1;
+        update_sst_static_pressure_face_values(
+            mesh,state,1.5,pressure_bcs,k_bcs,*face_values,2);
+        EXPECT_TRUE(face_values->generation==2);
+        EXPECT_NEAR(face_values->values.at("outlet")[3],0.2,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[6],1.1,1e-12);
+        EXPECT_NEAR(face_values->values.at("outlet")[6]-old_right_value,0.3,1e-12);
+        const auto bc_updated=resolve_scalar_boundary_condition(
+            mesh,geometry,6,pressure_bcs);
+        EXPECT_NEAR(bc_updated.value,1.1,1e-12);
+        const auto flux_after=make_rhie_chow_flux_from_hbya(
+            mesh,geometry,velocity,pressure,rAU,1.5,velocity_bcs,pressure_bcs);
+        EXPECT_NEAR(flux_after(3),0.0,1e-12);
+        EXPECT_TRUE(std::abs(flux_after(6)-flux_before(6))>1e-12);
+
+        ScalarBoundaryConditions missing_k;
+        EXPECT_THROW(update_sst_static_pressure_face_values(
+            mesh,state,1.5,pressure_bcs,missing_k,*face_values,3),std::invalid_argument);
+        EXPECT_TRUE(face_values->generation==2);
+    });
+
+    run_case("sst_local_newton_source_residual_keeps_destruction_negative", [] {
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.density = 1.7;
+        controls.beta_star = 0.09;
+        controls.beta1 = 0.075;
+        controls.sst_omega_newton_sink = false;
+        const double kval = 0.4;
+        const double wval = 8.0;
+        const auto q = sst_cell_sources(
+            kval, wval, 0.0, 1.0, 1.0, 0.0, controls);
+        const double net_k = q.sk + q.spk * kval;
+        const double net_omega = q.sw + q.spw * wval;
+        EXPECT_TRUE(net_k < 0.0);
+        EXPECT_TRUE(net_omega < 0.0);
+        EXPECT_NEAR(net_k,
+            -controls.density * controls.beta_star * wval * kval, 1e-14);
+        EXPECT_NEAR(net_omega,
+            -controls.density * controls.beta1 * wval * wval, 1e-14);
+    });
     return run_all();
 }

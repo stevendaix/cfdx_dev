@@ -200,9 +200,12 @@ inline ThermohydraulicObservableSummary write_thermohydraulic_observables(
                 const auto it = velocity_boundary_conditions.find(patch_name);
                 if (it != velocity_boundary_conditions.end() &&
                     it->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE) {
-                    // First-order, one-sided shear. This is explicitly a
-                    // diagnostic: mesh convergence and higher-order wall
-                    // reconstruction are still required for Cf qualification.
+                    // First-order, one-sided shear using the EFFECTIVE viscosity
+                    // (molecular + turbulent) at the owner cell. For a low-Re SST
+                    // model that integrates to the wall, the total stress at the
+                    // first cell centre is tau = (mu + mu_t) * du/dy. Using only
+                    // molecular viscosity underestimates Cf by up to (1+nu_t/nu)
+                    // in turbulent boundary layers.
                     const double nx = S.x / area, ny = S.y / area, nz = S.z / area;
                     const auto& centre = geometry.cell_centres[owner];
                     const double distance = -((centre.x-x.x)*nx +
@@ -216,13 +219,16 @@ inline ThermohydraulicObservableSummary write_thermohydraulic_observables(
                     const double uy = velocity(owner,1) - wall.y;
                     const double uz = velocity(owner,2) - wall.z;
                     const double dot = ux*nx + uy*ny + uz*nz;
-                    const double multiplier = density*molecular_kinematic_viscosity/distance;
+                    const double nu_eff = sst
+                        ? molecular_kinematic_viscosity + sst->nu_t(owner)
+                        : molecular_kinematic_viscosity;
+                    const double multiplier = density*nu_eff/distance;
                     out << distance << ',' << multiplier*(ux - dot*nx)
                         << ',' << multiplier*(uy - dot*ny)
                         << ',' << multiplier*(uz - dot*nz)
                         << ",first_order_one_sided_diagnostic";
                     // y+ is a *diagnostic estimate* from the one-sided
-                    // molecular shear, not a resolved-wall qualification.
+                    // effective shear, not a resolved-wall qualification.
                     const double tau_tangent = multiplier *
                         std::sqrt((ux - dot*nx)*(ux - dot*nx) +
                                   (uy - dot*ny)*(uy - dot*ny) +

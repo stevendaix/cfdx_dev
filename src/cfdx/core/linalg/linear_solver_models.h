@@ -202,6 +202,10 @@ struct MatrixCharacteristics {
     // differ by >= 10^3. This is not a mesh aspect-ratio measurement.
     bool strongly_directional_coupling = false;
     bool positive_diagonal = true;
+    // True only when the measured symmetric matrix has a strictly positive
+    // Gershgorin lower bound. Symmetry + positive diagonal alone does NOT
+    // imply positive definiteness (e.g. [[1,2],[2,1]]).
+    bool strictly_diagonally_dominant = false;
     bool saddle_point = false;
 };
 
@@ -367,11 +371,22 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
 
     const bool cg_problem = problem == LinearProblemKind::PressurePoisson ||
                             problem == LinearProblemKind::Diffusion;
+    // Symmetry and a positive diagonal are necessary, but NOT sufficient,
+    // for positive definiteness. For non-canonical problem kinds, only admit
+    // CG/elliptic AMG when the measured symmetric matrix also has a strictly
+    // positive Gershgorin lower bound (a sufficient SPD certificate).
+    // Canonical pressure-Poisson/diffusion operators retain their established
+    // structural contract, including the constant-nullspace case.
+    const bool generic_spd_problem = problem == LinearProblemKind::General;
+    const bool spd_qualified = cg_problem ||
+        (generic_spd_problem && characteristics.numerically_symmetric &&
+         characteristics.positive_diagonal &&
+         characteristics.strictly_diagonally_dominant);
     if (plan.krylov == KrylovModel::CG &&
-        (!cg_problem || !characteristics.numerically_symmetric ||
+        (!spd_qualified || !characteristics.numerically_symmetric ||
          !characteristics.positive_diagonal))
         throw std::invalid_argument(
-            "CG requires a symmetric, positive-diagonal pressure/diffusion operator");
+            "CG requires a symmetric positive-definite operator; generic operators need a strict Gershgorin certificate");
     if (plan.krylov == KrylovModel::CG &&
         plan.preconditioner != PreconditionerModel::None &&
         plan.preconditioner != PreconditionerModel::Jacobi &&
@@ -386,7 +401,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
             "anisotropic line AMG requires nonsymmetric scalar Krylov");
     if ((plan.preconditioner == PreconditionerModel::NativeAMG ||
          plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG ||
-         anisotropic_amg) && !cg_problem)
+         anisotropic_amg) && !spd_qualified)
         throw std::invalid_argument(
             "native AMG is currently qualified only for SPD elliptic problems");
     if (anisotropic_amg &&

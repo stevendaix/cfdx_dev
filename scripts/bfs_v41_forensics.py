@@ -21,6 +21,7 @@ LOG_TAGS = (
     "GLOBAL_NONLINEAR_COMMITTED_V13",
     "COUPLED_MONOLITHIC_ILUT_V16",
     "BFS_PHASE_V10",
+    "POST_SST_MOMENTUM",
 )
 PAIR = re.compile(r"([A-Za-z_][A-Za-z_0-9]*)=([^ ]+)")
 
@@ -35,6 +36,68 @@ def decode_number(x: str) -> Any:
         return value if math.isfinite(value) else x
     except (ValueError, OverflowError):
         return x
+
+
+def audit_post_sst_operator_cycle(
+    events: list[dict[str, Any]], *, window: int = 64
+) -> dict[str, Any]:
+    """Read-only periodicity screen for the post-SST momentum nu_t operator.
+
+    This observes the outer momentum/SST coupling seam, unlike V41's k/omega
+    inner-transport state detector. A candidate is diagnostic only: it never
+    changes damping or a convergence/qualification gate.
+    """
+    samples = [
+        (int(item["iteration"]), float(item["relative_nut_change"]))
+        for item in events
+        if "iteration" in item
+        and "relative_nut_change" in item
+        and math.isfinite(float(item["relative_nut_change"]))
+        and float(item["relative_nut_change"]) >= 0.0
+    ]
+    samples.sort(key=lambda item: item[0])
+    if len(samples) < window:
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "sample_count": len(samples),
+            "window": window,
+            "candidate_period": None,
+            "period_errors": {},
+            "candidate_period_four": False,
+        }
+
+    values = [value for _, value in samples[-window:]]
+    rms = math.sqrt(sum(value * value for value in values) / len(values))
+    scale = max(rms, 1e-15)
+    errors: dict[str, float] = {}
+    for period in (2, 3, 4, 5, 6):
+        differences = [
+            values[index] - values[index - period]
+            for index in range(period, len(values))
+        ]
+        error = (
+            math.sqrt(sum(value * value for value in differences) / len(differences))
+            / scale
+        )
+        errors[str(period)] = error
+
+    best_period = min(errors, key=errors.get)
+    candidate_four = errors["4"] < 1e-2 and errors["2"] > 1e-1
+    return {
+        "status": "ANALYZED",
+        "sample_count": len(samples),
+        "window": window,
+        "first_iteration": samples[-window][0],
+        "last_iteration": samples[-1][0],
+        "candidate_period": int(best_period),
+        "period_errors": errors,
+        "candidate_period_four": candidate_four,
+        "interpretation": (
+            "diagnostic_candidate_only_no_solver_action"
+            if candidate_four
+            else "no_period_four_candidate_detected"
+        ),
+    }
 
 
 def parse_production_log(source: pathlib.Path) -> dict[str, Any]:
@@ -77,6 +140,9 @@ def parse_production_log(source: pathlib.Path) -> dict[str, Any]:
             and committed[-1].get("converged") == 1
         ),
         "ilut_recovery": events["COUPLED_MONOLITHIC_ILUT_V16"][:1],
+        "post_sst_momentum_operator_cycle": audit_post_sst_operator_cycle(
+            events["POST_SST_MOMENTUM"]
+        ),
         "phase_end": [
             e for e in events["BFS_PHASE_V10"] if e.get("phase") == "SST_TRANSPORT_END"
         ],

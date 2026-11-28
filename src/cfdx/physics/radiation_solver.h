@@ -375,8 +375,15 @@ inline ScalarBoundaryFaceValues build_dom_diffuse_gray_face_values(
             const double target_mu=target_direction.dx*nx+
                                   target_direction.dy*ny+
                                   target_direction.dz*nz;
-            if (target_mu>=0.0)
-                continue; // outgoing ordinate: zero-gradient/extrapolated
+            if (target_mu>=0.0) {
+                // Outgoing ordinates use zero-gradient extrapolation. The
+                // face-value provider is a total trace over the patch, so
+                // encode that extrapolation explicitly as the owner value;
+                // leaving NaN here makes the shared resolver reject a valid
+                // outflow face before the upwind transport operator is built.
+                pv[f]=intensities[direction_index](mesh.ownership().owner(f));
+                continue;
+            }
 
             long double Gout=cache ? cache->outgoing_irradiation[f] : 0.0L;
             long double incoming_measure=cache ? cache->incoming_measure[f] : 0.0L;

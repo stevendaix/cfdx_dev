@@ -36,7 +36,7 @@ def test_debug_bfs_pressure_outlet_matches_physical_operator() -> None:
 
 @pytest.mark.skipif(
     os.environ.get("CFDX_RUN_TH03_DEBUG_E2E") != "1",
-    reason="opt-in actual SST BFS solve (145 nonlinear iterations)",
+    reason="opt-in short actual SST BFS production smoke; never a physical qualification run",
 )
 def test_real_sst_bfs_debug_is_never_physically_qualified(tmp_path: Path) -> None:
     solver = Path(
@@ -57,7 +57,7 @@ def test_real_sst_bfs_debug_is_never_physically_qualified(tmp_path: Path) -> Non
         "--output-dir",
         str(out),
         "--iterations",
-        "250",
+        "40",
         "--experimental-sst",
         "--benchmark-export",
     ]

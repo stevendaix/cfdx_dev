@@ -273,6 +273,23 @@ int main() {
         assert_close(out, dense_matvec(Finv_updated, rhs) * -1.0);
     });
 
+    run_case("pcd_consistent_mass_rejects_small_scale_nonsymmetric_mass", [&] {
+        const auto bad_mass = make_sparse(2, 2, {
+            {0, 0, 1.0e-20}, {0, 1, 1.0e-23}, {1, 1, 1.0e-20}
+        });
+        auto solve_mass = [](const Vector& rhs, Vector& x) {
+            x = rhs;
+            x *= 1.0e20;
+            return true;
+        };
+        PcdSchurApproximation pcd(
+            bad_mass, Kp, Fp, solve_K, solve_F, std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, solve_mass);
+        // The off-diagonal asymmetry is 1e-3 relative to the matrix scale.
+        // It must not be hidden by an absolute 1e-12 symmetry threshold.
+        EXPECT_TRUE(!pcd.setup(blocks));
+    });
+
     run_case("pcd_requires_pressure_nullspace_compatibility", [&] {
         const auto null_space = NullSpaceProjector::constant(2);
         PcdSchurApproximation pcd(Mp, Kp, Fp, solve_K, solve_F, null_space);

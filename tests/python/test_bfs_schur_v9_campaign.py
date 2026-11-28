@@ -54,7 +54,14 @@ def test_six_schur_plus_block_preconditioners_have_real_bfs_commands(tmp_path):
         if not tag.removeprefix("bfs_") in campaign.BFS_VARIANTS:
             continue
         assert cmd[1] == "--mesh"
-        assert cmd[-2:] == ["--experimental-sst", "--benchmark-export"]
+        assert cmd[-6:] == [
+            "--experimental-sst",
+            "--benchmark-export",
+            "--momentum-budget-csv",
+            "momentum_budget.csv",
+            "--momentum-budget-every",
+            "5",
+        ]
         assert cmd[cmd.index("--iterations") + 1] == "10"
         with h5py.File(cmd[2]) as h5:
             fingerprints.add((h5.attrs["topology_hash"], h5.attrs["geometry_hash"]))
@@ -65,12 +72,21 @@ def test_six_schur_plus_block_preconditioners_have_real_bfs_commands(tmp_path):
                 == "true"
             )
             entries = setup["numerics"]["selection"]["entries"]
+            # A variant is numerically distinct when either its selection
+            # entries or its controlled under-relaxation A/B differs. The
+            # damped SIMPLE variant shares the segregated selection with
+            # SIMPLE and differs only through numerics.under_relaxation_*.
             selections.add(
-                tuple((e["family"], e["configuration_key"]) for e in entries)
+                (
+                    tuple((e["family"], e["configuration_key"]) for e in entries),
+                    setup["numerics"].get("under_relaxation_momentum"),
+                    setup["numerics"].get("under_relaxation_pressure"),
+                    tuple(sorted(setup["numerics"].get("raw_settings", {}).items())),
+                )
             )
     assert len(fingerprints) == 1  # identical geometry, not just same cell count
     assert len(selections) == len(variants)
-    assert {x[1] for item in selections for x in item if x[0] == "schur"} == {
+    assert {x[1] for item in selections for x in item[0] if x[0] == "schur"} == {
         f"schur.{name}" for name in campaign.SCHUR_MODELS
     }
 

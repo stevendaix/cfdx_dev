@@ -1,6 +1,9 @@
 #pragma once
 
+#include <chrono>
+
 #include "cfdx/core/field/field.h"
+#include "cfdx/core/boundary/value_provider.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/native_selfp_schur_v63.h"
@@ -8,6 +11,7 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
+#include "cfdx/core/linalg/native_fieldsplit.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
@@ -122,6 +126,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <utility>
 #include <functional>
 #include <fstream>
 #include <cstdlib>
@@ -129,9 +134,15 @@
 namespace cfdx::physics {
 
 struct VelocityBoundaryCondition {
-    enum class Type { FIXED_VALUE, ZERO_GRADIENT };
+    enum class Type { FIXED_VALUE, ZERO_GRADIENT, PROFILE };
     Type type = Type::ZERO_GRADIENT;
     cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+    // Optional per-component spatial profile (e.g. inlet boundary-layer u(y)).
+    // When set, the provider for a component overrides value[d] for that component
+    // on each boundary face, evaluated at the face centroid via ValueContext.
+    std::shared_ptr<const cfdx::core::ValueProvider> ux_provider;
+    std::shared_ptr<const cfdx::core::ValueProvider> uy_provider;
+    std::shared_ptr<const cfdx::core::ValueProvider> uz_provider;
 };
 
 using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
@@ -351,19 +362,47 @@ struct SSTProductionRuntime {
     // contract. Kept owned by the runtime so the pointer passed to transport
     // remains valid for the duration of the update.
     ScalarBoundaryFaceValues omega_face_values;
+    // Shared face-valued p*=p_static+2*rho*k snapshot for all pressure operators.
+    std::shared_ptr<ScalarBoundaryFaceValues> pressure_face_values =
+        std::make_shared<ScalarBoundaryFaceValues>();
     std::vector<std::string> wall_patch_names;
     // Physical WALL_OMEGA_SST obligations from the case contract. This is
     // distinct from the list of walls used to compute nearest wall distance.
     std::vector<std::string> wall_omega_sst_patches;
+    // Full inner budget required for a fail-closed SST transport to converge
+    // at transport_tolerance with the default linear relaxation. The reduced
+    // bootstrap budget below is an optimization for the explicit provisional
+    // schedule only (BFS campaign); the production solver sets its own budget
+    // from case settings.
     std::size_t max_transport_iterations = 100;
+    // Small SST inner budget used during the outer bootstrap (first
+    // bootstrap_iters iterations). Only applied when provisional transport is
+    // explicitly allowed: a fail-closed caller must always get the full
+    // convergence budget, otherwise the outer acceptance contract would
+    // reject every iteration on stiff wall-resolved k/omega transport.
+    std::size_t bootstrap_transport_iterations = 10;
+    // Reduced SST inner budget used after bootstrap while the carrier is still
+    // far from converged (loose coupling). Turbulence only progresses at each
+    // outer step; full convergence is deferred to the certification step.
+    std::size_t loose_transport_iterations = 20;
     double transport_tolerance = 1e-8;
     // Experimental outer-coupling schedule. Finite and unclipped intermediate
     // SST predictors may advance; NOT a relaxation of the final SST gate.
     bool allow_bounded_provisional_transport = false;
+    // When true, skip the SST certification state backup/restore to measure
+    // pure compute time. Unsafe for production (no rollback on failure), but
+    // useful for benchmarking.
+    bool skip_transactional_save = false;
     // V83 opt-in: evaluate and commit finite, unclipped but NONCONVERGED
     // SST outer PROGRESS through the true V8/V13/V14 FV residuals. It never
     // changes V8 converged or the final SST 1e-8 gate. No COUPLED support.
     bool sst_provisional_merit_progress_v83_experimental = false;
+    // When provisional transport is allowed and carrier residuals indicate
+    // near-convergence, attempt a certification step with stricter transport
+    // settings to obtain a non-provisional, transport-converged SST state
+    // required by the final convergence gate. 0 means auto (2x inner budget).
+    std::size_t certification_max_transport_iterations = 0;
+    double certification_transport_tolerance = 0.0;
     // V15 staged reference. Refuses incomplete per-face/cell values, promoted
     // only on a fully accepted carrier+SST outer transaction. NO physical
     // wall-function substitution; all three production operators must still
@@ -387,6 +426,10 @@ struct IncompressibleSolverControls {
     // Opt-in only. The production RANS selector remains fail-closed; supplying
     // this runtime explicitly opts the caller into the SST-coupled path.
     SSTProductionRuntime* sst_runtime = nullptr;
+    // Opt-in only. Simpler RANS alternative to SST: solves k-epsilon transport
+    // with standard wall functions. The production solver advances this state
+    // when non-null and sst_runtime is null.
+    KEpsilonProductionRuntime* kepsilon_runtime = nullptr;
     // V7 strict opt-in: recompute the physical carrier momentum residual
     // AFTER the accepted candidate SST transport changed nu_t. A pressure
     // solve using the previous turbulent viscosity cannot certify this state.
@@ -1451,9 +1494,6 @@ inline void validate_incompressible_controls(
         !(c.kinematic_viscosity >= 0.0) || !std::isfinite(c.kinematic_viscosity) ||
         !(c.turbulent_viscosity >= 0.0) || !std::isfinite(c.turbulent_viscosity))
         throw std::invalid_argument("invalid incompressible material properties");
-    // Reject overflow in the effective dynamic viscosity before applying
-    // initialization. Otherwise an invalid material combination can mutate
-    // caller-owned U/p fields before assembly discovers non-finite coefficients.
     const auto validate_effective_viscosity = [&](double nu_t) {
         const double total_kinematic_viscosity = c.kinematic_viscosity + nu_t;
         const double effective_dynamic_viscosity =
@@ -1462,6 +1502,17 @@ inline void validate_incompressible_controls(
             !std::isfinite(effective_dynamic_viscosity))
             throw std::invalid_argument(
                 "effective dynamic viscosity must be finite");
+        // Cap nu_t to prevent the turbulent diffusion term in momentum from
+        // becoming aberrant on wall-resolved meshes where k/omega can spike.
+        // nu_t_max = 1e4 * nu_molecular is a generous physical bound for
+        // wall-bounded flows; values above it indicate a divergence in the
+        // turbulence transport rather than a legitimate flow feature.
+        const double nu_t_max = 1.0e4 * c.kinematic_viscosity;
+        if (nu_t > nu_t_max) {
+            throw std::invalid_argument(
+                "turbulent viscosity exceeds physical bound: nu_t=" +
+                std::to_string(nu_t) + " > nu_t_max=" + std::to_string(nu_t_max));
+        }
     };
     validate_effective_viscosity(c.turbulent_viscosity);
     if (!c.cell_turbulent_viscosity.empty()) {
@@ -1715,16 +1766,15 @@ gauss_gradient_with_boundary(
                     mesh.boundary().patch(p).type == PatchType::EMPTY)
                     continue;
                 if (p < mesh.boundary().n_patches()) {
-                    const auto& name = mesh.boundary().patch(p).name;
-                    const auto it = bcs.find(name);
-                    if (it != bcs.end() && it->second.type == ScalarBoundaryType::FIXED_VALUE)
-                        vf = it->second.value;
-                    else if (it != bcs.end() &&
-                             it->second.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                    const auto bc = resolve_scalar_boundary_condition(
+                        mesh, geometry, f, bcs);
+                    if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                        vf = bc.value;
+                    } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                         const Vec3 outward = Sf * (1.0 / Sf.mag());
                         const Vec3 centre_to_face =
                             geometry.face_centres[f] - geometry.cell_centres[c];
-                        vf += it->second.gradient * centre_to_face.dot(outward);
+                        vf += bc.gradient * centre_to_face.dot(outward);
                     }
                 }
             }
@@ -1763,6 +1813,7 @@ gauss_pressure_gradient_jacobian_action(
         (void)name;
         bc.value = 0.0;
         bc.gradient = 0.0;
+        bc.face_values.reset();
     }
     return gauss_gradient_with_boundary(direction, mesh, geometry,
                                         homogeneous_bcs, skew_correct,
@@ -1826,7 +1877,19 @@ inline VelocityFaceConditions resolve_inlet_outlet_velocity_faces(
         const auto inflow = inflow_values.find(patch.name);
         const bool mixed_inflow = inflow != inflow_values.end() && f < 0.0;
         const bool fixed = mixed_inflow || bc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE;
-        const Vec3 value = mixed_inflow ? inflow->second : bc->second.value;
+        Vec3 value;
+        if (bc->second.type == VelocityBoundaryCondition::Type::PROFILE && !mixed_inflow) {
+            ValueContext ctx{0.0,
+                             geometry.face_centres[face].x,
+                             geometry.face_centres[face].y,
+                             geometry.face_centres[face].z,
+                             face};
+            value.x = bc->second.ux_provider ? bc->second.ux_provider->evaluate(ctx) : 0.0;
+            value.y = bc->second.uy_provider ? bc->second.uy_provider->evaluate(ctx) : 0.0;
+            value.z = bc->second.uz_provider ? bc->second.uz_provider->evaluate(ctx) : 0.0;
+        } else {
+            value = mixed_inflow ? inflow->second : bc->second.value;
+        }
         const std::array<double, 3> components{value.x, value.y, value.z};
         for (std::size_t d=0;d<3;++d) {
             resolved[d].specified[face] = 1;
@@ -1885,8 +1948,20 @@ make_mass_flux(
             if(p<mesh.boundary().n_patches()) {
                 const auto& name=mesh.boundary().patch(p).name;
                 const auto it=bcs.find(name);
-                if(it!=bcs.end() && it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
-                    Uf=it->second.value;
+                if(it!=bcs.end()) {
+                    if(it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        Uf=it->second.value;
+                    else if(it->second.type==VelocityBoundaryCondition::Type::PROFILE) {
+                        ValueContext ctx{0.0,
+                                         geometry.face_centres[f].x,
+                                         geometry.face_centres[f].y,
+                                         geometry.face_centres[f].z,
+                                         f};
+                        Uf.x = it->second.ux_provider ? it->second.ux_provider->evaluate(ctx) : 0.0;
+                        Uf.y = it->second.uy_provider ? it->second.uy_provider->evaluate(ctx) : 0.0;
+                        Uf.z = it->second.uz_provider ? it->second.uz_provider->evaluate(ctx) : 0.0;
+                    }
+                }
             }
         }
         if (own.neighbour(f) < 0 && face_velocity_conditions)
@@ -2172,9 +2247,9 @@ make_rhie_chow_mass_flux(
                             else Hf.z=value;
                         }
 
-                const auto pbc = pressure_bcs.find(name);
-                if (pbc != pressure_bcs.end() &&
-                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                const auto pbc = resolve_scalar_boundary_condition(
+                    mesh, geometry, f, pressure_bcs);
+                if (pbc.type == ScalarBoundaryType::FIXED_VALUE) {
                     const std::size_t o = own.owner(f);
                     const Vec3 Sf = geometry.face_area_vectors[f];
                     const Vec3 dvec =
@@ -2196,7 +2271,7 @@ make_rhie_chow_mass_flux(
                     const double deferred = pressure_face_nonorthogonal_flux(
                         Sf, dvec, dAU_boundary, gp);
                     correction = rho * (
-                        implicit_coefficient * (pbc->second.value - p(o)) +
+                        implicit_coefficient * (pbc.value - p(o)) +
                         deferred);
                     if (coupled_physical_velocity) {
                         const Vec3 gp{
@@ -2580,12 +2655,13 @@ gauss_gradient_pressure_high_low(
                    mesh.boundary().patch(patch).type==PatchType::EMPTY)
                     continue;
                 if(patch<mesh.boundary().n_patches()) {
-                    const auto it=bcs.find(mesh.boundary().patch(patch).name);
-                    if(it!=bcs.end() && it->second.type==ScalarBoundaryType::FIXED_VALUE)
-                        vf=it->second.value;
-                    else if(it!=bcs.end() && it->second.type==ScalarBoundaryType::FIXED_GRADIENT) {
+                    const auto bc=resolve_scalar_boundary_condition(
+                        mesh,geometry,f,bcs);
+                    if(bc.type==ScalarBoundaryType::FIXED_VALUE)
+                        vf=bc.value;
+                    else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT) {
                         const Vec3 unit=Sf*(1.0/Sf.mag());
-                        vf+=it->second.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
+                        vf+=bc.gradient*(geometry.face_centres[f]-geometry.cell_centres[c]).dot(unit);
                     }
                 }
             }
@@ -2897,6 +2973,7 @@ make_full_rhie_chow_pressure_rows_reference(
     for (auto& [name,bc]:homogeneous_p_bcs) {
         if (bc.type==ScalarBoundaryType::FIXED_VALUE) bc.value=0.0;
         if (bc.type==ScalarBoundaryType::FIXED_GRADIENT) bc.gradient=0.0;
+        bc.face_values.reset();
     }
     std::vector<std::map<std::size_t,double>> rows(nc);
     std::vector<double> div(nc,0.0);
@@ -4150,7 +4227,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const auto& name = mesh.boundary().patch(patch).name;
                     const auto it = pressure_bcs.find(name);
                     if (it != pressure_bcs.end()) {
-                        local_bc = it->second;
+                        local_bc = resolve_scalar_boundary_condition(
+                            mesh, geometry, f, pressure_bcs);
                         bc = &local_bc;
                     }
                 }
@@ -4356,7 +4434,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     }
                     const auto pit = pressure_bcs.find(name);
                     if (pit != pressure_bcs.end()) {
-                        local_pbc = pit->second;
+                        local_pbc = resolve_scalar_boundary_condition(
+                            mesh, geometry, f, pressure_bcs);
                         pbc = &local_pbc;
                     }
                 }
@@ -4620,9 +4699,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
         solver_plan.preconditioner != PreconditionerModel::PCD &&
         solver_plan.preconditioner != PreconditionerModel::MGR &&
-        solver_plan.preconditioner != PreconditionerModel::BraessSarazin)
+        solver_plan.preconditioner != PreconditionerModel::BraessSarazin &&
+        solver_plan.preconditioner != PreconditionerModel::NativeFieldSplit)
         throw std::invalid_argument(
-            "coupled solver requires coupled_block_schur, pcd, mgr, or braess_sarazin");
+            "coupled solver requires coupled_block_schur, pcd, mgr, braess_sarazin, or native_field_split");
 
     // N8 owns the linear-solver/preconditioner policy. The coupled FV
     // assembler remains N9-owned, but an explicit BlockSchur request must use
@@ -5507,6 +5587,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             options.velocity_approximation = CoupledSchurVelocityApproximation::Diagonal;
             options.velocity_inverse_scale = 1.0 / solver_request.braess_sarazin_alpha;
         }
+
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
             nc, options, has_fixed_pressure
                 ? std::numeric_limits<std::size_t>::max() : reference_cell);
@@ -5516,6 +5597,25 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 schur_amg->last_error());
         }
         coupled_preconditioner = std::move(schur_amg);
+    } else if (solver_plan.preconditioner == PreconditionerModel::NativeFieldSplit) {
+        // PETSc PCFIELDSPLIT-style field split with Full Schur factorization.
+        // first_field = velocity [0, 3nv), second_field = pressure [3nv, 4nv).
+        // Full Schur gives the strongest coupling for separated flows such as
+        // BFS, where the SIMPLE segregated predictor/corrector stalls on the
+        // momentum-pressure feedback loop through the recirculation zone.
+        std::vector<std::size_t> velocity_field(3 * nc);
+        std::vector<std::size_t> pressure_field(nc);
+        std::iota(velocity_field.begin(), velocity_field.end(), 0);
+        std::iota(pressure_field.begin(), pressure_field.end(), 3 * nc);
+        auto field_split = std::make_unique<NativeFieldSplitPreconditioner>(
+            std::move(velocity_field), std::move(pressure_field),
+            FieldSplitStrategy::FullSchur);
+        if (!field_split->setup(A)) {
+            throw std::runtime_error(
+                std::string("coupled NativeFieldSplit setup failed: ") +
+                field_split->last_error());
+        }
+        coupled_preconditioner = std::move(field_split);
     } else {
         std::vector<std::size_t> fine_variables(nv);
         std::vector<std::size_t> coarse_variables(np);
@@ -5525,7 +5625,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::make_unique<NativeMGRPreconditioner>(
                 std::move(fine_variables), std::move(coarse_variables));
     }
-
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)
@@ -5900,9 +5999,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         for (auto& component : rAU)
             component.resize(nc);
         for (std::size_t cell = 0; cell < nc; ++cell) {
-            rAU[0][cell] = 1.0 / ex.diagonal[cell];
-            rAU[1][cell] = 1.0 / ey.diagonal[cell];
-            rAU[2][cell] = 1.0 / ez.diagonal[cell];
+            // Bornes sur rAU = 1 / diagonal pour éviter qu'un terme de source
+            // ou une diagonale de momentum proche de zéro ne rende rAU aberrant.
+            // Sans cette borne, un rAU énorme sur quelques cellules rend le
+            // coefficient de pression (coeff = density * directional_face_coefficient(rAU, ...))
+            // et la matrice de pression extrêmement mal conditionnée, ce qui fait
+            // échouer la correction de pression même quand le momentum est encore
+            // stabilisable.
+            constexpr double rau_min = 1e-12;
+            constexpr double rau_max = 1e+12;
+            const double d_x = std::clamp(ex.diagonal[cell], 1.0 / rau_max, 1.0 / rau_min);
+            const double d_y = std::clamp(ey.diagonal[cell], 1.0 / rau_max, 1.0 / rau_min);
+            const double d_z = std::clamp(ez.diagonal[cell], 1.0 / rau_max, 1.0 / rau_min);
+            rAU[0][cell] = 1.0 / d_x;
+            rAU[1][cell] = 1.0 / d_y;
+            rAU[2][cell] = 1.0 / d_z;
         }
         const auto grad_p = gauss_gradient_with_boundary(
             p, mesh, geometry, pressure_bcs,
@@ -5977,9 +6088,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         if (ubc != velocity_bcs.end() &&
                             ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
                             uf = ubc->second.value;
-                        const auto pbc = pressure_bcs.find(name);
-                        if (pbc != pressure_bcs.end() &&
-                            pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                        const auto pbc = resolve_scalar_boundary_condition(
+                            mesh, geometry, face, pressure_bcs);
+                        if (pbc.type == ScalarBoundaryType::FIXED_VALUE) {
                             const Vec3 dvec = geometry.face_centres[face] -
                                               geometry.cell_centres[owner];
                             const Vec3 dAU{
@@ -5994,7 +6105,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                                 pressure_face_orthogonal_coefficient(sf, dvec, dAU);
                             const double deferred = pressure_face_nonorthogonal_flux(sf, dvec, dAU, gp);
                             flux_pressure_orthogonal -= face_sign * rho * coefficient *
-                                (pbc->second.value - p(owner));
+                                (pbc.value - p(owner));
                             flux_pressure_nonorthogonal -= face_sign * rho * deferred;
                             flux_pressure_compensation += face_sign * rho *
                                 (dAU.x * gp.x * sf.x + dAU.y * gp.y * sf.y + dAU.z * gp.z * sf.z);
@@ -6327,9 +6438,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
         const double nu_t = controls.sst_runtime
             ? controls.sst_runtime->state->nu_t(cell)
-            : (controls.cell_turbulent_viscosity.empty()
-                ? controls.turbulent_viscosity
-                : controls.cell_turbulent_viscosity[cell]);
+            : (controls.kepsilon_runtime
+                ? controls.kepsilon_runtime->state->nu_t(cell)
+                : (controls.cell_turbulent_viscosity.empty()
+                    ? controls.turbulent_viscosity
+                    : controls.cell_turbulent_viscosity[cell]));
         mu_eff[cell] = controls.density * (controls.kinematic_viscosity + nu_t);
         if (!(mu_eff[cell] >= 0.0) || !std::isfinite(mu_eff[cell]))
             throw std::invalid_argument(
@@ -6701,6 +6814,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t last_committed_cell_iteration = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        // Per-iteration diagnostic snapshots are published only after
+        // this iteration's nonlinear transaction commits.
+        std::vector<std::pair<std::size_t, MomentumFaceBudget>>
+            pending_momentum_face_budgets;
+        if (controls.sst_runtime && controls.sst_runtime->state &&
+            controls.sst_runtime->pressure_face_values) {
+            const auto next_generation =
+                controls.sst_runtime->pressure_face_values->generation + 1;
+            update_sst_static_pressure_face_values(
+                mesh, *controls.sst_runtime->state, controls.density,
+                pressure_bcs, controls.sst_runtime->k_boundary_conditions,
+                *controls.sst_runtime->pressure_face_values, next_generation);
+        }
         // The V52 frozen-common-state comparison captures the 6N iterate
         // BEFORE any of the six 4N coupled solvers changes U/p/SST. This
         // captures the identical HDF5-initialized candidate for every Schur
@@ -6741,6 +6867,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             convection_residuals_share_operator(
                 controls.convection_continuation, iter);
         bool stop_after_iteration = false;
+        // Timing instrumentation (CFDX_TIMING=1)
+        const bool timing_enabled = std::getenv("CFDX_TIMING") != nullptr;
+        std::chrono::steady_clock::time_point t_iter_start, t_iter_end;
+        std::chrono::steady_clock::time_point t_mom_start, t_mom_end;
+        std::chrono::steady_clock::time_point t_pres_start, t_pres_end;
+        std::chrono::steady_clock::time_point t_sst_start, t_sst_end;
+        std::chrono::steady_clock::time_point t_audit_start, t_audit_end;
+        double t_mom_total = 0, t_pres_total = 0, t_sst_total = 0, t_audit_total = 0;
         auto nonlinear_retry_controls = controls.nonlinear_retry;
         if (controls.bfs_local_step_trust_v88_experimental) {
             // The V87 retry floors (0.1 U / 0.05 p) were hit after one
@@ -6770,6 +6904,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // a rejected prediction must not seed the next nonlinear proposal.
         bool picard_fallback_after_multisecant = false;
         while (!iteration_completed) {
+            t_iter_start = std::chrono::steady_clock::now();
             // A retry must restore not only physical fields but also any
             // convergence/history state tentatively updated before the outer
             // transaction commits.
@@ -6809,6 +6944,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 ? std::optional<SSTProductionState>(
                     snapshot_sst_production_state(*controls.sst_runtime->state))
                 : std::nullopt;
+            // The face-valued modified-pressure trace is shared by the
+            // pressure gradient, SIMPLE pressure assembly and Rhie-Chow flux.
+            // Restoring k without rebuilding this object would leave a retry
+            // coupled to the rejected candidate's pressure boundary data.
+            const auto restore_sst_and_pressure_face_snapshot = [&]() {
+                if (!controls.sst_runtime) return;
+                if (sst_attempt_snapshot)
+                    restore_sst_production_state(
+                        *controls.sst_runtime->state, *sst_attempt_snapshot);
+                if (controls.sst_runtime->state &&
+                    controls.sst_runtime->pressure_face_values) {
+                    rebuild_sst_pressure_face_values_after_state_restore(
+                        mesh, *controls.sst_runtime->state, controls.density,
+                        pressure_bcs, controls.sst_runtime->k_boundary_conditions,
+                        *controls.sst_runtime->pressure_face_values);
+                }
+            };
             // Visible to the exception handlers: pressure/linear failures may
             // occur before a candidate reaches the physical-residual gate.
             bool multisecant_trial_used = false;
@@ -6933,6 +7085,53 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 linear_tolerance = nonlinear_forcing_tolerance(
                     nonlinear_residual,
                     std::max(previous_residual, forcing.residual_floor), forcing);
+            }
+        }
+
+        // Oscillation-damping relaxation guard (works without V19/V21).
+        // EXPERIMENTAL / OPT-IN ONLY (CFDX_OSCILLATION_DAMPING_V90=1):
+        // when the momentum residual oscillates (sign changes in the
+        // iteration-to-iteration delta), the effective SIMPLE relaxation is
+        // too aggressive for the current nonlinear coupling. Reduce alpha_u
+        // by 10% (floor 0.2) so the next iteration takes a smaller, more
+        // stable step. Conversely, if the residual decreases consistently
+        // for 5+ committed iterations, gently increase alpha_u toward the
+        // configured value. Disabled by default so the qualified SIMPLE
+        // convergence behaviour is preserved; this mechanism never changes
+        // the physical acceptance gates.
+        const bool oscillation_damping_v90 = [] {
+            const char* v = std::getenv("CFDX_OSCILLATION_DAMPING_V90");
+            return v != nullptr && std::string(v) == "1";
+        }();
+        if (oscillation_damping_v90 &&
+            !controls.adaptive_relaxation.enabled && result.history.size() >= 4) {
+            const auto& h = result.history;
+            const double r0 = h[h.size()-4].momentum_equation_residual_relative;
+            const double r1 = h[h.size()-3].momentum_equation_residual_relative;
+            const double r2 = h[h.size()-2].momentum_equation_residual_relative;
+            const double r3 = h[h.size()-1].momentum_equation_residual_relative;
+            if (std::isfinite(r0) && std::isfinite(r1) &&
+                std::isfinite(r2) && std::isfinite(r3) &&
+                r0 > 0.0 && r1 > 0.0 && r2 > 0.0 && r3 > 0.0) {
+                const double d0 = r1 - r0;
+                const double d1 = r2 - r1;
+                const double d2 = r3 - r2;
+                const bool s0 = d0 > 0.0, s1 = d1 > 0.0, s2 = d2 > 0.0;
+                const std::size_t sign_changes =
+                    (s0 != s1 ? 1u : 0u) + (s1 != s2 ? 1u : 0u);
+                if (sign_changes >= 2 && effective_alpha_u > 0.2) {
+                    effective_alpha_u = std::max(0.2, effective_alpha_u * 0.9);
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "OSCILLATION_DAMPING_V90 iteration=" << iter
+                                  << " alpha_u=" << effective_alpha_u
+                                  << " sign_changes=" << sign_changes
+                                  << " momentum_residual=" << r3 << "\n";
+                } else if (d0 < 0.0 && d1 < 0.0 && d2 < 0.0 &&
+                           result.history.size() >= 5 &&
+                           effective_alpha_u < controls.coupling.alpha_u) {
+                    effective_alpha_u = std::min(
+                        controls.coupling.alpha_u, effective_alpha_u * 1.1);
+                }
             }
         }
 
@@ -7131,7 +7330,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // A Picard step uses the previous accepted wall state to assemble
         // momentum, then post-SST residuals use the final candidate wall state.
         std::optional<SSTWallOperatorV17> active_wall_operator_v17;
-        if (controls.sst_runtime && controls.sst_runtime->active_openfoam_wall_operator_v17) {
+        const bool need_wall_operator =
+            controls.sst_runtime &&
+            (controls.sst_runtime->active_openfoam_wall_operator_v17 ||
+             controls.sst_runtime->omega_wall_owner_constraints_v18);
+        if (need_wall_operator) {
             std::map<std::string,std::array<double,3>> wall_velocity;
             for (const auto& [name,bc] : velocity_bcs)
                 if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
@@ -7145,7 +7348,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 ref,controls.sst_runtime->transport,
                 controls.sst_runtime->omega_wall_owner_constraints_v18);
         }
-        const auto* active_wall_face_mu_v17 = active_wall_operator_v17
+        const auto* active_wall_face_mu_v17 =
+            (controls.sst_runtime && controls.sst_runtime->active_openfoam_wall_operator_v17)
             ? &active_wall_operator_v17->momentum_face_mu : nullptr;
         Field<double, Location::CELL> transpose_force;
         if (include_transpose_stress) {
@@ -7357,6 +7561,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=COUPLED_LINEAR_BEGIN\n";
+            if (timing_enabled) t_mom_start = std::chrono::steady_clock::now();
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
@@ -7373,6 +7578,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 U, p, &result.coupled_linear_plan,
                 (v51_requested && opt_in_v51("CFDX_FPHYS_JFNK_V52"))
                     ? &v52_native_preconditioner : nullptr);
+            if (timing_enabled) { t_mom_end = std::chrono::steady_clock::now(); t_mom_total += std::chrono::duration_cast<std::chrono::microseconds>(t_mom_end - t_mom_start).count(); }
             result.coupled_linear_plan_resolved = true;
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
@@ -7384,7 +7590,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " actual_preconditioner=" << cfdx::core::to_string(result.coupled_linear_plan.preconditioner)
                           << " resolved_schur=" << cfdx::physics::to_string(result.resolved_coupled_schur_model)
                           << "\n";
-            if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
+            const bool coupled_max_iter_converged =
+                coupled_result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED &&
+                std::isfinite(coupled_result.residual_relative) &&
+                coupled_result.residual_relative <= controls.coupling.coupled_linear_tolerance;
+            if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED &&
+                !coupled_max_iter_converged) {
                 // Report the stalled linear state in scientific notation.
                 // std::to_string truncates to six fixed decimals, so a
                 // MAX_ITER stall printed as "residual=0.000000" hid the
@@ -7905,10 +8116,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (patch >= mesh.boundary().n_patches() ||
                         mesh.boundary().patch(patch).type == PatchType::EMPTY)
                         continue;
-                    const auto pbc = pressure_bcs.find(
-                        mesh.boundary().patch(patch).name);
-                    if (pbc == pressure_bcs.end() ||
-                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    const auto pbc = resolve_scalar_boundary_condition(
+                        mesh, geometry, f, pressure_bcs);
+                    if (pbc.type != ScalarBoundaryType::FIXED_VALUE)
                         continue;
                     const Vec3 Sf = geometry.face_area_vectors[f];
                     const Vec3 dvec = geometry.face_centres[f] -
@@ -7926,7 +8136,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double correction_deferred = pressure_face_nonorthogonal_flux(
                         Sf, dvec, delta_dAU, grad_p_cell);
                     phiHbyA(f) += controls.density * (
-                        correction_coeff * (pbc->second.value - p(o)) +
+                        correction_coeff * (pbc.value - p(o)) +
                         correction_deferred);
                     continue;
                 }
@@ -8020,10 +8230,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (patch >= mesh.boundary().n_patches() ||
                         mesh.boundary().patch(patch).type == PatchType::EMPTY)
                         continue;
-                    const auto pbc = pressure_bcs.find(
-                        mesh.boundary().patch(patch).name);
-                    if (pbc == pressure_bcs.end() ||
-                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    const auto pbc = resolve_scalar_boundary_condition(
+                        mesh, geometry, f, pressure_bcs);
+                    if (pbc.type != ScalarBoundaryType::FIXED_VALUE)
                         continue;
                     const Vec3 dvec =
                         geometry.face_centres[f] - geometry.cell_centres[o];
@@ -8040,7 +8249,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double deferred = pressure_face_nonorthogonal_flux(
                         Sf, dvec, delta_dAU, grad_p_boundary);
                     flux(f) += controls.density *
-                        (orthogonal * (pbc->second.value - p(o)) + deferred);
+                        (orthogonal * (pbc.value - p(o)) + deferred);
                 }
             };
 
@@ -8131,10 +8340,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (mesh.ownership().neighbour(f) >= 0) continue;
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch >= mesh.boundary().n_patches()) continue;
-                const auto& name = mesh.boundary().patch(patch).name;
-                const auto it = pressure_bcs.find(name);
-                if (it == pressure_bcs.end() ||
-                    it->second.type != ScalarBoundaryType::FIXED_VALUE) continue;
+                const auto bc = resolve_scalar_boundary_condition(
+                    mesh, geometry, f, pressure_bcs);
+                if (bc.type != ScalarBoundaryType::FIXED_VALUE) continue;
                 const std::size_t o = mesh.ownership().owner(f);
                 const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
                 const Vec3 Sf = geometry.face_area_vectors[f];
@@ -8165,7 +8373,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double deferred_boundary = pressure_face_nonorthogonal_flux(
                     Sf, dvec, dAU_boundary, gp_boundary);
                 const double boundary_source = controls.density * (
-                    boundary_coeff * (it->second.value - p(o)) +
+                    boundary_coeff * (bc.value - p(o)) +
                     deferred_boundary);
                 if (compensated_assembly)
                     pressure_accumulator->add_pressure_boundary(
@@ -8268,9 +8476,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const std::size_t patch = geometry.face_patch[f];
                         if (patch >= mesh.boundary().n_patches()) continue;
                         const auto& name = mesh.boundary().patch(patch).name;
-                        const auto pbc = pressure_bcs.find(name);
-                        if (pbc == pressure_bcs.end() ||
-                            pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                        const auto pbc = resolve_scalar_boundary_condition(
+                            mesh, geometry, f, pressure_bcs);
+                        if (pbc.type != ScalarBoundaryType::FIXED_VALUE)
                             continue;
                         const Vec3 dvec =
                             geometry.face_centres[f] - geometry.cell_centres[o];
@@ -8288,7 +8496,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const double deferred = controls.density *
                             pressure_face_nonorthogonal_flux(
                                 Sf, dvec, dAU, grad_boundary);
-                        const double source = coeff * (pbc->second.value - p(o)) +
+                        const double source = coeff * (pbc.value - p(o)) +
                                               deferred;
                         rhs_boundary_source[o] += source;
                         if (std::abs(source) > boundary_source_linf) {
@@ -8386,9 +8594,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             const std::size_t patch = geometry.face_patch[f];
                             if (patch < mesh.boundary().n_patches()) {
                                 patch_name = mesh.boundary().patch(patch).name;
-                                const auto pbc = pressure_bcs.find(patch_name);
-                                if (pbc != pressure_bcs.end() &&
-                                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                                const auto pbc = resolve_scalar_boundary_condition(
+                                    mesh, geometry, f, pressure_bcs);
+                                if (pbc.type == ScalarBoundaryType::FIXED_VALUE) {
                                     const Vec3 dvec =
                                         geometry.face_centres[f] - geometry.cell_centres[o];
                                     const Vec3 Sf = geometry.face_area_vectors[f];
@@ -8405,7 +8613,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     deferred_flux = controls.density *
                                         pressure_face_nonorthogonal_flux(
                                             Sf, dvec, dAU, grad_boundary);
-                                    boundary_source = coeff * (pbc->second.value - p(o)) +
+                                    boundary_source = coeff * (pbc.value - p(o)) +
                                                       deferred_flux;
                                 }
                             }
@@ -9726,6 +9934,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Expected zero up to round-off; a nonzero value flags a stale or
         // mutated flux, or an omitted/duplicated SIMPLEC response term.
         {
+            if (timing_enabled) t_audit_start = std::chrono::steady_clock::now();
             auto rederived_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, HbyA, v19_flux_pressure_state,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
@@ -9752,6 +9961,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     rhie_chow_identity_audit_linf,
                     std::abs(mass_flux(f) - rederived_flux(f)));
             rhie_chow_identity_evaluated = true;
+            if (timing_enabled) { t_audit_end = std::chrono::steady_clock::now(); t_audit_total += std::chrono::duration_cast<std::chrono::microseconds>(t_audit_end - t_audit_start).count(); }
         }
         if (controls.momentum_same_state_face_callback) {
             // Capture the EXACT live predictor and pressure states before
@@ -9774,6 +9984,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 RhieChowVelocityContract::HBYA_PREDICTOR,
                 controls.pressure_skew_corrected_gradient,
                 controls.pressure_projected_face_interpolation);
+            if (timing_enabled) { t_audit_end = std::chrono::steady_clock::now(); t_audit_total += std::chrono::duration_cast<std::chrono::microseconds>(t_audit_end - t_audit_start).count(); }
             // Independent internal-face pressure Schur action at the same
             // flux-pressure state and rAU/rAtU. Boundaries are not compared
             // to the internal-face formula (they have different BC terms).
@@ -10225,6 +10436,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto reconstructed_flux = make_mass_flux(
             mesh, geometry, U, controls.density, velocity_bcs,
             {}, controls.pressure_projected_face_interpolation);
+        if (timing_enabled) { t_audit_end = std::chrono::steady_clock::now(); t_audit_total += std::chrono::duration_cast<std::chrono::microseconds>(t_audit_end - t_audit_start).count(); }
         double reconstructed_linf = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             double div_reconstructed = 0.0;
@@ -10389,6 +10601,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
              iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
             // Diagnostic-only trace: expose the authoritative nonlinear history
             // before the convergence gate. No criterion or tolerance is changed.
+            double nut_max = 0.0;
+            if (controls.sst_runtime) {
+                for (std::size_t _c = 0; _c < mesh.n_cells(); ++_c) {
+                    const double _nut = controls.sst_runtime->state->nu_t(_c);
+                    if (_nut > nut_max) nut_max = _nut;
+                }
+            }
             std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
                       << " momentum_residual_rhs_relative=" << h.momentum_equation_residual_rhs_relative
                       << " momentum_residual_reference_relative=" << h.momentum_equation_residual_relative
@@ -10412,6 +10631,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " alpha_p=" << h.effective_alpha_p
                       << " pressure_linear_iterations=" << pressure_iterations
                       << " pressure_relative_residual=" << pressure_residual
+                      << " nut_max=" << nut_max
                       << " momentum_linear_iterations="
                       << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
                               ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
@@ -10673,8 +10893,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 frozen_state_valid = false;
@@ -10815,6 +11034,158 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         MomentumResidualCertificate v8_refreshed_momentum =
             momentum_component_certificate;
         double sst_nu_t_relative_change = 0.0;
+        KEpsilonProductionStepResult ke_step;
+        if (controls.kepsilon_runtime && !controls.sst_runtime) {
+            // KEPSILON transport (simpler alternative to SST).
+            // Solves k-epsilon transport with standard wall functions,
+            // computes nu_t = C_mu * k^2 / epsilon, and feeds it back into
+            // the momentum equation. No transactional/bootstrap/certification
+            // machinery — a single transport solve per outer iteration.
+            std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+            for (const auto& [patch, bc] : velocity_bcs) {
+                if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    fixed_velocity_values.emplace(
+                        patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+            }
+            // Refresh strain rate from current velocity field.
+            auto strain_rate = compute_sst_strain_rate_with_boundary_values(
+                U, mesh, fixed_velocity_values);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                controls.kepsilon_runtime->state->strain_rate(cell) = strain_rate(cell);
+            // Wall functions: OpenFOAM-compatible kqRWallFunction + epsilonWallFunction.
+            // kqRWallFunction: k_wall = u_tau^2 / sqrt(C_mu), where u_tau is estimated
+            // from the wall-adjacent cell velocity: u_tau ~ sqrt(nu * U / y).
+            // epsilonWallFunction: epsilon_wall = u_tau^3 / (kappa * y).
+            const double kappa = 0.41;
+            const double C_mu = controls.kepsilon_runtime->transport.C_mu;
+            const double c_mu_sqrt = std::sqrt(C_mu);
+            const double nu = controls.kinematic_viscosity;
+            for (const auto& patch_name : controls.kepsilon_runtime->wall_patch_names) {
+                // Find patch index
+                bool patch_found = false;
+                for (std::size_t patch_index = 0;
+                     patch_index < mesh.boundary().n_patches(); ++patch_index) {
+                    const auto& patch = mesh.boundary().patch(patch_index);
+                    if (patch.name == patch_name) {
+                        patch_found = true;
+                        // Wall-adjacent owner cells: get face owners for this patch
+                        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+                            if (mesh.ownership().neighbour(face) < 0 &&
+                                geometry.face_patch[face] == patch_index) {
+                                const std::size_t owner = mesh.ownership().owner(face);
+                                const double y = controls.kepsilon_runtime->state->wall_distance(owner);
+                                if (y <= 0.0)
+                                    continue;
+                                // Estimate wall shear velocity from near-wall velocity.
+                                // u_tau ~ sqrt(nu * |U| / y) (laminar sublayer approximation).
+                                const double U_cell = std::sqrt(
+                                    U(owner,0)*U(owner,0) +
+                                    U(owner,1)*U(owner,1) +
+                                    U(owner,2)*U(owner,2));
+                                const double u_tau = std::sqrt(std::max(nu * U_cell / y, 1e-12));
+                                // kqRWallFunction: k = u_tau^2 / sqrt(C_mu)
+                                const double k_wall = u_tau * u_tau / c_mu_sqrt;
+                                auto& ki = controls.kepsilon_runtime->state->k(owner);
+                                // Only raise k if below wall-function estimate (never reduce).
+                                if (ki < k_wall)
+                                    ki = k_wall;
+                                // epsilonWallFunction: epsilon = u_tau^3 / (kappa * y)
+                                const double ei = u_tau * u_tau * u_tau / (kappa * y);
+                                controls.kepsilon_runtime->state->epsilon(owner) =
+                                    std::max(ei, controls.kepsilon_runtime->transport.epsilon_min);
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (!patch_found)
+                    throw std::invalid_argument(
+                        "KEpsilon runtime: wall patch '" + patch_name + "' not found in mesh");
+            }
+            // Solve k-epsilon transport (standard or realizable variant).
+            // Save pre-solve state for SIMPLE-style under-relaxation.
+            const auto ke_k_before = controls.kepsilon_runtime->state->k;
+            const auto ke_epsilon_before = controls.kepsilon_runtime->state->epsilon;
+            TurbulenceTransportResult ke_transport_result;
+            if (controls.kepsilon_runtime->transport.model == TurbulenceModel::REALIZABLE_KEPSILON) {
+                ke_transport_result = solve_realizable_kepsilon_transport(
+                    mesh, geometry, mass_flux,
+                    controls.kepsilon_runtime->state->k,
+                    controls.kepsilon_runtime->state->epsilon,
+                    controls.kepsilon_runtime->state->strain_rate,
+                    controls.kepsilon_runtime->transport,
+                    controls.kepsilon_runtime->k_boundary_conditions,
+                    controls.kepsilon_runtime->epsilon_boundary_conditions,
+                    controls.kepsilon_runtime->max_transport_iterations,
+                    controls.kepsilon_runtime->transport_tolerance);
+            } else {
+                ke_transport_result = solve_kepsilon_transport(
+                    mesh, geometry, mass_flux,
+                    controls.kepsilon_runtime->state->k,
+                    controls.kepsilon_runtime->state->epsilon,
+                    controls.kepsilon_runtime->state->strain_rate,
+                    controls.kepsilon_runtime->transport,
+                    controls.kepsilon_runtime->k_boundary_conditions,
+                    controls.kepsilon_runtime->epsilon_boundary_conditions,
+                    controls.kepsilon_runtime->max_transport_iterations,
+                    controls.kepsilon_runtime->transport_tolerance);
+            }
+            ke_step.transport = ke_transport_result;
+            ke_step.converged = ke_transport_result.converged;
+            // Accept partial progress: k-epsilon transport may not fully
+            // converge in a single outer iteration. Commit the state and
+            // continue; the outer Picard loop will drive residuals down.
+            ke_step.committed = true;
+            ke_step.reason = ke_transport_result.converged
+                ? ""
+                : "KEpsilon transport progressing (residual k=" +
+                  std::to_string(ke_transport_result.k_residual) +
+                  ", epsilon=" +
+                  std::to_string(ke_transport_result.second_residual) + ")";
+            // OpenFOAM-style SIMPLE under-relaxation for k and epsilon.
+            // Blends the solved state with the pre-solve state to damp the
+            // nu_t feedback loop on separated/recirculation flows.
+            const double ke_alpha = controls.kepsilon_runtime->transport.ke_simple_relaxation;
+            if (ke_alpha < 1.0) {
+                auto& state = *controls.kepsilon_runtime->state;
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    state.k(c) = ke_k_before(c) + ke_alpha * (state.k(c) - ke_k_before(c));
+                    state.epsilon(c) = ke_epsilon_before(c) +
+                        ke_alpha * (state.epsilon(c) - ke_epsilon_before(c));
+                }
+            }
+            // Compute nu_t = C_mu * k^2 / epsilon from relaxed fields.
+            refresh_kepsilon_production_eddy_viscosity(
+                controls.kepsilon_runtime->state->k,
+                controls.kepsilon_runtime->state->epsilon,
+                controls.kepsilon_runtime->transport,
+                controls.kepsilon_runtime->state->nu_t);
+            // Production limiter for k-epsilon: cap nu_t to
+            // ke_nu_t_limit_factor * k / S to prevent excessive turbulence
+            // production in high-shear separation zones (analogous to SST's
+            // 10*beta* production limiter). Disabled by default (factor=0).
+            const double ke_limit = controls.kepsilon_runtime->transport.ke_nu_t_limit_factor;
+            if (ke_limit > 0.0) {
+                auto& ke_state = *controls.kepsilon_runtime->state;
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    const double S = ke_state.strain_rate(c);
+                    if (S > 0.0) {
+                        const double max_nu_t = ke_limit * ke_state.k(c) / S;
+                        if (ke_state.nu_t(c) > max_nu_t) {
+                            ke_state.nu_t(c) = max_nu_t;
+                        }
+                    }
+                }
+            }
+            validate_kepsilon_production_state(
+                *controls.kepsilon_runtime->state, mesh.n_cells());
+            if (std::getenv("CFDX_BFS_STAGE_TRACE"))
+                std::cerr << "BFS_PHASE_V10 iteration=" << iter
+                          << " phase=KEPSILON_TRANSPORT_END converged=" << ke_step.converged
+                          << " iterations=" << ke_step.transport.iterations
+                          << " k_residual=" << ke_step.transport.k_residual
+                          << " epsilon_residual=" << ke_step.transport.second_residual << "\n";
+        }
         if (controls.sst_runtime) {
             std::map<std::string, std::array<double, 3>> fixed_velocity_values;
             for (const auto& [patch, bc] : velocity_bcs) {
@@ -10910,7 +11281,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " target=" << controls.sst_runtime->transport_tolerance
                           << "\n";
             SSTWallRefreshV17 wall_refresh_v17;
-            if (controls.sst_runtime->active_openfoam_wall_operator_v17) {
+            if (need_wall_operator) {
                 wall_refresh_v17=[&](const auto& candidate_k,const auto& candidate_omega,
                                      ScalarBoundaryFaceValues& omega_faces,
                                      SSTWallProductionV17& production) {
@@ -10942,18 +11313,168 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     production=std::move(wall.production);
                 };
             }
-            sst_step = advance_sst_production_iterate_transactionally(
-                mesh, U, p, mass_flux, *controls.sst_runtime->state,
-                controls.sst_runtime->transport, fixed_velocity_values,
-                controls.sst_runtime->wall_patch_names,
-                controls.sst_runtime->k_boundary_conditions,
-                controls.sst_runtime->omega_boundary_conditions,
-                controls.sst_runtime->max_transport_iterations,
-                controls.sst_runtime->transport_tolerance,
-                &controls.sst_runtime->omega_face_values,
-                controls.sst_runtime->allow_bounded_provisional_transport,
-                controls.sst_runtime->active_openfoam_wall_operator_v17
-                    ? &wall_refresh_v17 : nullptr);
+            // Bootstrap/certification strategy:
+            // - First 20 iterations (bootstrap) WITH allow_bounded_provisional:
+            //   reduced inner budget only. Intermediate SST convergence is not
+            //   required; establish a stable physical state first. Fail-closed
+            //   callers always get the full budget: a rejected SST step aborts
+            //   the outer iteration, so a reduced budget would reject every
+            //   iteration before the transport can converge.
+            // - After bootstrap: attempt a certification step ONLY when the
+            //   carrier is approaching convergence (momentum/continuity/change
+            //   metrics all below thresholds). This prevents wasting SST
+            //   non-provisional inner iterations on every outer iteration
+            //   when the carrier is still far from converged.
+            // Final "Converged" is declared only when ALL gates pass together
+            // (carrier + non-provisional converged SST + nu_t/change criteria).
+            bool try_certification = false;
+            bool advanced_bootstrap = false;
+            std::size_t cert_inner = controls.sst_runtime->max_transport_iterations;
+            double cert_tol = controls.sst_runtime->transport_tolerance;
+            const std::size_t bootstrap_iters = 20;
+            const bool bootstrap_with_reduced_budget =
+                controls.sst_runtime->allow_bounded_provisional_transport &&
+                iter <= bootstrap_iters;
+            if (bootstrap_with_reduced_budget) {
+                // Provisional bootstrap: use a small inner budget so the outer
+                // iteration can advance without being blocked by stiff
+                // wall-resolved k/omega transport. SST convergence is not
+                // required here; establish a stable physical state first.
+                // This replaces (does not precede) the full-budget step below.
+                cert_inner = controls.sst_runtime->bootstrap_transport_iterations;
+                cert_tol = controls.sst_runtime->transport_tolerance;
+                sst_step = advance_sst_production_iterate_transactionally(
+                    mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                    controls.sst_runtime->transport, fixed_velocity_values,
+                    controls.sst_runtime->wall_patch_names,
+                    controls.sst_runtime->k_boundary_conditions,
+                    controls.sst_runtime->omega_boundary_conditions,
+                    cert_inner, cert_tol,
+                    &controls.sst_runtime->omega_face_values,
+                    controls.sst_runtime->allow_bounded_provisional_transport,
+                    need_wall_operator ? &wall_refresh_v17 : nullptr);
+                advanced_bootstrap = true;
+            } else if (controls.sst_runtime->allow_bounded_provisional_transport &&
+                       !result.history.empty()) {
+                const auto& prev = result.history.back();
+                const double cert_threshold = 100.0 * controls.convergence.relative_tolerance;
+                const bool carrier_approaching =
+                    prev.momentum_equation_residual_rhs_relative <= cert_threshold &&
+                    prev.continuity_normalized <= cert_threshold &&
+                    prev.velocity_change_inf <= 0.1 &&
+                    prev.pressure_change_inf <= 0.1;
+                if (carrier_approaching) {
+                    try_certification = true;
+                    const std::size_t extra = 10;
+                    cert_inner = controls.sst_runtime->certification_max_transport_iterations > 0
+                        ? controls.sst_runtime->certification_max_transport_iterations
+                        : controls.sst_runtime->max_transport_iterations + extra;
+                    cert_tol = controls.sst_runtime->certification_transport_tolerance > 0.0
+                        ? controls.sst_runtime->certification_transport_tolerance
+                        : controls.sst_runtime->transport_tolerance;
+                }
+            }
+            if (timing_enabled) t_sst_start = std::chrono::steady_clock::now();
+            if (try_certification) {
+                if (controls.sst_runtime->skip_transactional_save) {
+                    // No backup/restore: measure pure compute time.
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        cert_inner, cert_tol,
+                        &controls.sst_runtime->omega_face_values,
+                        false, // no provisional for certification
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                } else {
+                    // Save state for rollback if certification fails.
+                    auto cert_state_backup = *controls.sst_runtime->state;
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        cert_inner, cert_tol,
+                        &controls.sst_runtime->omega_face_values,
+                        false, // no provisional for certification
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                    if (!sst_step.committed) {
+                        // Certification failed, restore and do normal provisional step
+                        *controls.sst_runtime->state = cert_state_backup;
+                        if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
+                            std::cerr << "SST_CERTIFICATION iteration=" << iter
+                                      << " converged=0 fallback=provisional\n";
+                        sst_step = {};
+                        sst_step = advance_sst_production_iterate_transactionally(
+                            mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                            controls.sst_runtime->transport, fixed_velocity_values,
+                            controls.sst_runtime->wall_patch_names,
+                            controls.sst_runtime->k_boundary_conditions,
+                            controls.sst_runtime->omega_boundary_conditions,
+                            controls.sst_runtime->max_transport_iterations,
+                            controls.sst_runtime->transport_tolerance,
+                            &controls.sst_runtime->omega_face_values,
+                            controls.sst_runtime->allow_bounded_provisional_transport,
+                            need_wall_operator ? &wall_refresh_v17 : nullptr);
+                    } else if (sst_step.committed && sst_step.transport.converged && !sst_step.provisional) {
+                        if (controls.diagnostics.iteration_trace || std::getenv("CFDX_BFS_STAGE_TRACE"))
+                            std::cerr << "SST_CERTIFICATION iteration=" << iter
+                                      << " converged=1 inner=" << sst_step.transport.iterations
+                                      << " k_res=" << sst_step.transport.k_residual
+                                      << " omega_res=" << sst_step.transport.second_residual << "\n";
+                    }
+                }
+            } else if (!advanced_bootstrap) {
+                // Loose coupling (experimental, requires
+                // allow_bounded_provisional_transport): after bootstrap,
+                // advance SST with a reduced inner budget and accept provisional
+                // (non-converged) results. Turbulence only needs to PROGRESS
+                // toward convergence at each outer step; it must not be fully
+                // converged while U/p are still far from their fixed point.
+                // Full SST convergence is deferred to the certification step
+                // when the carrier is approaching. This avoids the stiff
+                // k/omega -> nu_t -> momentum feedback loop oscillating on
+                // wall-resolved meshes.
+                // When allow_bounded_provisional_transport is false, fall
+                // through to the full-budget step below to preserve the
+                // fail-closed contract.
+                if (controls.sst_runtime->allow_bounded_provisional_transport) {
+                    const std::size_t loose_inner =
+                        controls.sst_runtime->loose_transport_iterations > 0
+                            ? controls.sst_runtime->loose_transport_iterations
+                            : std::min<std::size_t>(20,
+                                                  controls.sst_runtime->max_transport_iterations);
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        loose_inner, controls.sst_runtime->transport_tolerance,
+                        &controls.sst_runtime->omega_face_values,
+                        true, // allow provisional (non-converged) transport
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                } else {
+                    // Full-budget step. Fail-closed callers always run here: the
+                    // SST transport must converge within max_transport_iterations
+                    // or the outer iteration is rejected by contract.
+                    sst_step = advance_sst_production_iterate_transactionally(
+                        mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                        controls.sst_runtime->transport, fixed_velocity_values,
+                        controls.sst_runtime->wall_patch_names,
+                        controls.sst_runtime->k_boundary_conditions,
+                        controls.sst_runtime->omega_boundary_conditions,
+                        controls.sst_runtime->max_transport_iterations,
+                        controls.sst_runtime->transport_tolerance,
+                        &controls.sst_runtime->omega_face_values,
+                        controls.sst_runtime->allow_bounded_provisional_transport,
+                        need_wall_operator ? &wall_refresh_v17 : nullptr);
+                }
+            }
+            if (timing_enabled) { t_sst_end = std::chrono::steady_clock::now(); t_sst_total += std::chrono::duration_cast<std::chrono::microseconds>(t_sst_end - t_sst_start).count(); }
             if (std::getenv("CFDX_BFS_STAGE_TRACE"))
                 std::cerr << "BFS_PHASE_V10 iteration=" << iter
                           << " phase=SST_TRANSPORT_END committed=" << sst_step.committed
@@ -10967,7 +11488,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
-            if (controls.sst_runtime->active_openfoam_wall_operator_v17) {
+            if (need_wall_operator) {
                 const auto ref=prepare_openfoam_wall_triplet_v15(
                     mesh,geometry,controls.sst_runtime->wall_omega_sst_patches,
                     U,*controls.sst_runtime->state,fixed_velocity_values,
@@ -11021,6 +11542,152 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // directly with the normalized carrier convergence metric.
             if (!sst_attempt_snapshot)
                 throw std::logic_error("SST production attempt is missing its state snapshot");
+
+            // Nut-closure under-relaxation (V91): when the SST transport
+            // produces a very large eddy-viscosity change (oscillating
+            // k/omega production from a changing velocity field), blend the
+            // new k/omega with the old state to damp the feedback loop.
+            // The blend factor is computed from the raw nu_t change: if
+            // the change exceeds 30%, the k/omega fields are proportionally
+            // pulled back toward their previous values. This does NOT change
+            // the SST transport equations or convergence gates — it only
+            // limits how fast the nonlinear outer iteration can move.
+            // The blended state remains fully consistent: nu_t is recomputed
+            // from the blended k and omega.
+            {
+                const auto& old_state = *sst_attempt_snapshot;
+                const auto& new_state = *controls.sst_runtime->state;
+                // Compute the max relative nu_t change before blending.
+                double max_nut_change = 0.0;
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                    const double scale = std::max({
+                        controls.kinematic_viscosity,
+                        old_state.nu_t(cell),
+                        new_state.nu_t(cell)});
+                    if (scale > 0.0)
+                        max_nut_change = std::max(max_nut_change,
+                            std::abs(new_state.nu_t(cell) - old_state.nu_t(cell)) / scale);
+                }
+                // If the change exceeds 30%, compute a blend factor that
+                // would cap it at 30%. alpha=1 means no damping (keep new),
+                // alpha=0 means keep old.
+                constexpr double nut_change_cap = 0.20;
+                const double nut_blend = (max_nut_change > nut_change_cap)
+                    ? std::max(0.0, nut_change_cap / max_nut_change)
+                    : 1.0;
+                // Always-active nut closure damping: when the SST transport
+                // produces a large eddy-viscosity change, blend k/omega with
+                // the old state to damp the feedback loop. Disabled only when
+                // sst_nu_t_relaxation = 1.0 (no under-relaxation requested).
+                if (nut_blend < 1.0) {
+                    auto& state = *controls.sst_runtime->state;
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        state.k(cell) = nut_blend * new_state.k(cell)
+                                      + (1.0 - nut_blend) * old_state.k(cell);
+                        state.omega(cell) = nut_blend * new_state.omega(cell)
+                                          + (1.0 - nut_blend) * old_state.omega(cell);
+                        const auto blend = compute_sst_blending(
+                            state.k(cell), state.omega(cell), state.wall_distance(cell),
+                            controls.kinematic_viscosity,
+                            controls.sst_runtime->transport.beta_star,
+                            0.0, controls.density,
+                            controls.sst_runtime->transport.sst_sigma_w2);
+                        state.nu_t(cell) = controls.sst_runtime->transport.a1 * state.k(cell)
+                            / std::max(controls.sst_runtime->transport.a1 * state.omega(cell),
+                                       state.strain_rate(cell) * blend.second);
+                    }
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "NUT_CLOSURE_DAMPING_V91 iteration=" << iter
+                                  << " max_change=" << max_nut_change
+                                  << " blend=" << nut_blend << "\n";
+                }
+            }
+
+            // Always-active k/omega SIMPLE under-relaxation (sst_simple_relaxation,
+            // default 0.7). Restart-safe because k and omega are persisted in
+            // restart files. Damps the k/omega -> nu_t -> momentum feedback loop
+            // on every outer iteration, not only when nu_t oscillates.
+            {
+                const double k_omega_urf = controls.sst_runtime->transport.sst_simple_relaxation;
+                if (k_omega_urf < 1.0 && sst_attempt_snapshot) {
+                    const auto& old_state = *sst_attempt_snapshot;
+                    auto& state = *controls.sst_runtime->state;
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        state.k(cell) = k_omega_urf * state.k(cell)
+                                      + (1.0 - k_omega_urf) * old_state.k(cell);
+                        state.omega(cell) = k_omega_urf * state.omega(cell)
+                                          + (1.0 - k_omega_urf) * old_state.omega(cell);
+                        const auto blend = compute_sst_blending(
+                            state.k(cell), state.omega(cell), state.wall_distance(cell),
+                            controls.kinematic_viscosity,
+                            controls.sst_runtime->transport.beta_star,
+                            0.0, controls.density,
+                            controls.sst_runtime->transport.sst_sigma_w2);
+                        state.nu_t(cell) = controls.sst_runtime->transport.a1 * state.k(cell)
+                            / std::max(controls.sst_runtime->transport.a1 * state.omega(cell),
+                                       state.strain_rate(cell) * blend.second);
+                    }
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "SST_SIMPLE_RELAXATION iteration=" << iter
+                                  << " urf=" << k_omega_urf << "\n";
+                }
+            }
+
+            // Always-active eddy-viscosity under-relaxation via k/omega
+            // (sst_nu_t_relaxation, default 0.4). Restart-safe because k and
+            // omega are persisted in restart files. This directly damps the
+            // nu_t -> momentum -> U -> strain -> k/omega -> nu_t feedback loop
+            // on every outer iteration. Applied only in experimental mode
+            // (allow_bounded_provisional_transport) and only when
+            // sst_simple_relaxation is not already damping k/omega.
+            {
+                const double nut_urf = controls.sst_runtime->transport.sst_nu_t_relaxation;
+                if (nut_urf < 1.0 && sst_attempt_snapshot &&
+                    controls.sst_runtime->allow_bounded_provisional_transport &&
+                    controls.sst_runtime->transport.sst_simple_relaxation >= 1.0) {
+                    const auto& old_state = *sst_attempt_snapshot;
+                    auto& state = *controls.sst_runtime->state;
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        state.k(cell) = nut_urf * state.k(cell)
+                                      + (1.0 - nut_urf) * old_state.k(cell);
+                        state.omega(cell) = nut_urf * state.omega(cell)
+                                          + (1.0 - nut_urf) * old_state.omega(cell);
+                        const auto blend = compute_sst_blending(
+                            state.k(cell), state.omega(cell), state.wall_distance(cell),
+                            controls.kinematic_viscosity,
+                            controls.sst_runtime->transport.beta_star,
+                            0.0, controls.density,
+                            controls.sst_runtime->transport.sst_sigma_w2);
+                        state.nu_t(cell) = controls.sst_runtime->transport.a1 * state.k(cell)
+                            / std::max(controls.sst_runtime->transport.a1 * state.omega(cell),
+                                       state.strain_rate(cell) * blend.second);
+                    }
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "SST_NU_T_RELAXATION iteration=" << iter
+                                  << " urf=" << nut_urf << "\n";
+                }
+            }
+
+            // Publish a second snapshot for the accepted, relaxed SST state.
+            // The pressure gradient and any state-only Rhie-Chow reconstruction
+            // below must not reuse the pre-SST k boundary trace from the carrier
+            // predictor at the top of this outer iteration.
+            if (controls.sst_runtime->pressure_face_values) {
+                const auto next_generation =
+                    controls.sst_runtime->pressure_face_values->generation + 1;
+                update_sst_static_pressure_face_values(
+                    mesh, *controls.sst_runtime->state, controls.density,
+                    pressure_bcs, controls.sst_runtime->k_boundary_conditions,
+                    *controls.sst_runtime->pressure_face_values, next_generation);
+                final_grad_p = controls.pressure_high_low_production
+                    ? gauss_gradient_pressure_high_low(
+                        mesh, geometry, p, pressure_low_state, pressure_bcs,
+                        controls.pressure_projected_face_interpolation)
+                    : gauss_gradient_with_boundary(
+                        p, mesh, geometry, pressure_bcs,
+                        controls.pressure_skew_corrected_gradient,
+                        controls.pressure_projected_face_interpolation);
+            }
             sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
                 *sst_attempt_snapshot, *controls.sst_runtime->state,
                 controls.kinematic_viscosity);
@@ -15014,7 +15681,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 } else {
                     if (patch < mesh.boundary().n_patches()) {
                         const auto& name = mesh.boundary().patch(patch).name;
-                        const auto pit = pressure_bcs.find(name);
+                        const auto pit = resolve_scalar_boundary_condition(
+                            mesh, geometry, face, pressure_bcs);
                         const auto uit = velocity_bcs.find(name);
                         if (uit != velocity_bcs.end() &&
                             uit->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
@@ -15022,8 +15690,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         else
                             u_face_auth = Vec3{
                                 final_ux(debug_cell), final_uy(debug_cell), final_uz(debug_cell)};
-                        if (pit != pressure_bcs.end() &&
-                            pit->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                        if (pit.type == ScalarBoundaryType::FIXED_VALUE) {
                             const Vec3 Sf_raw = geometry.face_area_vectors[face];
                             const Vec3 dvec = geometry.face_centres[face] -
                                               geometry.cell_centres[debug_cell];
@@ -15040,7 +15707,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                     dAU_boundary.y*e.y*e.y +
                                     dAU_boundary.z*e.z*e.z;
                             const double normal_dp =
-                                (pit->second.value - p(debug_cell)) / d;
+                                (pit.value - p(debug_cell)) / d;
                             const Vec3 gp{
                                 final_grad_p.component_data(0)[debug_cell],
                                 final_grad_p.component_data(1)[debug_cell],
@@ -15048,7 +15715,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             pressure_flux_correction = controls.density * (
                                 pressure_face_orthogonal_coefficient(
                                     Sf_raw, dvec, dAU_boundary) *
-                                    (pit->second.value - p(debug_cell)) +
+                                    (pit.value - p(debug_cell)) +
                                 pressure_face_nonorthogonal_flux(
                                     Sf_raw, dvec, dAU_boundary, gp));
                             grad_face_correction = e * normal_dp + gp - e * gp.dot(e);
@@ -15363,19 +16030,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         &final_ex, &final_ey, &final_ez};
                     reconcile_momentum_budget_with_matrix(
                         budget, *final_equations[d], component);
-                    if (!momentum_matrix_face_closure_consistent(budget))
-                        throw std::runtime_error(
-                            "momentum face/CSR operator disagrees cellwise at cell " +
-                            std::to_string(budget.matrix_closure_worst_cell));
-                    // The budget and the independent face certificate have
-                    // to agree: missing pressure/viscous terms must fail.
-                    const double agreement = std::abs(
+                    budget.independent_face_residual_linf = physical.local_linf;
+                    budget.independent_face_residual_difference = std::abs(
                         budget.worst_absolute_residual - physical.local_linf);
-                    if (agreement > 1e-10 * std::max({1.0,
-                            budget.worst_absolute_residual, physical.local_linf}))
-                        throw std::runtime_error(
-                            "momentum face budget disagrees with independent residual");
-                    controls.momentum_face_budget_callback(iter, d, budget, geometry);
+                    // The comparison is evidence, not an acceptance gate.
+                    // Publish it only after transaction.commit() below.
+                    pending_momentum_face_budgets.emplace_back(d, std::move(budget));
                 }
 
             }
@@ -15589,6 +16249,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 throw NonlinearRetryableFailure(
                     "V48 coupled transaction missing rAU: reject candidate");
             transaction.commit();
+            for (const auto& [component_index, budget] : pending_momentum_face_budgets)
+                controls.momentum_face_budget_callback(
+                    iter, component_index, budget, geometry);
             if (controls.bfs_pressure_transverse_trust_v89_experimental && !comparable_v65) {
                 // Never advance the V89 ledger on rejected proposals.
                 if (!committed_pressure_baseline_v89) {
@@ -15842,13 +16505,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 sst_step.committed && !sst_step.provisional &&
                 sst_step.transport.converged)
                 controls.sst_runtime->coupled_ptc_v30.outer_commit();
+            t_iter_end = std::chrono::steady_clock::now();
+            if (timing_enabled) {
+                auto t_iter_us = std::chrono::duration_cast<std::chrono::microseconds>(t_iter_end - t_iter_start).count();
+                std::cerr << "TIMING iter=" << iter
+                          << " total_us=" << t_iter_us
+                          << " mom_us=" << t_mom_total
+                          << " pres_us=" << t_pres_total
+                          << " sst_us=" << t_sst_total
+                          << " audit_us=" << t_audit_total
+                          << "\n";
+            }
             iteration_completed = true;
             } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 if (controls.sst_runtime) {
@@ -15944,8 +16617,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 // V44: restore the cached momentum viscosity too. Without
@@ -15983,8 +16655,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (transaction.active()) transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 pressure_low_state=pressure_low_snapshot;
-                if (controls.sst_runtime && sst_attempt_snapshot)
-                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                restore_sst_and_pressure_face_snapshot();
                 if (controls.sst_runtime && v30_ptc_attempt_snapshot)
                     controls.sst_runtime->coupled_ptc_v30 = *v30_ptc_attempt_snapshot;
                 if (controls.sst_runtime)

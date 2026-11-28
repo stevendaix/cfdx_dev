@@ -28,6 +28,7 @@ N9_MODELS = SCHUR_MODELS
 # All runs use the same debug geometry, IC/BC and SST experiment settings.
 BFS_VARIANTS = {
     "simple": ("simple", None, None),
+    "simple_v41_two_cycle": ("simple", None, None),
     "simplec": ("simplec", None, None),
     "pcd_auto": ("coupled", "pcd", "auto"),
     "block_local_amg": ("coupled", "block_local", "coupled_block_schur"),
@@ -40,6 +41,28 @@ BFS_VARIANTS = {
     "block_local_mgr": ("coupled", "block_local", "mgr"),
     "block_local_braess": ("coupled", "block_local", "braess_sarazin"),
 }
+BFS_VARIANT_RAW_SETTINGS = {
+    # Controlled SIMPLE-only experiment for the observed persistent SST
+    # two-cycle. V41 changes Picard damping only; all physical gates stay fixed.
+    "simple_v41_two_cycle": {"sst_two_cycle_rescue_v41_experimental": "true"},
+}
+
+
+def apply_bfs_variant_settings(case_path: Path, variant: str) -> None:
+    """Apply explicitly opted-in experimental settings to a generated case."""
+    settings = BFS_VARIANT_RAW_SETTINGS.get(variant)
+    if not settings:
+        return
+    import h5py
+
+    with h5py.File(case_path, "r+") as h5:
+        setup = json.loads(h5.attrs["case_setup_json"])
+        raw_settings = setup.setdefault("numerics", {}).setdefault("raw_settings", {})
+        raw_settings.update(settings)
+        del h5.attrs["case_setup_json"]
+        h5.attrs["case_setup_json"] = json.dumps(setup)
+
+
 CTESTS = {
     "bfs": ("test_bfs_quick",),
     "sst_thermal": (
@@ -290,6 +313,7 @@ def build_commands(args: argparse.Namespace):
                     preconditioner=preconditioner,
                     iterations=args.iterations,
                 )
+            apply_bfs_variant_settings(case_file, variant)
             fingerprint = (generated["topology_hash"], generated["geometry_hash"])
             if reference is None:
                 reference = fingerprint
@@ -306,6 +330,11 @@ def build_commands(args: argparse.Namespace):
                 if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
                     env.pop(key)
             env["CFDX_BFS_STAGE_TRACE"] = "1"
+            # On the existing fail-closed SST fixed-point stall, emit the
+            # exact worst k/omega FV rows and their convection/diffusion/
+            # production/destruction/cross-diffusion decomposition. This is
+            # read-only and does not alter the acceptance predicate.
+            env["CFDX_SST_STALL_FORENSICS_V42"] = "1"
             yield (
                 tag,
                 [
@@ -318,6 +347,10 @@ def build_commands(args: argparse.Namespace):
                     str(args.iterations),
                     "--experimental-sst",
                     "--benchmark-export",
+                    "--momentum-budget-csv",
+                    "momentum_budget.csv",
+                    "--momentum-budget-every",
+                    "5",
                 ],
                 env,
             )

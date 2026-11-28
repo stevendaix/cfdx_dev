@@ -54,6 +54,37 @@ class V41ForensicsTest(unittest.TestCase):
             )
             self.assertFalse(d["global_physically_qualified"])
 
+    def test_post_sst_operator_four_cycle_is_reported_as_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = pathlib.Path(temp) / "four_cycle.log"
+            values = (0.16, 0.12, 0.09, 0.125)
+            p.write_text(
+                "".join(
+                    f"POST_SST_MOMENTUM iteration={i} relative_nut_change={values[(i - 1) % 4]} "
+                    "old_nut_operator=0.2 refreshed_nut_operator=0.25\n"
+                    for i in range(1, 65)
+                )
+            )
+            d = module.parse_production_log(p)
+            cycle = d["post_sst_momentum_operator_cycle"]
+            self.assertEqual(cycle["status"], "ANALYZED")
+            self.assertTrue(cycle["candidate_period_four"])
+            self.assertEqual(cycle["candidate_period"], 4)
+            self.assertGreater(cycle["period_errors"]["2"], 0.1)
+            self.assertLess(cycle["period_errors"]["4"], 1e-12)
+            self.assertEqual(
+                cycle["interpretation"],
+                "diagnostic_candidate_only_no_solver_action",
+            )
+            self.assertFalse(d["global_physically_qualified"])
+
+    def test_post_sst_operator_cycle_requires_full_window(self):
+        cycle = module.audit_post_sst_operator_cycle(
+            [{"iteration": 1, "relative_nut_change": 0.1}]
+        )
+        self.assertEqual(cycle["status"], "INSUFFICIENT_DATA")
+        self.assertFalse(cycle["candidate_period_four"])
+
     def test_no_duplicate_source(self):
         with tempfile.TemporaryDirectory() as temp:
             p = pathlib.Path(temp) / "x.log"

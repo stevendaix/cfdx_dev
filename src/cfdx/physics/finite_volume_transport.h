@@ -20,6 +20,8 @@
 #include <cmath>
 #include <iostream>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <map>
 #include <stdexcept>
 #include <utility>
@@ -34,10 +36,15 @@ enum class ScalarBoundaryType {
     FIXED_GRADIENT
 };
 
+struct ScalarBoundaryFaceValues;
+
 struct ScalarBoundaryCondition {
     ScalarBoundaryType type = ScalarBoundaryType::ZERO_GRADIENT;
     double value = 0.0;
     double gradient = 0.0;
+    // Optional shared face trace. Used by SST modified pressure without
+    // changing the physical patch-level static-pressure datum.
+    std::shared_ptr<const ScalarBoundaryFaceValues> face_values;
 };
 
 using ScalarBoundaryConditions = std::map<std::string, ScalarBoundaryCondition>;
@@ -79,6 +86,8 @@ inline LimitedFaceKindV56 convection_kind_v56(ConvectionScheme scheme) {
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
     std::map<std::string, std::vector<double>> values;
+    // Nonzero generation identifies one accepted-state SST pressure snapshot.
+    std::uint64_t generation = 0;
 };
 
 struct FvGeometry {
@@ -201,6 +210,11 @@ struct ScalarEquation {
     cfdx::core::SparseMatrix matrix;
     cfdx::core::Vector rhs;
     std::vector<double> diagonal;
+    // When true, the matrix diagonal and rhs were modified for OpenFOAM-style
+    // implicit under-relaxation (diagonal dominance + diag/alpha + source
+    // compensation). solve_scalar_equation must NOT apply explicit field
+    // blending in this case; the relaxation is already baked into the system.
+    bool implicit_relaxation = false;
     // Compatibility alias for the maximum cell-local face-flux imbalance.
     double max_imbalance = 0.0;
     double signed_global_imbalance = 0.0;
@@ -299,10 +313,28 @@ inline ScalarBoundaryCondition resolve_scalar_boundary_condition(
         const auto& patch_name = mesh.boundary().patch(patch).name;
         const auto it = boundary_conditions.find(patch_name);
         if (it != boundary_conditions.end()) bc = it->second;
-        if (face_values) {
-            const auto fv = face_values->values.find(patch_name);
-            if (fv != face_values->values.end() &&
-                face < fv->second.size() && std::isfinite(fv->second[face])) {
+        const auto* effective_face_values = face_values;
+        if (effective_face_values == nullptr && it != boundary_conditions.end() &&
+            it->second.face_values)
+            effective_face_values = it->second.face_values.get();
+        const bool provider_attached =
+            it != boundary_conditions.end() && it->second.face_values != nullptr;
+        if (effective_face_values) {
+            const auto fv = effective_face_values->values.find(patch_name);
+            if (fv == effective_face_values->values.end()) {
+                if (provider_attached)
+                    throw std::invalid_argument(
+                        "resolve_scalar_boundary_condition: face-value provider is missing patch '" +
+                        patch_name + "'");
+            } else {
+                if (face >= fv->second.size())
+                    throw std::out_of_range(
+                        "resolve_scalar_boundary_condition: face-value provider is too short for patch '" +
+                        patch_name + "'");
+                if (!std::isfinite(fv->second[face]))
+                    throw std::invalid_argument(
+                        "resolve_scalar_boundary_condition: non-finite face value for patch '" +
+                        patch_name + "'");
                 bc.type = ScalarBoundaryType::FIXED_VALUE;
                 bc.value = fv->second[face];
             }
@@ -897,7 +929,8 @@ inline ScalarEquation assemble_scalar_equation(
     const ScalarBoundaryFaceConditions* face_conditions = nullptr,
     bool apply_nonorthogonal_correction = true,
     const std::vector<double>* boundary_face_diffusion = nullptr,
-    double high_order_fraction = 1.0)
+    double high_order_fraction = 1.0,
+    double relaxation = 1.0)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -921,6 +954,8 @@ inline ScalarEquation assemble_scalar_equation(
     if (!std::isfinite(high_order_fraction) || high_order_fraction < 0.0 ||
         high_order_fraction > 1.0)
         throw std::invalid_argument("assemble_scalar_equation: high-order fraction must be in [0,1]");
+    if (!std::isfinite(relaxation) || relaxation <= 0.0 || relaxation > 1.0)
+        throw std::invalid_argument("assemble_scalar_equation: relaxation must be in (0,1]");
 
     std::vector<std::map<std::size_t, double>> rows(nc);
     std::vector<double> rhs(nc, 0.0);
@@ -1259,7 +1294,7 @@ inline ScalarEquation assemble_scalar_equation(
         }
     }
 
-    ScalarEquation eq{SparseMatrix(nc, nc), Vector(nc, 0.0), diag, 0.0};
+    ScalarEquation eq{SparseMatrix(nc, nc), Vector(nc, 0.0), diag, false, 0.0};
     for (std::size_t c = 0; c < nc; ++c) {
         // Bounded steady convection: subtract div(phi)*psi from the
         // discretized convection operator. The term vanishes when continuity
@@ -1281,6 +1316,26 @@ inline ScalarEquation assemble_scalar_equation(
         rhs[c] += source_explicit(c) * geometry.cell_volumes[c];
         rhs[c] += deferred_rhs[c];
         if (extra_rhs) rhs[c] += (*extra_rhs)[c];
+
+        // OpenFOAM-style implicit under-relaxation (fvMatrix::relax):
+        // 1. Enforce diagonal dominance: D = max(|D|, sumOff).
+        // 2. Relax the diagonal: D /= alpha.
+        // 3. Compensate the source so the residual at the old solution is
+        //    preserved: S += (D_relaxed - D_old) * psi_old.
+        // This makes the linear system better-conditioned and lets the Krylov
+        // solver converge without the explicit post-solve field blending that
+        // does not help the linear solver at all.
+        if (relaxation < 1.0 && convected_field != nullptr) {
+            double sum_off = 0.0;
+            for (const auto& [col, value] : rows[c])
+                sum_off += std::abs(value);
+            const double diag_old = diag[c];
+            diag[c] = std::max(std::abs(diag[c]), sum_off);
+            const double diag_relaxed = diag[c] / relaxation;
+            rhs[c] += (diag_relaxed - diag_old) * (*convected_field)(c);
+            diag[c] = diag_relaxed;
+            eq.implicit_relaxation = true;
+        }
 
         std::vector<std::pair<std::size_t, double>> entries;
         entries.reserve(rows[c].size() + 1);
@@ -1971,12 +2026,17 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result.residual_relative_before_relaxation =
             result.residual_before_relaxation / rhs_scale;
 
+        // When the equation was assembled with OpenFOAM-style implicit
+        // under-relaxation, the candidate is already the relaxed solution.
+        // Applying explicit field blending on top would double-relax.
+        const double effective_relaxation =
+            equation.implicit_relaxation ? 1.0 : controls.relaxation;
         for (std::size_t i = 0; i < solution.size(); ++i) {
             if (!std::isfinite(candidate(i))) {
                 result.status = cfdx::core::SolverStatus::DIVERGED;
                 return result;
             }
-            solution(i) += controls.relaxation * (candidate(i) - solution(i));
+            solution(i) += effective_relaxation * (candidate(i) - solution(i));
             if (!std::isfinite(solution(i))) {
                 result.status = cfdx::core::SolverStatus::DIVERGED;
                 return result;
