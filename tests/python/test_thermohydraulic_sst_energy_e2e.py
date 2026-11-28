@@ -29,10 +29,21 @@ def write_sst_thermal_case(
     buoyant: bool = False,
     uniform: bool = False,
     sst: bool = True,
+    driven: bool = False,
 ) -> None:
-    channel.NX, channel.NY = 3, 5
-    channel.MAX_ITERATIONS = 40
-    channel._write_case(path)
+    # The Pr_t A/B case must have a real, reproducible carrier flow. Use the
+    # same body-force channel contract as the N9/T2 production calibration;
+    # keep the deliberately under-resolved 3x5 case only for the fail-closed
+    # negative test below.
+    channel.NX, channel.NY = (12, 16) if driven else (3, 5)
+    channel.MAX_ITERATIONS = 3000 if driven else 40
+    original_upstream_patch_type = channel._PATCH_TYPE["upstream_open"]
+    if driven:
+        channel._PATCH_TYPE["upstream_open"] = 1  # PatchType::INLET
+    try:
+        channel._write_case(path)
+    finally:
+        channel._PATCH_TYPE["upstream_open"] = original_upstream_patch_type
     with h5py.File(path, "r+") as case:
         setup = json.loads(case.attrs["case_setup_json"])
         if sst:
@@ -54,7 +65,7 @@ def write_sst_thermal_case(
                 ),
             }
         ]
-        setup["body_force"] = []
+        setup["body_force"] = [1.0, 0.0, 0.0] if driven else []
         setup["initial_condition"].update(
             {
                 "velocity": 0.0,
@@ -89,25 +100,46 @@ def write_sst_thermal_case(
                         {"field": "k", "type": "zero_gradient", "value": 0.0},
                         {"field": "omega", "type": "zero_gradient", "value": 0.0},
                     ]
-            else:
+            elif name == "upstream_open":
+                if driven:
+                    # Match the canonical N9/T2 channel: an inlet with no
+                    # imposed velocity (zero-gradient U), driven by the
+                    # declared body force. The mesh patch type is changed to
+                    # INLET above so the physical and topological contracts
+                    # agree.
+                    patch["type"] = "inlet"
+                    patch["value_type"] = "zero_gradient"
+                    patch["temperature"] = 300.0
                 if sst:
                     patch["sst_scalar_conditions"] = [
                         {"field": "k", "type": "fixed_value", "value": 0.01},
                         {"field": "omega", "type": "fixed_value", "value": 2.0},
                     ]
-                if name == "upstream_open" and sst:
-                    # The shared Poiseuille fixture defines this patch as an
-                    # open outlet with ZERO_GRADIENT velocity. Keep that
-                    # production boundary contract: prescribing a fixed
-                    # velocity here is rejected by the outlet adapter.
                     patch["turbulence_intensity"] = 0.05
                     patch["turbulence_length_scale"] = 0.1
+            else:
+                if driven:
+                    # A zero-gradient outlet must not be assigned fixed
+                    # turbulence values: those are inlet data, not a
+                    # downstream Dirichlet condition.
+                    patch["type"] = "outlet"
+                    patch["value_type"] = "zero_gradient"
+                if sst:
+                    patch["sst_scalar_conditions"] = [
+                        {"field": "k", "type": "zero_gradient", "value": 0.0},
+                        {"field": "omega", "type": "zero_gradient", "value": 0.0},
+                    ]
         del case.attrs["case_setup_json"]
         case.attrs["case_setup_json"] = json.dumps(setup)
 
 
 def execute(
-    solver: Path, case: Path, result: Path, *, experimental_sst: bool = True
+    solver: Path,
+    case: Path,
+    result: Path,
+    *,
+    experimental_sst: bool = True,
+    iterations: int = 40,
 ) -> subprocess.CompletedProcess:
     command = [
         str(solver),
@@ -116,7 +148,7 @@ def execute(
         "--output-dir",
         str(result),
         "--iterations",
-        "40",
+        str(iterations),
     ]
     if experimental_sst:
         command.append("--experimental-sst")
@@ -147,9 +179,13 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
     for prt in ("0.4", "1.8"):
         case = tmp_path / f"Prt_{prt}.cfdx.h5"
         out = tmp_path / f"Prt_{prt}"
-        write_sst_thermal_case(case, prt=prt)
-        run = execute(solver, case, out)
+        write_sst_thermal_case(case, prt=prt, driven=True)
+        run = execute(solver, case, out, iterations=3000)
         assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
+        execution = json.loads((out / "execution.json").read_text())
+        carrier = json.loads((out / "convergence.json").read_text())
+        assert execution["converged"] is True
+        assert carrier["converged"] is True
         energy = json.loads((out / "energy_convergence.json").read_text())
         summary = json.loads((out / "energy_summary.json").read_text())
         mass = json.loads(
@@ -162,7 +198,7 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
         assert mass["global_mass_imbalance_relative"] < 1e-9
         with (out / "benchmark_observables/cell_fields.csv").open(newline="") as f:
             rows = list(csv.DictReader(f))
-        assert len(rows) == 15
+        assert len(rows) == 12 * 16
         assert all(float(row["nu_t_m2_s"]) >= 0 for row in rows)
         assert any(float(row["nu_t_m2_s"]) > 1e-7 for row in rows)
         assert all(300.0 <= float(row["temperature_K"]) <= 310.0 for row in rows)
