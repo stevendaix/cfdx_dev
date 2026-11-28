@@ -386,6 +386,50 @@ physical model, convergence gate, or qualification result may be weakened to
 make a formal or numerical check pass.
 
 
+## Vector momentum residual power contract
+
+The module `CFDX.FiniteVolume.MomentumPower` lifts the mesh vector-work
+identity to an integrated vector momentum residual. It represents the
+residual in each cell as the owner/neighbour scatter of one shared integrated
+vector face flux plus a cell source density multiplied by cell volume.
+
+The theorem
+`mesh_integrated_momentum_power_eq_face_and_source_work` decomposes the
+velocity pairing into:
+- internal-face owner-minus-neighbour jump work;
+- boundary-face owner-only work;
+- cell-source work, retained explicitly as
+  `volume * dot(velocity, sourceDensity)`.
+
+This is deliberately an accounting identity. It imposes no sign on pressure
+work, body-force work, temporal work, viscous work or turbulence-closure work.
+It does not prove a kinetic-energy inequality, a pressure/velocity stability
+property, or physical accuracy. Source signs are supplied by the caller.
+
+### Relation to the production momentum residual
+
+The source audit found that CFDX already has a per-component accepted-state
+residual decomposition in `src/cfdx/physics/momentum_face_budget.h`, with
+independent signed cellwise CSR reconciliation. It includes convection using
+the authoritative conservative mass flux, viscous/non-orthogonal transport,
+pressure-gradient and body-force sources, transpose-viscous face flux,
+transient accumulation, mass divergence and bounded-convection divergence.
+
+The actual Rhie-Chow/pressure-coupled mass flux enters the convection term.
+The diagnostic `collocated_difference` compares this with a collocated
+interpolation and includes both Rhie-Chow and pressure-relaxation splitting;
+it is not a pure Rhie-Chow correction or a separately additive physical power
+term.
+
+The next C++ bridge is to aggregate the three scalar component budgets at the
+same accepted state and compare the resulting vector power decomposition
+against independently reconstructed face and source work. It must reuse the
+existing residual and CSR reconciliation rather than create a second
+momentum discretization. The Lean module does not yet prove that this C++
+diagnostic, its source terms, or runtime mesh storage conform to the abstract
+topology. Dynamic/kinematic viscosity conventions and boundary signs must
+remain explicit.
+
 ## Discrete energy transfer: conservation is not stability
 
 The module `CFDX.FiniteVolume.EnergyTransfer` is included in the root
@@ -641,47 +685,3 @@ the actual variable-step coefficients and operator hypotheses. Neither
 published result automatically transfers to CFDX's coupled, nonlinear,
 convection-dominated, pressure-constrained momentum operator. The constant-
 step Lean theorem remains a verified algebraic identity only.
-
-## Vector momentum residual power contract
-
-The module `CFDX.FiniteVolume.MomentumPower` lifts the mesh vector-work
-identity to an integrated vector momentum residual. It represents the
-residual in each cell as the owner/neighbour scatter of one shared integrated
-vector face flux plus a cell source density multiplied by cell volume.
-
-The theorem
-`mesh_integrated_momentum_power_eq_face_and_source_work` decomposes the
-velocity pairing into:
-- internal-face owner-minus-neighbour jump work;
-- boundary-face owner-only work;
-- cell-source work, retained explicitly as
-  `volume * dot(velocity, sourceDensity)`.
-
-This is deliberately an accounting identity. It imposes no sign on pressure
-work, body-force work, temporal work, viscous work or turbulence-closure work.
-It does not prove a kinetic-energy inequality, a pressure/velocity stability
-property, or physical accuracy. Source signs are supplied by the caller.
-
-### Relation to the production momentum residual
-
-The source audit found that CFDX already has a per-component accepted-state
-residual decomposition in `src/cfdx/physics/momentum_face_budget.h`, with
-independent signed cellwise CSR reconciliation. It includes convection using
-the authoritative conservative mass flux, viscous/non-orthogonal transport,
-pressure-gradient and body-force sources, transpose-viscous face flux,
-transient accumulation, mass divergence and bounded-convection divergence.
-
-The actual Rhie-Chow/pressure-coupled mass flux enters the convection term.
-The diagnostic `collocated_difference` compares this with a collocated
-interpolation and includes both Rhie-Chow and pressure-relaxation splitting;
-it is not a pure Rhie-Chow correction or a separately additive physical power
-term.
-
-The next C++ bridge is to aggregate the three scalar component budgets at the
-same accepted state and compare the resulting vector power decomposition
-against independently reconstructed face and source work. It must reuse the
-existing residual and CSR reconciliation rather than create a second
-momentum discretization. The Lean module does not yet prove that this C++
-diagnostic, its source terms, or runtime mesh storage conform to the abstract
-topology. Dynamic/kinematic viscosity conventions and boundary signs must
-remain explicit.
