@@ -241,6 +241,8 @@ inline MomentumRawFacePower evaluate_momentum_raw_face_power(
                     owner_velocity[2] - neighbour_velocity[2]};
                 work += dot(jump, force);
             } else {
+                if (neighbour != cfdx::core::FaceOwnership::BOUNDARY)
+                    throw std::invalid_argument("raw momentum face power: invalid boundary sentinel");
                 work += dot(owner_velocity, force);
             }
             if (!std::isfinite(work))
