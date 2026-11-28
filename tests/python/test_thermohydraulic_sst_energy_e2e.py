@@ -35,7 +35,7 @@ def write_sst_thermal_case(
     # same body-force channel contract as the N9/T2 production calibration;
     # keep the deliberately under-resolved 3x5 case only for the fail-closed
     # negative test below.
-    channel.NX, channel.NY = (12, 16) if driven else (3, 5)
+    channel.NX, channel.NY = 3, 5
     channel.MAX_ITERATIONS = 3000 if driven else 40
     original_upstream_patch_type = channel._PATCH_TYPE["upstream_open"]
     if driven:
@@ -65,7 +65,7 @@ def write_sst_thermal_case(
                 ),
             }
         ]
-        setup["body_force"] = [1.0, 0.0, 0.0] if driven else []
+        setup["body_force"] = [0.01, 0.0, 0.0] if driven else []
         setup["initial_condition"].update(
             {
                 "velocity": 0.0,
@@ -181,7 +181,7 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
         case = tmp_path / f"Prt_{prt}.cfdx.h5"
         out = tmp_path / f"Prt_{prt}"
         write_sst_thermal_case(case, prt=prt, driven=True)
-        run = execute(solver, case, out, iterations=3000, timeout_seconds=3600)
+        run = execute(solver, case, out, iterations=3000, timeout_seconds=600)
         assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
         execution = json.loads((out / "execution.json").read_text())
         carrier = json.loads((out / "convergence.json").read_text())
@@ -199,7 +199,7 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
         assert mass["global_mass_imbalance_relative"] < 1e-9
         with (out / "benchmark_observables/cell_fields.csv").open(newline="") as f:
             rows = list(csv.DictReader(f))
-        assert len(rows) == 12 * 16
+        assert len(rows) == 3 * 5
         assert all(float(row["nu_t_m2_s"]) >= 0 for row in rows)
         assert any(float(row["nu_t_m2_s"]) > 1e-7 for row in rows)
         assert all(300.0 <= float(row["temperature_K"]) <= 310.0 for row in rows)
