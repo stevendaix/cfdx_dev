@@ -35,7 +35,7 @@ def write_sst_thermal_case(
     # same body-force channel contract as the N9/T2 production calibration;
     # keep the deliberately under-resolved 3x5 case only for the fail-closed
     # negative test below.
-    channel.NX, channel.NY = 3, 5
+    channel.NX, channel.NY = (12, 16) if driven else (3, 5)
     channel.MAX_ITERATIONS = 3000 if driven else 40
     original_upstream_patch_type = channel._PATCH_TYPE["upstream_open"]
     if driven:
@@ -108,7 +108,8 @@ def write_sst_thermal_case(
                     # INLET above so the physical and topological contracts
                     # agree.
                     patch["type"] = "inlet"
-                    patch["value_type"] = "zero_gradient"
+                    patch["value_type"] = "fixed"
+                    patch["velocity_vector"] = [0.1, 0.0, 0.0]
                     patch["temperature"] = 300.0
                 if sst:
                     patch["sst_scalar_conditions"] = [
@@ -190,7 +191,7 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
             }
             assert setup["body_force"] == [0.01, 0.0, 0.0]
             assert axial == {
-                "upstream_open": ("inlet", "zero_gradient"),
+                "upstream_open": ("inlet", "fixed"),
                 "downstream_open": ("outlet", "zero_gradient"),
             }
             patch_types = case_file.attrs["boundary_patches"].split(";")
@@ -220,7 +221,7 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
         assert mass["global_mass_imbalance_relative"] < 1e-9
         with (out / "benchmark_observables/cell_fields.csv").open(newline="") as f:
             rows = list(csv.DictReader(f))
-        assert len(rows) == 3 * 5
+        assert len(rows) == 12 * 16
         assert all(float(row["nu_t_m2_s"]) >= 0 for row in rows)
         assert any(float(row["nu_t_m2_s"]) > 1e-7 for row in rows)
         assert all(300.0 <= float(row["temperature_K"]) <= 310.0 for row in rows)
