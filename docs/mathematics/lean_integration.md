@@ -521,3 +521,32 @@ This theorem does not insert density automatically. The correct density
 factor depends on whether the transported momentum equation and closure
 traction are expressed in dynamic or kinematic form. That convention must be
 fixed explicitly when the Reynolds-stress traction interface is designed.
+
+
+## Backward-Euler kinetic-energy work identity
+
+The new module `CFDX.FiniteVolume.BackwardEulerEnergy` formalizes the
+physical backward-Euler momentum increment paired with the new velocity.
+For density \\(\\rho>0\\), time step \\(\\Delta t>0\\), and
+\\(\\delta\\mathbf U=\\mathbf U^{n+1}-\\mathbf U^n\\), it proves
+
+\\[
+\\rho\\,\\mathbf U^{n+1}\\cdot
+\\frac{\\mathbf U^{n+1}-\\mathbf U^n}{\\Delta t}
+=
+\\frac{\\rho}{\\Delta t}
+\\left[
+K(\\mathbf U^{n+1})-K(\\mathbf U^n)
++\\frac12\\lVert\\delta\\mathbf U\\rVert^2
+\\right],
+\\qquad K(\\mathbf U)=\\frac12\\lVert\\mathbf U\\rVert^2.
+\\]
+
+The quadratic defect is non-negative for positive density and time step.
+This identifies the implicit time-discretization contribution to the
+kinetic-energy balance. It does **not** prove stability of the complete
+pressure-velocity algorithm, nor does it justify treating pseudo-time,
+under-relaxation, or nonlinear globalization terms as physical time work.
+The next bridge is to map the exact accepted transient accumulation in
+`steady_incompressible_solver.h` to this identity, including variable
+cell volumes, density, BDF2 history and boundary/source work.
