@@ -2,8 +2,8 @@
 
 **En-tête d'évidence**
 - Scope : comptabilité discrète de puissance mécanique associée au résidu de quantité de mouvement incompressible CFDX, à partir des flux de faces owner/neighbour et des sources cellulaires intégrées. Couvre la distinction résidu physique / résidu de l'opérateur borné, la puissance temporelle et la traçabilité du budget scalaire vers une agrégation vectorielle. Ne couvre pas une preuve de stabilité du solveur couplé, une fermeture de Reynolds, ni la qualification physique d'un modèle turbulent.
-- Statut : DRAFT (2026-11-28) — contrat d'audit en construction ; PR #1223 non fusionnée.
-- Registre autoritaire : issue #1216, fondations Lean #1197, contrat formel #1222, implémentation C++ #1223.
+- Statut : DRAFT (2026-11-28) — contrat d'audit en construction ; PR #1224 non fusionnée (remplacement de #1223).
+- Registre autoritaire : issue #1216, fondations Lean #1197, contrat formel #1222, implémentation C++ #1224.
 - Sources de production : `src/cfdx/physics/momentum_face_budget.h`, `src/cfdx/physics/nonlinear_face_residual_certificate.h`, `src/cfdx/physics/steady_incompressible_solver.h`.
 - Tests concernés : `tests/unit/test_conservation_boundedness.cpp`, `tests/audit/test_sst_integration_gaps.cpp`.
 - Limites de promotion : la correspondance C++/Lean reste bornée aux contrats abstraits et aux fixtures déterministes ; aucune inégalité d'énergie ni stabilité du solveur complet n'est établie.
@@ -63,7 +63,7 @@ Les flux internes apparaissent une fois et se réduisent au saut de vitesse ; le
 
 Dans le code, `diagnose_momentum_face_budget` fournit déjà les contributions intégrées par cellule et par composante : convection reconstruite à partir du flux massique conservatif autoritaire, transport visqueux (y compris la correction non orthogonale reconstruite), traction visqueuse transposée, gradient de pression, force volumique et accumulation temporelle. La puissance s'obtient en appariant ces forces intégrées [N] à la vitesse [m/s], sans remultiplier par le volume : le résultat est en watts [W].
 
-La PR #1223 ajoute uniquement l'agrégation des trois budgets scalaires acceptés. Cette étape ne reconstitue pas les flux bruts de faces : elle agrège les contributions déjà scatterées aux cellules. Une comparaison indépendante face/source nécessitera de conserver ou de reconstruire les flux de chaque opérateur.
+La PR #1224 ajoute uniquement l'agrégation des trois budgets scalaires acceptés. Cette étape ne reconstitue pas les flux bruts de faces : elle agrège les contributions déjà scatterées aux cellules. Une comparaison indépendante face/source nécessitera de conserver ou de reconstruire les flux de chaque opérateur.
 
 ## 4. Traitement des frontières
 
@@ -107,10 +107,11 @@ Aucun seuil ne doit être relâché et aucun test de qualification ne doit être
 - Fichiers source concernés : `src/cfdx/physics/momentum_face_budget.h`, `src/cfdx/physics/nonlinear_face_residual_certificate.h`, `src/cfdx/physics/steady_incompressible_solver.h`, `src/cfdx/physics/momentum_vector_power_budget.h`.
 - Contrats formels : `CFDX.FiniteVolume.MeshVectorWork`, `CFDX.FiniteVolume.BackwardEulerEnergy`, `CFDX.FiniteVolume.MomentumPower` (PR #1219 et #1222).
 - Tests : `tests/unit/test_conservation_boundedness.cpp` pour la comptabilité et l'agrégation ; `tests/audit/test_sst_integration_gaps.cpp` pour la fixture de traction visqueuse transposée.
-- État : #1219 a passé les contrôles exact-head consignés dans l'issue #1216 ; #1222 a passé ses sept workflows exact-head au SHA `2da1c351b4c8ca50aef6fb75893561a1cacc1e95`. PR #1223 ajoute l'agrégateur C++ et sa fixture arithmétique ; ses contrôles exact-head sont en cours.
+- État : #1219 a passé les contrôles exact-head consignés dans l'issue #1216 ; #1222 a passé ses sept workflows exact-head au SHA `2da1c351b4c8ca50aef6fb75893561a1cacc1e95`. PR #1224 ajoute l'agrégateur C++ et sa fixture arithmétique ; Release et les autres contrôles sont verts au HEAD initial `33a459b3e50258d960ec550427fbe99fbd1452f7`, DebugSanitizers encore en cours au moment de la mise à jour. Une correction supplémentaire contre le débordement des sommes de reconstruction et son test sont en cours sur la branche de la PR.
 - Écarts connus code ↔ contrat : agrégation initiale à partir des budgets cellulaires scatterés ; reconstruction indépendante de puissance brute par face/source non encore livrée ; correspondance générale entre CSR runtime et topologie Lean non démontrée.
-- Gaps et prochaines actions : valider #1223 ; tester l'agrégateur sur un état réellement accepté issu du solveur ; ajouter une reconstruction indépendante face/source ; formaliser séparément le BDF2 à pas variable pour le type d'opérateur réellement applicable ; introduire ensuite seulement un contrat de traction de Reynolds distinct. Aucune fermeture turbulente n'est validée ou activée.
+- Gaps et prochaines actions : valider #1224 ; tester l'agrégateur sur un état réellement accepté issu du solveur ; ajouter une reconstruction indépendante face/source ; formaliser séparément le BDF2 à pas variable pour le type d'opérateur réellement applicable ; introduire ensuite seulement un contrat de traction de Reynolds distinct. Aucune fermeture turbulente n'est validée ou activée.
 
 ## 8. Journal des modifications de la fiche
 
-- 2026-11-28 — création dans la PR #1223 après déclenchement de la règle d'or 1 ; fiche DRAFT, à confronter au code et aux résultats exact-head avant toute approbation.
+- 2026-11-28 — correction du suivi : #1224 remplace #1223 ; précision que les contrôles verts du SHA initial ne couvrent pas les commits ultérieurs. Audit supplémentaire : rejet explicite des débordements pendant la reconstruction des résidus et test associé ajoutés sur la branche #1224.
+- 2026-11-28 — création dans la PR #1224 (issue initialement portée par #1223) après déclenchement de la règle d'or 1 ; fiche DRAFT, à confronter au code et aux résultats exact-head avant toute approbation.
