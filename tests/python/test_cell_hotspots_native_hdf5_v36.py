@@ -124,6 +124,8 @@ def main() -> None:
             "matrix_face_scale",
             "matrix_closure_linf",
             "matrix_closure_relative_linf",
+            "matrix_closure_checked",
+            "matrix_closure_consistent",
             "matrix_closure_worst_cell",
         }
         assert set(rows[0]) == expected_columns
@@ -139,6 +141,8 @@ def main() -> None:
             scale = float(row["matrix_face_scale"])
             difference = float(row["matrix_face_difference"])
             assert math.isfinite(scale) and math.isfinite(difference)
+            assert row["matrix_closure_checked"] == "1"
+            assert row["matrix_closure_consistent"] == "1"
             assert abs(difference) <= 2e-10 * max(scale, 1e-15)
         assert set(groups) == {
             (iteration, component) for iteration in (1, 2) for component in (0, 1, 2)
