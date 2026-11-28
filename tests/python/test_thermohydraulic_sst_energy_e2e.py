@@ -214,7 +214,7 @@ def test_missing_prt_fails_before_solver_execution(
     assert "turbulent_prandtl" in run.stderr + run.stdout
 
 
-def test_thermal_campaign_requires_native_energy_audit(
+def test_thermal_campaign_fails_closed_when_carrier_does_not_converge(
     solver: Path, tmp_path: Path
 ) -> None:
     sys.path.insert(0, str(ROOT))
@@ -236,9 +236,13 @@ def test_thermal_campaign_requires_native_energy_audit(
         },
         90,
     )
-    assert report["status"] == "EXECUTED_UNQUALIFIED", report
+    # This deliberately under-resolved 3x5 SST fixture is a negative
+    # convergence case. A failed carrier solve must never be upgraded to an
+    # executed/unqualified campaign or receive synthetic energy evidence.
+    assert report["status"] == "INCOMPLETE_OR_FAIL", report
     assert report["physical_qualification"] == "NOT_QUALIFIED"
-    assert report["energy_imbalance_relative"] < 1e-9
-    assert report["max_cell_energy_imbalance_relative"] < 1e-9
-    assert "energy_convergence.json" in report["files_sha256"]
-    assert "energy_summary.json" in report["files_sha256"]
+    assert report["exit_code"] != 0
+    assert report["solver_executed"] is True
+    assert report["error"].startswith("CFDX process exited with code")
+    assert "energy_imbalance_relative" not in report
+    assert "files_sha256" not in report
