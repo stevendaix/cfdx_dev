@@ -589,6 +589,189 @@ int main()
             n_capture,n_capture);
         const BlockOperator production_blocks(M,G,D,C);
         EXPECT_TRUE(production_blocks.is_valid());
+        // C2.3 diagnostic: rank-aware row-space factorization C=L*G.
+        // G is rank deficient on this four-cell fixed-pressure fixture because
+        // the pressure-gradient operator has a nontrivial nullspace. Do not
+        // invert G^T G. Select an independent basis of rows of G by
+        // modified Gram-Schmidt, then solve only the small SPD Gram matrix
+        // of that basis. This is diagnostic least squares, not a production L.
+        const std::size_t nu_factor = G.n_rows();
+        const std::size_t np_factor = G.n_cols();
+        std::vector<std::vector<double>> original_rows(
+            nu_factor, std::vector<double>(np_factor, 0.0));
+        double max_row_norm = 0.0;
+        for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
+            for (std::size_t k = G.row_offsets_data()[velocity_row];
+                 k < G.row_offsets_data()[velocity_row + 1]; ++k)
+                original_rows[velocity_row][G.columns_data()[k]] +=
+                    G.values_data()[k];
+            double norm_sq = 0.0;
+            for (double value : original_rows[velocity_row]) norm_sq += value * value;
+            max_row_norm = std::max(max_row_norm, std::sqrt(norm_sq));
+        }
+        std::vector<std::vector<double>> basis_rows;
+        std::vector<std::vector<double>> orthonormal_rows;
+        std::vector<std::size_t> basis_velocity_rows;
+        for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
+            auto candidate = original_rows[velocity_row];
+            // Two-pass modified Gram-Schmidt (reorthogonalization) limits
+            // loss of orthogonality when selected rows are nearly dependent.
+            for (int pass = 0; pass < 2; ++pass) {
+                for (const auto& basis : orthonormal_rows) {
+                    double projection = 0.0;
+                    for (std::size_t j = 0; j < np_factor; ++j)
+                        projection += candidate[j] * basis[j];
+                    for (std::size_t j = 0; j < np_factor; ++j)
+                        candidate[j] -= projection * basis[j];
+                }
+            }
+            double residual_norm_sq = 0.0;
+            for (double value : candidate) residual_norm_sq += value * value;
+            const double residual_norm = std::sqrt(residual_norm_sq);
+            if (residual_norm > 1e-12 * max_row_norm) {
+                for (double& value : candidate) value /= residual_norm;
+                orthonormal_rows.push_back(std::move(candidate));
+                basis_rows.push_back(original_rows[velocity_row]);
+                basis_velocity_rows.push_back(velocity_row);
+            }
+        }
+        const std::size_t rank_G = basis_rows.size();
+        EXPECT_TRUE(rank_G > 0);
+
+        // Report rank sensitivity without changing the production diagnostic
+        // threshold. Each count uses the same two-pass orthogonalization.
+        const auto rank_at_relative_threshold = [&](double relative_threshold) {
+            std::vector<std::vector<double>> q_rows;
+            for (const auto& source_row : original_rows) {
+                auto candidate = source_row;
+                for (int pass = 0; pass < 2; ++pass) {
+                    for (const auto& basis : q_rows) {
+                        double projection = 0.0;
+                        for (std::size_t j = 0; j < np_factor; ++j)
+                            projection += candidate[j] * basis[j];
+                        for (std::size_t j = 0; j < np_factor; ++j)
+                            candidate[j] -= projection * basis[j];
+                    }
+                }
+                double norm_sq = 0.0;
+                for (double value : candidate) norm_sq += value * value;
+                const double residual_norm = std::sqrt(norm_sq);
+                if (residual_norm > relative_threshold * max_row_norm) {
+                    for (double& value : candidate) value /= residual_norm;
+                    q_rows.push_back(std::move(candidate));
+                }
+            }
+            return q_rows.size();
+        };
+        const std::size_t rank_rel_1e_10 = rank_at_relative_threshold(1e-10);
+        const std::size_t rank_rel_1e_12 = rank_at_relative_threshold(1e-12);
+        const std::size_t rank_rel_1e_14 = rank_at_relative_threshold(1e-14);
+        double orthogonality_defect = 0.0;
+        for (std::size_t i = 0; i < orthonormal_rows.size(); ++i)
+            for (std::size_t j = 0; j < orthonormal_rows.size(); ++j) {
+                double product = 0.0;
+                for (std::size_t k = 0; k < np_factor; ++k)
+                    product += orthonormal_rows[i][k] * orthonormal_rows[j][k];
+                orthogonality_defect = std::max(
+                    orthogonality_defect,
+                    std::abs(product - (i == j ? 1.0 : 0.0)));
+            }
+        SparseMatrix basis_gram(rank_G, rank_G);
+        for (std::size_t i = 0; i < rank_G; ++i)
+            for (std::size_t j = 0; j < rank_G; ++j) {
+                double value = 0.0;
+                for (std::size_t k = 0; k < np_factor; ++k)
+                    value += basis_rows[i][k] * basis_rows[j][k];
+                if (value != 0.0) basis_gram.push_back(i, j, value);
+            }
+        basis_gram.finalize();
+        SmallDenseCertifiedLU basis_lu(rank_G);
+        EXPECT_TRUE(basis_lu.setup(basis_gram));
+        // Frobenius-norm condition bound: ||Gram||_F * ||Gram^{-1}||_F.
+        // This is a scale-invariant upper bound on the 2-norm condition number.
+        // Solve against every unit vector through the same certified factorization;
+        // do not infer stability from the C-LG residual alone.
+        double gram_frobenius_sq = 0.0;
+        for (std::size_t i = 0; i < rank_G; ++i)
+            for (std::size_t j = 0; j < rank_G; ++j) {
+                double value = 0.0;
+                for (std::size_t k = 0; k < np_factor; ++k)
+                    value += basis_rows[i][k] * basis_rows[j][k];
+                gram_frobenius_sq += value * value;
+            }
+        double inverse_gram_frobenius_sq = 0.0;
+        for (std::size_t column = 0; column < rank_G; ++column) {
+            Vector unit(rank_G, 0.0), inverse_column(rank_G, 0.0);
+            unit(column) = 1.0;
+            EXPECT_TRUE(basis_lu.solve(unit, inverse_column));
+            for (std::size_t row = 0; row < rank_G; ++row)
+                inverse_gram_frobenius_sq +=
+                    inverse_column(row) * inverse_column(row);
+        }
+        const double gram_condition_frobenius_bound =
+            std::sqrt(gram_frobenius_sq * inverse_gram_frobenius_sq);
+        EXPECT_TRUE(std::isfinite(gram_condition_frobenius_bound));
+        std::vector<double> left_factor(np_factor * nu_factor, 0.0);
+        for (std::size_t pressure_row = 0; pressure_row < np_factor; ++pressure_row) {
+            Vector c_row(np_factor, 0.0), rhs(rank_G, 0.0), coefficient(rank_G, 0.0);
+            for (std::size_t k = C.row_offsets_data()[pressure_row];
+                 k < C.row_offsets_data()[pressure_row + 1]; ++k)
+                c_row(C.columns_data()[k]) += C.values_data()[k];
+            for (std::size_t i = 0; i < rank_G; ++i)
+                for (std::size_t j = 0; j < np_factor; ++j)
+                    rhs(i) += basis_rows[i][j] * c_row(j);
+            EXPECT_TRUE(basis_lu.solve(rhs, coefficient));
+            for (std::size_t i = 0; i < rank_G; ++i)
+                left_factor[pressure_row * nu_factor + basis_velocity_rows[i]] =
+                    coefficient(i);
+        }
+        double factor_residual=0.0, c_scale=0.0, l_scale=0.0;
+        std::size_t left_nnz=0;
+        for (std::size_t row=0; row<np_factor; ++row) {
+            for (std::size_t col=0; col<np_factor; ++col) {
+                double reconstructed=0.0;
+                for (std::size_t velocity_row=0; velocity_row<nu_factor; ++velocity_row)
+                    for (std::size_t k=G.row_offsets_data()[velocity_row];
+                         k<G.row_offsets_data()[velocity_row+1]; ++k)
+                        if (G.columns_data()[k]==col)
+                            reconstructed += left_factor[row*nu_factor+velocity_row]*
+                                             G.values_data()[k];
+                double actual=0.0;
+                for (std::size_t k=C.row_offsets_data()[row];
+                     k<C.row_offsets_data()[row+1]; ++k)
+                    if (C.columns_data()[k]==col) actual += C.values_data()[k];
+                factor_residual=std::max(factor_residual,
+                                         std::abs(reconstructed-actual));
+                c_scale=std::max(c_scale,std::abs(actual));
+            }
+            for (std::size_t velocity_row=0; velocity_row<nu_factor; ++velocity_row) {
+                const double value=left_factor[row*nu_factor+velocity_row];
+                l_scale=std::max(l_scale,std::abs(value));
+            }
+        }
+        const double left_threshold=1e-12*std::max(1.0,l_scale);
+        for (double value:left_factor)
+            if (std::abs(value)>left_threshold) ++left_nnz;
+        std::cerr << "N9_SCHUR_C_FACTOR_PRODUCTION"
+                  << " pressure_dofs=" << np_factor
+                  << " velocity_dofs=" << nu_factor
+                  << " G_nnz=" << G.nnz()
+                  << " C_nnz=" << C.nnz()
+                  << " rank_G=" << rank_G
+                  << " rank_G_rel_1e-10=" << rank_rel_1e_10
+                  << " rank_G_rel_1e-12=" << rank_rel_1e_12
+                  << " rank_G_rel_1e-14=" << rank_rel_1e_14
+                  << " MGS_orthogonality_defect=" << orthogonality_defect
+                  << " gram_condition_frobenius_bound="
+                  << gram_condition_frobenius_bound
+                  << " L_nnz_thresholded=" << left_nnz
+                  << " L_dense_entries=" << left_factor.size()
+                  << " max_abs_L=" << l_scale
+                  << " max_abs_C=" << c_scale
+                  << " max_abs_C_minus_LG=" << factor_residual
+                  << '\n';
+        EXPECT_TRUE(factor_residual <= 1e-10 + 1e-10*c_scale);
+
         SmallDenseExactSchurInverse schur_oracle(64);
         EXPECT_TRUE(schur_oracle.setup(production_blocks));
         const auto probes = schur_inverse_quality_basis(n_capture);

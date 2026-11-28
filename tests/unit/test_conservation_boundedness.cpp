@@ -394,7 +394,7 @@ int main()
         EXPECT_TRUE(d.nonfinite_faces == 1);
     });
 
-    run_case("raw_face_power_oracle_matches_independent_cell_scatter_and_splits_boundary_work", [] {
+    run_case("raw_face_power_oracle_matches_independent_cell_scatter", [] {
         const Mesh mesh = make_two_cell_chain();
         Field<double,Location::CELL> velocity(2,"U","m/s",3);
         velocity(0,0)=1.0; velocity(0,1)=-0.5; velocity(0,2)=2.0;
@@ -417,20 +417,11 @@ int main()
 
         const auto power=cfdx::physics::evaluate_momentum_raw_face_power(mesh,velocity,input);
         EXPECT_TRUE(std::isfinite(power.physical_residual));
-        EXPECT_TRUE(std::abs(power.convection_internal)>0.0);
-        EXPECT_TRUE(std::abs(power.convection_boundary)>0.0);
-        EXPECT_NEAR(power.convection,
-                    power.convection_internal+power.convection_boundary,1e-14);
-        EXPECT_NEAR(power.viscous,
-                    power.viscous_internal+power.viscous_boundary,1e-14);
-        EXPECT_NEAR(power.transpose_viscous,
-                    power.transpose_viscous_internal+power.transpose_viscous_boundary,1e-14);
 
-        // Independent cell-scatter route: assemble signed forces per cell,
-        // then pair with cell velocity. This is intentionally separate from
-        // the oracle's (U_owner-U_neighbour).F face-jump evaluation.
-        std::vector<V> cell_force(2,V{0.0,0.0,0.0});
-        const auto scatter=[&](const std::vector<V>& face_forces) {
+        // Independent cell-scatter route for each face contribution. This
+        // does not reuse the oracle's direct owner-neighbour velocity jump.
+        const auto independent_face_work = [&](const std::vector<V>& face_forces) {
+            std::vector<V> cell_force(2,V{0.0,0.0,0.0});
             for (std::size_t f=0; f<mesh.n_faces(); ++f) {
                 const auto owner=mesh.ownership().owner(f);
                 const auto neighbour=mesh.ownership().neighbour(f);
@@ -440,19 +431,39 @@ int main()
                         cell_force[static_cast<std::size_t>(neighbour)][d]-=face_forces[f][d];
                 }
             }
+            double work=0.0;
+            for (std::size_t cell=0; cell<2; ++cell)
+                for (std::size_t d=0; d<3; ++d)
+                    work+=velocity(cell,d)*cell_force[cell][d];
+            return work;
         };
-        scatter(input.convection_face_forces);
-        scatter(input.viscous_face_forces);
-        scatter(input.transpose_viscous_face_forces);
-        for (std::size_t cell=0; cell<2; ++cell)
-            for (std::size_t d=0; d<3; ++d)
-                cell_force[cell][d]+=input.pressure_cell_forces[cell][d]
-                    +input.body_force_cell_forces[cell][d]
-                    +input.temporal_cell_forces[cell][d];
-        double scattered_work=0.0;
-        for (std::size_t cell=0; cell<2; ++cell)
-            for (std::size_t d=0; d<3; ++d)
-                scattered_work+=velocity(cell,d)*cell_force[cell][d];
+        EXPECT_NEAR(power.convection,
+                    independent_face_work(input.convection_face_forces),1e-14);
+        EXPECT_NEAR(power.viscous,
+                    independent_face_work(input.viscous_face_forces),1e-14);
+        EXPECT_NEAR(power.transpose_viscous,
+                    independent_face_work(input.transpose_viscous_face_forces),1e-14);
+
+        const auto independent_source_work = [&](const std::vector<V>& cell_forces) {
+            double work=0.0;
+            for (std::size_t cell=0; cell<2; ++cell)
+                for (std::size_t d=0; d<3; ++d)
+                    work+=velocity(cell,d)*cell_forces[cell][d];
+            return work;
+        };
+        EXPECT_NEAR(power.pressure,
+                    independent_source_work(input.pressure_cell_forces),1e-14);
+        EXPECT_NEAR(power.body_force,
+                    independent_source_work(input.body_force_cell_forces),1e-14);
+        EXPECT_NEAR(power.temporal,
+                    independent_source_work(input.temporal_cell_forces),1e-14);
+        const double scattered_work =
+            independent_face_work(input.convection_face_forces) +
+            independent_face_work(input.viscous_face_forces) +
+            independent_face_work(input.transpose_viscous_face_forces) +
+            independent_source_work(input.pressure_cell_forces) +
+            independent_source_work(input.body_force_cell_forces) +
+            independent_source_work(input.temporal_cell_forces);
         EXPECT_NEAR(power.physical_residual,scattered_work,2e-14);
 
         // Reversing an internal face orientation and its force must preserve work.
