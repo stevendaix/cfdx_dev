@@ -1,4 +1,5 @@
 import CFDX.LinearAlgebra.SPD
+import CFDX.FiniteVolume.EnergyDiffusion
 import CFDX.FiniteVolume.Conservation
 import CFDX.FiniteVolume.BackwardEulerEnergy
 import CFDX.FiniteVolume.EnergyTransfer
