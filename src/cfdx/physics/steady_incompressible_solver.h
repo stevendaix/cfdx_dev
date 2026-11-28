@@ -15393,49 +15393,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (controls.momentum_raw_face_power_callback &&
                 controls.momentum_face_budget_every > 0 &&
                 (iter == 1 || iter % controls.momentum_face_budget_every == 0)) {
-                MomentumRawFacePowerInput raw_input;
-                raw_input.convection_face_forces.resize(mesh.n_faces());
-                raw_input.viscous_face_forces.resize(mesh.n_faces());
-                raw_input.transpose_viscous_face_forces.resize(mesh.n_faces());
-                raw_input.pressure_cell_forces.resize(mesh.n_cells());
-                raw_input.body_force_cell_forces.resize(mesh.n_cells());
-                raw_input.temporal_cell_forces.resize(mesh.n_cells());
-                for (std::size_t d = 0; d < 3; ++d) {
-                    if (!raw_power_component_budgets[d])
-                        throw std::runtime_error(
-                            "raw momentum power: missing component budget");
-                    const auto& component_budget = *raw_power_component_budgets[d];
-                    if (component_budget.raw_convection_face_force.size() != mesh.n_faces() ||
-                        component_budget.raw_viscous_face_force.size() != mesh.n_faces() ||
-                        component_budget.raw_transpose_viscous_face_force.size() != mesh.n_faces() ||
-                        component_budget.raw_pressure_cell_force.size() != mesh.n_cells() ||
-                        component_budget.raw_body_force_cell_force.size() != mesh.n_cells() ||
-                        component_budget.raw_temporal_cell_force.size() != mesh.n_cells())
-                        throw std::runtime_error(
-                            "raw momentum power: incomplete accepted-state force capture");
-                    for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
-                        raw_input.convection_face_forces[face][d] =
-                            component_budget.raw_convection_face_force[face];
-                        raw_input.viscous_face_forces[face][d] =
-                            component_budget.raw_viscous_face_force[face];
-                        raw_input.transpose_viscous_face_forces[face][d] =
-                            component_budget.raw_transpose_viscous_face_force[face];
-                    }
-                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-                        raw_input.pressure_cell_forces[cell][d] =
-                            component_budget.raw_pressure_cell_force[cell];
-                        raw_input.body_force_cell_forces[cell][d] =
-                            component_budget.raw_body_force_cell_force[cell];
-                        raw_input.temporal_cell_forces[cell][d] =
-                            component_budget.raw_temporal_cell_force[cell];
-                    }
-                }
-                const auto raw_power =
-                    evaluate_momentum_raw_face_power(mesh, U, raw_input);
                 const std::array<const MomentumFaceBudget*, 3> component_ptrs{
                     &*raw_power_component_budgets[0],
                     &*raw_power_component_budgets[1],
                     &*raw_power_component_budgets[2]};
+                const auto raw_input = make_momentum_raw_face_power_input(
+                    component_ptrs, mesh.n_faces(), mesh.n_cells());
+                const auto raw_power =
+                    evaluate_momentum_raw_face_power(mesh, U, raw_input);
                 const auto cell_power =
                     aggregate_momentum_vector_power(component_ptrs, U);
                 const auto check_channel = [](double raw, double scattered,
