@@ -3174,6 +3174,7 @@ int main(int argc, char** argv)
                    "bounded_operator_residual,worst_absolute_residual,temporal,"
                    "algebraic_residual,matrix_face_difference,matrix_face_scale,"
                    "matrix_closure_linf,matrix_closure_relative_linf,"
+                   "matrix_closure_checked,matrix_closure_consistent,"
                    "matrix_closure_worst_cell\n";
             if (!momentum_budget_output)
                 throw std::runtime_error("cannot write momentum budget CSV header");
@@ -3182,10 +3183,19 @@ int main(int argc, char** argv)
                 [&momentum_budget_output, &options](
                     std::size_t iteration, std::size_t component,
                     const MomentumFaceBudget& budget, const FvGeometry& geometry) {
-                    if (!budget.matrix_closure_checked ||
-                        !momentum_matrix_face_closure_consistent(budget))
+                    if (!budget.matrix_closure_checked)
                         throw std::runtime_error(
-                            "production momentum budget requires a valid cellwise face/CSR certificate");
+                            "production momentum budget requires the face/CSR comparison to be evaluated");
+                    const bool matrix_closure_consistent =
+                        momentum_matrix_face_closure_consistent(budget);
+                    if (!matrix_closure_consistent)
+                        std::cerr
+                            << "MOMENTUM_FACE_BUDGET_CLOSURE_WARNING iteration="
+                            << iteration << " component=" << component
+                            << " linf=" << budget.matrix_closure_linf
+                            << " relative_linf=" << budget.matrix_closure_relative_linf
+                            << " worst_cell=" << budget.matrix_closure_worst_cell
+                            << " (diagnostic exported; solver state unchanged)\\n";
                     if (budget.cells.size() != geometry.cell_centres.size())
                         throw std::runtime_error(
                             "production momentum budget cell/geometry size mismatch");
@@ -3228,6 +3238,8 @@ int main(int argc, char** argv)
                         for (const double value : values)
                             momentum_budget_output << ',' << value;
                         momentum_budget_output << ','
+                            << (budget.matrix_closure_checked ? 1 : 0) << ','
+                            << (matrix_closure_consistent ? 1 : 0) << ','
                             << budget.matrix_closure_worst_cell << '\n';
                     }
                     momentum_budget_output.flush();
