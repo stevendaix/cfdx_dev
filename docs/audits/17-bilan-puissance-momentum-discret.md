@@ -39,6 +39,13 @@ L'oracle est un vérificateur de contrat pour des forces intégrées fournies pa
 
 Le test de positivité ajouté ne couvre que le Laplacien de graphe à conductances positives et une frontière de Dirichlet homogène ; il ne prouve pas la positivité du flux diffusif CFDX complet sur maillage non orthogonal, avec viscosité variable et correction différée. Il ne prouve ni stabilité temporelle/couplage pression-vitesse, ni réalisabilité d'une contrainte de Reynolds, ni précision d'une fermeture turbulente.
 
+Audit du point de raccordement actuel (lecture de `steady_incompressible_solver.h` et `diagnose_momentum_face_budget`) :
+- le solveur reconstruit `full_flux` et le flux convectif avec le même `mass_flux` autoritaire ; le budget applique ensuite les contributions owner/neighbour ;
+- la traction visqueuse transposée est fournie séparément par `audit_transpose_flux`, avec contribution résiduelle de signe opposé ;
+- les sources pression, force extérieure et accumulation sont déjà intégrées par cellule dans `diagnose_momentum_face_budget`.
+
+Contrat de raccordement prévu, à vérifier au code et non à supposer : pour chaque composante (d), conserver le flux convectif reconstruit, (F^{visc}_d=F^{full}_d-F^{conv}_d), (F^{transpose}_d=-F^{audit\_transpose}_d), puis construire les vecteurs face 3D. Construire aussi (S^{p}_c=V_c\nabla p_c), (S^{body}_c=-V_c\rho\,f_c) et (S^{time}_c=-A^{negative}_c). Les trois composantes doivent provenir du même état accepté et du même flux massique. La collecte doit être faite dans le scope du diagnostic avant d'appeler l'oracle, puis les puissances par canal doivent être comparées aux budgets cellulaires et au résidu CSR signé cellule par cellule.
+
 Étape suivante : brancher les forces réelles de production, réconcilier chaque canal avec les budgets cellulaires et les lignes CSR, puis mener des études de convergence maillage/temps et des validations a-posteriori sur cas de référence indépendants de la calibration.
 
 ## Relation à Lean
