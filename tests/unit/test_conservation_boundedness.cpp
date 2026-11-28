@@ -5,6 +5,7 @@
 #include "../validation/naca_qualification_state_io.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -104,7 +105,14 @@ int main()
         u(0) = 2.0; gradp(0) = 1.0; body(0) = 0.25;
         const auto budget = cfdx::physics::diagnose_momentum_face_budget(
             m, g, mass, u, gradp, body, {0.0}, {},
-            cfdx::physics::ConvectionScheme::UPWIND, 1.0, true, &collocated);
+            cfdx::physics::ConvectionScheme::UPWIND, 1.0, true, &collocated,
+            nullptr, nullptr, nullptr, nullptr, true);
+        EXPECT_TRUE(budget.raw_convection_face_force.size() == m.n_faces());
+        EXPECT_TRUE(budget.raw_viscous_face_force.size() == m.n_faces());
+        EXPECT_TRUE(budget.raw_pressure_cell_force.size() == m.n_cells());
+        EXPECT_NEAR(budget.raw_pressure_cell_force[0], 1.0, 1e-12);
+        EXPECT_NEAR(budget.raw_body_force_cell_force[0], -0.25, 1e-12);
+        EXPECT_NEAR(budget.raw_temporal_cell_force[0], 0.0, 1e-12);
         const auto& b = budget.cells.at(0);
         EXPECT_NEAR(b.convection, 2.0, 1e-12);
         EXPECT_NEAR(b.viscous, 0.0, 1e-12);
@@ -138,7 +146,10 @@ int main()
         mass(1) = 3.0; u(0) = 2.0; u(1) = 4.0;
         const auto budget = cfdx::physics::diagnose_momentum_face_budget(
             m, g, mass, u, zero, zero, {0.0,0.0}, {},
-            cfdx::physics::ConvectionScheme::UPWIND, 1.0, true);
+            cfdx::physics::ConvectionScheme::UPWIND, 1.0, true,
+            nullptr, nullptr, nullptr, nullptr, nullptr, true);
+        EXPECT_NEAR(budget.raw_convection_face_force[1], 6.0, 1e-12);
+        EXPECT_NEAR(budget.raw_viscous_face_force[1], 0.0, 1e-12);
         EXPECT_NEAR(budget.cells[0].convection, 6.0, 1e-12);
         EXPECT_NEAR(budget.cells[1].convection, -6.0, 1e-12);
         EXPECT_NEAR(budget.cells[0].mass_divergence, 3.0, 1e-12);
@@ -394,18 +405,17 @@ int main()
         EXPECT_TRUE(d.nonfinite_faces == 1);
     });
 
-    run_case("raw_face_power_oracle_matches_independent_cell_scatter_and_splits_boundary_work", [] {
-        const Mesh mesh = make_two_cell_chain();
+    run_case("raw_face_power_oracle_matches_independent_cell_scatter_per_operator", [] {
+        const Mesh mesh=make_two_cell_chain();
         Field<double,Location::CELL> velocity(2,"U","m/s",3);
         velocity(0,0)=1.0; velocity(0,1)=-0.5; velocity(0,2)=2.0;
         velocity(1,0)=-0.25; velocity(1,1)=1.5; velocity(1,2)=0.75;
-
-        using V = cfdx::physics::MomentumVector3;
+        using V=cfdx::physics::MomentumVector3;
         cfdx::physics::MomentumRawFacePowerInput input;
         input.convection_face_forces.resize(mesh.n_faces());
         input.viscous_face_forces.resize(mesh.n_faces());
         input.transpose_viscous_face_forces.resize(mesh.n_faces());
-        for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+        for(std::size_t f=0;f<mesh.n_faces();++f) {
             const double q=static_cast<double>(f+1);
             input.convection_face_forces[f]={0.1*q,-0.2*q,0.05*q};
             input.viscous_face_forces[f]={-0.03*q,0.04*q,0.02*q};
@@ -414,62 +424,68 @@ int main()
         input.pressure_cell_forces={{0.7,-0.2,0.1},{-0.3,0.6,0.2}};
         input.body_force_cell_forces={{0.1,0.2,-0.4},{0.5,-0.1,0.3}};
         input.temporal_cell_forces={{-0.2,0.1,0.05},{0.15,-0.25,0.4}};
-
         const auto power=cfdx::physics::evaluate_momentum_raw_face_power(mesh,velocity,input);
         EXPECT_TRUE(std::isfinite(power.physical_residual));
         EXPECT_TRUE(std::abs(power.convection_internal)>0.0);
         EXPECT_TRUE(std::abs(power.convection_boundary)>0.0);
-        EXPECT_NEAR(power.convection,
-                    power.convection_internal+power.convection_boundary,1e-14);
-        EXPECT_NEAR(power.viscous,
-                    power.viscous_internal+power.viscous_boundary,1e-14);
+        EXPECT_TRUE(std::abs(power.viscous_internal)>0.0);
+        EXPECT_TRUE(std::abs(power.viscous_boundary)>0.0);
+        EXPECT_TRUE(std::abs(power.transpose_viscous_internal)>0.0);
+        EXPECT_TRUE(std::abs(power.transpose_viscous_boundary)>0.0);
+        EXPECT_NEAR(power.convection,power.convection_internal+power.convection_boundary,1e-14);
+        EXPECT_NEAR(power.viscous,power.viscous_internal+power.viscous_boundary,1e-14);
         EXPECT_NEAR(power.transpose_viscous,
                     power.transpose_viscous_internal+power.transpose_viscous_boundary,1e-14);
 
-        // Independent cell-scatter route: assemble signed forces per cell,
-        // then pair with cell velocity. This is intentionally separate from
-        // the oracle's (U_owner-U_neighbour).F face-jump evaluation.
-        std::vector<V> cell_force(2,V{0.0,0.0,0.0});
-        const auto scatter=[&](const std::vector<V>& face_forces) {
-            for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+        // Independent scatter route, checked per channel to prevent cancellation.
+        const auto scatter_work=[&](const std::vector<V>& face_forces,
+                                    const std::vector<V>& source_forces) {
+            std::vector<V> cell_force(2,V{0.0,0.0,0.0});
+            for(std::size_t f=0;f<mesh.n_faces();++f) {
                 const auto owner=mesh.ownership().owner(f);
                 const auto neighbour=mesh.ownership().neighbour(f);
-                for (std::size_t d=0; d<3; ++d) {
+                for(std::size_t d=0;d<3;++d) {
                     cell_force[owner][d]+=face_forces[f][d];
-                    if (neighbour>=0)
+                    if(neighbour>=0)
                         cell_force[static_cast<std::size_t>(neighbour)][d]-=face_forces[f][d];
                 }
             }
+            for(std::size_t cell=0;cell<2;++cell)
+                for(std::size_t d=0;d<3;++d)
+                    cell_force[cell][d]+=source_forces[cell][d];
+            double work=0.0;
+            for(std::size_t cell=0;cell<2;++cell)
+                for(std::size_t d=0;d<3;++d)
+                    work+=velocity(cell,d)*cell_force[cell][d];
+            return work;
         };
-        scatter(input.convection_face_forces);
-        scatter(input.viscous_face_forces);
-        scatter(input.transpose_viscous_face_forces);
-        for (std::size_t cell=0; cell<2; ++cell)
-            for (std::size_t d=0; d<3; ++d)
-                cell_force[cell][d]+=input.pressure_cell_forces[cell][d]
-                    +input.body_force_cell_forces[cell][d]
-                    +input.temporal_cell_forces[cell][d];
-        double scattered_work=0.0;
-        for (std::size_t cell=0; cell<2; ++cell)
-            for (std::size_t d=0; d<3; ++d)
-                scattered_work+=velocity(cell,d)*cell_force[cell][d];
-        EXPECT_NEAR(power.physical_residual,scattered_work,2e-14);
+        const std::vector<V> zero_faces(mesh.n_faces(),V{0.0,0.0,0.0});
+        const std::vector<V> zero_sources(2,V{0.0,0.0,0.0});
+        EXPECT_NEAR(power.convection,scatter_work(input.convection_face_forces,zero_sources),2e-14);
+        EXPECT_NEAR(power.viscous,scatter_work(input.viscous_face_forces,zero_sources),2e-14);
+        EXPECT_NEAR(power.transpose_viscous,
+                    scatter_work(input.transpose_viscous_face_forces,zero_sources),2e-14);
+        EXPECT_NEAR(power.pressure,scatter_work(zero_faces,input.pressure_cell_forces),2e-14);
+        EXPECT_NEAR(power.body_force,scatter_work(zero_faces,input.body_force_cell_forces),2e-14);
+        EXPECT_NEAR(power.temporal,scatter_work(zero_faces,input.temporal_cell_forces),2e-14);
+        EXPECT_NEAR(power.physical_residual,power.convection+power.viscous+
+                    power.transpose_viscous+power.pressure+power.body_force+power.temporal,2e-14);
 
-        // Reversing an internal face orientation and its force must preserve work.
+        // Face orientation reversal plus force reversal must preserve work.
         Mesh reversed=mesh;
         reversed.ownership().set_owner(1,1);
         reversed.ownership().set_neighbour(1,0);
         auto reversed_input=input;
-        for (auto* forces : {&reversed_input.convection_face_forces,
-                             &reversed_input.viscous_face_forces,
-                             &reversed_input.transpose_viscous_face_forces})
-            for (double& value : (*forces)[1]) value=-value;
+        for(auto* forces : {&reversed_input.convection_face_forces,
+                            &reversed_input.viscous_face_forces,
+                            &reversed_input.transpose_viscous_face_forces})
+            for(double& value:(*forces)[1]) value=-value;
         const auto reversed_power=cfdx::physics::evaluate_momentum_raw_face_power(
             reversed,velocity,reversed_input);
         EXPECT_NEAR(reversed_power.physical_residual,power.physical_residual,2e-14);
     });
 
-    run_case("raw_face_power_oracle_fails_closed_on_invalid_topology_and_data", [] {
+    run_case("raw_face_power_oracle_rejects_bad_topology_shape_and_nonfinite_data", [] {
         const Mesh mesh=make_two_cell_chain();
         Field<double,Location::CELL> velocity(2,"U","m/s",3);
         velocity(0,0)=1.0; velocity(0,1)=0.0; velocity(0,2)=0.0;
@@ -481,7 +497,6 @@ int main()
         input.pressure_cell_forces.resize(2,{0.0,0.0,0.0});
         input.body_force_cell_forces.resize(2,{0.0,0.0,0.0});
         input.temporal_cell_forces.resize(2,{0.0,0.0,0.0});
-
         Mesh bad_neighbour=mesh;
         bad_neighbour.ownership().set_neighbour(1,99);
         EXPECT_THROW(cfdx::physics::evaluate_momentum_raw_face_power(
@@ -503,6 +518,99 @@ int main()
         velocity(0,0)=2.0;
         EXPECT_THROW(cfdx::physics::evaluate_momentum_raw_face_power(
             mesh,velocity,overflow),std::invalid_argument);
+    });
+
+    run_case("raw_face_positive_graph_diffusion_has_nonnegative_work", [] {
+        const Mesh mesh=make_two_cell_chain();
+        Field<double,Location::CELL> velocity(2,"U","m/s",3);
+        velocity(0,0)=1.0; velocity(0,1)=-0.5; velocity(0,2)=2.0;
+        velocity(1,0)=-0.25; velocity(1,1)=1.5; velocity(1,2)=0.75;
+        cfdx::physics::MomentumRawFacePowerInput input;
+        input.convection_face_forces.resize(mesh.n_faces(),{0.0,0.0,0.0});
+        input.viscous_face_forces.resize(mesh.n_faces());
+        input.transpose_viscous_face_forces.resize(mesh.n_faces(),{0.0,0.0,0.0});
+        input.pressure_cell_forces.resize(2,{0.0,0.0,0.0});
+        input.body_force_cell_forces.resize(2,{0.0,0.0,0.0});
+        input.temporal_cell_forces.resize(2,{0.0,0.0,0.0});
+        double expected_internal=0.0;
+        double expected_boundary=0.0;
+        for(std::size_t f=0;f<mesh.n_faces();++f) {
+            const std::size_t owner=mesh.ownership().owner(f);
+            const auto neighbour=mesh.ownership().neighbour(f);
+            const double conductance=0.25+0.1*static_cast<double>(f+1);
+            for(std::size_t d=0;d<3;++d) {
+                const double jump=neighbour>=0
+                    ? velocity(owner,d)-velocity(static_cast<std::size_t>(neighbour),d)
+                    : velocity(owner,d); // homogeneous Dirichlet boundary value
+                input.viscous_face_forces[f][d]=conductance*jump;
+                if(neighbour>=0) expected_internal+=conductance*jump*jump;
+                else expected_boundary+=conductance*jump*jump;
+            }
+        }
+        const auto power=cfdx::physics::evaluate_momentum_raw_face_power(mesh,velocity,input);
+        EXPECT_TRUE(power.viscous_internal>=0.0);
+        EXPECT_TRUE(power.viscous_boundary>=0.0);
+        EXPECT_TRUE(power.viscous>0.0);
+        EXPECT_NEAR(power.viscous_internal,expected_internal,2e-14);
+        EXPECT_NEAR(power.viscous_boundary,expected_boundary,2e-14);
+        EXPECT_NEAR(power.viscous,expected_internal+expected_boundary,2e-14);
+    });
+
+    run_case("production_raw_force_capture_reconciles_vector_face_and_cell_power", [] {
+        const Mesh mesh = make_two_cell_chain();
+        cfdx::physics::FvGeometry geometry;
+        geometry.cell_centres = {{0,0,0},{1,0,0}};
+        geometry.cell_volumes = {1.0,1.0};
+        geometry.face_centres.resize(mesh.n_faces());
+        geometry.face_area_vectors.resize(mesh.n_faces(), {1,0,0});
+        geometry.face_patch.assign(mesh.n_faces(), mesh.boundary().n_patches());
+        for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+            const auto owner=mesh.ownership().owner(face);
+            geometry.face_centres[face] =
+                geometry.cell_centres[owner] + cfdx::core::Vec3{0.5,0,0};
+        }
+        Field<double,Location::CELL> velocity(mesh.n_cells(),"U","m/s",3);
+        velocity(0,0)=1.0; velocity(0,1)=-0.5; velocity(0,2)=2.0;
+        velocity(1,0)=-0.25; velocity(1,1)=1.5; velocity(1,2)=0.75;
+        Field<double,Location::FACE> mass(mesh.n_faces(),"mass","kg/s",1);
+        mass.fill(0.0);
+        mass(0)=0.2;
+        mass(1)=0.5;
+        std::array<cfdx::physics::MomentumFaceBudget,3> budgets;
+        for (std::size_t d=0; d<3; ++d) {
+            Field<double,Location::CELL> component(mesh.n_cells(),"u","m/s",1);
+            Field<double,Location::CELL> pressure(mesh.n_cells(),"gradp","N/m3",1);
+            Field<double,Location::CELL> body(mesh.n_cells(),"body","N/m3",1);
+            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+                component(cell)=velocity(cell,d);
+                pressure(cell)=0.1*(1.0+static_cast<double>(cell+d));
+                body(cell)=0.03*(1.0+static_cast<double>(2*cell+d));
+            }
+            budgets[d]=cfdx::physics::diagnose_momentum_face_budget(
+                mesh,geometry,mass,component,pressure,body,{0.0,0.0},{},
+                cfdx::physics::ConvectionScheme::UPWIND,1.0,false,
+                nullptr,nullptr,nullptr,nullptr,nullptr,true);
+        }
+        const std::array<const cfdx::physics::MomentumFaceBudget*,3> ptrs{
+            &budgets[0],&budgets[1],&budgets[2]};
+        const auto raw_input=cfdx::physics::make_momentum_raw_face_power_input(
+            ptrs,mesh.n_faces(),mesh.n_cells());
+        const auto raw=cfdx::physics::evaluate_momentum_raw_face_power(
+            mesh,velocity,raw_input);
+        const auto scattered=cfdx::physics::aggregate_momentum_vector_power(
+            ptrs,velocity);
+        const auto close=[](double a,double b) {
+            const double scale=std::max(std::abs(a),std::abs(b));
+            return std::abs(a-b) <=
+                512.0*std::numeric_limits<double>::epsilon()*std::max(scale,1e-300);
+        };
+        EXPECT_TRUE(close(raw.convection,scattered.total.convection));
+        EXPECT_TRUE(close(raw.viscous,scattered.total.viscous));
+        EXPECT_TRUE(close(raw.transpose_viscous,scattered.total.transpose_viscous));
+        EXPECT_TRUE(close(raw.pressure,scattered.total.pressure));
+        EXPECT_TRUE(close(raw.body_force,scattered.total.body_force));
+        EXPECT_TRUE(close(raw.temporal,scattered.total.temporal));
+        EXPECT_TRUE(close(raw.physical_residual,scattered.total.physical_residual));
     });
 
     return run_all();

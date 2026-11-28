@@ -56,7 +56,7 @@ jobs:
         run: |
           python3 -m venv "$VENV_DIR"
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml scipy>=1.11
           "$VENV_DIR/bin/python" -m pip install -e .
 
       - name: Configure
@@ -121,7 +121,7 @@ jobs:
         run: |
           python3 -m venv "$VENV_DIR"
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml scipy>=1.11
           "$VENV_DIR/bin/python" -m pip install -e .
       - uses: actions/download-artifact@v7
         with:
@@ -218,7 +218,7 @@ jobs:
       - name: Install Python dependencies for CTest fixtures
         run: |
           python3 -m venv "$VENV_DIR"
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml scipy>=1.11
           "$VENV_DIR/bin/python" -m pip install -e .
       - uses: actions/download-artifact@v7
         with:
@@ -253,12 +253,73 @@ jobs:
           set -o pipefail
           regex_file="$BUILD_DIR/ci-shards/long-shard-${{ matrix.shard }}.regex"
           test -s "$regex_file"
-          CFDX_NACA_FORENSICS=1 ctest --test-dir "$BUILD_DIR" \
+          CFDX_NACA_FORENSICS=1 \
+          CFDX_NACA_MOMENTUM_POWER_CSV="$PWD/$BUILD_DIR/naca-momentum-power-${{ matrix.shard }}.csv" \
+            ctest --test-dir "$BUILD_DIR" \
             -R "$(cat "$regex_file")" \
             --no-tests=error \
             --parallel 3 \
             --output-junit "$PWD/$BUILD_DIR/ctest-long-${{ matrix.shard }}.xml" \
             -V 2>&1 | tee "$BUILD_DIR/long-validation-shard-${{ matrix.shard }}.log"
+      - name: Verify NACA raw momentum power evidence
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          planned="$BUILD_DIR/ci-shards/long-shard-${{ matrix.shard }}.txt"
+          csv="$BUILD_DIR/naca-momentum-power-${{ matrix.shard }}.csv"
+          if ! grep -Fxq "test_naca0012_qualification" "$planned"; then
+            echo "NACA qualification is assigned to another shard; no CSV expected here."
+            exit 0
+          fi
+          test -s "$csv"
+          python3 - "$csv" <<'PY'
+          import csv
+          import math
+          import sys
+
+          path = sys.argv[1]
+          expected = {
+              "mesh_cells", "iteration",
+              "convection_internal", "convection_boundary", "convection_face", "convection_cell",
+              "viscous_internal", "viscous_boundary", "viscous_face", "viscous_cell",
+              "transpose_internal", "transpose_boundary", "transpose_face", "transpose_cell",
+              "pressure_source", "pressure_cell", "body_force_source", "body_force_cell",
+              "temporal_source", "temporal_cell", "physical_residual_raw",
+              "physical_residual_cell", "qualified",
+          }
+          with open(path, newline="", encoding="utf-8") as stream:
+              reader = csv.DictReader(stream)
+              if reader.fieldnames is None or set(reader.fieldnames) != expected:
+                  raise SystemExit(f"unexpected NACA power CSV schema: {reader.fieldnames}")
+              rows = list(reader)
+          if not rows:
+              raise SystemExit("NACA raw momentum power callback produced no rows")
+          mesh_levels = set()
+          for index, row in enumerate(rows, start=1):
+              iteration = int(row["iteration"])
+              mesh_cells = int(row["mesh_cells"])
+              if iteration < 1 or mesh_cells < 1:
+                  raise SystemExit(f"invalid mesh/iteration index at CSV row {index}")
+              mesh_levels.add(mesh_cells)
+              for key in expected - {"mesh_cells", "iteration", "qualified"}:
+                  value = float(row[key])
+                  if not math.isfinite(value):
+                      raise SystemExit(f"non-finite {key} at CSV row {index}")
+              if row["qualified"] != "0":
+                  raise SystemExit("diagnostic CSV must not claim physical qualification")
+              channels = (
+                  "convection_face", "viscous_face", "transpose_face",
+                  "pressure_source", "body_force_source", "temporal_source",
+              )
+              total = sum(float(row[key]) for key in channels)
+              reported = float(row["physical_residual_raw"])
+              scale = sum(abs(float(row[key])) for key in channels)
+              if abs(total - reported) > 512.0 * sys.float_info.epsilon * scale:
+                  raise SystemExit(f"raw power total does not close at CSV row {index}")
+          if len(mesh_levels) != 3:
+              raise SystemExit(f"expected three NACA mesh levels, found {sorted(mesh_levels)}")
+          print(f"Validated {len(rows)} accepted-state raw momentum power records across mesh cell counts {sorted(mesh_levels)}: {path}")
+          PY
       - name: Verify each planned long test executed exactly once
         id: coverage
         if: always() && steps.plan.outcome == 'success'
@@ -295,6 +356,7 @@ jobs:
             ${{ env.BUILD_DIR }}/ctest-long-${{ matrix.shard }}-timings.json
             ${{ env.BUILD_DIR }}/ci-shards/
             ${{ env.BUILD_DIR }}/naca-pressure-*
+            ${{ env.BUILD_DIR }}/naca-momentum-power-*.csv
           if-no-files-found: warn
           retention-days: 30
       - name: Final shard gate
@@ -431,7 +493,7 @@ jobs:
         run: |
           python3 -m venv "$VENV_DIR"
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml scipy>=1.11
           "$VENV_DIR/bin/python" -m pip install -e .
       - uses: actions/download-artifact@v7
         with:
@@ -478,7 +540,7 @@ jobs:
         run: |
           python3 -m venv "$VENV_DIR"
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml scipy>=1.11
           "$VENV_DIR/bin/python" -m pip install -e .
       - uses: actions/download-artifact@v7
         with:
@@ -520,7 +582,7 @@ jobs:
         run: |
           python3 -m venv "$VENV_DIR"
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml scipy>=1.11
           "$VENV_DIR/bin/python" -m pip install -e .
       - uses: actions/download-artifact@v7
         with:
