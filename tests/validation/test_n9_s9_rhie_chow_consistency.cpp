@@ -606,6 +606,7 @@ int main()
             for (std::size_t k = G.row_offsets_data()[velocity_row];
                  k < G.row_offsets_data()[velocity_row + 1]; ++k)
                 candidate[G.columns_data()[k]] += G.values_data()[k];
+            const auto original_candidate = candidate;
             double original_norm_sq = 0.0;
             for (double value : candidate) original_norm_sq += value * value;
             max_row_norm = std::max(max_row_norm, std::sqrt(original_norm_sq));
@@ -620,8 +621,7 @@ int main()
             for (double value : candidate) residual_norm_sq += value * value;
             const double residual_norm = std::sqrt(residual_norm_sq);
             if (residual_norm > 1e-12 * std::max(1.0, max_row_norm)) {
-                for (double& value : candidate) value /= residual_norm;
-                basis_rows.push_back(std::move(candidate));
+                basis_rows.push_back(original_candidate);
                 basis_velocity_rows.push_back(velocity_row);
             }
         }
