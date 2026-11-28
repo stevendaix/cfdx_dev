@@ -61,7 +61,7 @@ class V41ForensicsTest(unittest.TestCase):
             p.write_text(
                 "".join(
                     f"POST_SST_MOMENTUM iteration={i} relative_nut_change={values[(i - 1) % 4]} "
-                    "old_nut_operator=0.2 refreshed_nut_operator=0.25\\n"
+                    "old_nut_operator=0.2 refreshed_nut_operator=0.25\n"
                     for i in range(1, 65)
                 )
             )
