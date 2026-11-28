@@ -54,7 +54,14 @@ def test_six_schur_plus_block_preconditioners_have_real_bfs_commands(tmp_path):
         if not tag.removeprefix("bfs_") in campaign.BFS_VARIANTS:
             continue
         assert cmd[1] == "--mesh"
-        assert cmd[-2:] == ["--experimental-sst", "--benchmark-export"]
+        assert cmd[-6:] == [
+            "--experimental-sst",
+            "--benchmark-export",
+            "--momentum-budget-csv",
+            "momentum_budget.csv",
+            "--momentum-budget-every",
+            "5",
+        ]
         assert cmd[cmd.index("--iterations") + 1] == "10"
         with h5py.File(cmd[2]) as h5:
             fingerprints.add((h5.attrs["topology_hash"], h5.attrs["geometry_hash"]))
