@@ -415,15 +415,12 @@ interpolation, non-orthogonal corrections and boundary work. It must also
 allow physically legitimate backscatter. Therefore no blanket
 non-positive-power requirement is imposed on every turbulence closure.
 
-The mesh-level vector-work identity and positive-volume weighting have
-since been formalized in `CFDX.FiniteVolume.MeshVectorWork`. A bounded C++
-audit fixture now compares the volume-weighted work from the production
-transpose-viscous force divergence with the corresponding owner/neighbour
-face work on a deterministic mesh containing internal and boundary faces.
-The remaining implementation bridge is broader: compare the full accepted
-momentum residual, including pressure, convection, Rhie–Chow coupling,
-non-orthogonal diffusion and temporal terms. Neither full residual
-correspondence nor solver stability is claimed yet.
+The next formal step is a mesh-weighted discrete power identity tied to the
+actual momentum residual and an explicit decomposition into internal,
+boundary, pressure, viscous and closure contributions. The next implementation
+step is a deterministic C++ counterpart on two cells that compares the
+owner/neighbour face scatter with the Lean examples. Neither correspondence
+nor solver stability is claimed yet.
 
 
 ### Face-jump work identity (two-cell prototype)
@@ -561,6 +558,89 @@ factor depends on whether the transported momentum equation and closure
 traction are expressed in dynamic or kinematic form. That convention must be
 fixed explicitly when the Reynolds-stress traction interface is designed.
 
+
+## Backward-Euler kinetic-energy work identity
+
+The new module `CFDX.FiniteVolume.BackwardEulerEnergy` formalizes the
+physical backward-Euler momentum increment paired with the new velocity.
+For density \\(\\rho>0\\), time step \\(\\Delta t>0\\), and
+\\(\\delta\\mathbf U=\\mathbf U^{n+1}-\\mathbf U^n\\), it proves
+
+\\[
+\\rho\\,\\mathbf U^{n+1}\\cdot
+\\frac{\\mathbf U^{n+1}-\\mathbf U^n}{\\Delta t}
+=
+\\frac{\\rho}{\\Delta t}
+\\left[
+K(\\mathbf U^{n+1})-K(\\mathbf U^n)
++\\frac12\\lVert\\delta\\mathbf U\\rVert^2
+\\right],
+\\qquad K(\\mathbf U)=\\frac12\\lVert\\mathbf U\\rVert^2.
+\\]
+
+The quadratic defect is non-negative for positive density and time step.
+This identifies the implicit time-discretization contribution to the
+kinetic-energy balance. It does **not** prove stability of the complete
+pressure-velocity algorithm, nor does it justify treating pseudo-time,
+under-relaxation, or nonlinear globalization terms as physical time work.
+The next bridge is to map the exact accepted transient accumulation in
+`steady_incompressible_solver.h` to this identity, including variable
+cell volumes, density, BDF2 history and boundary/source work.
+
+
+### Constant-step BDF2 G-stability identity
+
+The same module now adds `constant_step_bdf2_g_stability_identity`. For
+constant \\(\\Delta t\\), it expresses the BDF2 time derivative paired
+with \\(\\mathbf U^{n+1}\\) as the difference of a two-level G-energy
+plus the non-negative second-difference defect. The G-energy is the sum
+\\[
+\\lVert\\mathbf U^{n+1}\\rVert^2+
+\\lVert 2\\mathbf U^{n+1}-\\mathbf U^n\\rVert^2.
+\\]
+The defect is proportional to
+\\(
+\\lVert\\mathbf U^{n+1}-2\\mathbf U^n+\\mathbf U^{n-1}\\rVert^2
+\\).
+
+**Critical limitation:** CFDX's production BDF2 path calls
+`bdf2_coefficients(dt_previous, dt, ...)` and therefore supports
+variable-step coefficients. The new theorem is only the constant-step
+identity; it must not be used to claim G-stability for arbitrary step ratios.
+A variable-step energy estimate with its precise admissible step-ratio
+condition is a separate open task. The first-step backward-Euler fallback
+and constant-step BDF2 are now covered by separate abstract contracts;
+neither yet proves the complete C++ temporal assembly.
+
+
+#### Variable-step BDF2: prior-art correction and exact scope
+
+The literature audit rejects the simplistic statement that variable-step BDF2
+is either unconditionally energy-stable or requires one universal ratio cap.
+The answer depends on the stability notion and operator class:
+
+- Akrivis, Chen, Han, Yu & Zhang (2024), *The variable two-step BDF method
+  for parabolic equations*, BIT Numerical Mathematics 64:14,
+  DOI [10.1007/s10543-024-01007-y](https://doi.org/10.1007/s10543-024-01007-y),
+  prove a parabolic stability estimate for a self-adjoint positive elliptic
+  operator under adjacent step ratios \\(r_n\\le 1.9398\\), using a
+  two-multiplier energy technique. The estimate includes a mesh-variation
+  factor; it is not a universal CFL-like limit for every BDF2 application.
+- Li & Liao (2022), *Stability of Variable-Step BDF2 and BDF3 Methods*,
+  SIAM Journal on Numerical Analysis 60(4), 2253–2272,
+  DOI [10.1137/21M1462398](https://doi.org/10.1137/21M1462398),
+  establish BDF2 stability on arbitrary time grids using discrete
+  orthogonal convolution kernels and an elliptic-type matrix norm. This is
+  a different global stability framework, not the same local G-energy
+  identity as the constant-step formula above.
+
+Therefore the research target is **not** to invent a blanket step-ratio cap.
+It is to specify which estimate CFDX needs (local G-energy telescoping,
+global DOC-kernel stability, or a solver-specific energy bound), then check
+the actual variable-step coefficients and operator hypotheses. Neither
+published result automatically transfers to CFDX's coupled, nonlinear,
+convection-dominated, pressure-constrained momentum operator. The constant-
+step Lean theorem remains a verified algebraic identity only.
 
 ## Vector momentum residual power contract
 
