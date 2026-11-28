@@ -1,7 +1,7 @@
 # FICHE MÉTHODE 17 — Bilan de puissance du momentum en volumes finis
 
 **En-tête d'évidence**
-- Scope : comptabilité discrète de puissance mécanique associée au résidu de quantité de mouvement incompressible CFDX, à partir des flux de faces owner/neighbour et des sources cellulaires intégrées. Couvre la distinction résidu physique / résidu de l'opérateur borné, la puissance temporelle et la traçabilité du budget scalaire vers une agrégation vectorielle. Ne couvre pas une preuve de stabilité du solveur couplé, une fermeture de Reynolds, ni la qualification physique d'un modèle turbulent.
+- Scope : identité discrète de puissance mécanique du résidu de quantité de mouvement incompressible CFDX, formulée à partir des flux owner/neighbour et des sources cellulaires intégrées. L'implémentation C++ de #1224 n'en réalise pour l'instant que l'agrégation vectorielle des budgets cellulaires déjà scatterés ; elle ne reconstruit pas encore indépendamment les flux bruts. Couvre la distinction résidu physique / résidu de l'opérateur borné et la puissance temporelle. Ne couvre pas une preuve de stabilité du solveur couplé, une fermeture de Reynolds, ni la qualification physique d'un modèle turbulent.
 - Statut : DRAFT (2026-11-28) — contrat d'audit en construction ; PR #1224 non fusionnée (remplacement de #1223).
 - Registre autoritaire : issue #1216, fondations Lean #1197, contrat formel #1222, implémentation C++ #1224.
 - Sources de production : `src/cfdx/physics/momentum_face_budget.h`, `src/cfdx/physics/nonlinear_face_residual_certificate.h`, `src/cfdx/physics/steady_incompressible_solver.h`.
