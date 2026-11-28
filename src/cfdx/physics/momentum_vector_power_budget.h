@@ -2,6 +2,7 @@
 
 #include "cfdx/physics/momentum_face_budget.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
