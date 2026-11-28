@@ -12,6 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts import generate_th03_bfs_case as bfs
+from scripts import run_cfdx_coupled_campaign as coupled_campaign
 from scripts import run_thermohydraulic_cases as campaign
 
 
@@ -105,3 +106,26 @@ def test_wall_mesh_rejects_inadmissible_grading() -> None:
         bfs.make_mesh(4, 16, 10, 2, wall_stretch=4)
     with pytest.raises(ValueError, match="invalid"):
         bfs.make_mesh(4, 16, 40, 16, wall_stretch=100)
+
+def test_sst_v41_two_cycle_rescue_is_explicit_bfs_variant(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.cfdx.h5"
+    rescued = tmp_path / "rescued.cfdx.h5"
+    bfs.write_case(baseline, n_up=4, n_down=12, ny=10, step_cells=2)
+    bfs.write_case(rescued, n_up=4, n_down=12, ny=10, step_cells=2)
+
+    coupled_campaign.apply_bfs_variant_settings(baseline, "simple")
+    coupled_campaign.apply_bfs_variant_settings(rescued, "simple_v41_two_cycle")
+
+    with h5py.File(baseline) as h5:
+        baseline_setup = json.loads(h5.attrs["case_setup_json"])
+        assert "sst_two_cycle_rescue_v41_experimental" not in baseline_setup[
+            "numerics"
+        ]["raw_settings"]
+    with h5py.File(rescued) as h5:
+        setup = json.loads(h5.attrs["case_setup_json"])
+        assert setup["numerics"]["raw_settings"][
+            "sst_two_cycle_rescue_v41_experimental"
+        ] == "true"
+        assert h5.attrs["topology_hash"] == h5.attrs["topology_hash"]
+        assert h5.attrs["geometry_hash"] == h5.attrs["geometry_hash"]
+
