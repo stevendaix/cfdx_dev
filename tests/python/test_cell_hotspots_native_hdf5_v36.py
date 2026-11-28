@@ -164,8 +164,11 @@ def main() -> None:
             assert math.isfinite(scale) and math.isfinite(difference)
             assert math.isfinite(independent_face_linf)
             assert math.isfinite(independent_face_difference)
-            assert independent_face_difference == pytest.approx(
-                abs(worst_absolute - independent_face_linf), rel=1e-14, abs=1e-30
+            assert math.isclose(
+                independent_face_difference,
+                abs(worst_absolute - independent_face_linf),
+                rel_tol=1e-14,
+                abs_tol=1e-30,
             )
             assert independent_face_difference <= 1e-10 * max(
                 1.0, abs(worst_absolute), abs(independent_face_linf)
