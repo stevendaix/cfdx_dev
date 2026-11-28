@@ -95,13 +95,13 @@ def write_sst_thermal_case(
                         {"field": "k", "type": "fixed_value", "value": 0.01},
                         {"field": "omega", "type": "fixed_value", "value": 2.0},
                     ]
-                if name == "inlet":
-                    # This fixture isolates SST/thermal coupling, not a
-                    # pressure-driven channel-flow qualification. Prescribe
-                    # the zero velocity explicitly; the production adapter
-                    # does not implement a zero-gradient velocity inlet.
-                    # k and omega remain prescribed above to seed positive
-                    # eddy viscosity for the turbulent-Prandtl A/B test.
+                if name == "upstream_open":
+                    # The shared Poiseuille fixture names its axial inlet
+                    # "upstream_open", not "inlet". Apply the intended fixed
+                    # zero-velocity condition to the actual patch; otherwise
+                    # this branch silently leaves a zero-gradient inlet and
+                    # the nominally quiescent Pr_t test is not the case
+                    # described by its setup.
                     patch["value_type"] = "fixed"
                     patch["velocity_vector"] = [0.0, 0.0, 0.0]
                     if sst:
