@@ -16030,6 +16030,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         &final_ex, &final_ey, &final_ez};
                     reconcile_momentum_budget_with_matrix(
                         budget, *final_equations[d], component);
+                    budget.independent_face_residual_linf = physical.local_linf;
+                    budget.independent_face_residual_difference = std::abs(
+                        budget.worst_absolute_residual - physical.local_linf);
                     // The comparison is evidence, not an acceptance gate.
                     // Publish it only after transaction.commit() below.
                     pending_momentum_face_budgets.emplace_back(d, std::move(budget));
