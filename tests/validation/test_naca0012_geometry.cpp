@@ -851,8 +851,8 @@ static Forces run(const std::string& path,std::size_t level,
             << "iteration,convection_internal,convection_boundary,convection_face,"
                "convection_cell,viscous_internal,viscous_boundary,viscous_face,"
                "viscous_cell,transpose_internal,transpose_boundary,transpose_face,"
-               "transpose_cell,pressure_face,pressure_cell,body_force_face,"
-               "body_force_cell,temporal_face,temporal_cell,physical_residual_face,"
+               "transpose_cell,pressure_source,pressure_cell,body_force_source,"
+               "body_force_cell,temporal_source,temporal_cell,physical_residual_raw,"
                "physical_residual_cell,qualified\n";
         c.momentum_raw_face_power_callback =
             [&raw_power_output](std::size_t iteration,
