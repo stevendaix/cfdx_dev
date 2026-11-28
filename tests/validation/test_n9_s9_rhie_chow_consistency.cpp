@@ -611,10 +611,11 @@ int main()
             max_row_norm = std::max(max_row_norm, std::sqrt(norm_sq));
         }
         std::vector<std::vector<double>> basis_rows;
+        std::vector<std::vector<double>> orthonormal_rows;
         std::vector<std::size_t> basis_velocity_rows;
         for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
             auto candidate = original_rows[velocity_row];
-            for (const auto& basis : basis_rows) {
+            for (const auto& basis : orthonormal_rows) {
                 double projection = 0.0;
                 for (std::size_t j = 0; j < np_factor; ++j)
                     projection += candidate[j] * basis[j];
@@ -626,6 +627,8 @@ int main()
             const double residual_norm = std::sqrt(residual_norm_sq);
             if (residual_norm > 1e-12 * max_row_norm) {
                 for (double& value : candidate) value /= residual_norm;
+                for (double& value : candidate) value /= residual_norm;
+                orthonormal_rows.push_back(std::move(candidate));
                 basis_rows.push_back(original_rows[velocity_row]);
                 basis_velocity_rows.push_back(velocity_row);
             }
