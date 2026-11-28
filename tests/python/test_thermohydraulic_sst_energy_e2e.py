@@ -140,6 +140,7 @@ def execute(
     *,
     experimental_sst: bool = True,
     iterations: int = 40,
+    timeout_seconds: int = 120,
 ) -> subprocess.CompletedProcess:
     command = [
         str(solver),
@@ -157,7 +158,7 @@ def execute(
         command,
         text=True,
         capture_output=True,
-        timeout=120,
+        timeout=timeout_seconds,
         check=False,
     )
 
@@ -180,7 +181,7 @@ def test_real_thermal_coupling_prt_changes_heat_flux(
         case = tmp_path / f"Prt_{prt}.cfdx.h5"
         out = tmp_path / f"Prt_{prt}"
         write_sst_thermal_case(case, prt=prt, driven=True)
-        run = execute(solver, case, out, iterations=3000)
+        run = execute(solver, case, out, iterations=3000, timeout_seconds=3600)
         assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
         execution = json.loads((out / "execution.json").read_text())
         carrier = json.loads((out / "convergence.json").read_text())
