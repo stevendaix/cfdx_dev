@@ -30,13 +30,14 @@ Les puissances internes et frontières sont rapportées séparément. La compara
 - Comparaison oracle/scatter indépendant pour convection, viscous, transpose-viscous, pression, force et accumulation séparément.
 - Décomposition interne/frontière pour chaque opérateur face.
 - Invariance au renversement de l'orientation d'une face interne si la force est inversée simultanément.
+- Propriété de signe sur un graphe à conductances positives : le travail du Laplacien discret avec frontière de Dirichlet homogène est égal à une somme de termes \(g_f\lVert\Delta U_f\rVert^2\) et doit être non négatif.
 - Rejet des tailles incohérentes, propriétaire/voisin invalide, sentinelle négative inconnue, NaN et overflow.
 
 ## Limites scientifiques
 
 L'oracle est un vérificateur de contrat pour des forces intégrées fournies par son appelant. La capture des forces brutes directement depuis les opérateurs de production à l'état accepté n'est pas encore raccordée. Il ne prouve donc pas encore que les opérateurs réellement assemblés satisfont l'identité sur les cas de production.
 
-Il ne prouve ni positivité de la dissipation visqueuse sur maillage non orthogonal, ni stabilité temporelle/couplage pression-vitesse, ni réalisabilité d'une contrainte de Reynolds, ni précision d'une fermeture turbulente.
+Le test de positivité ajouté ne couvre que le Laplacien de graphe à conductances positives et une frontière de Dirichlet homogène ; il ne prouve pas la positivité du flux diffusif CFDX complet sur maillage non orthogonal, avec viscosité variable et correction différée. Il ne prouve ni stabilité temporelle/couplage pression-vitesse, ni réalisabilité d'une contrainte de Reynolds, ni précision d'une fermeture turbulente.
 
 Étape suivante : brancher les forces réelles de production, réconcilier chaque canal avec les budgets cellulaires et les lignes CSR, puis mener des études de convergence maillage/temps et des validations a-posteriori sur cas de référence indépendants de la calibration.
 
