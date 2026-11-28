@@ -598,18 +598,22 @@ int main()
         // of that basis. This is diagnostic least squares, not a production L.
         const std::size_t nu_factor = G.n_rows();
         const std::size_t np_factor = G.n_cols();
-        std::vector<std::vector<double>> basis_rows;
-        std::vector<std::size_t> basis_velocity_rows;
+        std::vector<std::vector<double>> original_rows(
+            nu_factor, std::vector<double>(np_factor, 0.0));
         double max_row_norm = 0.0;
         for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
-            std::vector<double> candidate(np_factor, 0.0);
             for (std::size_t k = G.row_offsets_data()[velocity_row];
                  k < G.row_offsets_data()[velocity_row + 1]; ++k)
-                candidate[G.columns_data()[k]] += G.values_data()[k];
-            const auto original_candidate = candidate;
-            double original_norm_sq = 0.0;
-            for (double value : candidate) original_norm_sq += value * value;
-            max_row_norm = std::max(max_row_norm, std::sqrt(original_norm_sq));
+                original_rows[velocity_row][G.columns_data()[k]] +=
+                    G.values_data()[k];
+            double norm_sq = 0.0;
+            for (double value : original_rows[velocity_row]) norm_sq += value * value;
+            max_row_norm = std::max(max_row_norm, std::sqrt(norm_sq));
+        }
+        std::vector<std::vector<double>> basis_rows;
+        std::vector<std::size_t> basis_velocity_rows;
+        for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
+            auto candidate = original_rows[velocity_row];
             for (const auto& basis : basis_rows) {
                 double projection = 0.0;
                 for (std::size_t j = 0; j < np_factor; ++j)
@@ -620,8 +624,9 @@ int main()
             double residual_norm_sq = 0.0;
             for (double value : candidate) residual_norm_sq += value * value;
             const double residual_norm = std::sqrt(residual_norm_sq);
-            if (residual_norm > 1e-12 * std::max(1.0, max_row_norm)) {
-                basis_rows.push_back(original_candidate);
+            if (residual_norm > 1e-12 * max_row_norm) {
+                for (double& value : candidate) value /= residual_norm;
+                basis_rows.push_back(original_rows[velocity_row]);
                 basis_velocity_rows.push_back(velocity_row);
             }
         }
