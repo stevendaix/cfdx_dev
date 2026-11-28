@@ -131,6 +131,8 @@ def main() -> None:
             "physical_residual",
             "bounded_operator_residual",
             "worst_absolute_residual",
+            "independent_face_residual_linf",
+            "independent_face_residual_difference",
             "temporal",
             "algebraic_residual",
             "matrix_face_difference",
@@ -154,7 +156,20 @@ def main() -> None:
             groups.setdefault((iteration, component), set()).add(cell)
             scale = float(row["matrix_face_scale"])
             difference = float(row["matrix_face_difference"])
+            independent_face_linf = float(row["independent_face_residual_linf"])
+            independent_face_difference = float(
+                row["independent_face_residual_difference"]
+            )
+            worst_absolute = float(row["worst_absolute_residual"])
             assert math.isfinite(scale) and math.isfinite(difference)
+            assert math.isfinite(independent_face_linf)
+            assert math.isfinite(independent_face_difference)
+            assert independent_face_difference == pytest.approx(
+                abs(worst_absolute - independent_face_linf), rel=1e-14, abs=1e-30
+            )
+            assert independent_face_difference <= 1e-10 * max(
+                1.0, abs(worst_absolute), abs(independent_face_linf)
+            )
             assert row["matrix_closure_checked"] == "1"
             assert row["matrix_closure_consistent"] == "1"
             assert abs(difference) <= 2e-10 * max(scale, 1e-15)
