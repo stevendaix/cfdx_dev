@@ -71,6 +71,24 @@ Le solveur calcule alors l'oracle indépendant face-jump puis compare, canal par
 
 **Limite d'interprétation :** les forces capturées sont celles de la reconstruction post-solve à l'état accepté, pas un enregistrement byte-for-byte des arguments exacts passés au constructeur matriciel. La fermeture CSR existante apporte une réconciliation indépendante par composante et cellule. Cela établit la cohérence du diagnostic de puissance, mais ne prouve ni la positivité de la dissipation visqueuse complète, ni la stabilité non linéaire, ni la qualification d'un modèle de turbulence.
 
+### 7.1 Sortie NACA opt-in et statut de campagne
+
+Le test de validation NACA expose également `CFDX_NACA_MOMENTUM_POWER_CSV`. Le fichier contient les puissances internes/frontières des canaux face et les comparaisons face/scatter cellulaire. Les sources pression, force extérieure et accumulation sont explicitement nommées `*_source` / `*_cell` ; elles ne doivent pas être interprétées comme des puissances de face. La sortie n'est écrite qu'après la réconciliation fail-closed du solveur.
+
+Exécution N64 : reprendre exactement la commande NACA de la fiche méthode 34, ajouter dans le même bloc `env` :
+
+```bash
+CFDX_NACA_MOMENTUM_POWER_CSV="$CASE/momentum_power.csv"
+```
+
+Conserver le code retour, le hash du binaire, le hash du maillage, la configuration et les autres CSV. Ne pas agréger les résultats de maillages ou d'états différents. Pour chaque canal, contrôler séparément :
+- l'écart face/scatter cellule et son échelle absolue ;
+- les puissances internes et frontières, sans supposer que le travail frontière est nul ;
+- les travaux signés et les sommes de valeurs absolues ;
+- la cohérence entre les colonnes `*_source` et `*_cell` pour les sources cellulaires.
+
+**Statut au 2026-11-28 :** le chemin de collecte est implémenté et les contrôles CI applicables sont majoritairement verts, mais aucune campagne NACA avec ce CSV n'est attestée ici. Aucun résultat de puissance de production, diagnostic de cause racine ou qualification physique n'est donc revendiqué.
+
 Suite : (1) valider les tests unitaires et CI de #1229 sur son HEAD exact, (2) ajouter une campagne solver end-to-end avec le callback activé sur un cas manufacturé et un cas de référence, (3) vérifier la convergence maillage/temps et les bilans de puissance globaux/locaux, puis (4) formaliser dans Lean la correspondance entre les contrats d'incidence abstraits et la topologie runtime.
 
 La relation à Lean reste limitée aux contrats abstraits owner/neighbour, incidence et travail. Les tests C++ vérifient des maillages runtime déterministes ; la correspondance générale entre topologie Lean, `Mesh::ownership()` et sorties des opérateurs de production reste à formaliser.
