@@ -6,7 +6,7 @@
 - Statut : DRAFT — contrat d'audit documenté ; validation exacte-head et revue de la preuve encore requises.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` et exigences numériques du dépôt.
 - Issue / PR liées : #1220 / #1230.
-- Dernier commit vérifié : `f4ad5cb3a6851f1a2913a2174091360ca44cba10` — correction du sentinelle négatif ; CI de ce SHA en cours au moment de la création.
+- Dernier commit de code concerné : `f4ad5cb3a6851f1a2913a2174091360ca44cba10` — correction du sentinelle négatif. Validation CI exacte : en attente sur le HEAD de la branche ; aucun statut de validation n'est revendiqué ici.
 - Limitations connues : l'oracle vérifie une identité de travail discrète à partir de forces déjà intégrées. Il ne valide pas à lui seul la qualité physique des flux, l'ordre de précision, la stabilité, la positivité ou la convergence du solveur.
 
 ## 1. Références sources
