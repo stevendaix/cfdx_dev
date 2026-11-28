@@ -127,6 +127,10 @@ def test_sst_v41_two_cycle_rescue_is_explicit_bfs_variant(tmp_path: Path) -> Non
             "sst_two_cycle_rescue_v41_experimental"
         ] == "true"
     with h5py.File(baseline) as base_h5, h5py.File(rescued) as rescued_h5:
-        assert base_h5.attrs["topology_hash"] == rescued_h5.attrs["topology_hash"]
-        assert base_h5.attrs["geometry_hash"] == rescued_h5.attrs["geometry_hash"]
+        assert (
+            base_h5.attrs["topology_hash"] == rescued_h5.attrs["topology_hash"]
+        )
+        assert (
+            base_h5.attrs["geometry_hash"] == rescued_h5.attrs["geometry_hash"]
+        )
 
