@@ -15881,6 +15881,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime
                     ? controls.density * controls.kinematic_viscosity : -1.0,
                     post_wall_face_mu_v17);
+            // Keep the diagnostic snapshots local until the nonlinear
+            // transaction commits. A rejected trial must never be published
+            // as an accepted-state momentum budget.
+            std::vector<std::pair<std::size_t, MomentumFaceBudget>>
+                pending_momentum_face_budgets;
             for (std::size_t d = 0; d < 3; ++d) {
                 cfdx::core::Field<double, cfdx::core::Location::CELL> component(
                     mesh.n_cells(), "U_reconstructed", "m/s", 1);
@@ -16025,26 +16030,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         &final_ex, &final_ey, &final_ez};
                     reconcile_momentum_budget_with_matrix(
                         budget, *final_equations[d], component);
-                    const bool matrix_closure_consistent =
-                        momentum_matrix_face_closure_consistent(budget);
-                    // The diagnostic hook is observational: a failed
-                    // face/CSR comparison must be exported, not converted
-                    // into a solver failure that changes campaign execution.
-                    const double agreement = std::abs(
-                        budget.worst_absolute_residual - physical.local_linf);
-                    const double agreement_scale = std::max({
-                        1.0, budget.worst_absolute_residual, physical.local_linf});
-                    if (!matrix_closure_consistent || agreement > 1e-10 * agreement_scale)
-                        std::cerr << "MOMENTUM_FACE_BUDGET_AUDIT_WARNING iteration="
-                                  << iter << " component=" << d
-                                  << " closure_consistent=" << (matrix_closure_consistent ? 1 : 0)
-                                  << " closure_linf=" << budget.matrix_closure_linf
-                                  << " closure_relative_linf=" << budget.matrix_closure_relative_linf
-                                  << " closure_worst_cell=" << budget.matrix_closure_worst_cell
-                                  << " residual_agreement=" << agreement
-                                  << " residual_agreement_scale=" << agreement_scale
-                                  << " (diagnostic only; solver continues)\\n";
-                    controls.momentum_face_budget_callback(iter, d, budget, geometry);
+                    // The comparison is evidence, not an acceptance gate.
+                    // Publish it only after transaction.commit() below.
+                    pending_momentum_face_budgets.emplace_back(d, std::move(budget));
                 }
 
             }
@@ -16258,6 +16246,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 throw NonlinearRetryableFailure(
                     "V48 coupled transaction missing rAU: reject candidate");
             transaction.commit();
+            for (const auto& [component_index, budget] : pending_momentum_face_budgets)
+                controls.momentum_face_budget_callback(
+                    iter, component_index, budget, geometry);
             if (controls.bfs_pressure_transverse_trust_v89_experimental && !comparable_v65) {
                 // Never advance the V89 ledger on rejected proposals.
                 if (!committed_pressure_baseline_v89) {
