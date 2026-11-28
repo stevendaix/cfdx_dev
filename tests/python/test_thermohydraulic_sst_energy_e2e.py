@@ -95,14 +95,13 @@ def write_sst_thermal_case(
                         {"field": "k", "type": "fixed_value", "value": 0.01},
                         {"field": "omega", "type": "fixed_value", "value": 2.0},
                     ]
-                if name == "upstream_open":
+                if name == "upstream_open" and sst:
                     # The shared Poiseuille fixture defines this patch as an
                     # open outlet with ZERO_GRADIENT velocity. Keep that
                     # production boundary contract: prescribing a fixed
                     # velocity here is rejected by the outlet adapter.
-                    if sst:
-                        patch["turbulence_intensity"] = 0.05
-                        patch["turbulence_length_scale"] = 0.1
+                    patch["turbulence_intensity"] = 0.05
+                    patch["turbulence_length_scale"] = 0.1
         del case.attrs["case_setup_json"]
         case.attrs["case_setup_json"] = json.dumps(setup)
 
