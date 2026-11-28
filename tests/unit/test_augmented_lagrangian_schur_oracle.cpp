@@ -202,6 +202,94 @@ void check_singular_pressure_rejected() {
         throw std::runtime_error("rank-deficient pressure Schur was not rejected");
 }
 
+
+void check_general_cross_augmentation() {
+    const Matrix<3, 3> A{{
+        {{4.0, 1.0, 0.0}},
+        {{1.0, 3.0, 0.2}},
+        {{0.0, 0.2, 2.0}}
+    }};
+    const Matrix<2, 3> D{{
+        {{1.0, -1.0, 0.0}},
+        {{0.0, 1.0, -1.0}}
+    }};
+    // Deliberately non-adjoint: G != -D^T.
+    const Matrix<3, 2> G{{
+        {{-0.98, -0.01}},
+        {{1.03, -0.985}},
+        {{-0.02, 1.025}}
+    }};
+    const Matrix<2, 2> W{{
+        {{2.0, 0.2}},
+        {{0.2, 1.5}}
+    }};
+    require_spd(A, "general cross-augmentation A");
+    require_spd(W, "general cross-augmentation W");
+
+    const auto A_inverse = inverse(A);
+    const auto W_inverse = inverse(W);
+    const auto S = scaled(
+        -1.0, multiply(multiply(D, A_inverse), G));
+    const auto standard_grad_div = multiply(
+        multiply(transpose(D), W_inverse), D);
+
+    for (double gamma : {1.0e-3, 0.05, 0.7, 5.0, 40.0}) {
+        // General cross augmentation. It preserves the exact Schur inverse
+        // shift for C=0 without assuming G=-D^T, but A_gamma is generally
+        // nonsymmetric and is deliberately not asserted SPD.
+        const auto cross_update = multiply(multiply(G, W_inverse), D);
+        const auto A_gamma = add(A, scaled(-gamma, cross_update));
+        const auto A_gamma_inverse = inverse(A_gamma);
+        const auto S_gamma = scaled(
+            -1.0, multiply(multiply(D, A_gamma_inverse), G));
+        const auto direct_inverse = inverse(S_gamma);
+        const auto expected_inverse =
+            add(inverse(S), scaled(gamma, W_inverse));
+        const double error = max_difference(direct_inverse, expected_inverse);
+        if (error > 2.0e-10)
+            throw std::runtime_error(
+                "general cross-augmentation Schur identity mismatch");
+        std::cout << "general_cross gamma=" << gamma
+                  << " max_abs_error=" << error << '\\n';
+
+        if (gamma == 0.7 &&
+            max_difference(A_gamma, transpose(A_gamma)) < 1.0e-6)
+            throw std::runtime_error(
+                "non-adjoint cross-augmentation unexpectedly remained symmetric");
+
+        // Negative control 1: the conventional D^T W^{-1} D update does not
+        // inherit the exact identity for this non-adjoint G.
+        const auto A_gamma_symmetric = add(
+            A, scaled(gamma, standard_grad_div));
+        const auto S_gamma_symmetric = scaled(
+            -1.0, multiply(
+                multiply(D, inverse(A_gamma_symmetric)), G));
+        const double conventional_error = max_difference(
+            inverse(S_gamma_symmetric), expected_inverse);
+        if (conventional_error < 1.0e-3)
+            throw std::runtime_error(
+                "non-adjoint conventional grad-div negative control did not fail");
+    }
+
+    // Negative control 2: adding a nonzero C pressure block invalidates the
+    // simple inverse-shift identity, even for the cross augmentation.
+    const double gamma = 0.7;
+    const auto A_gamma = add(
+        A, scaled(-gamma, multiply(multiply(G, W_inverse), D)));
+    const auto S_gamma = scaled(
+        -1.0, multiply(multiply(D, inverse(A_gamma)), G));
+    const auto C = scaled(0.1, identity<2>());
+    const auto S_with_C = add(S, C);
+    const auto S_gamma_with_C = add(S_gamma, C);
+    const auto expected_with_C =
+        add(inverse(S_with_C), scaled(gamma, W_inverse));
+    const double nonzero_C_error = max_difference(
+        inverse(S_gamma_with_C), expected_with_C);
+    if (nonzero_C_error < 1.0e-3)
+        throw std::runtime_error(
+            "nonzero-C negative control did not expose the missing C correction");
+}
+
 }  // namespace
 
 int main() {
@@ -250,6 +338,7 @@ int main() {
         check_schur_identity(A, B_mean_zero, identity<2>(), "mean_zero_pressure");
 
         check_singular_pressure_rejected();
+        check_general_cross_augmentation();
         std::cout << "Augmented-Lagrangian Schur oracle: PASS\n";
         return 0;
     } catch (const std::exception& error) {
