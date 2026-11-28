@@ -325,6 +325,45 @@ area closure (`unit_hexa_area_closure`), the nine first-moment components
 face-centre values (`unit_hexa_affine_gauss_numerator_exact`). This is a
 non-simplex reference cell; runtime polyhedral conformance remains open.
 
+## Two-point Laplacian graph operator
+
+The module `CFDX.FiniteVolume.TwoPointLaplacian` identifies the
+ORTHOGONAL/UNCORRECTED two-point Laplacian (after volume weighting and sign
+convention) with a weighted graph Laplacian `B' W B` on the owner/neighbour
+incidence, and proves the structural contracts the linear-solver layer may
+rely on, each under explicit hypotheses:
+
+- symmetry of the pairing (`laplacian_pairing_symmetric`);
+- quadratic form = sum of conductances times squared owner-neighbour
+  differences (`laplacian_quadratic_form`);
+- positive semidefiniteness under nonnegative conductances
+  (`laplacian_psd`);
+- constants lie in the kernel (`twoPointLaplacian_const`);
+- under strictly positive conductances and connectedness of the internal
+  face adjacency, the kernel is exactly the constants
+  (`laplacian_kernel_eq_const`), so one anchor per component gives
+  definiteness (`laplacian_definite_with_anchor`).
+
+Not covered, faithfully to the implementation audit: the corrected/limited
+non-orthogonal variants (nonlinear, not assumed SPD), any adjointness claim
+between the Gauss gradient and this operator, and any convergence claim.
+This is a Stage 3/4 contract gate before asserting CG/PCG eligibility.
+
+## Discrete integration by parts
+
+The module \`CFDX.FiniteVolume.IncidenceAdjoint\` proves the exact
+discrete integration-by-parts identity for the cell divergence
+(\`cellFluxBalance\`): the divergence/field pairing equals the face sum of
+the flux times the incidence-weighted field, with the boundary term
+explicit (owner value alone on boundary faces, owner-to-neighbour
+difference on internal faces). This is the adjointness of the incidence
+matrix and its transpose for the plain Euclidean pairings.
+
+Faithful to the Stage 3 audit: the production Gauss gradient does not use
+the incidence transpose, so this does not prove adjointness of the
+production gradient/divergence pair; it isolates the boundary term and the
+internal pairing that any such statement must extend.
+
 ## Integration roadmap
 
 1. **Infrastructure:** pinned Lean/Mathlib, committed transitive lockfile,
