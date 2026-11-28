@@ -41,6 +41,8 @@ struct MomentumFaceBudget {
     std::vector<MomentumFaceCellBudget> cells;
     std::size_t worst_cell = 0;
     double worst_absolute_residual = 0.0;
+    double independent_face_residual_linf = std::numeric_limits<double>::quiet_NaN();
+    double independent_face_residual_difference = std::numeric_limits<double>::quiet_NaN();
     double worst_bounded_operator_residual = 0.0;
     double flux_decomposition_error = 0.0;
     bool matrix_closure_checked = false;
