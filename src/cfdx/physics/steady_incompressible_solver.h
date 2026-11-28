@@ -102,6 +102,7 @@
 #include "cfdx/physics/coupled_full_period_v44.h"
 #include "cfdx/physics/coupled_linear_retry_policy_v37.h"
 #include "cfdx/physics/momentum_face_budget.h"
+#include "cfdx/physics/momentum_vector_power_budget.h"
 #include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
