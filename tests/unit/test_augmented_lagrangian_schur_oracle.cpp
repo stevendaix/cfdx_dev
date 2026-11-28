@@ -43,6 +43,18 @@ Matrix<Rows, Cols> multiply(const Matrix<Rows, Inner>& lhs,
     return result;
 }
 
+
+template <std::size_t Rows, std::size_t Cols>
+std::array<double, Rows> multiply_vector(
+    const Matrix<Rows, Cols>& matrix,
+    const std::array<double, Cols>& vector) {
+    std::array<double, Rows> result{};
+    for (std::size_t i = 0; i < Rows; ++i)
+        for (std::size_t j = 0; j < Cols; ++j)
+            result[i] += matrix[i][j] * vector[j];
+    return result;
+}
+
 template <std::size_t N>
 Square<N> add(const Square<N>& lhs, const Square<N>& rhs) {
     Square<N> result{};
@@ -290,6 +302,112 @@ void check_general_cross_augmentation() {
             "nonzero-C negative control did not expose the missing C correction");
 }
 
+
+void check_C_aware_row_elimination() {
+    const Matrix<3, 3> A{{
+        {{4.0, 1.0, 0.0}},
+        {{1.0, 3.0, 0.2}},
+        {{0.0, 0.2, 2.0}}
+    }};
+    const Matrix<2, 3> D{{
+        {{1.0, -1.0, 0.0}},
+        {{0.0, 1.0, -1.0}}
+    }};
+    const Matrix<3, 2> G{{
+        {{-0.98, -0.01}},
+        {{1.03, -0.985}},
+        {{-0.02, 1.025}}
+    }};
+    const Matrix<2, 2> C = scaled(0.1, identity<2>());
+    const Matrix<2, 2> W{{
+        {{2.0, 0.2}},
+        {{0.2, 1.5}}
+    }};
+    require_spd(A, "C-aware row elimination A");
+    require_spd(W, "C-aware row elimination W");
+
+    const auto GtG = multiply(transpose(G), G);
+    require_spd(GtG, "C-aware row elimination GtG");
+    const auto L = multiply(
+        multiply(C, inverse(GtG)), transpose(G));
+    const auto LG = multiply(L, G);
+    if (max_difference(LG, C) > 2.0e-12)
+        throw std::runtime_error("C-aware row elimination failed to factor C=L*G");
+
+    const auto LA = multiply(L, A);
+    Matrix<2, 3> D_tilde{};
+    for (std::size_t i = 0; i < 2; ++i)
+        for (std::size_t j = 0; j < 3; ++j)
+            D_tilde[i][j] = D[i][j] - LA[i][j];
+
+    const auto A_inverse = inverse(A);
+    const auto W_inverse = inverse(W);
+    const auto S = add(
+        C, scaled(-1.0, multiply(multiply(D, A_inverse), G)));
+    const auto S_transformed = scaled(
+        -1.0, multiply(multiply(D_tilde, A_inverse), G));
+    if (max_difference(S, S_transformed) > 2.0e-12)
+        throw std::runtime_error(
+            "C-aware row elimination changed the original Schur operator");
+
+    for (double gamma : {1.0e-3, 0.05, 0.7, 5.0, 40.0}) {
+        const auto cross_update = multiply(
+            multiply(G, W_inverse), D_tilde);
+        const auto A_gamma = add(A, scaled(-gamma, cross_update));
+        const auto S_gamma = scaled(
+            -1.0, multiply(multiply(D_tilde, inverse(A_gamma)), G));
+        const auto actual_inverse = inverse(S_gamma);
+        const auto expected_inverse =
+            add(inverse(S), scaled(gamma, W_inverse));
+        if (max_difference(actual_inverse, expected_inverse) > 2.0e-10)
+            throw std::runtime_error(
+                "C-aware row-elimination Schur identity mismatch");
+    }
+
+    // Verify both block row operations, including their right-hand sides,
+    // preserve a known solution of the original nonzero-C system.
+    const std::array<double, 3> velocity{{0.5, -1.0, 2.0}};
+    const std::array<double, 2> pressure{{0.25, -0.75}};
+    const auto Au = multiply_vector(A, velocity);
+    const auto Gp = multiply_vector(G, pressure);
+    const auto Du = multiply_vector(D, velocity);
+    const auto Cp = multiply_vector(C, pressure);
+    std::array<double, 3> momentum_rhs{};
+    std::array<double, 2> continuity_rhs{};
+    for (std::size_t i = 0; i < 3; ++i)
+        momentum_rhs[i] = Au[i] + Gp[i];
+    for (std::size_t i = 0; i < 2; ++i)
+        continuity_rhs[i] = Du[i] + Cp[i];
+
+    const auto Lf = multiply_vector(L, momentum_rhs);
+    std::array<double, 2> transformed_continuity_rhs{};
+    for (std::size_t i = 0; i < 2; ++i)
+        transformed_continuity_rhs[i] = continuity_rhs[i] - Lf[i];
+
+    const double gamma = 0.7;
+    const auto A_gamma = add(
+        A, scaled(-gamma, multiply(
+            multiply(G, W_inverse), D_tilde)));
+    const auto Winv_g = multiply_vector(W_inverse, transformed_continuity_rhs);
+    const auto G_Winv_g = multiply_vector(G, Winv_g);
+    const auto A_gamma_u = multiply_vector(A_gamma, velocity);
+    std::array<double, 3> transformed_momentum_rhs{};
+    for (std::size_t i = 0; i < 3; ++i)
+        transformed_momentum_rhs[i] =
+            momentum_rhs[i] - gamma * G_Winv_g[i];
+    const auto Gp_again = multiply_vector(G, pressure);
+    const auto Dtilde_u = multiply_vector(D_tilde, velocity);
+    for (std::size_t i = 0; i < 3; ++i)
+        if (std::abs(A_gamma_u[i] + Gp_again[i] -
+                     transformed_momentum_rhs[i]) > 2.0e-12)
+            throw std::runtime_error(
+                "C-aware top-row RHS transformation changed the solution");
+    for (std::size_t i = 0; i < 2; ++i)
+        if (std::abs(Dtilde_u[i] - transformed_continuity_rhs[i]) > 2.0e-12)
+            throw std::runtime_error(
+                "C-aware bottom-row RHS transformation changed the solution");
+}
+
 }  // namespace
 
 int main() {
@@ -339,6 +457,7 @@ int main() {
 
         check_singular_pressure_rejected();
         check_general_cross_augmentation();
+        check_C_aware_row_elimination();
         std::cout << "Augmented-Lagrangian Schur oracle: PASS\n";
         return 0;
     } catch (const std::exception& error) {
