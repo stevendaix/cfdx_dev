@@ -103,6 +103,7 @@ def main() -> None:
             "iteration",
             "component",
             "rank",
+            "selection_reason",
             "cell",
             "x",
             "y",
@@ -136,6 +137,7 @@ def main() -> None:
             cell = int(row["cell"])
             assert iteration in (1, 2)
             assert component in (0, 1, 2)
+            assert row["selection_reason"] == "all_cells"
             assert 0 <= cell < trace.n_cells
             groups.setdefault((iteration, component), set()).add(cell)
             scale = float(row["matrix_face_scale"])
