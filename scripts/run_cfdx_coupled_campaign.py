@@ -323,6 +323,10 @@ def build_commands(args: argparse.Namespace):
                     str(args.iterations),
                     "--experimental-sst",
                     "--benchmark-export",
+                    "--momentum-budget-csv",
+                    "momentum_budget.csv",
+                    "--momentum-budget-every",
+                    "5",
                 ],
                 env,
             )
