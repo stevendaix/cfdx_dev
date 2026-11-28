@@ -666,7 +666,7 @@ int main()
                   << " max_abs_L=" << l_scale
                   << " max_abs_C=" << c_scale
                   << " max_abs_C_minus_LG=" << factor_residual
-                  << '\\n';
+                  << '\n';
         EXPECT_TRUE(factor_residual <= 1e-10 + 1e-10*c_scale);
 
         SmallDenseExactSchurInverse schur_oracle(64);
