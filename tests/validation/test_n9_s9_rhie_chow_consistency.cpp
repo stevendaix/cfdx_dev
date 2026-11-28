@@ -590,44 +590,67 @@ int main()
         const BlockOperator production_blocks(M,G,D,C);
         EXPECT_TRUE(production_blocks.is_valid());
 
-        // C2.3 diagnostic: on this fixed-pressure production capture, test
-        // whether the actual pressure block factors through the actual G.
-        // This is a dense least-squares left factor, not a proposed sparse
-        // production operator. Its fill is reported, never assumed small.
+        // C2.3 diagnostic: rank-aware row-space factorization C=L*G.
+        // G is rank deficient on this four-cell fixed-pressure fixture because
+        // the pressure-gradient operator has a nontrivial nullspace. Do not
+        // invert G^T G. Select an independent basis of rows of G by
+        // modified Gram-Schmidt, then solve only the small SPD Gram matrix
+        // of that basis. This is diagnostic least squares, not a production L.
         const std::size_t nu_factor = G.n_rows();
         const std::size_t np_factor = G.n_cols();
-        std::vector<double> gram_values(np_factor*np_factor,0.0);
-        for (std::size_t row=0; row<nu_factor; ++row) {
-            for (std::size_t k=G.row_offsets_data()[row];
-                 k<G.row_offsets_data()[row+1]; ++k) {
-                for (std::size_t q=G.row_offsets_data()[row];
-                     q<G.row_offsets_data()[row+1]; ++q) {
-                    gram_values[G.columns_data()[k]*np_factor+
-                                G.columns_data()[q]] +=
-                        G.values_data()[k]*G.values_data()[q];
-                }
+        std::vector<std::vector<double>> basis_rows;
+        std::vector<std::size_t> basis_velocity_rows;
+        double max_row_norm = 0.0;
+        for (std::size_t velocity_row = 0; velocity_row < nu_factor; ++velocity_row) {
+            std::vector<double> candidate(np_factor, 0.0);
+            for (std::size_t k = G.row_offsets_data()[velocity_row];
+                 k < G.row_offsets_data()[velocity_row + 1]; ++k)
+                candidate[G.columns_data()[k]] += G.values_data()[k];
+            double original_norm_sq = 0.0;
+            for (double value : candidate) original_norm_sq += value * value;
+            max_row_norm = std::max(max_row_norm, std::sqrt(original_norm_sq));
+            for (const auto& basis : basis_rows) {
+                double projection = 0.0;
+                for (std::size_t j = 0; j < np_factor; ++j)
+                    projection += candidate[j] * basis[j];
+                for (std::size_t j = 0; j < np_factor; ++j)
+                    candidate[j] -= projection * basis[j];
+            }
+            double residual_norm_sq = 0.0;
+            for (double value : candidate) residual_norm_sq += value * value;
+            const double residual_norm = std::sqrt(residual_norm_sq);
+            if (residual_norm > 1e-12 * std::max(1.0, max_row_norm)) {
+                for (double& value : candidate) value /= residual_norm;
+                basis_rows.push_back(std::move(candidate));
+                basis_velocity_rows.push_back(velocity_row);
             }
         }
-        SparseMatrix gram(np_factor,np_factor);
-        for (std::size_t i=0; i<np_factor; ++i)
-            for (std::size_t j=0; j<np_factor; ++j)
-                if (gram_values[i*np_factor+j] != 0.0)
-                    gram.push_back(i,j,gram_values[i*np_factor+j]);
-        gram.finalize();
-        SmallDenseCertifiedLU gram_lu(np_factor);
-        EXPECT_TRUE(gram_lu.setup(gram));
-        std::vector<double> left_factor(np_factor*nu_factor,0.0);
-        for (std::size_t pressure_row=0; pressure_row<np_factor; ++pressure_row) {
-            Vector c_row(np_factor,0.0), coefficient(np_factor,0.0);
-            for (std::size_t k=C.row_offsets_data()[pressure_row];
-                 k<C.row_offsets_data()[pressure_row+1]; ++k)
+        const std::size_t rank_G = basis_rows.size();
+        EXPECT_TRUE(rank_G > 0);
+        SparseMatrix basis_gram(rank_G, rank_G);
+        for (std::size_t i = 0; i < rank_G; ++i)
+            for (std::size_t j = 0; j < rank_G; ++j) {
+                double value = 0.0;
+                for (std::size_t k = 0; k < np_factor; ++k)
+                    value += basis_rows[i][k] * basis_rows[j][k];
+                if (value != 0.0) basis_gram.push_back(i, j, value);
+            }
+        basis_gram.finalize();
+        SmallDenseCertifiedLU basis_lu(rank_G);
+        EXPECT_TRUE(basis_lu.setup(basis_gram));
+        std::vector<double> left_factor(np_factor * nu_factor, 0.0);
+        for (std::size_t pressure_row = 0; pressure_row < np_factor; ++pressure_row) {
+            Vector c_row(np_factor, 0.0), rhs(rank_G, 0.0), coefficient(rank_G, 0.0);
+            for (std::size_t k = C.row_offsets_data()[pressure_row];
+                 k < C.row_offsets_data()[pressure_row + 1]; ++k)
                 c_row(C.columns_data()[k]) += C.values_data()[k];
-            EXPECT_TRUE(gram_lu.solve(c_row,coefficient));
-            for (std::size_t velocity_row=0; velocity_row<nu_factor; ++velocity_row)
-                for (std::size_t k=G.row_offsets_data()[velocity_row];
-                     k<G.row_offsets_data()[velocity_row+1]; ++k)
-                    left_factor[pressure_row*nu_factor+velocity_row] +=
-                        coefficient(G.columns_data()[k])*G.values_data()[k];
+            for (std::size_t i = 0; i < rank_G; ++i)
+                for (std::size_t j = 0; j < np_factor; ++j)
+                    rhs(i) += basis_rows[i][j] * c_row(j);
+            EXPECT_TRUE(basis_lu.solve(rhs, coefficient));
+            for (std::size_t i = 0; i < rank_G; ++i)
+                left_factor[pressure_row * nu_factor + basis_velocity_rows[i]] =
+                    coefficient(i);
         }
         double factor_residual=0.0, c_scale=0.0, l_scale=0.0;
         std::size_t left_nnz=0;
