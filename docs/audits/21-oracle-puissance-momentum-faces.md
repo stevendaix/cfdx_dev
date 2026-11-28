@@ -16,29 +16,29 @@
 
 ## 2. Formulation continue
 
-Pour une quantité de mouvement \\(\rho\mathbf{u}\\), on considère le résidu physique \\(\mathbf{R}\\) de l'équation de quantité de mouvement et son appariement avec la vitesse :
-\\[
+Pour une quantité de mouvement \(\rho\mathbf{u}\), on considère le résidu physique \(\mathbf{R}\) de l'équation de quantité de mouvement et son appariement avec la vitesse :
+\[
 \mathcal{P}=\int_\Omega \mathbf{u}\cdot\mathbf{R}\,d\Omega.
-\\]
-Cette quantité est un bilan de travail mécanique. La fiche ne suppose pas que \\(\mathcal{P}\\) soit positif ou nul : sa valeur dépend de l'état, des flux, des sources et des conventions de signe. L'objectif est de vérifier que la reconstruction discrète des contributions est cohérente avec les forces intégrées effectivement fournies à l'oracle.
+\]
+Cette quantité est un bilan de travail mécanique. La fiche ne suppose pas que \(\mathcal{P}\) soit positif ou nul : sa valeur dépend de l'état, des flux, des sources et des conventions de signe. L'objectif est de vérifier que la reconstruction discrète des contributions est cohérente avec les forces intégrées effectivement fournies à l'oracle.
 
 ## 3. Discrétisation Volume Fini
 
-Pour chaque face interne orientée owner \\(P\\) vers neighbour \\(N\\), une force intégrée unique \\(\mathbf{F}_f\\) est associée à la face. Le scatter conservatif ajoute \\(+\mathbf{F}_f\\) à la cellule owner et \\(-\mathbf{F}_f\\) à la cellule neighbour. Son travail discret vaut donc exactement :
-\\[
+Pour chaque face interne orientée owner \(P\) vers neighbour \(N\), une force intégrée unique \(\mathbf{F}_f\) est associée à la face. Le scatter conservatif ajoute \(+\mathbf{F}_f\) à la cellule owner et \(-\mathbf{F}_f\) à la cellule neighbour. Son travail discret vaut donc exactement :
+\[
 \mathbf{u}_P\cdot\mathbf{F}_f-\mathbf{u}_N\cdot\mathbf{F}_f
 =(\mathbf{u}_P-\mathbf{u}_N)\cdot\mathbf{F}_f.
-\\]
+\]
 Pour une face frontière, seule la contribution owner est présente :
-\\[
+\[
 \mathcal{P}_f=\mathbf{u}_P\cdot\mathbf{F}_f.
-\\]
-Les sources volumiques déjà intégrées \\(\mathbf{S}_c\\) contribuent par \\(\sum_c\mathbf{u}_c\cdot\mathbf{S}_c\\). L'oracle calcule séparément convection, viscosité, viscosité transpose, pression, force volumique et terme temporel, puis leur somme physique. Il ne reconstitue pas les flux à partir du résidu cellulaire : les forces de face doivent provenir indépendamment des opérateurs acceptés.
+\]
+Les sources volumiques déjà intégrées \(\mathbf{S}_c\) contribuent par \(\sum_c\mathbf{u}_c\cdot\mathbf{S}_c\). L'oracle calcule séparément convection, viscosité, viscosité transpose, pression, force volumique et terme temporel, puis leur somme physique. Il ne reconstitue pas les flux à partir du résidu cellulaire : les forces de face doivent provenir indépendamment des opérateurs acceptés.
 
 ## 4. Traitement des frontières
 
 La convention topologique de `FaceOwnership` est stricte :
-- face interne : \\(0\le N<n_{cells}\\), avec \\(N\ne P\\) ;
+- face interne : \(0\le N<n_{cells}\), avec \(N\ne P\) ;
 - face frontière : `FaceOwnership::BOUNDARY == -1` ;
 - toute autre valeur négative est invalide et doit être rejetée ;
 - tout owner hors domaine, neighbour hors domaine ou auto-connexion est rejeté.
@@ -47,7 +47,7 @@ Une face frontière utilise la vitesse de l'owner uniquement. Aucune valeur de v
 
 ## 5. Pièges connus
 
-- Traiter arbitrairement tout \\(N<0\\) comme une frontière masque les sentinelles invalides ; seul `-1` est autorisé.
+- Traiter arbitrairement tout \(N<0\) comme une frontière masque les sentinelles invalides ; seul `-1` est autorisé.
 - Inverser l'orientation d'une face interne impose d'inverser simultanément la force orientée ; le travail doit rester invariant.
 - Réutiliser le scatter du budget momentum comme oracle rendrait la comparaison circulaire. La reconstruction doit rester indépendante.
 - Des forces non finies, une forme de tableau incorrecte, un owner/neighbour invalide ou un travail accumulé non fini doivent échouer explicitement.
