@@ -550,3 +550,28 @@ under-relaxation, or nonlinear globalization terms as physical time work.
 The next bridge is to map the exact accepted transient accumulation in
 `steady_incompressible_solver.h` to this identity, including variable
 cell volumes, density, BDF2 history and boundary/source work.
+
+
+### Constant-step BDF2 G-stability identity
+
+The same module now adds `constant_step_bdf2_g_stability_identity`. For
+constant \\(\\Delta t\\), it expresses the BDF2 time derivative paired
+with \\(\\mathbf U^{n+1}\\) as the difference of a two-level G-energy
+plus the non-negative second-difference defect. The G-energy is the sum
+\\[
+\\lVert\\mathbf U^{n+1}\\rVert^2+
+\\lVert 2\\mathbf U^{n+1}-\\mathbf U^n\\rVert^2.
+\\]
+The defect is proportional to
+\\(
+\\lVert\\mathbf U^{n+1}-2\\mathbf U^n+\\mathbf U^{n-1}\\rVert^2
+\\).
+
+**Critical limitation:** CFDX's production BDF2 path calls
+`bdf2_coefficients(dt_previous, dt, ...)` and therefore supports
+variable-step coefficients. The new theorem is only the constant-step
+identity; it must not be used to claim G-stability for arbitrary step ratios.
+A variable-step energy estimate with its precise admissible step-ratio
+condition is a separate open task. The first-step backward-Euler fallback
+and constant-step BDF2 are now covered by separate abstract contracts;
+neither yet proves the complete C++ temporal assembly.
