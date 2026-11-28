@@ -105,6 +105,13 @@ inline MomentumVectorPowerBudget aggregate_momentum_vector_power(
             const double bounded_scale = std::max(
                 physical_scale + std::abs(residual.bounded_divergence),
                 std::numeric_limits<double>::min());
+            // Finite inputs can still overflow during reconstruction or scale
+            // accumulation. Reject before an infinite tolerance can mask it.
+            if (!std::isfinite(reconstructed_physical) ||
+                !std::isfinite(reconstructed_bounded) ||
+                !std::isfinite(physical_scale) ||
+                !std::isfinite(bounded_scale))
+                throw std::invalid_argument("momentum vector power: overflow in residual consistency reconstruction");
             constexpr double consistency_factor = 64.0;
             const double arithmetic_tolerance =
                 consistency_factor * std::numeric_limits<double>::epsilon();
