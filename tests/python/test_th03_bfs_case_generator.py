@@ -118,19 +118,17 @@ def test_sst_v41_two_cycle_rescue_is_explicit_bfs_variant(tmp_path: Path) -> Non
 
     with h5py.File(baseline) as h5:
         baseline_setup = json.loads(h5.attrs["case_setup_json"])
-        assert "sst_two_cycle_rescue_v41_experimental" not in baseline_setup[
-            "numerics"
-        ]["raw_settings"]
+        assert (
+            "sst_two_cycle_rescue_v41_experimental"
+            not in baseline_setup["numerics"]["raw_settings"]
+        )
     with h5py.File(rescued) as h5:
         setup = json.loads(h5.attrs["case_setup_json"])
-        assert setup["numerics"]["raw_settings"][
-            "sst_two_cycle_rescue_v41_experimental"
-        ] == "true"
+        assert (
+            setup["numerics"]["raw_settings"]["sst_two_cycle_rescue_v41_experimental"]
+            == "true"
+        )
     with h5py.File(baseline) as base_h5, h5py.File(rescued) as rescued_h5:
-        assert (
-            base_h5.attrs["topology_hash"] == rescued_h5.attrs["topology_hash"]
-        )
-        assert (
-            base_h5.attrs["geometry_hash"] == rescued_h5.attrs["geometry_hash"]
-        )
+        assert base_h5.attrs["topology_hash"] == rescued_h5.attrs["topology_hash"]
+        assert base_h5.attrs["geometry_hash"] == rescued_h5.attrs["geometry_hash"]
 
