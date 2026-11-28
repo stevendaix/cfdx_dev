@@ -69,7 +69,7 @@ jobs:
             --build "$BUILD_DIR" \
             --out "$RESULTS_DIR" \
             --only bfs \
-            --bfs-variants simple pcd_auto \
+            --bfs-variants simple simple_v41_two_cycle pcd_auto \
             --bfs-upstream 4 \
             --bfs-downstream 16 \
             --bfs-ny 10 \
