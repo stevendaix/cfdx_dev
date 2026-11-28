@@ -510,5 +510,41 @@ int main()
             mesh,velocity,overflow),std::invalid_argument);
     });
 
+    run_case("raw_face_positive_graph_diffusion_has_nonnegative_work", [] {
+        const Mesh mesh=make_two_cell_chain();
+        Field<double,Location::CELL> velocity(2,"U","m/s",3);
+        velocity(0,0)=1.0; velocity(0,1)=-0.5; velocity(0,2)=2.0;
+        velocity(1,0)=-0.25; velocity(1,1)=1.5; velocity(1,2)=0.75;
+        cfdx::physics::MomentumRawFacePowerInput input;
+        input.convection_face_forces.resize(mesh.n_faces(),{0.0,0.0,0.0});
+        input.viscous_face_forces.resize(mesh.n_faces());
+        input.transpose_viscous_face_forces.resize(mesh.n_faces(),{0.0,0.0,0.0});
+        input.pressure_cell_forces.resize(2,{0.0,0.0,0.0});
+        input.body_force_cell_forces.resize(2,{0.0,0.0,0.0});
+        input.temporal_cell_forces.resize(2,{0.0,0.0,0.0});
+        double expected_internal=0.0;
+        double expected_boundary=0.0;
+        for(std::size_t f=0;f<mesh.n_faces();++f) {
+            const std::size_t owner=mesh.ownership().owner(f);
+            const auto neighbour=mesh.ownership().neighbour(f);
+            const double conductance=0.25+0.1*static_cast<double>(f+1);
+            for(std::size_t d=0;d<3;++d) {
+                const double jump=neighbour>=0
+                    ? velocity(owner,d)-velocity(static_cast<std::size_t>(neighbour),d)
+                    : velocity(owner,d); // homogeneous Dirichlet boundary value
+                input.viscous_face_forces[f][d]=conductance*jump;
+                if(neighbour>=0) expected_internal+=conductance*jump*jump;
+                else expected_boundary+=conductance*jump*jump;
+            }
+        }
+        const auto power=cfdx::physics::evaluate_momentum_raw_face_power(mesh,velocity,input);
+        EXPECT_TRUE(power.viscous_internal>=0.0);
+        EXPECT_TRUE(power.viscous_boundary>=0.0);
+        EXPECT_TRUE(power.viscous>0.0);
+        EXPECT_NEAR(power.viscous_internal,expected_internal,2e-14);
+        EXPECT_NEAR(power.viscous_boundary,expected_boundary,2e-14);
+        EXPECT_NEAR(power.viscous,expected_internal+expected_boundary,2e-14);
+    });
+
     return run_all();
 }
