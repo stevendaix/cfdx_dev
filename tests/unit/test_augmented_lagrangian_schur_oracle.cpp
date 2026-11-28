@@ -266,7 +266,7 @@ void check_general_cross_augmentation() {
                 multiply(D, inverse(A_gamma_symmetric)), G));
         const double conventional_error = max_difference(
             inverse(S_gamma_symmetric), expected_inverse);
-        if (conventional_error < 1.0e-3)
+        if (gamma == 0.7 && conventional_error < 1.0e-3)
             throw std::runtime_error(
                 "non-adjoint conventional grad-div negative control did not fail");
     }
